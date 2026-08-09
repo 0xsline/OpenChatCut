@@ -9,7 +9,7 @@ const SESSION_HEADER = 'X-OpenChatCut-Project-Store-Session';
 const TOKEN_FRAGMENT_KEY = 'openchatcut-editor-token';
 const SESSION_STORAGE_KEY = 'openchatcut.projectStoreSession';
 const LAUNCH_STORAGE_KEY = 'openchatcut.projectStoreLaunchToken';
-let launchToken: string | null | undefined;
+let launchToken: string | null = null;
 let sessionToken: string | null | undefined;
 let sessionPromise: Promise<string> | null = null;
 const browserOwnerships = new Map<string, BrowserProjectOwnership>();
@@ -125,22 +125,39 @@ function rememberLaunchToken(token: string): void {
   }
 }
 
+function captureLaunchFragment(): void {
+  if (typeof location === 'undefined') return;
+  const params = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : '');
+  if (!params.has(TOKEN_FRAGMENT_KEY)) return;
+  const candidate = params.get(TOKEN_FRAGMENT_KEY)?.trim() ?? '';
+  removeLaunchFragment(params);
+  if (candidate.length >= 32) rememberLaunchToken(candidate);
+}
+
+function clearStoredLaunchToken(expected: string): void {
+  if (launchToken === expected) launchToken = null;
+  try {
+    if (sessionStorage.getItem(LAUNCH_STORAGE_KEY) === expected) {
+      sessionStorage.removeItem(LAUNCH_STORAGE_KEY);
+    }
+  } catch {
+    // The matching in-memory credential is still cleared when storage is unavailable.
+  }
+}
+
 function consumeLaunchToken(): string | null {
-  if (launchToken !== undefined) return launchToken;
-  launchToken = null;
+  captureLaunchFragment();
+  if (launchToken) return launchToken;
   try {
     const stored = sessionStorage.getItem(LAUNCH_STORAGE_KEY)?.trim() ?? '';
     if (stored.length >= 32) launchToken = stored;
   } catch {
     // Privacy-restricted environments may not expose storage.
   }
-  if (typeof location === 'undefined' || typeof history === 'undefined') return launchToken;
-  const params = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : '');
-  const candidate = params.get(TOKEN_FRAGMENT_KEY)?.trim() ?? '';
-  if (candidate.length >= 32) rememberLaunchToken(candidate);
-  removeLaunchFragment(params);
   return launchToken;
 }
+
+consumeLaunchToken();
 
 function loadStoredSession(): string | null {
   if (sessionToken !== undefined) return sessionToken;
@@ -180,7 +197,10 @@ async function exchangeLaunchToken(): Promise<string> {
     cache: 'no-store',
     headers: { [LAUNCH_TOKEN_HEADER]: token },
   });
-  if (!response.ok) throw new Error(`project store session exchange failed: ${response.status}`);
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) clearStoredLaunchToken(token);
+    throw new Error(`project store session exchange failed: ${response.status}`);
+  }
   const value: unknown = await response.json();
   if (!value || typeof value !== 'object') throw new Error('invalid project store session response');
   const session = value as Partial<{ sessionToken: string }>;
@@ -337,7 +357,7 @@ export async function requestProjectStore(
 
 
 export function resetProjectStoreTransport(): void {
-  launchToken = undefined;
+  launchToken = null;
   sessionToken = undefined;
   sessionPromise = null;
   browserOwnerships.clear();

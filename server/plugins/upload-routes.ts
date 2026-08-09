@@ -17,9 +17,10 @@ import {
   UploadTooLargeError,
 } from '../r2.ts';
 import {
-  DEFAULT_UPLOAD_DIR, enqueueUploadMutation, isCustomUploadDir, isSafeUploadName,
-  resolveOrHydrateUploadFile, serveDiskFile, syncLegacyUploads, uploadDir,
+  enqueueUploadMutation, isSafeUploadName, resolveOrHydrateUploadFile,
+  serveDiskFile, syncLegacyUploads, uploadDir, uploadReadDirs,
 } from '../media-dir.ts';
+import { isIsolatedDevProfile } from '../runtime-profile.ts';
 import { safePublicFetch, UnsafePublicUrlError } from '../safe-public-fetch.ts';
 import { deleteMediaPreviewDerivatives } from './media-preview.ts';
 import { streamUploadToFile } from './upload-stream.ts';
@@ -124,7 +125,7 @@ function mediaName(req: IncomingMessage): string | null {
 }
 
 function diskUpload(name: string): string | undefined {
-  return [...new Set([uploadDir(), DEFAULT_UPLOAD_DIR])]
+  return uploadReadDirs()
     .map((directory) => join(directory, name))
     .find((path) => existsSync(path));
 }
@@ -164,7 +165,11 @@ function handleMediaRead(
 ): void {
   if (req.method !== 'GET' && req.method !== 'HEAD') { next(); return; }
   const name = mediaName(req);
-  if (!name) { next(); return; }
+  if (!name) {
+    if (isIsolatedDevProfile()) sendError(res, 404, 'media not found');
+    else next();
+    return;
+  }
   const local = diskUpload(name);
   if (!local) { void serveR2Media(name, req, res, logger, dependencies); return; }
   res.setHeader(MEDIA_AUTHORITY_HEADER, 'server');
@@ -178,7 +183,7 @@ function handleMediaRead(
 async function handleUploadList(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== 'GET') { sendError(res, 405, 'method not allowed — use GET'); return; }
   try {
-    const directories = isCustomUploadDir() ? [uploadDir(), DEFAULT_UPLOAD_DIR] : [DEFAULT_UPLOAD_DIR];
+    const directories = uploadReadDirs();
     const seen = new Map<string, { name: string; bytes: number; mtimeMs: number }>();
     for (const directory of directories) {
       for (const name of await readdir(directory).catch(() => [] as string[])) {
@@ -339,7 +344,7 @@ async function handleDeleteUpload(req: IncomingMessage, res: ServerResponse): Pr
       let derivativesRemoved = 0;
       let r2Removed = false;
       const failures: unknown[] = [];
-      for (const directory of new Set([uploadDir(), DEFAULT_UPLOAD_DIR])) {
+      for (const directory of uploadReadDirs()) {
         try {
           if (rollbackToken) {
             if (await deleteLocalUploadIfOwned(directory, name, rollbackToken)) removed += 1;

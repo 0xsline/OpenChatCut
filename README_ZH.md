@@ -263,6 +263,11 @@ http://localhost:5199
 
 `.env.local` 中只需填写你实际使用的模型或素材服务。没有配置的第三方能力会明确提示缺少对应 Key，不影响本地时间线编辑、内置素材和已配置的其他能力。
 
+开发启动默认按 Git checkout/worktree 隔离。`npm run dev` 与 `npm run desktop:dev`
+会把当前工作区的工程、导入素材、生成任务、凭据、设置和本机授权状态写入
+`~/.openchatcut/dev-profiles/` 下的独立配置；只有明确需要旧版共享开发存储时，
+才使用 `npm run dev:shared`。
+
 ### 内置 Agent 登录方式
 
 - **API Key**：打开**设置 → Agent 模型**，选择厂商并保存 API Key 与模型；密钥始终留在服务端。

@@ -5,6 +5,7 @@
 // exposing object-store credentials and does not require browser-to-R2 CORS.
 // Proxy: R2 endpoint domestic direct connection is sometimes good or bad - respect the HTTPS_PROXY/https_proxy environment variable (Clash).
 // Large files: put/get is streamed to avoid 1GB+ asset being packed into the Node heap.
+// Isolated development profiles disable this unnamespaced store completely.
 import { createReadStream, createWriteStream } from 'node:fs';
 import { stat, unlink } from 'node:fs/promises';
 import { Transform, type Readable } from 'node:stream';
@@ -17,6 +18,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getKey, type KeyName } from './keystore.ts';
+import { isIsolatedDevProfile } from './runtime-profile.ts';
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 /** Finite default: large enough for long-form source masters while bounding disk/R2 abuse. */
@@ -61,6 +63,7 @@ export interface R2Config {
 /** Cloud storage (counted into caps.storage) must be enabled when all four items are complete + the switch is not disabled.
  * ignoreEnabled: The test connection must be able to verify the key even if it is disabled. */
 export function r2Config(get: Get = fromKeystore, opts?: { ignoreEnabled?: boolean }): R2Config | null {
+  if (isIsolatedDevProfile()) return null;
   if (!opts?.ignoreEnabled && get('R2_ENABLED') === '0') return null;
   const accountId = get('R2_ACCOUNT_ID');
   const accessKeyId = get('R2_ACCESS_KEY_ID');
@@ -331,6 +334,7 @@ export async function getUploadObjectToFile(
   destPath: string,
   options?: R2DownloadOptions,
 ): Promise<{ contentType: string; bytes: number } | null> {
+  if (isIsolatedDevProfile()) return null;
   const cfg = options?.config ?? r2Config();
   if (!cfg) return null;
   const signal = options?.signal;

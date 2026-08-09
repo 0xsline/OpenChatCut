@@ -1,8 +1,7 @@
-// Asset storage directory (server-only): MEDIA_DIR allows users to save uploaded/generated assets
-// Any local directory (such as an external hard drive). The URL is always from the same origin /media/uploads/<name>, decoupled from the physical location —
-// When the custom directory is outside public/, it is directly flowed out by the middleware of the upload plugin (with Range, video seek required);
-// Read the backend chain: custom directory → old default directory → R2 back to the source. When switching directories, copy the old directory assets to
-// Create a new directory (keep the original files) and render the exported single directory symlink to see all the assets.
+// Server-only asset storage. The renderer-facing URL always remains /media/uploads/<name>.
+// The default profile preserves MEDIA_DIR → worktree default → R2 read-through semantics
+// and legacy-copy behavior. Isolated development profiles use only their profile media
+// directory: no legacy fallback, legacy copy, MEDIA_DIR override, or R2 read-through.
 import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -10,6 +9,11 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { getKey, type KeyName } from './keystore.ts';
 import { getUploadObjectToFile, r2Config } from './r2.ts';
+import {
+  isIsolatedDevProfile,
+  runtimeProfile,
+  type RuntimeProfile,
+} from './runtime-profile.ts';
 
 export const DEFAULT_UPLOAD_DIR = join(process.cwd(), 'public', 'media', 'uploads');
 
@@ -35,21 +39,37 @@ export function expandMediaDir(raw: string): string | null {
   return resolve(expanded);
 }
 
-/** The current asset saving directory: MEDIA_DIR will default to public/media/uploads if it is not set or is illegal. */
-export function uploadDir(): string {
-  return expandMediaDir(getKey('MEDIA_DIR')) ?? DEFAULT_UPLOAD_DIR;
+/** Current writable asset directory. Isolated profiles never consult MEDIA_DIR. */
+export function uploadDir(
+  profile: RuntimeProfile = runtimeProfile(),
+  configuredMediaDir?: string,
+): string {
+  if (isIsolatedDevProfile(profile)) return profile.mediaDir;
+  return expandMediaDir(configuredMediaDir ?? getKey('MEDIA_DIR')) ?? profile.mediaDir;
 }
 
-export function isCustomUploadDir(): boolean {
-  return uploadDir() !== DEFAULT_UPLOAD_DIR;
+/** Ordered local read roots. Isolated profiles can read only their own media directory. */
+export function uploadReadDirs(
+  profile: RuntimeProfile = runtimeProfile(),
+  configuredMediaDir?: string,
+): readonly string[] {
+  const writable = uploadDir(profile, configuredMediaDir);
+  if (isIsolatedDevProfile(profile) || writable === profile.mediaDir) return [writable];
+  return [writable, profile.mediaDir];
 }
 
-/** The real disk path of the uploaded file: custom directory first, old default directory; none → null. */
-export function resolveUploadFile(name: string): string | null {
+export function isCustomUploadDir(profile: RuntimeProfile = runtimeProfile()): boolean {
+  return uploadDir(profile) !== profile.mediaDir;
+}
+
+/** Resolve an upload only through the active profile's ordered local read roots. */
+export function resolveUploadFile(
+  name: string,
+  profile: RuntimeProfile = runtimeProfile(),
+  configuredMediaDir?: string,
+): string | null {
   if (!isSafeUploadName(name)) return null;
-  const dir = uploadDir();
-  const dirs = dir === DEFAULT_UPLOAD_DIR ? [dir] : [dir, DEFAULT_UPLOAD_DIR];
-  for (const d of dirs) {
+  for (const d of uploadReadDirs(profile, configuredMediaDir)) {
     const file = join(d, name);
     if (existsSync(file)) return file;
   }
@@ -287,11 +307,14 @@ export async function syncUploadDirectories(
   return copied;
 }
 
-/** Compatible with MEDIA_DIR saved at startup: add old assets missing in the default directory to the current custom directory.*/
-export async function syncLegacyUploads(log: (msg: string) => void): Promise<void> {
-  if (!isCustomUploadDir()) return;
+/** Copy legacy default assets only for the ordinary configurable-media profile. */
+export async function syncLegacyUploads(
+  log: (msg: string) => void,
+  profile: RuntimeProfile = runtimeProfile(),
+): Promise<void> {
+  if (isIsolatedDevProfile(profile) || !isCustomUploadDir(profile)) return;
   try {
-    await syncUploadDirectories(DEFAULT_UPLOAD_DIR, uploadDir(), log);
+    await syncUploadDirectories(profile.mediaDir, uploadDir(profile), log);
   } catch (err) {
     log(`[media-dir] 老素材同步失败:${err instanceof Error ? err.message : String(err)}`);
   }
@@ -310,8 +333,14 @@ export async function mediaDirProbe(get: (name: KeyName) => string): Promise<Res
   });
 }
 
-export async function checkMediaDir(raw: string): Promise<DirProbeBody> {
-  if (!raw.trim()) return { ok: true, note: `未设置 · 使用默认目录 ${DEFAULT_UPLOAD_DIR}` };
+export async function checkMediaDir(
+  raw: string,
+  profile: RuntimeProfile = runtimeProfile(),
+): Promise<DirProbeBody> {
+  if (isIsolatedDevProfile(profile)) {
+    return { ok: false, error: '隔离开发配置固定使用独立素材目录，不能修改 MEDIA_DIR' };
+  }
+  if (!raw.trim()) return { ok: true, note: `未设置 · 使用默认目录 ${profile.mediaDir}` };
   const dir = expandMediaDir(raw);
   if (!dir) return { ok: false, error: '必须是绝对路径（可用 ~/ 开头）' };
   try {

@@ -263,6 +263,12 @@ http://localhost:5199
 
 Only add the model or media-service credentials you actually use to `.env.local`. Features without configured third-party credentials report the missing key explicitly; local timeline editing, built-in media, and other configured capabilities continue to work.
 
+Development launches are isolated per Git checkout/worktree by default. `npm run dev` and
+`npm run desktop:dev` keep that checkout's projects, imported media, generation jobs,
+credentials, settings, and local authorization state under its own profile in
+`~/.openchatcut/dev-profiles/`. Use `npm run dev:shared` only when you intentionally need
+the legacy shared development store.
+
 ### Built-in Agent authentication
 
 - **API keys:** open **Settings → Agent model**, choose a provider, and save its API key and model. Keys remain server-side.

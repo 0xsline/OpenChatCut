@@ -7,6 +7,10 @@ import { ffmpegBin, ffprobeBin } from '../server/media-binaries.ts';
 import { uploadDir } from '../server/media-dir.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
 import { sha256File } from '../shared/node-content-hash.ts';
+import {
+  normalizationAbortError,
+  throwIfNormalizationAborted,
+} from '../server/media-normalization.ts';
 
 export interface LocalMediaImport {
   src: string;
@@ -33,24 +37,43 @@ type ProbeStream = {
   tags?: { alpha_mode?: unknown };
 };
 
-function run(command: string, args: string[], timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error(`${command} timed out after ${Math.round(timeoutMs / 1_000)}s`));
-    }, timeoutMs);
-    child.stdout?.on('data', (chunk: Buffer) => { stdout += String(chunk); });
-    child.stderr?.on('data', (chunk: Buffer) => { stderr += String(chunk); });
-    child.once('error', (error) => { clearTimeout(timer); reject(error); });
-    child.once('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`${command} exited ${code}: ${stderr.slice(-500)}`));
-    });
+function run(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  throwIfNormalizationAborted(signal);
+  const deferred = Promise.withResolvers<string>();
+  const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  let stderr = '';
+  let terminalError: Error | undefined;
+  const onAbort = (): void => {
+    terminalError = normalizationAbortError(signal);
+    child.kill('SIGKILL');
+  };
+  const timer = setTimeout(() => {
+    terminalError = new Error(`${command} timed out after ${Math.round(timeoutMs / 1_000)}s`);
+    child.kill('SIGKILL');
+  }, timeoutMs);
+  child.stdout?.on('data', (chunk: Buffer) => { stdout = `${stdout}${String(chunk)}`.slice(-1_000_000); });
+  child.stderr?.on('data', (chunk: Buffer) => { stderr = `${stderr}${String(chunk)}`.slice(-8_000); });
+  child.once('error', (error) => {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+    deferred.reject(error);
   });
+  child.once('close', (code) => {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+    if (terminalError) deferred.reject(terminalError);
+    else if (code === 0) deferred.resolve(stdout);
+    else deferred.reject(new Error(`${command} exited ${code}: ${stderr.slice(-500)}`));
+  });
+  signal?.addEventListener('abort', onAbort, { once: true });
+  if (signal?.aborted) onAbort();
+  return deferred.promise;
 }
 
 /** Detect alpha from the probed pixel format rather than container or filename. */
@@ -104,18 +127,21 @@ export async function importLocalMedia(
 }
 
 /** Return null for ordinary MOV files and never replace or remove the original. */
-export async function createTransparentMovProxy(storedName: string): Promise<{ src: string } | null> {
+export async function createTransparentMovProxy(
+  storedName: string,
+  signal?: AbortSignal,
+): Promise<{ src: string } | null> {
   if (extname(storedName).toLowerCase() !== '.mov' || basename(storedName) !== storedName) return null;
   const source = join(uploadDir(), storedName);
   const probe = JSON.parse(await run(ffprobeBin(), [
     '-v', 'error', '-select_streams', 'v:0',
     '-show_entries', 'stream=codec_name,profile,pix_fmt:stream_tags=alpha_mode',
     '-of', 'json', source,
-  ], 10_000)) as { streams?: ProbeStream[] };
+  ], 10_000, signal)) as { streams?: ProbeStream[] };
   if (!isTransparentMovProbe(probe.streams?.[0])) return null;
 
   const proxyName = `${basename(storedName, '.mov')}.alpha.webm`;
   const destination = join(uploadDir(), proxyName);
-  await run(ffmpegBin(), transparentMovProxyArgs(source, destination), 60 * 60_000);
+  await run(ffmpegBin(), transparentMovProxyArgs(source, destination), 60 * 60_000, signal);
   return { src: `/media/uploads/${proxyName}` };
 }

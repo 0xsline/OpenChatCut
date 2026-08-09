@@ -22,6 +22,11 @@ import type {
   DesktopRhythmRequest,
   DesktopRhythmResponse,
 } from '../shared/desktop-inference';
+import type {
+  DirectoryImportDisposition,
+  DirectoryImportEvent,
+  DirectoryWatchStartResult,
+} from '../shared/directory-import';
 interface DesktopExportDirectoryGrant {
   readonly grantId: string;
   readonly label: string;
@@ -60,6 +65,18 @@ declare global {
       restoreExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
       importLocalMedia(file: File): Promise<{ src: string; storedName: string; contentHash: string } | null>;
       prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
+      startImportDirectoryWatch(
+        projectId: string,
+        existingContentHashes: readonly string[],
+      ): Promise<DirectoryWatchStartResult | null>;
+      activateImportDirectoryWatch(watchId: string): Promise<void>;
+      acknowledgeImportDirectoryFile(
+        watchId: string,
+        importId: string,
+        disposition: DirectoryImportDisposition,
+      ): Promise<void>;
+      stopImportDirectoryWatch(watchId: string): Promise<void>;
+      subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
       windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
       revealExport(destinationId: string, filename: string): Promise<void>;
       projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;

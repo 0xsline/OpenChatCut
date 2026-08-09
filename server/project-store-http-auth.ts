@@ -2,14 +2,13 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
+import { runtimeProfile, type RuntimeProfile } from './runtime-profile.ts';
 
 export const PROJECT_STORE_LAUNCH_TOKEN_HEADER = 'x-openchatcut-editor-launch-token';
 export const PROJECT_STORE_SESSION_HEADER = 'x-openchatcut-project-store-session';
 const TOKEN_ENV = 'OPENCHATCUT_EDITOR_LAUNCH_TOKEN';
-const AUTH_DIR_ENV = 'OPENCHATCUT_PROJECT_STORE_AUTH_DIR';
 const MIN_TOKEN_LENGTH = 32;
 const generatedLaunchToken = randomBytes(32).toString('base64url');
 
@@ -21,13 +20,12 @@ interface ProjectStoreSession {
 
 let activeSession: ProjectStoreSession | null = null;
 
-function authDir(): string {
-  const configured = process.env[AUTH_DIR_ENV]?.trim();
-  return configured || join(homedir(), '.openchatcut', 'project-store-auth-v1');
+export function projectStoreAuthDir(profile: RuntimeProfile = runtimeProfile()): string {
+  return profile.authDir;
 }
 
 function ensureAuthDir(): string {
-  const directory = authDir();
+  const directory = projectStoreAuthDir();
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   try { chmodSync(directory, 0o700); } catch { /* best-effort on non-POSIX filesystems */ }
   return directory;
@@ -138,12 +136,11 @@ function sameOrigin(req: IncomingMessage): boolean {
 /** Origin is a loopback host (localhost / 127.0.0.1 / ::1) on ANY port. */
 
 /**
- * Read-only authorization WITHOUT a session: same-origin pages (or direct
+ * Read-only authorization without a session: same-origin pages (or direct
  * local navigation, e.g. curl) served from a loopback host may read the
- * shared project library. This keeps every dev port / desktop window
- * consistent (a project deleted on port 5199 must not reappear on port
- * 5202's stale local cache). Sec-Fetch-Site is browser-enforced and cannot
- * be spoofed by cross-origin pages; writes still require a real session.
+ * active runtime profile's project library. Sec-Fetch-Site is browser-enforced
+ * and cannot be spoofed by cross-origin pages; writes still require a real
+ * session. Isolated development ports resolve to distinct profile stores.
  */
 export function projectStoreReadAuthorized(req: IncomingMessage): boolean {
   const site = header(req, 'sec-fetch-site');

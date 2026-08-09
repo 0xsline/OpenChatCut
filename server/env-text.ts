@@ -19,12 +19,14 @@ function envLine(name: string, value: string): string {
   throw new Error(`invalid value for ${name}: cannot persist losslessly in dotenv`);
 }
 
-/** Merge `patch` into a .env file's text: update lines whose key matches, drop lines whose
- * new value is empty (cleared), append genuinely-new keys, and preserve every other line
- * (comments, blanks, unrelated vars). Pure — the IO in setKeys wraps this. */
+/** Merge `patch` into a .env file's text: update lines whose key matches and append
+ * genuinely-new keys while preserving comments, blanks, and unrelated vars.
+ * Default-mode empty values remove keys. Isolated profiles retain `NAME=` tombstones
+ * so a cleared inherited checkout/shell value cannot reappear after restart. */
 export function mergeEnvText(
   existing: string,
   patch: Map<string, string>,
+  preserveEmpty = false,
 ): string {
   const lines = existing.split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
@@ -35,13 +37,13 @@ export function mergeEnvText(
     if (match && patch.has(match[1])) {
       seen.add(match[1]);
       const value = patch.get(match[1])!;
-      if (value) out.push(envLine(match[1], value));
+      if (value || preserveEmpty) out.push(envLine(match[1], value));
     } else {
       out.push(line);
     }
   }
   for (const [name, value] of patch) {
-    if (!seen.has(name) && value) out.push(envLine(name, value));
+    if (!seen.has(name) && (value || preserveEmpty)) out.push(envLine(name, value));
   }
   return `${out.join("\n")}\n`;
 }

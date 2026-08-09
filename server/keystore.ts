@@ -1,16 +1,16 @@
-// Server-side in-memory API-key store backing the settings UI. Seeded from .env.local
-// at Vite startup, live-updated by POST /api/keys, and persisted back to .env.local so
-// runtime edits survive a restart. SECRET key VALUES (any name NOT in NON_SECRET_NAMES)
-// live ONLY here (server-side) and in .env.local (gitignored) — they NEVER appear in
-// any response; the browser sees booleans only (keyStatus / caps). Model ids and vendor
+// Server-side in-memory API-key store backing the settings UI. Seeded at Vite
+// startup, live-updated by POST /api/keys, and persisted to the active runtime
+// profile's private settings file. Secret values never appear in responses; the
+// browser sees booleans only (keyStatus / caps). Model ids and vendor
 // routing are configuration, not credentials: the explicit NON_SECRET_NAMES whitelist
 // lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
 // show and edit them.
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { atomicWriteFile } from "./plugins/project-store-durable.ts";
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from "./llm-config.ts";
 import { decodePersistedEnvValue, mergeEnvText } from "./env-text.ts";
 export { mergeEnvText } from "./env-text.ts";
+import { isIsolatedDevProfile, runtimeProfile } from "./runtime-profile.ts";
 import {
   LLM_PROVIDER_PRESETS,
   llmProviderConfigNames,
@@ -23,7 +23,8 @@ import {
   type ModelCapabilityOverride,
 } from "../shared/model-capabilities.ts";
 
-const ENV_PATH = resolve(process.cwd(), ".env.local");
+const ACTIVE_PROFILE = runtimeProfile();
+const ENV_PATH = ACTIVE_PROFILE.keystorePath;
 
 // Whitelist of settable env vars — mirrors what vite.config.ts reads. POST /api/keys
 // rejects anything outside this set so the endpoint can never write arbitrary env.
@@ -384,6 +385,7 @@ export function computeCaps(): Caps {
     sandbox: has("E2B_API_KEY"),
     web: has("FIRECRAWL_API_KEY"),
     storage:
+      !isIsolatedDevProfile() &&
       has("R2_ACCOUNT_ID") &&
       has("R2_ACCESS_KEY_ID") &&
       has("R2_SECRET_ACCESS_KEY") &&
@@ -444,8 +446,13 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
       throw err;
     },
   );
-  const merged = mergeEnvText(existing, clean);
-  await writeFile(ENV_PATH, merged, "utf8");
+  const isolated = isIsolatedDevProfile(ACTIVE_PROFILE);
+  const merged = mergeEnvText(existing, clean, isolated);
+  if (isolated) {
+    await atomicWriteFile(ENV_PATH, merged, { mode: 0o600 });
+  } else {
+    await writeFile(ENV_PATH, merged, "utf8");
+  }
   for (const [name, v] of clean) {
     if (v) {
       store.set(name, v);

@@ -168,5 +168,17 @@ export default {
   '恢复默认': 'Reset defaults',
   '采样设置已保存，重建索引后生效。': 'Sampling settings saved. Rebuild the index for changes to apply.',
   '采样设置已恢复默认，重建索引后生效。': 'Sampling settings reset. Rebuild the index for changes to apply.',
+  // One-shot folder import and desktop folder watch
+  '导入文件夹…': 'Import folder…',
+  '文件夹导入不完整：仅检查前 {n} 个文件。': 'Folder import is partial: only the first {n} files were checked.',
+  '文件夹导入不完整：已跳过超出 {n} 层的内容。': 'Folder import is partial: content deeper than {n} levels was skipped.',
+  '已跳过 {n} 个不支持的文件。': 'Skipped {n} unsupported files.',
+  '文件夹中没有支持的媒体文件。': 'The folder contains no supported media files.',
+  '监听文件夹（自动导入新素材）…': 'Watch folder (automatically import new media)…',
+  '正在选择监听文件夹…': 'Choosing a folder to watch…',
+  '停止正在准备的监听文件夹「{dir}」': 'Stop preparing watch folder “{dir}”',
+  '停止监听文件夹「{dir}」': 'Stop watching “{dir}”',
+  '监听文件夹导入失败：{error}': 'Watch folder import failed: {error}',
+  '监听目录中的视频尚未完成兼容性处理': 'A watched video was published before compatibility processing completed.',
   '不支持导入「{name}」': 'Unsupported file: “{name}”',
 } as Record<string, string>;

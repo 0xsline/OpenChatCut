@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { uploadDir } from '../media-dir.ts';
 
 /**
  * Firecrawl proxy (official API + web_browser scrape).
@@ -17,7 +18,6 @@ import { randomUUID } from 'node:crypto';
  * Docs: https://docs.firecrawl.dev
  */
 
-const UPLOAD_DIR = join(process.cwd(), 'public', 'media', 'uploads');
 const FC_V1 = 'https://api.firecrawl.dev/v1';
 const FC_V2 = 'https://api.firecrawl.dev/v2';
 const MAX_BODY = 2 * 1024 * 1024;
@@ -185,10 +185,11 @@ async function saveScreenshot(data: unknown): Promise<string | null> {
       buf = Buffer.from(data, 'base64');
     }
     if (buf.length < 256) return null;
-    await mkdir(UPLOAD_DIR, { recursive: true });
+    const directory = uploadDir();
+    await mkdir(directory, { recursive: true });
     const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
     const fname = `${randomUUID()}${isJpeg ? '.jpg' : '.png'}`;
-    await writeFile(join(UPLOAD_DIR, fname), buf);
+    await writeFile(join(directory, fname), buf);
     return `/media/uploads/${fname}`;
   } catch {
     return null;

@@ -4,11 +4,37 @@ import { keyStatus, setKeys } from '../keystore.ts';
 import { runProbe } from '../key-probes.ts';
 import {
   checkMediaDir,
-  DEFAULT_UPLOAD_DIR,
   expandMediaDir,
   syncUploadDirectories,
   uploadDir,
 } from '../media-dir.ts';
+import {
+  isIsolatedDevProfile,
+  runtimeProfile,
+  type RuntimeProfile,
+} from '../runtime-profile.ts';
+
+const ISOLATED_R2_SETTINGS = [
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+  'R2_ENABLED',
+  'R2_PRESIGN',
+] as const;
+
+export function assertProfileSensitiveSettingsPatch(
+  patch: Readonly<Record<string, unknown>>,
+  profile: RuntimeProfile = runtimeProfile(),
+): void {
+  if (!isIsolatedDevProfile(profile)) return;
+  if (Object.hasOwn(patch, 'MEDIA_DIR')) {
+    throw new Error('MEDIA_DIR cannot be changed while an isolated development profile is active');
+  }
+  if (ISOLATED_R2_SETTINGS.some((name) => Object.hasOwn(patch, name))) {
+    throw new Error('R2 settings cannot be changed while an isolated development profile is active');
+  }
+}
 
 // Dev-only settings endpoint bound to the Vite dev server (localhost). Key VALUES flow
 // browser → server here and are stored server-side + in .env.local; they never flow back
@@ -67,13 +93,15 @@ export function settingsPlugin(): Plugin {
             return;
           }
           if (req.method === 'POST') {
+            const profile = runtimeProfile();
             const patch = await readBody(req);
-            const previousMediaDir = uploadDir();
+            assertProfileSensitiveSettingsPatch(patch, profile);
+            const previousMediaDir = uploadDir(profile);
             if ('MEDIA_DIR' in patch) {
               const rawMediaDir = String(patch.MEDIA_DIR ?? '');
-              const checked = await checkMediaDir(rawMediaDir);
+              const checked = await checkMediaDir(rawMediaDir, profile);
               if (!checked.ok) throw new Error(checked.error ?? 'invalid media directory');
-              const nextMediaDir = expandMediaDir(rawMediaDir) ?? DEFAULT_UPLOAD_DIR;
+              const nextMediaDir = expandMediaDir(rawMediaDir) ?? profile.mediaDir;
               await syncUploadDirectories(
                 previousMediaDir,
                 nextMediaDir,

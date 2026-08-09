@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { access, readFile, readdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   isProjectStoreEntries,
@@ -8,6 +7,7 @@ import {
   isProjectStoreRecord,
   projectIdFromProjectStoreKey,
 } from '../../shared/project-store-validation.ts';
+import { runtimeProfile } from '../runtime-profile.ts';
 import {
   mergeAgentSidecar,
   mergeProjectEntries,
@@ -30,14 +30,16 @@ import {
   durableRename,
 } from './project-store-durable.ts';
 
-const ROOT_DIR = join(homedir(), '.openchatcut');
-const LEGACY_STORE_PATH = join(ROOT_DIR, 'project-store-v1.json');
-const LEGACY_BACKUP_PATH = `${LEGACY_STORE_PATH}.migrated`;
-const STORE_DIR = join(ROOT_DIR, 'project-store-v1');
-const QUARANTINE_DIR = join(STORE_DIR, '.quarantine');
-const READY_PATH = join(STORE_DIR, '.ready');
-const LOCK_PATH = join(ROOT_DIR, 'project-store-v1.lock');
-const DELETED_PROJECTS_PATH = join(ROOT_DIR, 'deleted-projects-v1.json');
+const {
+  legacyStorePath: LEGACY_STORE_PATH,
+  legacyBackupPath: LEGACY_BACKUP_PATH,
+  directory: STORE_DIR,
+  indexPath: INDEX_PATH,
+  quarantineDir: QUARANTINE_DIR,
+  readyPath: READY_PATH,
+  leasePath: LOCK_PATH,
+  tombstonePath: DELETED_PROJECTS_PATH,
+} = runtimeProfile().projectStore;
 const LOCK_STALE_MS = 10_000;
 const PROJECT_DOCUMENT_KEY = /^project:(.+)$/;
 const PROJECT_EDIT_OWNERSHIP_PREFIX = 'project-edit-ownership:';
@@ -83,7 +85,9 @@ async function readLegacyStore(): Promise<{ exists: boolean; store: StoreFile }>
   }
 }
 
-const entryPath = (key: string) => join(STORE_DIR, `${encodeURIComponent(key)}.json`);
+const entryPath = (key: string) => key === 'projects'
+  ? INDEX_PATH
+  : join(STORE_DIR, `${encodeURIComponent(key)}.json`);
 
 async function writeStoredEntry(key: string, value: unknown): Promise<void> {
   await atomicWriteJson(entryPath(key), value);

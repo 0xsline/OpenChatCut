@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { ResultDownloadError } from './result-download.ts';
 import type { H264EncoderProfile } from '../media-acceleration.ts';
+import { runtimeProfile } from '../runtime-profile.ts';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export type GenerationRetryClass = 'none' | 'provider-retryable' | 'provider-terminal' | 'download-retryable' | 'restart-recoverable';
@@ -236,8 +236,7 @@ const resumers = new Map<string, GenerationJobResumer>();
 const cleanupPolicyHandlers = new Map<string, GenerationCleanupPolicyHandler>();
 const TERMINAL = new Set<GenerationJobStatus>(['succeeded', 'failed']);
 const MAX_JOB_AGE_MS = 60 * 60_000;
-const STORE_PATH = process.env.OPENCHATCUT_GENERATION_JOB_STORE
-  ?? join(homedir(), '.openchatcut', 'generation-operations-v1.json');
+const STORE_PATH = runtimeProfile().generationJobStore;
 let loadPromise: Promise<void> | undefined;
 let persistenceQueue: Promise<void> = Promise.resolve();
 

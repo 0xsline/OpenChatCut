@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, unlink, utimes, wr
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
-import { DEFAULT_UPLOAD_DIR, isSafeUploadName, resolveUploadFile, serveDiskFile, uploadDir } from '../media-dir.ts';
+import { isSafeUploadName, resolveUploadFile, serveDiskFile, uploadDir, uploadReadDirs } from '../media-dir.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 import { derivativeQueue, type DerivativeWork } from '../derivative-queue.ts';
@@ -26,20 +26,17 @@ const PREVIEW_TRANSFORM_VERSION = 'preview-v2';
 const DEFAULT_PREVIEW_MAX_BYTES = 512 * 1024 * 1024;
 const PREVIEW_GC_INTERVAL_MS = 5 * 60_000;
 const activePreviewPaths = new Set<string>();
-
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
 }
-
 function uploadNameFromSrc(src: string): string | null {
   const clean = decodeURIComponent((src.split('?')[0] ?? '').trim());
   const m = clean.match(/^\/media\/uploads\/([^/]+)$/);
   if (!m) return null;
   return isSafeUploadName(m[1]) ? m[1] : null;
 }
-
 function previewDir(root = uploadDir()): string {
   return join(root, '.preview');
 }
@@ -89,7 +86,7 @@ function isPreviewDerivative(name: string): boolean {
 
 async function previewEntries(): Promise<PreviewCacheEntry[]> {
   const entries: PreviewCacheEntry[] = [];
-  for (const root of [...new Set([uploadDir(), DEFAULT_UPLOAD_DIR])]) {
+  for (const root of uploadReadDirs()) {
     const dir = previewDir(root);
     const names = await readdir(dir).catch(() => [] as string[]);
     const rows = await Promise.all(names.filter(isPreviewDerivative).map(async (name) => {
@@ -130,7 +127,7 @@ export async function deleteMediaPreviewDerivatives(name: string): Promise<numbe
   invalidatePreviewGenerations(name);
   const cacheName = name.replace(/[^a-zA-Z0-9_.-]/g, '_');
   let removed = 0;
-  for (const root of [...new Set([uploadDir(), DEFAULT_UPLOAD_DIR])]) {
+  for (const root of uploadReadDirs()) {
     const dir = previewDir(root);
     const names = await readdir(dir).catch(() => [] as string[]);
     for (const candidate of names) {

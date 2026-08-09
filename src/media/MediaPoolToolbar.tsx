@@ -16,6 +16,7 @@ import { SemanticSearchControls } from './semantic-search/SemanticSearchControls
 import type { SemanticMatch } from './semantic-search/types';
 import type { MediaSortKey, MediaTypeFilter } from './mediaPoolFilter';
 import { mediaViewToggleLabel } from './mediaView';
+import { DirectoryImportActions } from './DirectoryImportActions';
 
 export type MediaToolbarMenu = 'sort' | 'filter' | 'actions' | null;
 const SORT_OPTIONS = [['newest', '最新导入'], ['name', '名称 A–Z'], ['duration', '时长']] as const;
@@ -37,6 +38,11 @@ interface MediaPoolToolbarProps {
   onQueryChange: (value: string) => void;
   onSemanticResults: (matches: SemanticMatch[] | null) => void;
   onUpload: () => void;
+  onPickFolder?: () => void;
+  onWatchFolder?: () => void;
+  onStopWatch: () => void;
+  watchingFolder: string | null;
+  watchBusy: boolean;
   onMobileUpload: (restoreFocus: () => void) => void;
   onAddSolid: () => void;
   onCreateFolder: (restoreFocus: () => void) => void;
@@ -202,6 +208,14 @@ function ActionsMenu(props: MenuProps) {
     <button onClick={() => runModal(props.onMobileUpload)}><Icon name="qrCode" size={15} />{t('手机传素材')}</button>
     {props.canAddSolid && <button onClick={() => run(props.onAddSolid, true)}><span className="cc-media-solid-icon">{t('色')}</span>{t('添加纯色')}</button>}
     <button onClick={() => runModal(props.onCreateFolder)}><Icon name="folderPlus" size={16} />{t('新建文件夹')}</button>
+    <DirectoryImportActions
+      onPickFolder={props.onPickFolder}
+      onWatchFolder={props.onWatchFolder}
+      onStopWatch={props.onStopWatch}
+      watchingFolder={props.watchingFolder}
+      watchBusy={props.watchBusy}
+      run={(action) => run(action)}
+    />
     <MusicAutoAnalysisPreference />
   </div>;
   return (

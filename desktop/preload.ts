@@ -40,6 +40,14 @@ import {
   type DesktopRhythmRequest,
   type DesktopRhythmResponse,
 } from '../shared/desktop-inference.ts';
+import {
+  DIRECTORY_IMPORT_CHANNELS,
+  isDirectoryImportEvent,
+  isDirectoryWatchStartResult,
+  type DirectoryImportDisposition,
+  type DirectoryImportEvent,
+  type DirectoryWatchStartResult,
+} from '../shared/directory-import.ts';
 
 export interface DesktopExportDirectoryGrant {
   readonly grantId: string;
@@ -79,6 +87,18 @@ export interface OpenChatCutDesktopApi {
   restoreExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
   importLocalMedia(file: File): Promise<{ src: string; storedName: string; contentHash: string } | null>;
   prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
+  startImportDirectoryWatch(
+    projectId: string,
+    existingContentHashes: readonly string[],
+  ): Promise<DirectoryWatchStartResult | null>;
+  activateImportDirectoryWatch(watchId: string): Promise<void>;
+  acknowledgeImportDirectoryFile(
+    watchId: string,
+    importId: string,
+    disposition: DirectoryImportDisposition,
+  ): Promise<void>;
+  stopImportDirectoryWatch(watchId: string): Promise<void>;
+  subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
   windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
   revealExport(destinationId: string, filename: string): Promise<void>;
   projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
@@ -115,6 +135,29 @@ const api: OpenChatCutDesktopApi = {
   importLocalMedia: (file) => importLocalMediaFromFile(file, localMediaPreloadDependencies),
   prepareTransparentMovProxy: (storedName) =>
     ipcRenderer.invoke('openchatcut:transparent-mov-proxy', storedName) as Promise<{ src: string } | null>,
+  startImportDirectoryWatch: async (projectId, existingContentHashes) => {
+    const value: unknown = await ipcRenderer.invoke(
+      DIRECTORY_IMPORT_CHANNELS.start, projectId, existingContentHashes,
+    );
+    if (value === null) return null;
+    if (!isDirectoryWatchStartResult(value)) throw new Error('invalid directory watch response');
+    return value;
+  },
+  activateImportDirectoryWatch: (watchId) =>
+    ipcRenderer.invoke(DIRECTORY_IMPORT_CHANNELS.activate, watchId) as Promise<void>,
+  acknowledgeImportDirectoryFile: (watchId, importId, disposition) =>
+    ipcRenderer.invoke(
+      DIRECTORY_IMPORT_CHANNELS.acknowledge, watchId, importId, disposition,
+    ) as Promise<void>,
+  stopImportDirectoryWatch: (watchId) =>
+    ipcRenderer.invoke(DIRECTORY_IMPORT_CHANNELS.stop, watchId) as Promise<void>,
+  subscribeImportDirectory: (listener) => {
+    const handleImported = (_event: IpcRendererEvent, value: unknown): void => {
+      if (isDirectoryImportEvent(value)) listener(value);
+    };
+    ipcRenderer.on(DIRECTORY_IMPORT_CHANNELS.imported, handleImported);
+    return () => { ipcRenderer.removeListener(DIRECTORY_IMPORT_CHANNELS.imported, handleImported); };
+  },
   windowAction: (action) =>
     ipcRenderer.invoke('openchatcut:window-action', action) as Promise<void>,
   revealExport: (destinationId, filename) =>
