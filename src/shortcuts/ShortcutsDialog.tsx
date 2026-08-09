@@ -111,7 +111,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
                           onClick={() => startCapture(a.id)}
                           title={t('点击改绑')}
                           style={{
-                            fontSize: 11, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                            fontSize: 11, fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
                             color: capturing ? theme.accent : theme.text,
                             background: theme.bg, border: `0.5px solid ${capturing ? theme.accent : theme.border}`,
                             borderRadius: 6, padding: '2px 8px', whiteSpace: 'nowrap', cursor: 'pointer', minWidth: 90, textAlign: 'center',

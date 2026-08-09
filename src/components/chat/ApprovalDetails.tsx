@@ -2,7 +2,7 @@ import type { ApprovalDetail } from '../../agent/approval-details';
 import { useT } from '../../i18n/locale';
 import { theme } from '../../theme';
 
-const mono = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+const mono = 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
 
 export function ApprovalDetails({
   details,

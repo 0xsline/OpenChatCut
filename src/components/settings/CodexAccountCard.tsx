@@ -231,7 +231,7 @@ const valueRow: React.CSSProperties = { display: 'flex', alignItems: 'center', g
 const valueLabel: React.CSSProperties = { width: 52, flex: '0 0 52px', color: theme.textDim, fontSize: 10.5 };
 const valueLink: React.CSSProperties = { minWidth: 0, flex: 1, color: theme.accent, textDecoration: 'underline' };
 const valueCode: React.CSSProperties = {
-  display: 'block', minWidth: 0, overflow: 'hidden', color: 'inherit', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  display: 'block', minWidth: 0, overflow: 'hidden', color: 'inherit', fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 10.5, lineHeight: 1.45, textOverflow: 'ellipsis', whiteSpace: 'nowrap', userSelect: 'all',
 };
 const prominentCode: React.CSSProperties = { color: theme.textStrong, fontSize: 14, fontWeight: 700, letterSpacing: '0.08em' };

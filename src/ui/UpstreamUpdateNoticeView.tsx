@@ -17,7 +17,7 @@ const noticeStyle = {
   background: theme.panel,
   color: theme.text,
   boxShadow: `0 12px 32px ${themeAlpha.shadow(0.32)}`,
-  fontFamily: 'system-ui, -apple-system, sans-serif',
+  fontFamily: 'Geist, system-ui, -apple-system, sans-serif',
   fontSize: 12.5,
   lineHeight: 1.5,
 } as const;

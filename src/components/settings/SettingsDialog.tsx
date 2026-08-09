@@ -434,7 +434,7 @@ function dot(on: boolean): React.CSSProperties {
 
 const overlay: React.CSSProperties = {
   position: 'fixed', inset: 0, background: themeAlpha.shadow(0.62), display: 'grid', placeItems: 'center',
-  zIndex: 200, padding: 24, fontFamily: 'system-ui, -apple-system, sans-serif',
+  zIndex: 200, padding: 24, fontFamily: 'Geist, system-ui, -apple-system, sans-serif',
 };
 const panel: React.CSSProperties = {
   width: 'min(940px, 100%)', height: 'min(640px, 86vh)', display: 'flex', flexDirection: 'column',

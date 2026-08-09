@@ -50,7 +50,7 @@
 .cc-tracking-body > aside { min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 18px; overflow: auto; background: var(--cc-panel-alt); border-left: 0.5px solid var(--cc-border); }
 .cc-tracking-body aside label { display: grid; grid-template-columns: 1fr auto; gap: 8px; color: var(--cc-text-muted); font-size: 0.71875rem; line-height: 1.35; }
 .cc-tracking-body aside label > span { font-weight: 550; }
-.cc-tracking-body aside label strong { color: var(--cc-text-strong); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.6875rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cc-tracking-body aside label strong { color: var(--cc-text-strong); font-family: Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.6875rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cc-tracking-body aside select { grid-column: 1 / -1; width: 100%; min-height: 30px; padding: 0 8px; color: var(--cc-text); background: var(--cc-bg); border: 0.5px solid var(--cc-border); border-radius: 4px; font: inherit; font-size: 0.71875rem; }
 .cc-tracking-body aside select:hover { border-color: var(--cc-border-light); }
 .cc-tracking-body aside select:focus { border-color: var(--cc-accent); outline: 1px solid color-mix(in srgb, var(--cc-accent) 28%, transparent); }
@@ -67,7 +67,7 @@
 
 .cc-tracking-progress { display: grid; gap: 8px; padding: 12px; background: var(--cc-bg); border: 0.5px solid var(--cc-border); border-radius: 4px; }
 .cc-tracking-progress > div { display: flex; justify-content: space-between; gap: 10px; color: var(--cc-text-muted); font-size: 0.71875rem; }
-.cc-tracking-progress strong { color: var(--cc-text-strong); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.6875rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cc-tracking-progress strong { color: var(--cc-text-strong); font-family: Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.6875rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .cc-tracking-progress > i { height: 5px; overflow: hidden; background: var(--cc-border); border-radius: 999px; }
 .cc-tracking-progress b { display: block; width: 100%; height: 100%; transform-origin: left; background: var(--cc-accent); transition: transform 150ms ease; }
 .cc-tracking-result { display: grid; gap: 5px; padding: 11px; color: var(--cc-text-muted); background: color-mix(in srgb, var(--cc-success) 8%, var(--cc-bg)); border: 0.5px solid color-mix(in srgb, var(--cc-success) 35%, var(--cc-border)); border-radius: 4px; font-size: 0.71875rem; line-height: 1.4; }

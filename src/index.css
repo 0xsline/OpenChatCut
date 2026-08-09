@@ -1,3 +1,62 @@
+/* Self-hosted Geist + Geist Mono (OFL-1.1, Vercel) — UI brand typeface.
+ * Chinese glyphs are not covered by Geist and fall back to the system UI
+ * stack (PingFang / Microsoft YaHei) via the trailing system-ui entries. */
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 :root { color-scheme: dark; }   /* tell the browser we're already dark → skip force-dark-mode */
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
@@ -83,7 +142,7 @@ button, input, select { font: inherit; }
 
 /* Shared editor surface typography: dialogs, popovers, and inspector use one baseline. */
 :where(.cc-semantic-panel, .cc-export-panel, .cc-inspector) {
-  font-family:system-ui, -apple-system, sans-serif;
+  font-family:Geist, system-ui, -apple-system, sans-serif;
   font-size:11.5px;
   line-height:1.35;
 }
@@ -300,7 +359,7 @@ button, input, select { font: inherit; }
 }
 
 /* Editor asset panel. */
-.cc-library-panel { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; background:var(--cc-panel); border-right:0.5px solid var(--cc-border); container:library-panel / inline-size; font-family:system-ui,-apple-system,sans-serif; }
+.cc-library-panel { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; background:var(--cc-panel); border-right:0.5px solid var(--cc-border); container:library-panel / inline-size; font-family:Geist, system-ui,-apple-system,sans-serif; }
 .cc-main-tabs { display:flex; align-items:center; gap:12px; min-height:30px; padding:0 12px; overflow-x:auto; flex-shrink:0; scrollbar-width:none; }
 .cc-main-tab { height:30px; padding:0; border:0; border-bottom:1px solid transparent; background:transparent; color:var(--cc-text-dim); cursor:pointer; font-size:12px; font-weight:500; line-height:29px; white-space:nowrap; transition:border-color 120ms ease-out,color 120ms ease-out; }
 .cc-main-tab:hover,.cc-main-tab:focus-visible { color:var(--cc-text); }
@@ -313,7 +372,7 @@ button, input, select { font: inherit; }
 .cc-sequence-row:hover:not(:disabled) { background:rgba(var(--cc-ink-rgb),0.04); }
 .cc-sequence-row:disabled { color:var(--cc-text-dim); cursor:not-allowed; opacity:0.55; }
 .cc-sequence-name { min-width:0; flex:1; overflow:hidden; color:inherit; font-size:12px; font-weight:500; line-height:16px; text-overflow:ellipsis; white-space:nowrap; }
-.cc-sequence-duration { flex:0 0 auto; color:var(--cc-text-dim); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-variant-numeric:tabular-nums; line-height:14px; white-space:nowrap; }
+.cc-sequence-duration { flex:0 0 auto; color:var(--cc-text-dim); font-family:Geist Mono, ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-variant-numeric:tabular-nums; line-height:14px; white-space:nowrap; }
 
 /* Resource library transition card grid. */
 .cc-transition-browser { display:flex; flex-direction:column; gap:10px; min-height:0; }
@@ -696,7 +755,7 @@ button, input, select { font: inherit; }
 .cc-slip-two-up-head strong { color:var(--cc-text-strong); font-size:11px; }
 .cc-slip-two-up-head span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cc-slip-two-up-head b {
-  margin-left:auto; color:var(--cc-accent); font:600 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin-left:auto; color:var(--cc-accent); font:600 10.5px Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .cc-slip-two-up-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; }
 .cc-slip-two-up-frame {
@@ -707,14 +766,14 @@ button, input, select { font: inherit; }
 }
 .cc-slip-two-up-media video { width:100%; height:100%; display:block; object-fit:contain; }
 .cc-slip-two-up-audio {
-  color:var(--cc-text-muted); font:500 30px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:3px;
+  color:var(--cc-text-muted); font:500 30px/1 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:3px;
 }
 .cc-slip-two-up-frame figcaption {
   height:25px; display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:6px; padding:0 6px;
   border-top:0.5px solid var(--cc-border); font-size:9.5px; color:var(--cc-text-muted);
 }
 .cc-slip-two-up-frame figcaption b,
-.cc-slip-two-up-frame figcaption small { font:500 9.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-slip-two-up-frame figcaption small { font:500 9.5px Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-slip-two-up-frame figcaption b { color:var(--cc-text-strong); }
 .cc-slip-two-up-limit { padding:5px 2px 0; color:var(--cc-text-muted); font-size:9.5px; text-align:right; }
 @container preview-workspace (max-width:480px) {
@@ -892,7 +951,7 @@ button, input, select { font: inherit; }
 .cc-export-header { min-height:62px; display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:0.5px solid var(--cc-border); }
 .cc-export-header > div { min-width:0; }
 .cc-export-header h2 { margin:0; color:var(--cc-text-strong); font-size:16px; line-height:1.2; letter-spacing:-.01em; }
-.cc-export-header p { max-width:560px; margin:4px 0 0; overflow:hidden; color:var(--cc-text-muted); font:11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow:ellipsis; white-space:nowrap; }
+.cc-export-header p { max-width:560px; margin:4px 0 0; overflow:hidden; color:var(--cc-text-muted); font:11px/1.2 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow:ellipsis; white-space:nowrap; }
 .cc-export-close { width:28px; height:28px; margin-left:auto; display:grid; place-items:center; border:0; border-radius:3px; background:transparent; color:var(--cc-text-dim); cursor:pointer; }
 .cc-export-close:hover:not(:disabled) { background:var(--cc-hover); color:var(--cc-text); }
 .cc-export-close:disabled { cursor:default; opacity:.45; }
@@ -912,7 +971,7 @@ button, input, select { font: inherit; }
 .cc-export-main { min-width:0; display:flex; flex-direction:column; }
 .cc-export-main-header { min-height:50px; display:flex; align-items:center; gap:10px; padding:9px 16px; border-bottom:0.5px solid var(--cc-border); }
 .cc-export-main-header h3 { margin:0; color:var(--cc-text-strong); font-size:13px; }
-.cc-export-main-header p { margin:3px 0 0; color:var(--cc-text-dim); font:10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-main-header p { margin:3px 0 0; color:var(--cc-text-dim); font:10px/1.2 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-local-badge { margin-left:auto; display:flex; align-items:center; gap:5px; color:var(--cc-text-muted); font-size:10px; }
 .cc-export-local-badge i { width:5px; height:5px; border-radius:50%; background:var(--cc-gold); }
 .cc-export-local-badge.accelerated i { background:var(--cc-success); }
@@ -922,7 +981,7 @@ button, input, select { font: inherit; }
 .cc-export-destination-copy { min-width:0; display:block; }
 .cc-export-destination-copy small,.cc-export-destination-copy strong,.cc-export-destination-copy i { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cc-export-destination-copy small { color:var(--cc-text-dim); font-size:9.5px; }
-.cc-export-destination-copy strong { margin-top:1px; color:var(--cc-text-strong); font:10.5px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-destination-copy strong { margin-top:1px; color:var(--cc-text-strong); font:10.5px/1.25 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-destination-copy i { margin-top:2px; color:var(--cc-text-dim); font-size:9.5px; font-style:normal; }
 .cc-export-destination button { height:30px; padding:0 10px; border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-panel); color:var(--cc-text); font-size:10.5px; cursor:pointer; }
 .cc-export-destination button:hover:not(:disabled) { border-color:var(--cc-text-dim); background:var(--cc-hover); }
@@ -933,9 +992,9 @@ button, input, select { font: inherit; }
 .cc-export-bitrate { min-width:0; display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:start; gap:5px 8px; }
 .cc-export-bitrate > .cc-export-select { min-width:0; }
 .cc-export-bitrate-custom { min-width:96px; display:flex; align-items:center; border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-bg); }
-.cc-export-bitrate-custom input { width:66px; height:32px; padding:0 8px; border:0; outline:0; background:transparent; color:var(--cc-text); font:12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-bitrate-custom input { width:66px; height:32px; padding:0 8px; border:0; outline:0; background:transparent; color:var(--cc-text); font:12px Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-bitrate-custom span { padding-right:8px; color:var(--cc-text-muted); font-size:10px; }
-.cc-export-bitrate > small { grid-column:1 / -1; color:var(--cc-text-muted); font:10px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-bitrate > small { grid-column:1 / -1; color:var(--cc-text-muted); font:10px/1.35 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-segmented { min-width:0; display:flex; gap:2px; padding:2px; border:0.5px solid var(--cc-border); border-radius:4px; background:var(--cc-bg); }
 .cc-export-seg { min-width:0; flex:1; border:0.5px solid transparent; border-radius:2px; padding:7px 5px; background:transparent; color:var(--cc-text-muted); font-size:11px; cursor:pointer; }
 .cc-export-seg:hover:not(.active) { background:var(--cc-panel-alt); color:var(--cc-text); }
@@ -958,7 +1017,7 @@ button, input, select { font: inherit; }
 .cc-export-qa-card strong { color:var(--cc-text-strong); font-size:11px; }
 .cc-export-qa-card p { margin:0; color:var(--cc-text-dim); }
 .cc-export-qa-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.cc-export-qa-summary span { color:var(--cc-text-dim); font:9.5px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; white-space:nowrap; }
+.cc-export-qa-summary span { color:var(--cc-text-dim); font:9.5px/1.2 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; white-space:nowrap; }
 .cc-export-qa-card ul { max-height:110px; margin:0; padding-left:17px; overflow:auto; color:var(--cc-text-muted); }
 .cc-export-qa-card li + li { margin-top:3px; }
 .cc-export-qa-card li.error { color:#e98980; }
@@ -972,18 +1031,18 @@ button, input, select { font: inherit; }
 .cc-export-progress { min-width:0; grid-column:1 / -1; display:flex; flex-direction:column; gap:5px; }
 .cc-export-progress-head { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--cc-text-muted); font-size:10px; }
 .cc-export-progress-head strong { color:var(--cc-text); font-weight:650; }
-.cc-export-progress-head span { font:10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-progress-head span { font:10px/1 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-progress-track { height:4px; overflow:hidden; border-radius:999px; background:var(--cc-bg); }
 .cc-export-progress-track i { display:block; width:100%; height:100%; transform-origin:left; border-radius:inherit; background:var(--cc-accent); transition:transform .22s ease; }
 .cc-export-progress.verifying .cc-export-progress-track i { background:var(--cc-gold); }
 .cc-export-progress.completed .cc-export-progress-track i { background:var(--cc-success); }
 .cc-export-progress.failed .cc-export-progress-track i { background:var(--cc-danger); }
-.cc-export-progress-meta { min-height:12px; display:flex; flex-wrap:wrap; gap:4px 12px; color:var(--cc-text-dim); font:9px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-progress-meta { min-height:12px; display:flex; flex-wrap:wrap; gap:4px 12px; color:var(--cc-text-dim); font:9px/1.25 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-output { min-width:0; flex:1; }
 .cc-export-output span,.cc-export-output strong,.cc-export-output small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cc-export-output span { color:var(--cc-text-muted); font-size:9.5px; }
-.cc-export-output strong { margin-top:2px; color:var(--cc-text-strong); font:10.5px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.cc-export-output small { margin-top:2px; color:var(--cc-text-dim); font:9.5px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-output strong { margin-top:2px; color:var(--cc-text-strong); font:10.5px/1.25 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-output small { margin-top:2px; color:var(--cc-text-dim); font:9.5px/1.2 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-cancel { height:34px; padding:0 12px; border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-bg); color:var(--cc-text-muted); font-size:11px; font-weight:600; cursor:pointer; }
 .cc-export-cancel:hover { border-color:var(--cc-text-dim); color:var(--cc-text); }
 .cc-export-cta { min-width:130px; height:34px; display:flex; align-items:center; justify-content:center; gap:7px; padding:0 14px; border:0; border-radius:4px; background:var(--cc-accent); color:var(--cc-on-accent); font-size:11.5px; font-weight:700; cursor:pointer; }
@@ -1141,7 +1200,7 @@ button, input, select { font: inherit; }
 .cc-proposal-op-meta { display:flex; align-items:center; gap:7px; min-width:0; }
 .cc-proposal-tool {
   padding:1px 4px; border:0.5px solid var(--cc-border); border-radius:3px; background:var(--cc-panel);
-  color:var(--cc-text-dim); font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:9.5px;
+  color:var(--cc-text-dim); font-family:Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size:9.5px;
   max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .cc-proposal-op-impact { margin-left:auto; font-size:10px; color:var(--cc-text-dim); font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -1871,7 +1930,7 @@ button, input, select { font: inherit; }
 .cc-md strong { font-weight: 600; color: var(--cc-text); }
 .cc-md em { font-style: italic; color: var(--cc-text); }
 .cc-md hr { border: 0; border-top: 0.5px solid var(--cc-border); margin: 12px 0; }
-.cc-md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: var(--cc-hover); color: color-mix(in srgb, var(--cc-gold) 75%, var(--cc-text-strong)); padding: 1px 5px; border-radius: 4px; border: 0.5px solid var(--cc-border); }
+.cc-md code { font-family: Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: var(--cc-hover); color: color-mix(in srgb, var(--cc-gold) 75%, var(--cc-text-strong)); padding: 1px 5px; border-radius: 4px; border: 0.5px solid var(--cc-border); }
 .cc-md pre { margin: 0 0 10px; padding: 10px 12px; border-radius: 4px; background: var(--cc-panel-alt); border: 0.5px solid var(--cc-border); overflow-x: auto; }
 .cc-md pre code { background: none; border: 0; padding: 0; color: var(--cc-text); font-size: 12px; line-height: 1.45; }
 /* GFM tables: preserve column geometry and scroll inside the narrow chat pane. */
@@ -1899,7 +1958,7 @@ button, input, select { font: inherit; }
 .cc-capedit-bar {
   position:absolute; bottom:calc(100% + 12px); left:50%; transform:translateX(-50%);
   /* The toolbar is hung in the caption block and must be explicitly returned to the application UI font - otherwise it will inherit the font/font weight of the caption preset (such as white on black background 700) and make all members bold */
-  font-family:system-ui, -apple-system, sans-serif; font-weight:400; letter-spacing:normal; text-transform:none;
+  font-family:Geist, system-ui, -apple-system, sans-serif; font-weight:400; letter-spacing:normal; text-transform:none;
   display:flex; align-items:center; gap:1px; padding:3px;
   border-radius:4px; background:var(--cc-panel); border:0.5px solid var(--cc-border);
   box-shadow:0 8px 26px rgba(var(--cc-shadow-rgb), 0.35), inset 0 1px 0 rgba(var(--cc-ink-rgb), 0.05);
@@ -1923,7 +1982,7 @@ button, input, select { font: inherit; }
 }
 .cc-capedit-pop {
   position:absolute; top:calc(100% + 8px); left:50%; transform:translateX(-50%);
-  font-family:system-ui, -apple-system, sans-serif; font-weight:400; letter-spacing:normal; text-transform:none;
+  font-family:Geist, system-ui, -apple-system, sans-serif; font-weight:400; letter-spacing:normal; text-transform:none;
   padding:5px; border-radius:4px; background:var(--cc-panel-alt); border:0.5px solid var(--cc-border);
   box-shadow:0 10px 30px rgba(var(--cc-shadow-rgb), 0.4);
 }

@@ -144,7 +144,7 @@ export function GenerationActivity({ projectId, onResume }: GenerationActivityPr
                 </div>
                 <div style={{ color: theme.textDim, fontSize: 11.5, lineHeight: 1.5, marginTop: 4, overflowWrap: 'anywhere' }}>{operationSummary(job, t)}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 10px', color: theme.textDim, fontSize: 10.5, marginTop: 6 }}>
-                  <code title={job.operationId} style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{job.operationId}</code>
+                  <code title={job.operationId} style={{ fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, monospace' }}>{job.operationId}</code>
                   <span>{relativeTime(job.updatedAt, t)}</span>
                   {job.providerTaskId && <span>{t('Provider 任务')} {job.providerTaskId}</span>}
                   {retryLabel && <span>{retryLabel}</span>}

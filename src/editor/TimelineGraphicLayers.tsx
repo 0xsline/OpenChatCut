@@ -24,7 +24,7 @@ export function WatermarkLayer({ watermark, canvasH }: { watermark: Watermark; c
     opacity: Math.max(0, Math.min(1, watermark.opacity)),
     fontSize: Math.round(canvasH * 0.035),
     fontWeight: 700,
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: 'Geist, system-ui, -apple-system, sans-serif',
     textShadow: '0 2px 8px rgba(0,0,0,0.6)',
     whiteSpace: 'nowrap',
   };
@@ -51,7 +51,7 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
       <div style={{ width: dw, height: dh, flexShrink: 0, transform: `scale(${scale})`, display: 'flex', alignItems: 'center', justifyContent: justify, padding: '0 96px', boxSizing: 'border-box' }}>
-        <div style={{ color: String(props.color ?? '#ffffff'), fontSize: Number(props.fontSize ?? 96), fontWeight: Number(props.fontWeight ?? 700), textAlign: align, width: '100%', fontFamily: 'system-ui, -apple-system, sans-serif', textShadow: '0 3px 16px rgba(0,0,0,0.55)', whiteSpace: 'pre-wrap', lineHeight: 1.2 }}>{String(props.text ?? '文字')}</div>
+        <div style={{ color: String(props.color ?? '#ffffff'), fontSize: Number(props.fontSize ?? 96), fontWeight: Number(props.fontWeight ?? 700), textAlign: align, width: '100%', fontFamily: 'Geist, system-ui, -apple-system, sans-serif', textShadow: '0 3px 16px rgba(0,0,0,0.55)', whiteSpace: 'pre-wrap', lineHeight: 1.2 }}>{String(props.text ?? '文字')}</div>
       </div>
     </AbsoluteFill>
   );

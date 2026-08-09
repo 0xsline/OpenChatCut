@@ -27,7 +27,7 @@ type Translate = (key: string, params?: Record<string, string | number>) => stri
 type PopoverBox = { left: number; top: number; width: number; maxHeight: number };
 
 const compactNumber = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
-const mono: CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' };
+const mono: CSSProperties = { fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace' };
 
 function useRuntimeSidecar(projectId: string) {
   const [sidecar, setSidecar] = useState<AgentRuntimeSidecar | null>(null);

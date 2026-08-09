@@ -210,7 +210,7 @@ function SkillEditDialog({
             style={{
               padding: '7px 9px', borderRadius: 4, border: `0.5px solid ${theme.borderLight}`,
               background: theme.inset, color: theme.text, fontSize: 11.5, lineHeight: 1.5, resize: 'vertical',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           />
         </label>

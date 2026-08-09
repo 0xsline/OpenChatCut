@@ -76,7 +76,7 @@ export function McpGuideDialog({ onClose }: { onClose: () => void }) {
   const codeStyle: React.CSSProperties = {
     margin: 0, padding: '7px 9px', border: `0.5px solid ${theme.borderLight}`, borderRadius: 4,
     background: theme.inset, color: theme.text, fontSize: 11.5, lineHeight: 1.5,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
     whiteSpace: 'pre-wrap', wordBreak: 'break-all', userSelect: 'text',
   };
   return (

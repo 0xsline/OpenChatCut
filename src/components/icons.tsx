@@ -148,7 +148,7 @@ export function OpenChatCutWordmark({ width = 126 }: { width?: number }) {
     >
       <rect x="0" y="13" width="166" height="92" rx="14" fill="currentColor" />
       <text
-        fontFamily="Inter, system-ui, sans-serif"
+        fontFamily="Inter, Geist, system-ui, sans-serif"
         dominantBaseline="alphabetic"
       >
         <tspan x="83" y="82" textAnchor="middle" fill="var(--cc-panel)" fontSize="58" fontWeight="850" letterSpacing="-0.045em">

@@ -14,7 +14,7 @@ export function AppSplash({ text }: { text: string }) {
   return (
     <div style={{
       height: '100vh', display: 'grid', placeItems: 'center', background: theme.bg,
-      color: theme.textDim, fontFamily: 'system-ui, sans-serif', fontSize: 13,
+      color: theme.textDim, fontFamily: 'Geist, system-ui, sans-serif', fontSize: 13,
     }}>
       {text}
     </div>
