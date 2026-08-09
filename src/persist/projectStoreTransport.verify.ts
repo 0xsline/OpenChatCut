@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   projectStoreRemoteAvailable,
+  projectStoreWriteCredential,
   requestProjectStore,
   resetProjectStoreTransport,
 } from './projectStoreTransport.ts';
@@ -101,8 +102,13 @@ try {
 
   resetProjectStoreTransport();
   globals.location.hash = '';
-  assert.equal(projectStoreRemoteAvailable(), false,
-    'ordinary web pages without a launch/session credential must use IndexedDB fallback');
+  // No credential: the shared library stays reachable for READS (sessionless
+  // loopback-origin reads keep other dev ports consistent), but writes must
+  // not be attempted without a credential.
+  assert.equal(projectStoreRemoteAvailable(), true,
+    'http pages may read the shared library without a session credential');
+  assert.equal(projectStoreWriteCredential(), false,
+    'write credential is absent without a session or launch token');
 } finally {
   globalThis.fetch = originalFetch;
   globals.window = originalWindow;

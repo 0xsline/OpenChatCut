@@ -1,6 +1,7 @@
 import { areModelPacksInstalled } from '../../../shared/model-packs';
 import { resampleMonoSamples } from './audioDecode';
 import { BEAT_THIS_FPS, BEAT_THIS_SAMPLE_RATE } from './beatThisPreprocess';
+import { createBeatThisWorker } from './nativeBeatThisWorkerAdapter';
 import type { BeatThisAnalysis } from './types';
 
 export type { BeatThisAnalysis } from './types';
@@ -202,9 +203,6 @@ function reportProgress(listener: ProgressListener | undefined, progress: number
   }
 }
 
-function createBeatWorker(): Worker {
-  return new Worker(new URL('./beatThis.worker.ts', import.meta.url), { type: 'module' });
-}
 
 interface WorkerAttemptLifecycle {
   readonly settle: (action: () => void) => void;
@@ -282,7 +280,7 @@ function runWorkerAttempt(
   onProgress: ProgressListener,
   signal?: AbortSignal,
 ): Promise<WorkerLogits> {
-  const worker = createBeatWorker();
+  const worker = createBeatThisWorker();
   const { promise, resolve, reject } = Promise.withResolvers<WorkerLogits>();
   const lifecycle = createWorkerAttemptLifecycle(worker, backend, signal, reject);
   attachWorkerAttemptListeners(worker, backend, onProgress, resolve, reject, lifecycle);

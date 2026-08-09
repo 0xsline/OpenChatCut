@@ -8,6 +8,10 @@ import {
   type ClapWorkerResult,
 } from './clapTypes';
 import { resampleMonoSamples } from './audioDecode';
+import {
+  createNativeClapWorker,
+  markNativeClapWorkerFailed,
+} from './nativeClapWorkerAdapter';
 
 const DEFAULT_LOAD_TIMEOUT_MS = 3 * 60_000;
 const MIN_EMBED_TIMEOUT_MS = 60_000;
@@ -123,6 +127,9 @@ export class ClapClient {
         onProgress,
         signal,
       );
+    } catch (reason) {
+      markNativeClapWorkerFailed(worker, reason);
+      throw reason;
     } finally {
       worker.terminate();
     }
@@ -139,7 +146,8 @@ export async function embedMusicAudio(
 }
 
 function createClapWorker(): Worker {
-  return new Worker(new URL('./clap.worker.ts', import.meta.url), { type: 'module' });
+  return createNativeClapWorker()
+    ?? new Worker(new URL('./clap.worker.ts', import.meta.url), { type: 'module' });
 }
 
 function positiveTimeout(value: number | undefined, fallback: number): number {

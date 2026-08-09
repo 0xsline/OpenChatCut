@@ -5,7 +5,8 @@ import {
   SEMANTIC_MODEL_VERSION, type WorkerRequest, type WorkerResponse,
 } from './types';
 import {
-  findDuplicateAssets, findDuplicateAssetsPacked, packSemanticVectors, rankSemanticMatches,
+  findDuplicateAssets, findDuplicateAssetsPacked, findDuplicateAssetsPackedInterruptible,
+  packSemanticVectors, rankSemanticMatches,
 } from './vectorSearch';
 import { shouldPruneVector } from './vectorStore';
 
@@ -52,6 +53,36 @@ assert.deepEqual(
   findDuplicateAssetsPacked(packSemanticVectors(exactRecords), 0.995),
   exactExpected,
   'packed full-scan results preserve pair order, scores, and threshold behavior exactly',
+);
+assert.deepEqual(
+  await findDuplicateAssetsPackedInterruptible(
+    packSemanticVectors(exactRecords),
+    0.995,
+    () => {},
+    async () => {},
+  ),
+  exactExpected,
+  'interruptible packed scanning preserves existing duplicate results',
+);
+
+const cancelRecords = Array.from({ length: 10 }, (_, index) => ({
+  scopeId: 'project-a',
+  assetId: `asset-${index}`,
+  sampleTime: 0,
+  vector: new Float32Array([1, 0, 0]),
+}));
+let duplicateScanCanceled = false;
+await assert.rejects(
+  findDuplicateAssetsPackedInterruptible(
+    packSemanticVectors(cancelRecords),
+    0.995,
+    () => {
+      if (duplicateScanCanceled) throw new DOMException('canceled', 'AbortError');
+    },
+    async () => { duplicateScanCanceled = true; },
+  ),
+  { name: 'AbortError' },
+  'large duplicate scans yield so worker cancellation can interrupt the O(n²) loop',
 );
 
 class FakeSemanticWorker {

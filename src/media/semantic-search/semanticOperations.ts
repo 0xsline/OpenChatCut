@@ -1,6 +1,7 @@
 import type { MediaAsset } from '../../editor/types';
 import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
 import { sampleAssetFrames, SemanticMediaDecodeError } from './mediaFrames';
+import { desktopNativeInferenceEnabled } from '../../transcript/desktop-inference-preference';
 import type { SemanticClient } from './semanticClient';
 import type { SemanticDevice, SemanticVectorRecord } from './types';
 import { replaceAssetVectors } from './vectorStore';
@@ -22,7 +23,7 @@ export async function loadWithFallback(
   try {
     await load(preferred, signal);
   } catch (reason) {
-    if (preferred !== 'webgpu' || signal.aborted) throw reason;
+    if ((preferred !== 'webgpu' && !desktopNativeInferenceEnabled()) || signal.aborted) throw reason;
     client.cancel();
     await load('wasm', signal);
   }

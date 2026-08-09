@@ -1,4 +1,9 @@
 import type { ModelPackCatalogEntry, ModelPackId, ModelPackTask } from './catalog';
+export const MODEL_PACK_CATALOG_CHANGE_EVENT = 'cc:model-pack-catalog-change';
+
+function notifyModelPackCatalogChange(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(MODEL_PACK_CATALOG_CHANGE_EVENT));
+}
 
 interface CatalogResponse {
   packs?: ModelPackCatalogEntry[];
@@ -38,6 +43,7 @@ export async function installModelPack(id: ModelPackId, headers: HeadersInit): P
   });
   const body = await responseJson<{ task?: ModelPackTask; error?: string }>(response);
   if (!body.task) throw new Error('Invalid model pack download response');
+  notifyModelPackCatalogChange();
   return body.task;
 }
 
@@ -53,6 +59,7 @@ export async function cancelModelPackInstall(id: ModelPackId, headers: HeadersIn
     body: JSON.stringify({ id }),
   });
   await responseJson<{ ok?: boolean; error?: string }>(response);
+  notifyModelPackCatalogChange();
 }
 
 
@@ -63,4 +70,5 @@ export async function deleteModelPack(id: ModelPackId, headers: HeadersInit): Pr
     body: JSON.stringify({ id }),
   });
   await responseJson<{ ok?: boolean; error?: string }>(response);
+  notifyModelPackCatalogChange();
 }

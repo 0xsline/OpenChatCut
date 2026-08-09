@@ -1,10 +1,11 @@
+import { SEMANTIC_INFERENCE_CONTRACT } from '../../../shared/vector-inference-contract';
 import type { MediaAsset } from '../../editor/types';
 import type { FramePixels } from './types';
 
 const MAX_FRAME_EDGE = 448;
 const VIDEO_SAMPLE_INTERVAL_SECONDS = 15;
 const MAX_VIDEO_SAMPLE_COUNT = 12;
-const MAX_SCENE_SAMPLE_COUNT = 96;
+const MAX_SCENE_SAMPLE_COUNT = SEMANTIC_INFERENCE_CONTRACT.maxVectorsPerAsset;
 const LONG_VIDEO_SECONDS = 60;
 const SHORT_SCENE_SECONDS = 4;
 const MAX_DETECTED_SCENES = 500;
@@ -108,7 +109,7 @@ function evenlySelect<T>(values: readonly T[], count: number): T[] {
 export function sceneAwareSamplePlan(
   duration: number,
   boundaries: readonly number[],
-  maxSamples = MAX_SCENE_SAMPLE_COUNT,
+  maxSamples: number = MAX_SCENE_SAMPLE_COUNT,
 ): SceneSamplePlan[] {
   if (!Number.isFinite(duration) || duration <= MIN_VIDEO_DURATION_SECONDS) {
     return [{ sceneId: 'scene-0-0', sceneStart: 0, sceneEnd: Math.max(0, duration), sampleTime: 0 }];

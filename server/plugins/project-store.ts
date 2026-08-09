@@ -12,6 +12,7 @@ import {
 import {
   exchangeProjectStoreLaunchToken,
   projectStoreHttpAuthorized,
+  projectStoreReadAuthorized,
 } from '../project-store-http-auth.ts';
 import { handleProjectStoreRequest, sendProjectStoreJson } from '../project-store-http.ts';
 import {
@@ -479,7 +480,16 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
           );
           return;
         }
-        if (!projectStoreHttpAuthorized(req)) {
+        const readOnly = req.method === 'GET';
+        if (readOnly) {
+          // Reads are allowed for any loopback origin (sessionless) so that
+          // other dev ports / windows always see fresh server state instead of
+          // their own stale IndexedDB cache (deleted projects "resurrecting").
+          if (!projectStoreReadAuthorized(req) && !projectStoreHttpAuthorized(req)) {
+            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
+            return;
+          }
+        } else if (!projectStoreHttpAuthorized(req)) {
           sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
           return;
         }

@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
-import { AutoProcessor, AutoTokenizer, ChineseCLIPModel, RawImage } from '@huggingface/transformers';
+import { AutoProcessor, AutoTokenizer, ChineseCLIPModel, RawImage, env } from '@huggingface/transformers';
 import { findDuplicateAssetsPacked, normalizeVector } from './vectorSearch';
 import {
-  MAX_SEMANTIC_QUERY_LENGTH, SEMANTIC_MODEL_ID,
+  MAX_SEMANTIC_QUERY_LENGTH, SEMANTIC_MODEL_ID, SEMANTIC_MODEL_REVISION,
   type PackedSemanticVectors, type WorkerRequest, type WorkerResponse,
 } from './types';
 
@@ -22,6 +22,16 @@ let dummyImageInputs: ModelInputs | null = null;
 let loading: Promise<void> | null = null;
 const workerScope = self as unknown as DedicatedWorkerGlobalScope;
 
+env.useBrowserCache = false;
+env.allowLocalModels = false;
+env.allowRemoteModels = true;
+
+function proxyHost(): string {
+  const origin = workerScope.location.origin;
+  if (origin === 'null') throw new Error('Semantic search requires an HTTP(S) application origin');
+  return `${origin}/api/hf-proxy`;
+}
+
 const post = (message: WorkerResponse) => workerScope.postMessage(message);
 
 function progressInfo(value: unknown): ProgressInfo {
@@ -37,10 +47,18 @@ async function loadModel(request: Extract<WorkerRequest, { type: 'load' }>): Pro
   if (model && processor && tokenizer) return;
   if (loading) return loading;
   const progress = (value: unknown) => post({ id: request.id, type: 'progress', ...progressInfo(value) });
+  env.remoteHost = proxyHost();
   loading = Promise.all([
-    AutoTokenizer.from_pretrained(SEMANTIC_MODEL_ID, { progress_callback: progress }),
-    AutoProcessor.from_pretrained(SEMANTIC_MODEL_ID, { progress_callback: progress }),
+    AutoTokenizer.from_pretrained(SEMANTIC_MODEL_ID, {
+      revision: SEMANTIC_MODEL_REVISION,
+      progress_callback: progress,
+    }),
+    AutoProcessor.from_pretrained(SEMANTIC_MODEL_ID, {
+      revision: SEMANTIC_MODEL_REVISION,
+      progress_callback: progress,
+    }),
     ChineseCLIPModel.from_pretrained(SEMANTIC_MODEL_ID, {
+      revision: SEMANTIC_MODEL_REVISION,
       device: request.device,
       dtype: 'q4',
       progress_callback: progress,

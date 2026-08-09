@@ -1,4 +1,4 @@
-export type ModelPackId = 'rhythm-lite' | 'music-semantics-lite';
+export type ModelPackId = 'rhythm-lite' | 'music-semantics-lite' | 'visual-semantics-lite';
 
 export type ModelPackCapability =
   | '节拍定位'
@@ -6,7 +6,10 @@ export type ModelPackCapability =
   | 'BPM 与拍号'
   | '节拍能量'
   | '音乐语义向量'
-  | '音乐相似度';
+  | '音乐相似度'
+  | '画面语义向量'
+  | '中文画面检索'
+  | '重复镜头检测';
 
 export interface ModelPackFile {
   readonly path: string;
@@ -102,6 +105,54 @@ export const MODEL_PACKS = [
         path: 'onnx/audio_model_quantized.onnx',
         sizeBytes: 34_301_667,
         sha256: '3fcff2c8824e7bcb83a983f2a49edab3b60cbcf4872ac70efee517355173bd1f',
+      },
+    ],
+  },
+  {
+    id: 'visual-semantics-lite',
+    label: '画面语义轻量包',
+    description: '在本机生成画面与中文文本向量，用于语义检索和重复镜头检测。',
+    modelId: 'Xenova/chinese-clip-vit-base-patch16',
+    revision: 'f26904860903e70e050b8f48255e5f48401816e9',
+    license: 'Apache-2.0',
+    sizeBytes: 178_225_758,
+    recommendedMemoryBytes: 2 * GIB,
+    capabilities: ['画面语义向量', '中文画面检索', '重复镜头检测'],
+    files: [
+      {
+        path: 'config.json',
+        sizeBytes: 844,
+        sha256: '19447ad8c20d274f0644a6663af56286be98bd2d0e5f9472fcb318e04fcd6961',
+      },
+      {
+        path: 'preprocessor_config.json',
+        sizeBytes: 546,
+        sha256: '61a78fdd2c7ac17b54b6190c0f4cb23423192c535003d52528d01e318a47608b',
+      },
+      {
+        path: 'special_tokens_map.json',
+        sizeBytes: 125,
+        sha256: 'b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3',
+      },
+      {
+        path: 'tokenizer.json',
+        sizeBytes: 439_124,
+        sha256: '7dfbf1966ebf99d471c3796e9b457329d2b2182b817e144f1e904b957745c839',
+      },
+      {
+        path: 'tokenizer_config.json',
+        sizeBytes: 1_315,
+        sha256: '38fbc894183595cc1168e36150251b2fb658197b3a49f6908cce88ae22acd52a',
+      },
+      {
+        path: 'vocab.txt',
+        sizeBytes: 109_540,
+        sha256: '45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c',
+      },
+      {
+        path: 'onnx/model_q4.onnx',
+        sizeBytes: 177_674_264,
+        sha256: 'c64c40f177a8756c7831cdaa932bfb30187ef2e85266e54ec838259d34d3fe2e',
       },
     ],
   },

@@ -144,9 +144,18 @@ async function ensureHttpSession(): Promise<string> {
 }
 
 function httpAvailable(): boolean {
+  // Any loopback http(s) page may READ the shared library (server allows
+  // sessionless loopback-origin reads). Writes still need a session.
   return typeof location !== 'undefined'
-    && (location.protocol === 'http:' || location.protocol === 'https:')
-    && (loadStoredSession() !== null || consumeLaunchToken() !== null);
+    && (location.protocol === 'http:' || location.protocol === 'https:');
+}
+
+/** Whether this origin holds a WRITE credential for the shared library. */
+export function projectStoreWriteCredential(): boolean {
+  return !!desktopTransport()
+    || (typeof location !== 'undefined'
+      && (location.protocol === 'http:' || location.protocol === 'https:')
+      && (loadStoredSession() !== null || consumeLaunchToken() !== null));
 }
 
 export function projectStoreRemoteAvailable(): boolean {
@@ -163,8 +172,11 @@ function postJson(
 }
 
 async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreResponse> {
-  const session = await ensureHttpSession();
-  const headers: Record<string, string> = { [SESSION_HEADER]: session };
+  // Reads are allowed without a session (server authorizes loopback origins);
+  // writes without a session fail with 401/403 and callers decide the fallout.
+  const session = await ensureHttpSession().catch(() => null);
+  const headers: Record<string, string> = {};
+  if (session) headers[SESSION_HEADER] = session;
   let path = '';
   let init: RequestInit = { cache: 'no-store', headers };
   switch (request.operation) {
@@ -204,7 +216,9 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
       break;
   }
   const response = await fetch(`${API_PATH}${path}`, init);
-  if (!response.ok) throw new Error(`project store request failed: ${response.status}`);
+  if (!response.ok) {
+    throw Object.assign(new Error(`project store request failed: ${response.status}`), { status: response.status });
+  }
   return response.json() as Promise<ProjectStoreResponse>;
 }
 

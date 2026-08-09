@@ -11,6 +11,7 @@ interface PublishConfig {
 interface BuilderConfig {
   publish?: PublishConfig[];
   mac?: { target?: string[] };
+  files?: string[];
 }
 
 async function configFor(target: string): Promise<BuilderConfig> {
@@ -29,13 +30,47 @@ assert.deepEqual(arm64.publish, [{
   channel: 'latest-arm64',
 }]);
 assert.deepEqual(arm64.mac?.target, ['dmg', 'zip'], 'macOS updates need a zip artifact in addition to the DMG');
+assert.ok(arm64.files?.includes('desktop-dist/native-asr-worker.mjs'));
+assert.ok(arm64.files?.includes('desktop-dist/native-semantic-worker.mjs'));
+assert.ok(arm64.files?.includes('desktop-dist/native-clap-worker.mjs'));
+assert.ok(arm64.files?.includes('desktop-dist/native-rhythm-worker.mjs'));
+assert.equal(
+  arm64.files?.includes('!node_modules/onnxruntime-node/bin/napi-v6/darwin/arm64/**'),
+  false,
+  'the target ONNX Runtime binary must remain packaged',
+);
+assert.ok(
+  arm64.files?.includes('!node_modules/onnxruntime-node/bin/napi-v6/win32/x64/**'),
+  'foreign ONNX Runtime binaries must be excluded',
+);
 
 const x64 = await configFor('darwin-x64');
 assert.equal(x64.publish?.[0]?.channel, 'latest-x64');
+assert.equal(
+  x64.files?.includes('!node_modules/onnxruntime-node/bin/napi-v6/darwin/x64/**'),
+  false,
+  'x64 packages must retain the x64 ONNX Runtime binary',
+);
+
+const linux = await configFor('linux-x64');
+assert.equal(
+  linux.files?.includes('desktop-dist/native-asr-worker.mjs'),
+  false,
+  'unsupported Linux packages must not ship native inference workers',
+);
+assert.ok(
+  linux.files?.includes('!node_modules/onnxruntime-node/**'),
+  'unsupported Linux packages must exclude ONNX Runtime entirely',
+);
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   scripts: Record<string, string>;
 };
+assert.match(
+  packageJson.scripts['desktop:build:main'],
+  /native-rhythm-worker\.ts.*native-rhythm-worker\.mjs/,
+  'desktop build must bundle the native rhythm utility process',
+);
 assert.match(packageJson.scripts['desktop:dist'], /--mac --arm64/, 'arm64 packaging must build every configured mac target');
 assert.match(packageJson.scripts['desktop:dist:mac-x64'], /--mac --x64/, 'x64 packaging must build every configured mac target');
 assert.doesNotMatch(packageJson.scripts['desktop:dist'], /--mac dmg/, 'mac packaging must not suppress update zip metadata');

@@ -71,6 +71,22 @@ function sameOrigin(req: IncomingMessage): boolean {
   }
 }
 
+/** Origin is a loopback host (localhost / 127.0.0.1 / ::1) on ANY port. */
+
+/**
+ * Read-only authorization WITHOUT a session: same-origin pages (or direct
+ * local navigation, e.g. curl) served from a loopback host may read the
+ * shared project library. This keeps every dev port / desktop window
+ * consistent (a project deleted on port 5199 must not reappear on port
+ * 5202's stale local cache). Sec-Fetch-Site is browser-enforced and cannot
+ * be spoofed by cross-origin pages; writes still require a real session.
+ */
+export function projectStoreReadAuthorized(req: IncomingMessage): boolean {
+  const site = header(req, 'sec-fetch-site');
+  if (site !== 'same-origin' && site !== 'none') return false;
+  return trustedLoopback(req);
+}
+
 export function exchangeProjectStoreLaunchToken(
   req: IncomingMessage,
 ): { sessionToken: string; expiresAt: number } | null {
