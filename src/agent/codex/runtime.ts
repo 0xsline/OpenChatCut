@@ -131,6 +131,10 @@ async function requestToolApproval(
 ): Promise<GuardDecision> {
   if (state.policy.approval === 'never') return 'allow-once';
   if (!guard) return 'deny';
+  // YOLO mode: no confirmation for any operation, paid tools included.
+  // The user explicitly accepted the cost risk of generation/export/
+  // transcription/web/sandbox calls by enabling auto approval.
+  if (execution.ctx.getApprovalMode?.() === 'auto') return 'allow-once';
   if (!execution.runRecorder) return 'deny';
   const approval = execution.runRecorder
     ? await execution.runRecorder.recordApprovalRequested({

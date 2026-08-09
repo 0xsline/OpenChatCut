@@ -28,7 +28,7 @@ At the bottom of the panel:
   - **Q&A** — Q&A only; does not edit the timeline.
 - **Agent Settings** — Open from the controls next to the mode selector. Settings include:
   - **Thinking Mode** — Turn the agent's extra reasoning on or off.
-  - **Ask / YOLO mode** — How AI changes are confirmed. **Ask Mode** (default): AI changes wait for your confirmation, and the AI asks you first when several options exist. **YOLO Mode**: ordinary timeline changes apply immediately (still undoable); generation / export tools still go through confirmation (skill guard).
+  - **Ask / YOLO mode** — How AI changes are confirmed. **Ask Mode** (default): AI changes wait for your confirmation, and the AI asks you first when several options exist. **YOLO Mode**: every operation applies immediately without confirmation (still undoable) — including paid generation / export / transcription / web scraping / sandbox calls, whose cost risk the user explicitly accepts by enabling YOLO.
   - **Motion Graphics Quality** — Choose Speed, Balance, or Quality for motion graphics generation.
 - **Proposal / confirmation card** — Structural edits and generation tools may show a review card (apply / reject) before changes land.
 - **+ button** — Upload reference files (images, videos, etc.) to include in your message.

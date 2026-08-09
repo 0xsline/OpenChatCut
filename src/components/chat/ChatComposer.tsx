@@ -581,11 +581,11 @@ export function ChatComposer(props: ChatComposerProps) {
           </div>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
             {autoApply
-              ? t('YOLO 模式：AI 改动直接生效，无需逐条确认（仍可撤销）。')
+              ? t('YOLO 模式：所有操作直接执行，不会逐条确认（仍可撤销）。')
               : t('Ask 模式：AI 的改动先经你确认；有多个可选项时 AI 会先问你。')}
           </div>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-            {t('生成/导出/转写/网页抓取等付费操作无论哪种模式都会先经你确认。')}
+            {!autoApply && t('生成/导出/转写/网页抓取等付费操作在 Ask 模式下会先经你确认。')}
           </div>
           <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG 质量')}</div>
           <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>

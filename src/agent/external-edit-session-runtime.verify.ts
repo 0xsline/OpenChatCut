@@ -350,10 +350,8 @@ const autoGuarded = await autoRuntime.execute(
   { editSessionId: autoYoloSession.editSessionId },
   autoBinding,
 );
-assert(needsConfirmation(autoGuarded), 'auto sessions still gate real-project tools');
-const autoGuard = autoRuntime.pendingGuard();
-assert(autoGuard);
-await autoRuntime.confirmRealTool(autoGuard.id, false);
+assert(!needsConfirmation(autoGuarded), 'auto sessions execute real-project tools directly without confirmation');
+assert(autoRuntime.pendingGuard() === null, 'auto execution leaves no pending approval');
 
 const ambiguousInvocation: ExternalRecordedInvocation = {
   toolCallId: 'ambiguous-call',

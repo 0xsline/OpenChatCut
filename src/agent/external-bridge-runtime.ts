@@ -174,7 +174,15 @@ export class ExternalBridgeRuntime {
     const approved = await this.approvalGate.consume({
       sessionId: session.id, runId: run.runId, tool: name, args, operationId,
     });
-    if (!approved) return this.requestRealToolApproval(session, run, name, args);
+    if (!approved) {
+      // auto (YOLO) sessions skip the confirmation card entirely — the
+      // client explicitly opted into unapproved real-project execution.
+      if (session.approvalMode === 'auto') {
+        const invocation = await run.requested(name, args, true);
+        return run.executeApprovedTool(invocation, args, this.getContext(), signal);
+      }
+      return this.requestRealToolApproval(session, run, name, args);
+    }
     return run.executeApprovedTool(
       invocationFromApproval(approved),
       args,

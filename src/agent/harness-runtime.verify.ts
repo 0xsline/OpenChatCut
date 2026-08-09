@@ -377,6 +377,29 @@ async function verifyProposalTerminalFence(): Promise<void> {
 
 
 
+async function verifyYoloSkipsAllGuards(): Promise<void> {
+  const log: string[] = [];
+  const yoloCtx = {
+    getProjectId: () => projectId,
+    getState: () => ({ items: [], transitions: [] }),
+    getApprovalMode: () => 'auto' as const,
+  } as unknown as AgentContext;
+  const execution = await executeOpenChatCutTool(aspectSchema, { ratio: '9:16' }, {
+    ctx: yoloCtx, settings, runRecorder: fakeRecorder(log), toolCallId: 'yolo-1',
+    toolCatalog: TOOL_SCHEMAS, activeToolCatalog: [aspectSchema],
+    onEvent: () => undefined,
+    resolveGuard: async () => ({
+      skill: 'high-cost-operation', tool: aspectSchema.name, summary: 'paid op',
+      permissionKind: 'persistent_local', approval: 'always',
+    }),
+    onSkillGuard: async () => { log.push('ui-decision'); return 'deny'; },
+    executeTool: async () => { log.push('executed'); return { ok: true }; },
+  });
+  assert.equal(execution.success, true, 'YOLO mode executes a guarded (paid) tool');
+  assert.equal(log.includes('ui-decision'), false, 'YOLO mode never shows the confirmation card');
+  assert.equal(log.includes('executed'), true, 'the guarded tool actually ran');
+}
+
 resetAgentRuntimeStoreMemory();
 verifyPoliciesAndSchemas();
 verifySecretProjectionFixtures();
@@ -390,4 +413,5 @@ await verifyActualUsagePersistence();
 await verifyProposalTerminalFence();
 await verifyExternalSkillProjection();
 await verifyArtifactAndCheckpointScenarios();
+await verifyYoloSkipsAllGuards();
 console.log('harness runtime verification passed');

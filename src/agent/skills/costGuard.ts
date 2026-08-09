@@ -5,10 +5,10 @@
 // never auto-applied — there is no billing integration and no way to undo a
 // paid API call once made).
 //
-// High-cost tools ALWAYS confirm before execution. The guard is not
-// configurable: generation, export, transcription, web scraping, and sandbox
-// calls are paid surfaces, so even in auto/YOLO mode they require a
-// confirmation card (which may be remembered per scope).
+// High-cost tools ALWAYS confirm in Ask mode. YOLO/auto mode skips the card
+// entirely: the user explicitly opted into unapproved paid execution
+// (generation, export, transcription, web scraping, sandbox). The per-scope
+// "remember" authorization (cc.skillGuardAllow.v1) still applies to Ask mode.
 
 import { isHighCostTool, transcriptionIsPaid } from '../settings/agentSettings';
 import type { Proposal } from '../proposal';
