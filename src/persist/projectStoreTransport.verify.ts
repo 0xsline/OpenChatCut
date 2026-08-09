@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import {
+  editorBootstrapInfo,
+  invalidateEditorBootstrapInfo,
+} from '../agent/editor-credential.ts';
+import {
+  fetchWithEditorSession,
   projectStoreRemoteAvailable,
   projectStoreWriteCredential,
   requestProjectStore,
@@ -13,6 +18,7 @@ interface TestGlobals {
   window: {
     openChatCutDesktop?: {
       projectStore(request: unknown): Promise<unknown>;
+      editorCredentials?(): Promise<{ credential: string; mcpToken: string }>;
     };
   };
 }
@@ -57,6 +63,9 @@ try {
 
   const launch = 'launch-'.padEnd(48, 'x');
   const session = 'session-'.padEnd(48, 'y');
+  const renewedSession = 'renewed-session-'.padEnd(48, 'z');
+  let rejectSessionOnce = false;
+  let exchangeCount = 0;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   globals.window = {};
   globals.location = {
@@ -74,10 +83,20 @@ try {
     const url = String(input);
     calls.push({ url, init });
     if (url.endsWith('/session')) {
-      assert.equal(new Headers(init?.headers).get('X-OpenChatCut-Editor-Launch-Token'), launch);
-      return Response.json({ sessionToken: session, expiresAt: Date.now() + 60_000 });
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get('X-OpenChatCut-Editor-Launch-Token'), launch);
+      exchangeCount += 1;
+      assert.equal(headers.get('X-OpenChatCut-Project-Store-Session'), null);
+      return Response.json({
+        sessionToken: exchangeCount === 1 ? session : renewedSession,
+      });
     }
-    assert.equal(new Headers(init?.headers).get('X-OpenChatCut-Project-Store-Session'), session);
+    const presented = new Headers(init?.headers).get('X-OpenChatCut-Project-Store-Session');
+    if (rejectSessionOnce && presented === session) {
+      rejectSessionOnce = false;
+      return Response.json({ error: 'invalid project store session' }, { status: 403 });
+    }
+    assert.equal(presented, exchangeCount > 1 ? renewedSession : session);
     return Response.json({ found: true, value: 'http' });
   };
   resetProjectStoreTransport();
@@ -99,6 +118,15 @@ try {
     projectId: 'project-to-purge',
   });
   assert.equal(globals.location.hash, '', 'launch credential must be removed from the visible URL');
+  assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), launch,
+    'the launch credential must remain tab-scoped for server restart recovery');
+  rejectSessionOnce = true;
+  const recovered = await fetchWithEditorSession('/api/external-agent/bootstrap', { method: 'POST' });
+  assert.equal(recovered.status, 200);
+  assert.equal(calls.length, 7,
+    'a rejected stale session must exchange once and retry the original request once');
+  await requestProjectStore({ operation: 'entry', key: 'projects' });
+  assert.equal(calls.length, 8, 'project-store requests must reuse the renewed session');
 
   resetProjectStoreTransport();
   globals.location.hash = '';
@@ -109,6 +137,27 @@ try {
     'http pages may read the shared library without a session credential');
   assert.equal(projectStoreWriteCredential(), false,
     'write credential is absent without a session or launch token');
+
+  let credentialCalls = 0;
+  const credentials = [
+    { credential: 'editor-credential-one', mcpToken: 'mcp-token-one' },
+    { credential: 'editor-credential-two', mcpToken: 'mcp-token-two' },
+  ];
+  globals.window = {
+    openChatCutDesktop: {
+      projectStore: async () => ({ found: false }),
+      editorCredentials: async () => credentials[Math.min(credentialCalls++, 1)],
+    },
+  };
+  const firstCredential = await editorBootstrapInfo();
+  assert.deepEqual(await editorBootstrapInfo(), firstCredential);
+  assert.equal(credentialCalls, 1, 'editor bootstrap credentials should remain cached normally');
+  invalidateEditorBootstrapInfo('different-credential');
+  assert.deepEqual(await editorBootstrapInfo(), firstCredential);
+  assert.equal(credentialCalls, 1, 'an unrelated failure must not evict a newer credential');
+  invalidateEditorBootstrapInfo(firstCredential.credential);
+  assert.deepEqual(await editorBootstrapInfo(), credentials[1]);
+  assert.equal(credentialCalls, 2, 'a rejected bridge credential must bootstrap again');
 } finally {
   globalThis.fetch = originalFetch;
   globals.window = originalWindow;

@@ -1,5 +1,5 @@
 import type { EditorBootstrapInfo } from '../../shared/editor-auth-transport';
-import { editorSessionCredentialHeaders } from '../persist/projectStoreTransport';
+import { fetchWithEditorSession } from '../persist/projectStoreTransport';
 
 export const EDITOR_CREDENTIAL_HEADER = 'X-OpenChatCut-Editor-Credential';
 const EDITOR_BOOTSTRAP_HEADER = 'X-OpenChatCut-Editor-Bootstrap';
@@ -17,12 +17,12 @@ async function requestEditorBootstrap(signal?: AbortSignal): Promise<EditorBoots
   if (desktop) {
     value = await desktop();
   } else {
-    const response = await fetch('/api/external-agent/bootstrap', {
+    const response = await fetchWithEditorSession('/api/external-agent/bootstrap', {
       method: 'POST',
-      headers: await editorSessionCredentialHeaders({
+      headers: {
         'Content-Type': 'application/json',
         [EDITOR_BOOTSTRAP_HEADER]: '1',
-      }),
+      },
       body: '{}',
       signal,
     });
@@ -46,6 +46,12 @@ export async function editorBootstrapInfo(signal?: AbortSignal): Promise<EditorB
   } finally {
     pending = null;
   }
+}
+
+export function invalidateEditorBootstrapInfo(expectedCredential?: string): void {
+  if (expectedCredential && cached?.credential !== expectedCredential) return;
+  cached = null;
+  pending = null;
 }
 
 export async function editorCredentialHeaders(

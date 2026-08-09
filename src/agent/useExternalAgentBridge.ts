@@ -18,7 +18,7 @@ import {
   projectStoreRemoteAvailable,
   type BrowserProjectOwnership,
 } from '../persist/projectStoreTransport';
-import { editorBootstrapInfo } from './editor-credential';
+import { editorBootstrapInfo, invalidateEditorBootstrapInfo } from './editor-credential';
 import { redactTextForAgentRuntime, sanitizeJsonForArtifact } from './runtime-artifact';
 import { TOOL_ARTIFACT_THRESHOLD } from './runtime-ledger';
 import { externalBridgeCanStart, type ExternalBridgeReadinessToken } from './external-bridge-readiness';
@@ -274,7 +274,10 @@ async function runBridgeAttempt(
       ownership?.registrationCapability,
     );
     if (ownership) clearBrowserProjectOwnership(ownership);
-    if (refreshCredential && editorBridgeCredential === credential) editorBridgeCredential = null;
+    if (refreshCredential && editorBridgeCredential === credential) {
+      invalidateEditorBootstrapInfo(credential ?? undefined);
+      editorBridgeCredential = null;
+    }
   }
 }
 

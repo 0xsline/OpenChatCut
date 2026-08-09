@@ -1,26 +1,89 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
+} from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 
 export const PROJECT_STORE_LAUNCH_TOKEN_HEADER = 'x-openchatcut-editor-launch-token';
 export const PROJECT_STORE_SESSION_HEADER = 'x-openchatcut-project-store-session';
 const TOKEN_ENV = 'OPENCHATCUT_EDITOR_LAUNCH_TOKEN';
+const AUTH_DIR_ENV = 'OPENCHATCUT_PROJECT_STORE_AUTH_DIR';
 const MIN_TOKEN_LENGTH = 32;
-const SESSION_TTL_MS = 12 * 60 * 60 * 1_000;
 const generatedLaunchToken = randomBytes(32).toString('base64url');
 
 interface ProjectStoreSession {
   readonly token: string;
   readonly host: string;
   readonly remoteAddress: string;
-  readonly expiresAt: number;
 }
 
-let launchConsumed = false;
 let activeSession: ProjectStoreSession | null = null;
+
+function authDir(): string {
+  const configured = process.env[AUTH_DIR_ENV]?.trim();
+  return configured || join(homedir(), '.openchatcut', 'project-store-auth-v1');
+}
+
+function ensureAuthDir(): string {
+  const directory = authDir();
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  try { chmodSync(directory, 0o700); } catch { /* best-effort on non-POSIX filesystems */ }
+  return directory;
+}
+
+function validToken(value: string): boolean {
+  return value.trim().length >= MIN_TOKEN_LENGTH;
+}
+
+function readTokenFile(path: string): string | null {
+  try {
+    const value = readFileSync(path, 'utf8').trim();
+    return validToken(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function atomicWritePrivate(path: string, value: string): void {
+  const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  try {
+    writeFileSync(temporary, value, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    try {
+      renameSync(temporary, path);
+    } catch {
+      // Windows cannot atomically replace an existing destination with rename.
+      rmSync(path, { force: true });
+      renameSync(temporary, path);
+    }
+    try { chmodSync(path, 0o600); } catch { /* best-effort on non-POSIX filesystems */ }
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+function persistentLaunchToken(): string {
+  const path = join(ensureAuthDir(), 'launch-token');
+  const existing = readTokenFile(path);
+  if (existing) return existing;
+  try {
+    writeFileSync(path, generatedLaunchToken, {
+      encoding: 'utf8', flag: 'wx', mode: 0o600,
+    });
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+    if (code !== 'EEXIST') throw error;
+  }
+  const winner = readTokenFile(path);
+  if (winner) return winner;
+  atomicWritePrivate(path, generatedLaunchToken);
+  return generatedLaunchToken;
+}
 
 function configuredLaunchToken(): string {
   const token = process.env[TOKEN_ENV]?.trim() ?? '';
-  return token.length >= MIN_TOKEN_LENGTH ? token : generatedLaunchToken;
+  return validToken(token) ? token : persistentLaunchToken();
 }
 
 export function projectStoreLaunchToken(): string {
@@ -71,6 +134,7 @@ function sameOrigin(req: IncomingMessage): boolean {
   }
 }
 
+
 /** Origin is a loopback host (localhost / 127.0.0.1 / ::1) on ANY port. */
 
 /**
@@ -89,30 +153,38 @@ export function projectStoreReadAuthorized(req: IncomingMessage): boolean {
 
 export function exchangeProjectStoreLaunchToken(
   req: IncomingMessage,
-): { sessionToken: string; expiresAt: number } | null {
-  if (launchConsumed || !trustedLoopback(req) || !sameOrigin(req)) return null;
-  const actual = header(req, PROJECT_STORE_LAUNCH_TOKEN_HEADER);
-  if (!actual || !equalSecret(actual, configuredLaunchToken())) return null;
+): { sessionToken: string } | null {
+  if (!trustedLoopback(req) || !sameOrigin(req)) return null;
+  const actualLaunch = header(req, PROJECT_STORE_LAUNCH_TOKEN_HEADER);
+  if (!actualLaunch || !equalSecret(actualLaunch, configuredLaunchToken())) return null;
+
+  const current = activeSession;
+  if (current?.host === req.headers.host.toLowerCase()
+    && current.remoteAddress === req.socket.remoteAddress) {
+    return { sessionToken: current.token };
+  }
   const session: ProjectStoreSession = {
     token: randomBytes(32).toString('base64url'),
     host: req.headers.host.toLowerCase(),
     remoteAddress: req.socket.remoteAddress,
-    expiresAt: Date.now() + SESSION_TTL_MS,
   };
-  launchConsumed = true;
   activeSession = session;
-  return { sessionToken: session.token, expiresAt: session.expiresAt };
+  return { sessionToken: session.token };
 }
 
 export function projectStoreHttpAuthorized(req: IncomingMessage): boolean {
+  if (!trustedLoopback(req)) return false;
   const session = activeSession;
-  if (!session || session.expiresAt <= Date.now() || !trustedLoopback(req)) return false;
-  if (req.headers.host.toLowerCase() !== session.host || req.socket.remoteAddress !== session.remoteAddress) return false;
+  if (!session || session.host !== req.headers.host.toLowerCase()
+    || session.remoteAddress !== req.socket.remoteAddress) return false;
   const actual = header(req, PROJECT_STORE_SESSION_HEADER);
   return actual !== null && equalSecret(actual, session.token);
 }
 
-export function resetProjectStoreHttpAuthForTests(): void {
-  launchConsumed = false;
+export function resetProjectStoreHttpAuthMemoryForTests(): void {
   activeSession = null;
+}
+
+export function resetProjectStoreHttpAuthForTests(): void {
+  resetProjectStoreHttpAuthMemoryForTests();
 }

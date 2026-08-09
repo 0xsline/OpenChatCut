@@ -6,6 +6,7 @@ import {
   PROJECT_STORE_SESSION_HEADER,
   projectStoreHttpAuthorized,
   projectStoreReadAuthorized,
+  resetProjectStoreHttpAuthMemoryForTests,
   resetProjectStoreHttpAuthForTests,
 } from './project-store-http-auth.ts';
 
@@ -47,10 +48,12 @@ const minted = exchangeProjectStoreLaunchToken(request({
   origin: 'http://localhost:5199',
 }));
 assert.ok(minted && minted.sessionToken.length >= 32, 'valid launch credential should mint a session');
-assert.equal(exchangeProjectStoreLaunchToken(request({
+const repeated = exchangeProjectStoreLaunchToken(request({
   launch: launchToken,
   origin: 'http://localhost:5199',
-})), null, 'launch credential must be single-use');
+}));
+assert.equal(repeated?.sessionToken, minted.sessionToken,
+  'the local launch credential should converge every tab on the active session');
 assert.equal(projectStoreHttpAuthorized(request({ launch: launchToken })), false,
   'launch credential must not authorize store operations');
 assert.equal(projectStoreHttpAuthorized(request({ session: minted.sessionToken })), true,
@@ -59,6 +62,9 @@ assert.equal(projectStoreHttpAuthorized(request({ session: minted.sessionToken, 
   'session must stay bound to its original Host');
 assert.equal(projectStoreHttpAuthorized(request({ session: minted.sessionToken, remoteAddress: '::1' })), false,
   'session must stay bound to its original remote address');
+resetProjectStoreHttpAuthMemoryForTests();
+assert.equal(projectStoreHttpAuthorized(request({ session: minted.sessionToken })), false,
+  'a server restart must invalidate only the process-local session');
 
 // ── Sessionless READ authorization (other dev ports stay consistent) ────────
 assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'same-origin' })), true,
@@ -76,15 +82,17 @@ assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'same-origin', r
 assert.equal(projectStoreReadAuthorized(request({})), false,
   'missing Sec-Fetch-Site never authorizes reads');
 
-const originalNow = Date.now;
-Date.now = () => minted.expiresAt + 1;
-try {
-  assert.equal(projectStoreHttpAuthorized(request({ session: minted.sessionToken })), false,
-    'expired session must be rejected');
-} finally {
-  Date.now = originalNow;
-  resetProjectStoreHttpAuthForTests();
-  delete process.env.OPENCHATCUT_EDITOR_LAUNCH_TOKEN;
-}
+const restarted = exchangeProjectStoreLaunchToken(request({
+  launch: launchToken,
+  origin: 'http://localhost:5199',
+}));
+assert.ok(restarted, 'the stable local launch credential must recreate a session after restart');
+assert.notEqual(restarted.sessionToken, minted.sessionToken,
+  'a restarted server must issue a fresh process-local session');
+assert.equal(projectStoreHttpAuthorized(request({ session: restarted.sessionToken })), true,
+  'the recreated session must authorize editor writes');
+
+resetProjectStoreHttpAuthForTests();
+delete process.env.OPENCHATCUT_EDITOR_LAUNCH_TOKEN;
 
 console.log('project store HTTP session verification passed');
