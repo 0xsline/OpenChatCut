@@ -1,9 +1,9 @@
 import {
   projectStoreRemoteAvailable,
+  projectStoreWriteCredential,
   requestProjectStore,
   resetProjectStoreTransport,
 } from './projectStoreTransport';
-
 const DB_NAME = 'openchatcut';
 const STORE = 'kv';
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
@@ -138,11 +138,16 @@ async function bootstrap(): Promise<void> {
     const migrated = await localGet<boolean>(MIGRATION_KEY);
     let projects = await requestEntry('projects');
     if (!migrated || !projects.found) {
-      const local = await localEntries();
-      const snapshot = await requestMerge(local);
-      projects = 'projects' in snapshot.entries
-        ? { found: true, value: snapshot.entries.projects }
-        : { found: false };
+      if (projectStoreWriteCredential()) {
+        // First migration / empty server index: upload local entries. A
+        // sessionless tab skips this (writes are not allowed) and simply
+        // adopts the server snapshot as authoritative.
+        const local = await localEntries();
+        const snapshot = await requestMerge(local);
+        projects = 'projects' in snapshot.entries
+          ? { found: true, value: snapshot.entries.projects }
+          : { found: false };
+      }
     }
     remoteCache = {};
     remoteKnown.clear();
@@ -188,26 +193,45 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
   await ready();
   await localSet(key, value);
   if (!remoteCache) return;
+  // A browser tab without an editor session can READ the shared library but
+  // must not silently pretend a write succeeded: fail loudly instead of
+  // dropping into offline mode (reads stay consistent across ports).
+  if (!projectStoreWriteCredential()) {
+    throw new Error('共享工程库为只读模式（未连接编辑器会话），修改未同步');
+  }
   remoteKnown.add(key);
   remoteCache = { ...remoteCache, [key]: value };
   try {
     await requestProjectStore({ operation: 'set', key, value });
-  } catch {
+  } catch (error) {
+    if (isAuthError(error)) {
+      throw new Error('共享工程库只读（编辑器会话失效），修改未同步');
+    }
     await disableRemote();
   }
 }
 
 export async function kvDel(key: string): Promise<void> {
   await ready();
-  const requireSharedDelete = canSync() && isProjectDocumentKey(key);
+  // Deleting a project document must always go through the shared store: a
+  // silent local-only delete is what let deleted projects "resurrect" on
+  // other ports (their server copy + other ports' caches stayed intact).
+  // Node memory fallback (no IndexedDB) keeps local semantics for checks.
+  const requireSharedDelete = isProjectDocumentKey(key) && (canSync() || hasIdb());
   if (!remoteCache) {
     if (requireSharedDelete) throw new Error('共享工程数据库暂时不可用，工程未删除');
     await localDel(key);
     return;
   }
+  if (isProjectDocumentKey(key) && !projectStoreWriteCredential()) {
+    throw new Error('共享工程库为只读模式（未连接编辑器会话），工程未删除');
+  }
   try {
     await requestProjectStore({ operation: 'delete', key });
   } catch (error) {
+    if (isAuthError(error) && isProjectDocumentKey(key)) {
+      throw new Error('共享工程库只读（编辑器会话失效），工程未删除');
+    }
     await disableRemote();
     if (requireSharedDelete) throw error;
     await localDel(key);
@@ -216,6 +240,18 @@ export async function kvDel(key: string): Promise<void> {
   await localDel(key);
   remoteKnown.add(key);
   remoteCache = Object.fromEntries(Object.entries(remoteCache).filter(([name]) => name !== key));
+}
+
+/** Read/write/offline mode of the shared KV for UI hints. */
+export function kvRemoteMode(): 'remote' | 'local' {
+  return remoteCache ? 'remote' : 'local';
+}
+
+function isAuthError(error: unknown): error is Error & { status: number } {
+  return error instanceof Error
+    && typeof (error as { status?: unknown }).status === 'number'
+    && (error as { status: number }).status >= 400
+    && (error as { status: number }).status < 500;
 }
 
 export async function kvKeys(): Promise<string[]> {

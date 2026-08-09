@@ -5,6 +5,7 @@ import {
   PROJECT_STORE_LAUNCH_TOKEN_HEADER,
   PROJECT_STORE_SESSION_HEADER,
   projectStoreHttpAuthorized,
+  projectStoreReadAuthorized,
   resetProjectStoreHttpAuthForTests,
 } from './project-store-http-auth.ts';
 
@@ -17,9 +18,11 @@ function request(options: {
   host?: string;
   origin?: string;
   remoteAddress?: string;
+  secFetchSite?: string;
 } = {}): IncomingMessage {
   const headers: Record<string, string> = { host: options.host ?? 'localhost:5199' };
   if (options.origin !== undefined) headers.origin = options.origin;
+  if (options.secFetchSite !== undefined) headers['sec-fetch-site'] = options.secFetchSite;
   if (options.launch !== undefined) headers[PROJECT_STORE_LAUNCH_TOKEN_HEADER] = options.launch;
   if (options.session !== undefined) headers[PROJECT_STORE_SESSION_HEADER] = options.session;
   return {
@@ -56,6 +59,22 @@ assert.equal(projectStoreHttpAuthorized(request({ session: minted.sessionToken, 
   'session must stay bound to its original Host');
 assert.equal(projectStoreHttpAuthorized(request({ session: minted.sessionToken, remoteAddress: '::1' })), false,
   'session must stay bound to its original remote address');
+
+// ── Sessionless READ authorization (other dev ports stay consistent) ────────
+assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'same-origin' })), true,
+  'same-origin browser request may read without a session');
+assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'same-origin', host: '127.0.0.1:5202' })), true,
+  '127.0.0.1 host may read without a session');
+assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'same-origin', host: 'localhost:5202' })), true,
+  'other dev ports may read without a session');
+assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'none' })), true,
+  'direct local navigation (curl) may read');
+assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'cross-site' })), false,
+  'cross-site pages must not read (PNA/Sec-Fetch-Site enforced)');
+assert.equal(projectStoreReadAuthorized(request({ secFetchSite: 'same-origin', remoteAddress: '192.168.1.10' })), false,
+  'read authorization stays loopback-only on the socket');
+assert.equal(projectStoreReadAuthorized(request({})), false,
+  'missing Sec-Fetch-Site never authorizes reads');
 
 const originalNow = Date.now;
 Date.now = () => minted.expiresAt + 1;
