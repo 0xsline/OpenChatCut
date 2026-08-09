@@ -4,6 +4,7 @@ import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import {
   kvDel as idbDel,
   kvGet as idbGet,
+  kvGetLocalFirst as idbGetLocalFirst,
   kvKeys as idbKeys,
   kvSet as idbSet,
   kvPurgeProject,
@@ -138,7 +139,7 @@ export async function loadChat(projectId: string): Promise<PersistedChat | null>
   try {
     await chatWriteQueues.get(projectId);
     const generation = await currentAgentSessionGeneration(projectId);
-    const raw = await idbGet<unknown>(chatKey(projectId, generation));
+    const raw = await idbGetLocalFirst<unknown>(chatKey(projectId, generation));
     return isPersistedChat(raw)
       && agentSessionGenerationMatches(raw.sessionGeneration, generation) ? raw : null;
   } catch {
