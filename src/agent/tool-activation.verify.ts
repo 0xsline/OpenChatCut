@@ -135,6 +135,22 @@ assert.equal(
   false,
   'explicit read-only requests drop mutating tools even when routed or previously active',
 );
+const readOnlySearch = readOnlyMusic.withSearchResult({
+  results: [{ name: 'sync_cuts_to_music' }],
+});
+assert.equal(
+  readOnlySearch.activation.names().includes('sync_cuts_to_music'),
+  false,
+  'ToolSearch cannot activate a mutating tool during an explicit read-only request',
+);
+const readOnlySearchRetry = readOnlySearch.activation.withSearchResult({
+  results: [{ name: 'sync_cuts_to_music' }],
+});
+assert.equal(
+  readOnlySearchRetry.activation.names().includes('sync_cuts_to_music'),
+  false,
+  'read-only state survives ToolSearch activation rebuilds',
+);
 const discoveryRouted = new ToolActivation(catalog, [
   { role: 'user', content: '先看看有哪些音频相关能力，只列出最匹配的三个能力名称' },
 ]);

@@ -224,18 +224,20 @@ export class ToolActivation {
   private readonly activeNames: ReadonlySet<string>;
   private readonly byName: ReadonlyMap<string, AgentToolSchema>;
   private readonly catalog: readonly AgentToolSchema[];
+  private readonly readOnly: boolean;
 
   constructor(
     catalog: readonly AgentToolSchema[],
     messages: readonly ModelMessage[],
     activeNames: Iterable<string> = [],
     allowSearch = true,
+    readOnly = isReadOnlyRequest(latestUserText(messages)),
   ) {
     this.catalog = catalog;
     this.byName = new Map(catalog.map((schema) => [schema.name, schema]));
     const routed = routedNames(catalog, messages);
     const searchAllowed = allowSearch && !toolSearchConsumed(messages);
-    const readOnly = isReadOnlyRequest(latestUserText(messages));
+    this.readOnly = readOnly;
     const requested = [
       ...bootNames(messages, routed),
       ...activatedToolNamesFromMessages(messages),
@@ -243,7 +245,7 @@ export class ToolActivation {
       ...activeNames,
     ].filter((name) => (
       (searchAllowed || name !== 'ToolSearch')
-      && (!readOnly || isReadOnlyTool(name))
+      && (!this.readOnly || isReadOnlyTool(name))
     ));
     this.activeNames = new Set(requested.filter((name) => this.byName.has(name)));
   }
@@ -261,7 +263,10 @@ export class ToolActivation {
       return typeof row.name === 'string' ? [row.name] : [];
     }));
     const activatedTools = this.catalog
-      .filter((schema) => discovered.has(schema.name))
+      .filter((schema) => (
+        discovered.has(schema.name)
+        && (!this.readOnly || isReadOnlyTool(schema.name))
+      ))
       .map((schema) => schema.name);
     return {
       activation: new ToolActivation(
@@ -269,6 +274,7 @@ export class ToolActivation {
         [],
         [...this.activeNames, ...activatedTools],
         activatedTools.length === 0,
+        this.readOnly,
       ),
       result: { ...result, activatedTools },
     };
