@@ -1,13 +1,35 @@
 import {
+  advanceBrowserProjectOwnership,
+  browserProjectOwnership,
   projectStoreRemoteAvailable,
   requestProjectStore,
   resetProjectStoreTransport,
 } from './projectStoreTransport';
+import type {
+  ProjectStoreMutationResponse,
+  ProjectDocumentMutationResponse,
+  ProjectStoreRequest,
+} from '../../shared/project-store-transport';
+import { projectIdFromProjectStoreKey } from '../../shared/project-store-validation';
+
+type AgentRuntimeCasRequest = Extract<ProjectStoreRequest, { operation: 'agent-runtime-cas' }>;
+type AgentRunLeaseRequest = Extract<ProjectStoreRequest, { operation: 'agent-run-lease' }>;
+type ProjectDocumentCasRequest = Extract<ProjectStoreRequest, { operation: 'project-document-cas' }>;
+
+export interface SharedKvBackend {
+  get<T>(key: string): Promise<T | undefined>;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+  keys(): Promise<string[]>;
+  compareAndSwapAgentRuntime(input: AgentRuntimeCasRequest): Promise<ProjectStoreMutationResponse>;
+  updateAgentRunLease(input: AgentRunLeaseRequest): Promise<ProjectStoreMutationResponse>;
+}
 
 const DB_NAME = 'openchatcut';
 const STORE = 'kv';
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
 const memoryStore = new Map<string, unknown>();
+let injectedBackend: SharedKvBackend | undefined;
 
 interface StoreSnapshot {
   version: 1;
@@ -24,10 +46,17 @@ const remoteKnown = new Set<string>();
 let readyPromise: Promise<void> | undefined;
 
 const hasIdb = (): boolean => typeof indexedDB !== 'undefined';
-const canSync = (): boolean => projectStoreRemoteAvailable();
+const canSync = (): boolean => !injectedBackend && projectStoreRemoteAvailable();
 const isProjectDocumentKey = (key: string): boolean => /^project:[a-zA-Z0-9_-]{1,160}$/.test(key);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
+
+export function configureSharedKvBackend(backend: SharedKvBackend | undefined): void {
+  injectedBackend = backend;
+  remoteCache = null;
+  remoteKnown.clear();
+  readyPromise = undefined;
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -39,6 +68,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 async function localGet<T>(key: string): Promise<T | undefined> {
+  if (injectedBackend) return injectedBackend.get<T>(key);
   if (!hasIdb()) return memoryStore.get(key) as T | undefined;
   const db = await openDb();
   return new Promise<T | undefined>((resolve, reject) => {
@@ -49,6 +79,10 @@ async function localGet<T>(key: string): Promise<T | undefined> {
 }
 
 async function localSet(key: string, value: unknown): Promise<void> {
+  if (injectedBackend) {
+    await injectedBackend.set(key, value);
+    return;
+  }
   if (!hasIdb()) {
     memoryStore.set(key, value);
     return;
@@ -63,6 +97,10 @@ async function localSet(key: string, value: unknown): Promise<void> {
 }
 
 async function localDel(key: string): Promise<void> {
+  if (injectedBackend) {
+    await injectedBackend.delete(key);
+    return;
+  }
   if (!hasIdb()) {
     memoryStore.delete(key);
     return;
@@ -77,6 +115,7 @@ async function localDel(key: string): Promise<void> {
 }
 
 async function localKeys(): Promise<string[]> {
+  if (injectedBackend) return injectedBackend.keys();
   if (!hasIdb()) return [...memoryStore.keys()];
   const db = await openDb();
   return new Promise<string[]>((resolve, reject) => {
@@ -132,6 +171,92 @@ async function fetchRemoteEntry(key: string): Promise<void> {
   else await localDel(key);
 }
 
+function validMutationResponse(value: unknown): value is ProjectStoreMutationResponse {
+  return isRecord(value)
+    && typeof value.accepted === 'boolean'
+    && typeof value.found === 'boolean'
+    && (!value.found || Object.hasOwn(value, 'value'));
+}
+
+function validProjectDocumentMutation(
+  value: unknown,
+): value is ProjectDocumentMutationResponse {
+  if (!isRecord(value) || !validMutationResponse(value)) return false;
+  const currentRevision = value.currentRevision;
+  const ownershipEpoch = value.ownershipEpoch;
+  return (currentRevision === undefined || typeof currentRevision === 'string')
+    && (ownershipEpoch === undefined
+      || (typeof ownershipEpoch === 'number'
+        && Number.isSafeInteger(ownershipEpoch)
+        && ownershipEpoch >= 1));
+}
+
+async function requestProjectDocumentMutation(
+  request: ProjectDocumentCasRequest,
+): Promise<ProjectDocumentMutationResponse> {
+  const value = await requestProjectStore(request);
+  if (!validProjectDocumentMutation(value)) {
+    throw new Error('invalid project document mutation response');
+  }
+  return value;
+}
+
+async function requestMutation(
+  request: AgentRuntimeCasRequest | AgentRunLeaseRequest,
+): Promise<ProjectStoreMutationResponse> {
+  const value = await requestProjectStore(request);
+  if (!validMutationResponse(value)) throw new Error('invalid project store mutation response');
+  return value;
+}
+
+async function cacheMutation(key: string, result: ProjectStoreMutationResponse): Promise<void> {
+  cacheEntry(key, result);
+  if (result.found) await localSet(key, result.value);
+  else await localDel(key);
+}
+
+export async function kvCompareAndSwapAgentRuntime(
+  request: AgentRuntimeCasRequest,
+): Promise<ProjectStoreMutationResponse> {
+  await ready();
+  const remote = !injectedBackend && canSync();
+  const result = injectedBackend
+    ? await injectedBackend.compareAndSwapAgentRuntime(request)
+    : remote
+      ? await requestMutation(request)
+      : await localAgentRuntimeCas(request);
+  if (!validMutationResponse(result)) throw new Error('invalid agent runtime CAS response');
+  if (remote) await cacheMutation(request.key, result);
+  return result;
+}
+
+async function localAgentRuntimeCas(
+  request: AgentRuntimeCasRequest,
+): Promise<ProjectStoreMutationResponse> {
+  const current = await localGet<unknown>(request.key);
+  const revision = isRecord(current) && Number.isInteger(current.revision)
+    ? Number(current.revision)
+    : null;
+  if (revision !== request.expectedRevision) {
+    return { accepted: false, found: current !== undefined, ...(current === undefined ? {} : { value: current }) };
+  }
+  await localSet(request.key, request.value);
+  return { accepted: true, found: true, value: request.value };
+}
+
+export async function kvUpdateAgentRunLease(
+  request: AgentRunLeaseRequest,
+): Promise<ProjectStoreMutationResponse | null> {
+  await ready();
+  if (!injectedBackend && !canSync()) return null;
+  const result = injectedBackend
+    ? await injectedBackend.updateAgentRunLease(request)
+    : await requestMutation(request);
+  if (!validMutationResponse(result)) throw new Error('invalid agent run lease response');
+  if (!injectedBackend) await cacheMutation(request.key, result);
+  return result;
+}
+
 async function bootstrap(): Promise<void> {
   if (!canSync()) return;
   try {
@@ -184,8 +309,58 @@ export async function kvGet<T>(key: string): Promise<T | undefined> {
   return localGet<T>(key);
 }
 
+async function setProjectDocument(key: string, value: unknown): Promise<void> {
+  if (injectedBackend || !canSync()) {
+    await localSet(key, value);
+    return;
+  }
+  if (!remoteCache) throw new Error('共享工程数据库暂时不可用，工程未保存');
+  const projectId = key.slice('project:'.length);
+  const ownership = browserProjectOwnership(projectId);
+  const local = await localGet<unknown>(key);
+  if (!ownership && local !== undefined) {
+    throw new Error('工程编辑权尚未注册，工程未保存');
+  }
+  const request: ProjectDocumentCasRequest = ownership
+    ? {
+      operation: 'project-document-cas',
+      key,
+      expectedRevision: ownership.baseRevision,
+      ownerId: ownership.ownerId,
+      ownershipEpoch: ownership.epoch,
+      value,
+    }
+    : { operation: 'project-document-cas', key, expectedRevision: null, value };
+  let result: ProjectDocumentMutationResponse;
+  try {
+    result = await requestProjectDocumentMutation(request);
+  } catch (error) {
+    await disableRemote();
+    throw error;
+  }
+  if (!result.accepted) {
+    await cacheMutation(key, result);
+    if (typeof window !== 'undefined') window.location.reload();
+    throw new Error('工程已被其他编辑器更新，请重新加载');
+  }
+  if (!result.found || typeof result.currentRevision !== 'string') {
+    throw new Error('invalid successful project document CAS response');
+  }
+  if (ownership) {
+    if (result.ownershipEpoch !== ownership.epoch) {
+      throw new Error('project ownership epoch changed during save');
+    }
+    advanceBrowserProjectOwnership(ownership, result.currentRevision);
+  }
+  await cacheMutation(key, result);
+}
+
 export async function kvSet(key: string, value: unknown): Promise<void> {
   await ready();
+  if (isProjectDocumentKey(key)) {
+    await setProjectDocument(key, value);
+    return;
+  }
   await localSet(key, value);
   if (!remoteCache) return;
   remoteKnown.add(key);
@@ -218,6 +393,42 @@ export async function kvDel(key: string): Promise<void> {
   remoteCache = Object.fromEntries(Object.entries(remoteCache).filter(([name]) => name !== key));
 }
 
+async function purgeLocalProjectEntries(projectId: string): Promise<void> {
+  for (const key of await localKeys()) {
+    if (projectIdFromProjectStoreKey(key) === projectId) await localDel(key);
+  }
+}
+
+function forgetRemoteProjectEntries(projectId: string): void {
+  remoteCache = Object.fromEntries(
+    Object.entries(remoteCache ?? {}).filter(([key]) =>
+      projectIdFromProjectStoreKey(key) !== projectId),
+  );
+  for (const key of remoteKnown) {
+    if (projectIdFromProjectStoreKey(key) === projectId) remoteKnown.delete(key);
+  }
+}
+
+export async function kvPurgeProject(projectId: string): Promise<void> {
+  await ready();
+  const requireSharedDelete = canSync();
+  if (!remoteCache) {
+    if (requireSharedDelete) throw new Error('共享工程数据库暂时不可用，工程未删除');
+    await purgeLocalProjectEntries(projectId);
+    return;
+  }
+  try {
+    await requestProjectStore({ operation: 'purge-project', projectId });
+  } catch (error) {
+    await disableRemote();
+    if (requireSharedDelete) throw error;
+    await purgeLocalProjectEntries(projectId);
+    return;
+  }
+  await purgeLocalProjectEntries(projectId);
+  forgetRemoteProjectEntries(projectId);
+}
+
 export async function kvKeys(): Promise<string[]> {
   await ready();
   if (remoteCache) {
@@ -240,5 +451,6 @@ export function resetSharedKvMemory(): void {
   remoteCache = null;
   remoteKnown.clear();
   readyPromise = undefined;
+  injectedBackend = undefined;
   resetProjectStoreTransport();
 }

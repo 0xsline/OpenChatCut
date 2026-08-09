@@ -1,4 +1,5 @@
 import type { AgentContext } from '../../src/agent/context.js';
+import { execAgentRuntimeTool } from '../../src/agent/tools/agent-runtime-tools.js';
 import { execCaptionsTool } from '../../src/agent/tools/captions-tools.js';
 import { CORE_DATA_TOOL_NAMES, execCoreDataTool } from '../../src/agent/tools/core-data-tools.js';
 import { execMarkersTool } from '../../src/agent/tools/markers-tools.js';
@@ -22,6 +23,7 @@ export async function executeOfflineTool(
   args: Args,
   ctx: AgentContext,
 ): Promise<unknown> {
+  if (name === 'read_agent_artifact') return execAgentRuntimeTool(name, args, ctx);
   if (CORE_DATA_TOOL_NAMES.has(name)) return execCoreDataTool(name, args, ctx);
   if (name === 'manage_timelines') return execTimelineTool(name, args, ctx);
   if (name === 'edit_track') return execTrackTool(name, args, ctx);

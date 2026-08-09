@@ -27,6 +27,11 @@ function resultForHistory(result: unknown): unknown {
   const { __images, ...rest } = record;
   return { ...rest, __images: `[${__images.length} image payloads omitted]` };
 }
+function resultForModelHistory(event: ToolEvent, execution: ToolExecution): unknown {
+  const result = resultForHistory(execution.result);
+  return event.name === 'load_skill' ? result : compactToolResultForModel(result);
+}
+
 
 export function codexToolHistoryEntry(
   event: ToolEvent,
@@ -34,7 +39,7 @@ export function codexToolHistoryEntry(
 ): ModelMessage {
   const text = [
     `[tool call: ${event.name}] ${codexToolInput(event.args)}`,
-    `[tool result: ${event.name}; success=${execution.success}] ${codexToolInput(compactToolResultForModel(resultForHistory(execution.result)))}`,
+    `[tool result: ${event.name}; success=${execution.success}] ${codexToolInput(resultForModelHistory(event, execution))}`,
   ].join('\n');
   const providerOptions = event.name === 'ToolSearch'
     ? activationProviderOptions(activatedToolNamesFromResult(execution.result))

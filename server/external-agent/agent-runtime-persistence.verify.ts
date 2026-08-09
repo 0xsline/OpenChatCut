@@ -1,0 +1,301 @@
+import assert from 'node:assert/strict';
+import type {
+  AgentRunLeaseState,
+  ProjectStoreMutationResponse,
+} from '../../shared/project-store-transport.ts';
+import { ExternalSessionRunLedger } from '../../src/agent/external-run-ledger.ts';
+import { startAgentRun } from '../../src/agent/runtime-ledger.ts';
+import {
+  loadAgentArtifact,
+  loadAgentRuntimeSidecar,
+  patchAgentRun,
+  resetAgentRuntimeStoreMemory,
+} from '../../src/persist/agentRuntimeStore.ts';
+import type { SharedKvBackend } from '../../src/persist/sharedKv.ts';
+import { mergeAgentSidecar } from '../plugins/project-store-entries.ts';
+import {
+  createAgentRuntimeStoreOperations,
+  type AgentRunLeaseInput,
+} from '../plugins/project-store-agent-runtime.ts';
+import type { LockedProjectStore } from '../plugins/project-store.ts';
+import { configureOfflineAgentRuntimeBackend } from './agent-runtime-persistence.ts';
+
+interface MemoryStore {
+  backend: SharedKvBackend;
+  entries: Map<string, unknown>;
+  lease: (input: AgentRunLeaseInput) => Promise<ProjectStoreMutationResponse>;
+}
+
+function memoryStore(): MemoryStore {
+  const entries = new Map<string, unknown>();
+  let tail = Promise.resolve();
+  const withLock = async <T>(work: (store: LockedProjectStore) => Promise<T>): Promise<T> => {
+    const previous = tail;
+    let release!: () => void;
+    tail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      const store: LockedProjectStore = {
+        readEntry: async (key) => entries.has(key)
+          ? { found: true, value: entries.get(key) }
+          : { found: false },
+        writeEntry: async (key, value) => { entries.set(key, value); },
+        writeAgentRuntimeExact: async (key, value) => { entries.set(key, value); },
+        removeEntry: async (key) => { entries.delete(key); },
+      };
+      return await work(store);
+    } finally {
+      release();
+    }
+  };
+  const operations = createAgentRuntimeStoreOperations(withLock);
+  const backend: SharedKvBackend = {
+    async get<T>(key: string): Promise<T | undefined> {
+      return entries.get(key) as T | undefined;
+    },
+    async set(key, value): Promise<void> { entries.set(key, value); },
+    async delete(key): Promise<void> { entries.delete(key); },
+    async keys(): Promise<string[]> { return [...entries.keys()]; },
+    compareAndSwapAgentRuntime: operations.compareAndSwapAgentRuntime,
+    updateAgentRunLease: (input) => operations.updateStoredAgentRunLease({
+      ...input,
+      allowOfflineServerTakeover: true,
+    }),
+  };
+  return { backend, entries, lease: operations.updateStoredAgentRunLease };
+}
+
+type LeasedResponse = ProjectStoreMutationResponse & { lease: AgentRunLeaseState };
+type LeaseFixture = {
+  projectId: string;
+  runId: string;
+  store: MemoryStore;
+  request: (ownerInstanceId: string) => AgentRunLeaseInput;
+  winner: LeasedResponse;
+  loserOwner: string;
+};
+
+async function createLeaseRace(): Promise<LeaseFixture> {
+  const projectId = 'runtime-authority-verify';
+  const store = memoryStore();
+  configureOfflineAgentRuntimeBackend(store.backend);
+  const recorder = await startAgentRun({ projectId, userInput: 'lease race', askOnly: false });
+  const runId = recorder.runId;
+  await recorder.releaseLease();
+  const request = (ownerInstanceId: string): AgentRunLeaseInput => ({
+    key: `agent-runtime:${projectId}`,
+    runId,
+    action: 'claim',
+    ownerInstanceId,
+    leaseMs: 1_000,
+  });
+  const [left, right] = await Promise.all([
+    store.lease(request('owner-left')),
+    store.lease(request('owner-right')),
+  ]);
+  assert.equal(Number(left.accepted) + Number(right.accepted), 1);
+  const winner = left.accepted ? left : right;
+  const loserOwner = left.accepted ? 'owner-right' : 'owner-left';
+  assert(winner.lease);
+  now += 1_001;
+  return { projectId, runId, store, request, winner: winner as LeasedResponse, loserOwner };
+}
+
+async function verifyExpiredLeaseTakeover(fixture: LeaseFixture): Promise<LeasedResponse> {
+  const { projectId, runId, store, request, winner, loserOwner } = fixture;
+  const takeover = await store.lease({ ...request(loserOwner), leaseMs: 120_000 });
+  assert.equal(takeover.accepted, true);
+  assert(takeover.lease);
+  assert.notEqual(takeover.lease.leaseToken, winner.lease.leaseToken);
+  const staleHeartbeat = await store.lease({
+    key: `agent-runtime:${projectId}`,
+    runId,
+    action: 'renew',
+    ownerInstanceId: winner.lease.ownerInstanceId,
+    leaseToken: winner.lease.leaseToken,
+    leaseMs: 120_000,
+  });
+  assert.equal(staleHeartbeat.accepted, false);
+  const fenced = await store.lease({
+    key: `agent-runtime:${projectId}`,
+    runId,
+    action: 'check',
+    ownerInstanceId: takeover.lease.ownerInstanceId,
+    leaseToken: takeover.lease.leaseToken,
+  });
+  assert.equal(fenced.accepted, true);
+  return takeover as LeasedResponse;
+}
+
+async function verifyOfflineTakeoverMerge(
+  fixture: LeaseFixture,
+  takeover: LeasedResponse,
+): Promise<void> {
+  const { projectId, runId, store, request } = fixture;
+  await patchAgentRun(projectId, runId, { backend: 'external-offline' });
+  const restartedServer = await store.lease({
+    ...request('offline-server-after-restart'),
+    leaseMs: 120_000,
+    allowOfflineServerTakeover: true,
+  });
+  assert.equal(restartedServer.accepted, true);
+  assert(restartedServer.lease);
+  const displacedFence = await store.lease({
+    key: `agent-runtime:${projectId}`,
+    runId,
+    action: 'check',
+    ownerInstanceId: takeover.lease.ownerInstanceId,
+    leaseToken: takeover.lease.leaseToken,
+  });
+  assert.equal(displacedFence.accepted, false);
+  const activeCanonical = await loadAgentRuntimeSidecar(projectId);
+  const cachedOldOwner = {
+    ...activeCanonical,
+    updatedAt: activeCanonical.updatedAt + 1,
+    runs: activeCanonical.runs.map((run) => run.runId === runId ? {
+      ...run,
+      status: 'interrupted',
+      ownerInstanceId: takeover.lease.ownerInstanceId,
+      leaseToken: takeover.lease.leaseToken,
+      updatedAt: run.updatedAt + 1,
+    } : run),
+  };
+  const fencedMerge = mergeAgentSidecar(
+    `agent-runtime:${projectId}`, activeCanonical, cachedOldOwner, true,
+  );
+  const fencedRun = (fencedMerge.value as typeof activeCanonical).runs
+    .find((run) => run.runId === runId);
+  assert.equal(fencedRun?.status, 'running');
+  assert.equal(fencedRun?.leaseToken, restartedServer.lease.leaseToken);
+}
+
+async function verifyCasCannotReplaceActiveLease(fixture: LeaseFixture): Promise<void> {
+  const { projectId, runId, store } = fixture;
+  const canonical = await loadAgentRuntimeSidecar(projectId);
+  const active = canonical.runs.find((run) => run.runId === runId);
+  assert(active);
+  const replacement = {
+    ...canonical,
+    revision: canonical.revision + 1,
+    updatedAt: canonical.updatedAt + 1,
+    runs: canonical.runs.map((run) => run.runId === runId ? {
+      ...run,
+      status: 'completed',
+      ownerInstanceId: 'unauthorized-owner',
+      leaseToken: 'unauthorized-token',
+      leaseExpiresAt: active.leaseExpiresAt! + 60_000,
+    } : run),
+  };
+  const rejected = await store.backend.compareAndSwapAgentRuntime({
+    operation: 'agent-runtime-cas',
+    key: `agent-runtime:${projectId}`,
+    expectedRevision: canonical.revision,
+    value: replacement,
+  });
+  assert.equal(rejected.accepted, false);
+  const retained = await loadAgentRuntimeSidecar(projectId);
+  const retainedRun = retained.runs.find((run) => run.runId === runId);
+  assert.equal(retainedRun?.status, 'running');
+  assert.equal(retainedRun?.leaseToken, active.leaseToken);
+  const attemptedExtension = {
+    ...retained,
+    revision: retained.revision + 1,
+    updatedAt: retained.updatedAt + 1,
+    runs: retained.runs.map((run) => run.runId === runId
+      ? { ...run, backend: 'lease-managed-update', leaseExpiresAt: active.leaseExpiresAt! + 60_000 }
+      : run),
+  };
+  const managed = await store.backend.compareAndSwapAgentRuntime({
+    operation: 'agent-runtime-cas',
+    key: `agent-runtime:${projectId}`,
+    expectedRevision: retained.revision,
+    value: attemptedExtension,
+  });
+  assert.equal(managed.accepted, true);
+  const managedRun = (managed.value as typeof retained).runs.find((run) => run.runId === runId);
+  assert.equal(managedRun?.backend, 'lease-managed-update');
+  assert.equal(managedRun?.leaseExpiresAt, active.leaseExpiresAt);
+}
+
+async function verifyTerminalMonotonicity(fixture: LeaseFixture): Promise<void> {
+  const { projectId, runId, store } = fixture;
+  await patchAgentRun(projectId, runId, { status: 'completed' });
+  const terminal = await loadAgentRuntimeSidecar(projectId);
+  const completedRun = terminal.runs.find((run) => run.runId === runId);
+  assert.equal(completedRun?.ownerInstanceId, undefined);
+  assert.equal(completedRun?.leaseToken, undefined);
+  assert.equal(completedRun?.leaseExpiresAt, undefined);
+  const stale = {
+    ...terminal,
+    revision: terminal.revision + 1,
+    updatedAt: terminal.updatedAt + 1,
+    runs: terminal.runs.map((run) => run.runId === runId ? { ...run, status: 'running' } : run),
+  };
+  const regressed = await store.backend.compareAndSwapAgentRuntime({
+    operation: 'agent-runtime-cas',
+    key: `agent-runtime:${projectId}`,
+    expectedRevision: terminal.revision,
+    value: stale,
+  });
+  assert.equal(regressed.accepted, false);
+  const merged = mergeAgentSidecar(`agent-runtime:${projectId}`, terminal, stale, true);
+  assert.equal(
+    (merged.value as typeof terminal).runs.find((run) => run.runId === runId)?.status,
+    'completed',
+  );
+}
+
+async function verifyAuthoritativeLeaseFence(): Promise<void> {
+  const fixture = await createLeaseRace();
+  const takeover = await verifyExpiredLeaseTakeover(fixture);
+  await verifyOfflineTakeoverMerge(fixture, takeover);
+  await verifyCasCannotReplaceActiveLease(fixture);
+  await verifyTerminalMonotonicity(fixture);
+}
+
+async function verifyOfflineAuditRestart(): Promise<void> {
+  const projectId = 'offline-audit-restart-verify';
+  const store = memoryStore();
+  configureOfflineAgentRuntimeBackend(store.backend);
+  const ledger = await ExternalSessionRunLedger.start(
+    projectId,
+    'Verifier MCP',
+    'offline-session-restart',
+    'external-offline',
+  );
+  const invocation = await ledger.requested('read_project', { includeTimeline: true });
+  await ledger.started(invocation);
+  const projected = await ledger.captureToolOutcome(
+    invocation,
+    { kind: 'success' },
+    { payload: 'durable-audit'.repeat(2_000) },
+  );
+  assert(projected && typeof projected === 'object' && 'artifactId' in projected);
+  const artifactId = String(projected.artifactId);
+  const runId = ledger.runId;
+  await ledger.releaseForRestart();
+
+  resetAgentRuntimeStoreMemory();
+  configureOfflineAgentRuntimeBackend(store.backend);
+  const resumed = await ExternalSessionRunLedger.resume(projectId, runId);
+  assert(resumed, 'persisted offline run must resume by runId after backend restart');
+  const sidecar = await loadAgentRuntimeSidecar(projectId);
+  const run = sidecar.runs.find((item) => item.runId === runId);
+  assert(run);
+  assert(run.events.some((event) => event.type === 'tool_started'));
+  assert(run.events.some((event) => event.type === 'tool_outcome'));
+  assert(await loadAgentArtifact(projectId, artifactId));
+  await resumed.disconnect();
+}
+
+const realNow = Date.now;
+let now = 1_000_000;
+Date.now = () => now;
+try {
+  await verifyAuthoritativeLeaseFence();
+  now += 1_001;
+  await verifyOfflineAuditRestart();
+} finally {
+  Date.now = realNow;
+  resetAgentRuntimeStoreMemory();
+}

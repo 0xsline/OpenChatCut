@@ -1,27 +1,55 @@
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
-import { isProjectStoreEntries, isProjectStoreKey } from '../../shared/project-store-validation.ts';
+import {
+  isProjectStoreEntries,
+  isProjectStoreKey,
+  isProjectStoreRecord,
+  projectIdFromProjectStoreKey,
+} from '../../shared/project-store-validation.ts';
 import {
   exchangeProjectStoreLaunchToken,
   projectStoreHttpAuthorized,
 } from '../project-store-http-auth.ts';
 import { handleProjectStoreRequest, sendProjectStoreJson } from '../project-store-http.ts';
+import {
+  mergeAgentSidecar,
+  mergeProjectEntries,
+  mergeProjectIndex,
+  withoutDeletedProjects,
+} from './project-store-entries.ts';
+import { createAgentRuntimeStoreOperations } from './project-store-agent-runtime.ts';
+import { createProjectDocumentStoreOperation } from './project-store-project-document.ts';
+import {
+  atomicWriteFile,
+  atomicWriteJson,
+  createOwnerSafeLeaseLock,
+  durableMkdir,
+  durableRemove,
+  durableRename,
+} from './project-store-durable.ts';
 
 const ROOT_DIR = join(homedir(), '.openchatcut');
 const LEGACY_STORE_PATH = join(ROOT_DIR, 'project-store-v1.json');
 const LEGACY_BACKUP_PATH = `${LEGACY_STORE_PATH}.migrated`;
 const STORE_DIR = join(ROOT_DIR, 'project-store-v1');
+const QUARANTINE_DIR = join(STORE_DIR, '.quarantine');
 const READY_PATH = join(STORE_DIR, '.ready');
 const LOCK_PATH = join(ROOT_DIR, 'project-store-v1.lock');
 const DELETED_PROJECTS_PATH = join(ROOT_DIR, 'deleted-projects-v1.json');
 const LOCK_STALE_MS = 10_000;
-const LOCK_RETRIES = 200;
-const PROJECT_SCOPED_KEY = /^(?:project|chat|creative-mode|thumb|proposal|versions|jobs):(.+)$/;
 const PROJECT_DOCUMENT_KEY = /^project:(.+)$/;
+const PROJECT_EDIT_OWNERSHIP_PREFIX = 'project-edit-ownership:';
 const VALID_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
+const STORE_LOCK = createOwnerSafeLeaseLock({
+  path: LOCK_PATH,
+  leaseMs: LOCK_STALE_MS,
+  heartbeatMs: 2_500,
+  retries: 200,
+  retryMs: 10,
+});
 
 interface StoreFile {
   version: 1;
@@ -36,124 +64,15 @@ export interface StoredEntryValue {
 export interface LockedProjectStore {
   readEntry: (key: string) => Promise<StoredEntryValue>;
   writeEntry: (key: string, value: unknown) => Promise<void>;
+  writeAgentRuntimeExact: (key: string, value: unknown) => Promise<void>;
+  writeEntryExact: (key: string, value: unknown) => Promise<void>;
   removeEntry: (key: string) => Promise<void>;
-}
-interface ProjectMeta {
-  id: string;
-  updatedAt: number;
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === 'object' && !Array.isArray(value);
-
-const validEntries = isProjectStoreEntries;
-
-function projectMetas(entries: Record<string, unknown>): Map<string, ProjectMeta> {
-  const value = entries.projects;
-  const metas = Array.isArray(value) ? value : [];
-  return new Map(metas.flatMap((item) => {
-    if (!isRecord(item) || typeof item.id !== 'string' || typeof item.updatedAt !== 'number') return [];
-    return [[item.id, { id: item.id, updatedAt: item.updatedAt }]];
-  }));
-}
-
-function itemIdentity(value: unknown): string {
-  if (isRecord(value)) {
-    for (const key of ['id', 'jobId', 'name']) {
-      if (typeof value[key] === 'string') return `${key}:${value[key]}`;
-    }
-  }
-  return `json:${JSON.stringify(value)}`;
-}
-
-function itemTime(value: unknown): number {
-  if (!isRecord(value)) return 0;
-  for (const key of ['updatedAt', 'createdAt']) {
-    if (typeof value[key] === 'number') return value[key];
-  }
-  return 0;
-}
-
-function mergeArrays(base: unknown[], incoming: unknown[]): unknown[] {
-  const merged = new Map<string, unknown>();
-  for (const item of [...base, ...incoming]) {
-    const identity = itemIdentity(item);
-    const previous = merged.get(identity);
-    if (previous === undefined || itemTime(item) >= itemTime(previous)) merged.set(identity, item);
-  }
-  return [...merged.values()];
-}
-
-function mergeProjectIndex(base: unknown, incoming: unknown): unknown[] {
-  const left = Array.isArray(base) ? base : [];
-  const right = Array.isArray(incoming) ? incoming : [];
-  return mergeArrays(left, right).sort((a, b) => itemTime(b) - itemTime(a));
-}
-
-function withoutDeletedProjects(
-  entries: Record<string, unknown>,
-  deletedIds: ReadonlySet<string>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(entries)) {
-    if (key === 'projects') {
-      result[key] = (Array.isArray(value) ? value : []).filter(
-        (item) => !isRecord(item) || typeof item.id !== 'string' || !deletedIds.has(item.id),
-      );
-      continue;
-    }
-    const projectId = PROJECT_SCOPED_KEY.exec(key)?.[1];
-    if (!projectId || !deletedIds.has(projectId)) result[key] = value;
-  }
-  return result;
-}
-
-function shouldMergeArray(key: string, base: unknown, incoming: unknown): boolean {
-  if (!Array.isArray(base) || !Array.isArray(incoming)) return false;
-  return key === 'export:history'
-    || key === 'design-styles:owned'
-    || key === 'skills:custom'
-    || key === 'templates:all'
-    || key.startsWith('versions:')
-    || key.startsWith('jobs:');
-}
-
-/** First-open migration merges every browser's unique projects without discarding either side. */
-export function mergeProjectEntries(
-  base: Record<string, unknown>,
-  incoming: Record<string, unknown>,
-  deletedIds: ReadonlySet<string> = new Set(),
-): Record<string, unknown> {
-  const safeBase = withoutDeletedProjects(base, deletedIds);
-  const safeIncoming = withoutDeletedProjects(incoming, deletedIds);
-  const result = { ...safeBase };
-  const baseMetas = projectMetas(safeBase);
-  const incomingMetas = projectMetas(safeIncoming);
-  for (const [key, value] of Object.entries(safeIncoming)) {
-    if (key === 'projects') {
-      result[key] = mergeProjectIndex(safeBase[key], value);
-      continue;
-    }
-    if (!(key in safeBase)) {
-      result[key] = value;
-      continue;
-    }
-    if (shouldMergeArray(key, safeBase[key], value)) {
-      result[key] = mergeArrays(safeBase[key] as unknown[], value as unknown[]);
-      continue;
-    }
-    const projectId = PROJECT_SCOPED_KEY.exec(key)?.[1];
-    if (!projectId || (incomingMetas.get(projectId)?.updatedAt ?? 0) > (baseMetas.get(projectId)?.updatedAt ?? 0)) {
-      result[key] = value;
-    }
-  }
-  return result;
 }
 
 async function readLegacyStore(): Promise<{ exists: boolean; store: StoreFile }> {
   try {
     const parsed: unknown = JSON.parse(await readFile(LEGACY_STORE_PATH, 'utf8'));
-    if (!isRecord(parsed) || parsed.version !== 1 || !validEntries(parsed.entries)) {
+    if (!isProjectStoreRecord(parsed) || parsed.version !== 1 || !isProjectStoreEntries(parsed.entries)) {
       throw new Error('invalid legacy project store');
     }
     return { exists: true, store: { version: 1, entries: parsed.entries } };
@@ -168,18 +87,43 @@ async function readLegacyStore(): Promise<{ exists: boolean; store: StoreFile }>
 const entryPath = (key: string) => join(STORE_DIR, `${encodeURIComponent(key)}.json`);
 
 async function writeStoredEntry(key: string, value: unknown): Promise<void> {
-  const encoded = JSON.stringify(value);
-  if (encoded === undefined) throw new Error('project store value is not JSON serializable');
-  const target = entryPath(key);
-  const temp = `${target}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temp, encoded, { encoding: 'utf8', mode: 0o600 });
-  await rename(temp, target);
+  await atomicWriteJson(entryPath(key), value);
+}
+interface QuarantinedEntry {
+  version: 1;
+  kind: 'quarantined-project-store-entry';
+  key: string;
+  quarantinedAt: number;
+  quarantineFile: string;
+}
+
+async function quarantineUnknownEntryFile(file: string): Promise<void> {
+  await durableMkdir(QUARANTINE_DIR, true);
+  await durableRename(
+    join(STORE_DIR, file),
+    join(QUARANTINE_DIR, `${file}.${randomUUID()}.corrupt`),
+  );
+}
+
+async function quarantineEntryFile(file: string, key: string): Promise<QuarantinedEntry> {
+  const quarantineFile = `${file}.${Date.now()}.${randomUUID()}.corrupt`;
+  await durableMkdir(QUARANTINE_DIR, true);
+  await durableRename(join(STORE_DIR, file), join(QUARANTINE_DIR, quarantineFile));
+  const marker: QuarantinedEntry = {
+    version: 1,
+    kind: 'quarantined-project-store-entry',
+    key,
+    quarantinedAt: Date.now(),
+    quarantineFile,
+  };
+  await atomicWriteJson(entryPath(key), marker);
+  return marker;
 }
 
 async function readDeletedProjects(): Promise<Record<string, number>> {
   try {
     const parsed: unknown = JSON.parse(await readFile(DELETED_PROJECTS_PATH, 'utf8'));
-    if (!isRecord(parsed)) throw new Error('invalid deleted project registry');
+    if (!isProjectStoreRecord(parsed)) throw new Error('invalid deleted project registry');
     const entries = Object.entries(parsed);
     if (!entries.every(([id, deletedAt]) => VALID_PROJECT_ID.test(id) && typeof deletedAt === 'number')) {
       throw new Error('invalid deleted project registry');
@@ -192,13 +136,11 @@ async function readDeletedProjects(): Promise<Record<string, number>> {
 }
 
 async function writeDeletedProjects(projects: Record<string, number>): Promise<void> {
-  const temp = `${DELETED_PROJECTS_PATH}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temp, JSON.stringify(projects), { encoding: 'utf8', mode: 0o600 });
-  await rename(temp, DELETED_PROJECTS_PATH);
+  await atomicWriteJson(DELETED_PROJECTS_PATH, projects);
 }
 
 async function writeEntries(entries: Record<string, unknown>): Promise<void> {
-  await mkdir(STORE_DIR, { recursive: true, mode: 0o700 });
+  await durableMkdir(STORE_DIR, true);
   const ordered = Object.entries(entries).sort(([left], [right]) => {
     if (left === 'projects') return 1;
     if (right === 'projects') return -1;
@@ -211,39 +153,29 @@ async function readDirectoryEntries(): Promise<Record<string, unknown>> {
   const entries: Record<string, unknown> = {};
   for (const file of await readdir(STORE_DIR)) {
     if (!file.endsWith('.json')) continue;
-    const key = decodeURIComponent(file.slice(0, -'.json'.length));
-    if (!isProjectStoreKey(key)) throw new Error('invalid project store entry filename');
-    entries[key] = JSON.parse(await readFile(join(STORE_DIR, file), 'utf8'));
+    let key: string;
+    try {
+      key = decodeURIComponent(file.slice(0, -'.json'.length));
+    } catch {
+      await quarantineUnknownEntryFile(file);
+      continue;
+    }
+    if (!isProjectStoreKey(key)) {
+      await quarantineUnknownEntryFile(file);
+      continue;
+    }
+    const raw = await readFile(join(STORE_DIR, file), 'utf8');
+    try {
+      entries[key] = JSON.parse(raw);
+    } catch {
+      entries[key] = await quarantineEntryFile(file, key);
+    }
   }
   return entries;
 }
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-async function removeStaleLock(): Promise<void> {
-  try {
-    if (Date.now() - (await stat(LOCK_PATH)).mtimeMs > LOCK_STALE_MS) await rm(LOCK_PATH, { force: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-}
-
 async function acquireLock(): Promise<() => Promise<void>> {
-  await mkdir(ROOT_DIR, { recursive: true, mode: 0o700 });
-  for (let attempt = 0; attempt < LOCK_RETRIES; attempt += 1) {
-    try {
-      const handle = await open(LOCK_PATH, 'wx', 0o600);
-      return async () => {
-        await handle.close();
-        await rm(LOCK_PATH, { force: true });
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      await removeStaleLock();
-      await delay(10);
-    }
-  }
-  throw new Error('project store is busy');
+  return (await STORE_LOCK.acquire()).release;
 }
 
 async function readyExists(): Promise<boolean> {
@@ -259,10 +191,10 @@ async function migrateLegacyLocked(): Promise<void> {
   if (await readyExists()) return;
   const legacy = await readLegacyStore();
   await writeEntries(legacy.store.entries);
-  await writeFile(READY_PATH, '1\n', { encoding: 'utf8', mode: 0o600 });
+  await atomicWriteFile(READY_PATH, '1\n');
   if (!legacy.exists) return;
-  await rm(LEGACY_BACKUP_PATH, { force: true });
-  await rename(LEGACY_STORE_PATH, LEGACY_BACKUP_PATH);
+  await durableRemove(LEGACY_BACKUP_PATH);
+  await durableRename(LEGACY_STORE_PATH, LEGACY_BACKUP_PATH);
 }
 
 async function ensureStoreReady(): Promise<void> {
@@ -277,10 +209,15 @@ async function ensureStoreReady(): Promise<void> {
 
 export async function readStore(): Promise<StoreFile> {
   await ensureStoreReady();
-  const deletedIds = new Set(Object.keys(await readDeletedProjects()));
-  const entries = withoutDeletedProjects(await readDirectoryEntries(), deletedIds);
-  if (!validEntries(entries)) throw new Error('invalid project store entries');
-  return { version: 1, entries };
+  const release = await acquireLock();
+  try {
+    const deletedIds = new Set(Object.keys(await readDeletedProjects()));
+    const entries = withoutDeletedProjects(await readDirectoryEntries(), deletedIds);
+    if (!isProjectStoreEntries(entries)) throw new Error('invalid project store entries');
+    return { version: 1, entries };
+  } finally {
+    await release();
+  }
 }
 
 export async function mergeStoredEntries(incoming: Record<string, unknown>): Promise<StoreFile> {
@@ -302,11 +239,14 @@ export async function mergeStoredEntries(incoming: Record<string, unknown>): Pro
 
 export async function setStoredEntry(key: string, value: unknown): Promise<void> {
   if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
+  if (key.startsWith(PROJECT_EDIT_OWNERSHIP_PREFIX)) {
+    throw new Error('project edit ownership is server-managed');
+  }
   await ensureStoreReady();
   const release = await acquireLock();
   try {
     const deletedIds = new Set(Object.keys(await readDeletedProjects()));
-    const projectId = PROJECT_SCOPED_KEY.exec(key)?.[1];
+    const projectId = projectIdFromProjectStoreKey(key);
     if (projectId && deletedIds.has(projectId)) return;
     if (key === 'projects') {
       const current = await readEntryFile('projects');
@@ -318,7 +258,7 @@ export async function setStoredEntry(key: string, value: unknown): Promise<void>
       const merged = mergeProjectIndex(safeCurrent, safe);
       const existing: unknown[] = [];
       for (const item of merged) {
-        if (!isRecord(item) || typeof item.id !== 'string') continue;
+        if (!isProjectStoreRecord(item) || typeof item.id !== 'string') continue;
         try {
           await access(entryPath(`project:${item.id}`));
           existing.push(item);
@@ -329,29 +269,54 @@ export async function setStoredEntry(key: string, value: unknown): Promise<void>
       await writeStoredEntry(key, existing);
       return;
     }
+    if (key.startsWith('agent-runtime:') || key.startsWith('agent-artifact:')) {
+      const current = await readEntryFile(key);
+      const sidecar = mergeAgentSidecar(key, current.value, value, current.found);
+      if (sidecar.accepted) await writeStoredEntry(key, sidecar.value);
+      return;
+    }
     await writeStoredEntry(key, value);
   } finally {
     await release();
   }
 }
 
+async function purgeProjectEntryFilesDurably(projectId: string): Promise<void> {
+  for (const file of await readdir(STORE_DIR)) {
+    if (!file.endsWith('.json')) continue;
+    let key: string;
+    try {
+      key = decodeURIComponent(file.slice(0, -'.json'.length));
+    } catch {
+      await quarantineUnknownEntryFile(file);
+      continue;
+    }
+    if (!isProjectStoreKey(key)) {
+      await quarantineUnknownEntryFile(file);
+      continue;
+    }
+    if (projectIdFromProjectStoreKey(key) === projectId) {
+      await durableRemove(join(STORE_DIR, file));
+    }
+  }
+}
+
 async function purgeProjectLocked(id: string): Promise<void> {
   const deleted = await readDeletedProjects();
   await writeDeletedProjects({ ...deleted, [id]: Date.now() });
-  for (const file of await readdir(STORE_DIR)) {
-    if (!file.endsWith('.json')) continue;
-    const key = decodeURIComponent(file.slice(0, -'.json'.length));
-    if (PROJECT_SCOPED_KEY.exec(key)?.[1] === id) await rm(join(STORE_DIR, file), { force: true });
-  }
+  await purgeProjectEntryFilesDurably(id);
   const current = await readEntryFile('projects');
   const projects = Array.isArray(current.value)
-    ? current.value.filter((item) => !isRecord(item) || item.id !== id)
+    ? current.value.filter((item) => !isProjectStoreRecord(item) || item.id !== id)
     : [];
   await writeStoredEntry('projects', projects);
 }
 
 export async function deleteStoredEntry(key: string): Promise<void> {
   if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
+  if (key.startsWith(PROJECT_EDIT_OWNERSHIP_PREFIX)) {
+    throw new Error('project edit ownership is server-managed');
+  }
   await ensureStoreReady();
   const release = await acquireLock();
   try {
@@ -360,7 +325,7 @@ export async function deleteStoredEntry(key: string): Promise<void> {
       if (!VALID_PROJECT_ID.test(projectId)) throw new Error('invalid project id');
       await purgeProjectLocked(projectId);
     } else {
-      await rm(entryPath(key), { force: true });
+      await durableRemove(entryPath(key));
     }
   } finally {
     await release();
@@ -368,8 +333,14 @@ export async function deleteStoredEntry(key: string): Promise<void> {
 }
 
 async function readEntryFile(key: string): Promise<StoredEntryValue> {
+  const file = `${encodeURIComponent(key)}.json`;
   try {
-    return { found: true, value: JSON.parse(await readFile(entryPath(key), 'utf8')) };
+    const raw = await readFile(entryPath(key), 'utf8');
+    try {
+      return { found: true, value: JSON.parse(raw) };
+    } catch {
+      return { found: true, value: await quarantineEntryFile(file, key) };
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { found: false };
     throw error;
@@ -379,9 +350,83 @@ async function readEntryFile(key: string): Promise<StoredEntryValue> {
 export async function getStoredEntry(key: string): Promise<StoredEntryValue> {
   if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
   await ensureStoreReady();
-  const projectId = PROJECT_SCOPED_KEY.exec(key)?.[1];
-  if (projectId && Object.hasOwn(await readDeletedProjects(), projectId)) return { found: false };
-  return readEntryFile(key);
+  const release = await acquireLock();
+  try {
+    const projectId = projectIdFromProjectStoreKey(key);
+    if (projectId && Object.hasOwn(await readDeletedProjects(), projectId)) return { found: false };
+    return await readEntryFile(key);
+  } finally {
+    await release();
+  }
+}
+
+function validateLockedEntryKey(key: string): string | undefined {
+  if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
+  return projectIdFromProjectStoreKey(key);
+}
+
+function assertProjectNotDeleted(projectId: string | undefined, deletedIds: ReadonlySet<string>): void {
+  if (projectId && deletedIds.has(projectId)) throw new Error('project was deleted');
+}
+
+async function readLockedEntry(
+  key: string,
+  deletedIds: ReadonlySet<string>,
+): Promise<StoredEntryValue> {
+  const projectId = validateLockedEntryKey(key);
+  return projectId && deletedIds.has(projectId) ? { found: false } : readEntryFile(key);
+}
+
+async function writeLockedEntry(
+  key: string,
+  value: unknown,
+  deletedIds: ReadonlySet<string>,
+): Promise<void> {
+  assertProjectNotDeleted(validateLockedEntryKey(key), deletedIds);
+  if (key.startsWith('agent-runtime:') || key.startsWith('agent-artifact:')) {
+    const current = await readEntryFile(key);
+    const sidecar = mergeAgentSidecar(key, current.value, value, current.found);
+    if (sidecar.accepted) await writeStoredEntry(key, sidecar.value);
+    return;
+  }
+  await writeStoredEntry(key, value);
+}
+
+async function writeAgentRuntimeExactLocked(
+  key: string,
+  value: unknown,
+  deletedIds: ReadonlySet<string>,
+): Promise<void> {
+  const projectId = validateLockedEntryKey(key);
+  if (!key.startsWith('agent-runtime:')) throw new Error('exact write is limited to agent runtime');
+  assertProjectNotDeleted(projectId, deletedIds);
+  await writeStoredEntry(key, value);
+}
+
+async function writeEntryExactLocked(
+  key: string,
+  value: unknown,
+  deletedIds: ReadonlySet<string>,
+): Promise<void> {
+  const projectId = validateLockedEntryKey(key);
+  if (!key.startsWith('project:') && !key.startsWith('project-edit-ownership:')) {
+    throw new Error('exact write is limited to project document CAS');
+  }
+  assertProjectNotDeleted(projectId, deletedIds);
+  await writeStoredEntry(key, value);
+}
+
+function createLockedProjectStore(deletedIds: ReadonlySet<string>): LockedProjectStore {
+  return {
+    readEntry: (key) => readLockedEntry(key, deletedIds),
+    writeEntry: (key, value) => writeLockedEntry(key, value, deletedIds),
+    writeAgentRuntimeExact: (key, value) => writeAgentRuntimeExactLocked(key, value, deletedIds),
+    writeEntryExact: (key, value) => writeEntryExactLocked(key, value, deletedIds),
+    removeEntry: async (key) => {
+      validateLockedEntryKey(key);
+      await durableRemove(entryPath(key));
+    },
+  };
 }
 
 export async function withProjectStoreLock<T>(
@@ -391,37 +436,32 @@ export async function withProjectStoreLock<T>(
   const release = await acquireLock();
   try {
     const deletedIds = new Set(Object.keys(await readDeletedProjects()));
-    const validateKey = (key: string): string | undefined => {
-      if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
-      return PROJECT_SCOPED_KEY.exec(key)?.[1];
-    };
-    return await work({
-      readEntry: async (key) => {
-        const projectId = validateKey(key);
-        return projectId && deletedIds.has(projectId) ? { found: false } : readEntryFile(key);
-      },
-      writeEntry: async (key, value) => {
-        const projectId = validateKey(key);
-        if (projectId && deletedIds.has(projectId)) throw new Error('project was deleted');
-        await writeStoredEntry(key, value);
-      },
-      removeEntry: async (key) => {
-        validateKey(key);
-        await rm(entryPath(key), { force: true });
-      },
-    });
+    return await work(createLockedProjectStore(deletedIds));
   } finally {
     await release();
   }
 }
 
+export const {
+  compareAndSwapAgentRuntime,
+  updateStoredAgentRunLease,
+} = createAgentRuntimeStoreOperations(withProjectStoreLock);
+
+export const compareAndSwapProjectDocument =
+  createProjectDocumentStoreOperation(withProjectStoreLock);
+
+
 
 const HTTP_OPERATIONS = {
+  compareAndSwapAgentRuntime,
+  compareAndSwapProjectDocument,
   deleteEntry: deleteStoredEntry,
   getEntry: getStoredEntry,
+  purgeProject: (projectId: string) => deleteStoredEntry(`project:${projectId}`),
   mergeEntries: mergeStoredEntries,
   readSnapshot: readStore,
   setEntry: setStoredEntry,
+  updateAgentRunLease: updateStoredAgentRunLease,
 };
 
 export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {

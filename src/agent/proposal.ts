@@ -32,14 +32,22 @@ export interface ProposalOption {
 }
 
 export interface Proposal {
+  /** Stable identity for durable proposal events. Omitted only by legacy/external proposals. */
+  id?: string;
   title: string;
   summary: string;
   totalImpact: string;
   options: ProposalOption[];
+  /** Durable Agent run that produced this proposal. Omitted for legacy/external proposals. */
+  agentRunId?: string;
   /** project snapshot at propose time — apply is stale if anything changed */
   baseDoc: ProjectDoc;
   /** draft result — used for the in-player preview */
   resultState: TimelineState;
+}
+
+export interface BuiltProposal extends Proposal {
+  id: string;
 }
 
 // map an agent tool call + the store actions it produced into a display Operation.
@@ -148,17 +156,25 @@ export function compactOperations(operations: Operation[]): Operation[] {
 
 // wrap collected operations into a single-option proposal (operations lacking
 // explicit options are auto-wrapped into one recommended option).
-export function buildProposal(operations: Operation[], assistantText: string, baseDoc: ProjectDoc, resultState: TimelineState): Proposal {
+export function buildProposal(
+  operations: Operation[],
+  assistantText: string,
+  baseDoc: ProjectDoc,
+  resultState: TimelineState,
+  agentRunId?: string,
+): BuiltProposal {
   const compacted = compactOperations(operations);
   const totalImpact = impactOf(compacted.flatMap((o) => o.actions));
   const summary = assistantText.trim() || `${compacted.length} 项编辑`;
   return {
+    id: crypto.randomUUID(),
     title: 'Agent 编辑提案',
     summary,
     totalImpact,
     options: [{ id: 'opt-1', label: '应用全部', recommended: true, summary, totalImpact, operations: compacted }],
     baseDoc,
     resultState,
+    ...(agentRunId ? { agentRunId } : {}),
   };
 }
 

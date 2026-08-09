@@ -1,26 +1,254 @@
 import type { ProjectStoreRequest } from './project-store-transport.ts';
 
 const VALID_KEY = /^(?!__proto__$)(?!prototype$)(?!constructor$)[a-zA-Z0-9:_-]{1,200}$/;
+const VALID_AGENT_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
+const VALID_AGENT_ARTIFACT_ID = /^[a-zA-Z0-9_-]{1,20}$/;
+const STRICT_PROJECT_SCOPED_KEY = /^(?:agent-runtime|external-proposal|offline-edit-session|project-edit-ownership|review):([a-zA-Z0-9_-]{1,160})$/;
+const STRICT_PROJECT_SCOPED_PREFIX = /^(?:agent-runtime|agent-artifact|external-proposal|offline-edit-session|project-edit-ownership|review):/;
+const LEGACY_PROJECT_SCOPED_KEY = /^(?:project|chat|creative-mode|thumb|proposal|versions|jobs):(.+)$/;
+
+/**
+ * Return the owning project without treating an artifact id as part of it.
+ * Legacy namespaces deliberately retain their historical permissive suffix.
+ */
+export function projectIdFromProjectStoreKey(key: string): string | undefined {
+  const strictProjectId = STRICT_PROJECT_SCOPED_KEY.exec(key)?.[1];
+  if (strictProjectId) return strictProjectId;
+  if (key.startsWith('agent-artifact:')) {
+    const parts = key.slice('agent-artifact:'.length).split(':');
+    return parts.length === 2
+      && VALID_AGENT_PROJECT_ID.test(parts[0]!)
+      && VALID_AGENT_ARTIFACT_ID.test(parts[1]!)
+      ? parts[0]
+      : undefined;
+  }
+  return LEGACY_PROJECT_SCOPED_KEY.exec(key)?.[1];
+}
+
 const MAX_ENTRY_COUNT = 20_000;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isProjectStoreRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
+export interface SupportedAgentRuntimeStoreValue extends Record<string, unknown> {
+  version: 1;
+  revision: number;
+  projectId: string;
+  durability: 'local-sidecar';
+  updatedAt: number;
+  lastWriterId?: string;
+  runs: unknown[];
+  approvals: unknown[];
+  checkpoints: unknown[];
+  artifacts: unknown[];
+}
+
+export type AgentRuntimeStoreCompatibility =
+  | { kind: 'absent' }
+  | { kind: 'supported'; value: SupportedAgentRuntimeStoreValue }
+  | { kind: 'future'; version: number; value: Record<string, unknown> }
+  | { kind: 'corrupt'; value: unknown };
+function hasScopedAgentRuntimeRows(key: string, value: Record<string, unknown>): boolean {
+  const projectId = projectIdFromProjectStoreKey(key);
+  if (!projectId) return false;
+  const groups: Array<[unknown, string]> = [
+    [value.runs, 'runId'],
+    [value.approvals, 'approvalId'],
+    [value.checkpoints, 'checkpointId'],
+    [value.artifacts, 'artifactId'],
+  ];
+  return groups.every(([rows, id]) => Array.isArray(rows) && rows.every((row) => (
+    isProjectStoreRecord(row)
+    && row.projectId === projectId
+    && typeof row[id] === 'string'
+    && row[id].length > 0
+  )));
+}
+function isSupportedAgentRuntimeStoreValue(
+  key: string,
+  value: unknown,
+): value is SupportedAgentRuntimeStoreValue {
+  const projectId = projectIdFromProjectStoreKey(key);
+  return isProjectStoreRecord(value)
+    && key.startsWith('agent-runtime:')
+    && value.version === 1
+    && projectId !== undefined
+    && value.projectId === projectId
+    && value.durability === 'local-sidecar'
+    && typeof value.revision === 'number'
+    && Number.isFinite(value.revision)
+    && value.revision >= 0
+    && typeof value.updatedAt === 'number'
+    && Number.isFinite(value.updatedAt)
+    && value.updatedAt >= 0
+    && (value.lastWriterId === undefined || typeof value.lastWriterId === 'string')
+    && Array.isArray(value.runs)
+    && Array.isArray(value.approvals)
+    && Array.isArray(value.checkpoints)
+    && Array.isArray(value.artifacts)
+    && hasScopedAgentRuntimeRows(key, value);
+}
+
+
+
+export function classifyAgentRuntimeStoreValue(
+  key: string,
+  value: unknown,
+): AgentRuntimeStoreCompatibility {
+  const projectId = projectIdFromProjectStoreKey(key);
+  if (value === undefined) return { kind: 'absent' };
+  if (
+    isProjectStoreRecord(value)
+    && key.startsWith('agent-runtime:')
+    && projectId !== undefined
+    && value.projectId === projectId
+    && typeof value.version === 'number'
+    && Number.isSafeInteger(value.version)
+    && value.version > 1
+  ) {
+    return { kind: 'future', version: value.version, value };
+  }
+  if (isSupportedAgentRuntimeStoreValue(key, value)) {
+    return { kind: 'supported', value };
+  }
+  return { kind: 'corrupt', value };
+}
+
+
+export function isAgentRuntimeStoreValue(
+  key: string,
+  value: unknown,
+): value is SupportedAgentRuntimeStoreValue {
+  return classifyAgentRuntimeStoreValue(key, value).kind === 'supported';
+}
+
+export function isAgentArtifactStoreValue(key: string, value: unknown): value is Record<string, unknown> {
+  const parts = key.startsWith('agent-artifact:')
+    ? key.slice('agent-artifact:'.length).split(':')
+    : [];
+  return isProjectStoreRecord(value)
+    && parts.length === 2
+    && projectIdFromProjectStoreKey(key) === parts[0]
+    && value.version === 1
+    && value.projectId === parts[0]
+    && value.artifactId === parts[1]
+    && typeof value.runId === 'string'
+    && value.runId.length > 0
+    && typeof value.kind === 'string'
+    && value.kind.length > 0
+    && typeof value.bodySha256 === 'string'
+    && /^[a-f0-9]{64}$/.test(value.bodySha256)
+    && typeof value.originalBytes === 'number'
+    && Number.isSafeInteger(value.originalBytes)
+    && value.originalBytes >= 0
+    && typeof value.originalChars === 'number'
+    && Number.isSafeInteger(value.originalChars)
+    && value.originalChars >= 0
+    && typeof value.createdAt === 'number'
+    && Number.isFinite(value.createdAt)
+    && value.createdAt >= 0
+    && typeof value.redacted === 'boolean'
+    && typeof value.binaryOmitted === 'boolean'
+    && typeof value.body === 'string'
+    && (value.toolCallId === undefined || typeof value.toolCallId === 'string')
+    && (value.toolName === undefined || typeof value.toolName === 'string');
+}
 
 export function isProjectStoreKey(value: unknown): value is string {
-  return typeof value === 'string' && VALID_KEY.test(value);
+  if (typeof value !== 'string' || !VALID_KEY.test(value)) return false;
+  if (STRICT_PROJECT_SCOPED_PREFIX.test(value)) {
+    return projectIdFromProjectStoreKey(value) !== undefined;
+  }
+  return true;
 }
 
 export function isProjectStoreEntries(value: unknown): value is Record<string, unknown> {
-  return isRecord(value)
+  return isProjectStoreRecord(value)
     && Object.keys(value).length <= MAX_ENTRY_COUNT
     && Object.keys(value).every(isProjectStoreKey);
 }
 
+const PROJECT_DOCUMENT_CAS_KEY = /^project:[a-zA-Z0-9_-]{1,160}$/;
+const AGENT_RUN_LEASE_KEYS: Record<string, true> = {
+  operation: true,
+  key: true,
+  runId: true,
+  action: true,
+  ownerInstanceId: true,
+  leaseToken: true,
+  leaseMs: true,
+};
+
+function isAgentRuntimeCasRequest(value: Record<string, unknown>): boolean {
+  const expectedRevision = value.expectedRevision;
+  const validRevision = expectedRevision === null
+    || (typeof expectedRevision === 'number'
+      && Number.isSafeInteger(expectedRevision)
+      && expectedRevision >= 0);
+  return Object.keys(value).length === 4
+    && isProjectStoreKey(value.key)
+    && value.key.startsWith('agent-runtime:')
+    && validRevision
+    && isAgentRuntimeStoreValue(value.key, value.value);
+}
+
+function isProjectDocumentCasRequest(value: Record<string, unknown>): boolean {
+  if (typeof value.key !== 'string'
+    || !PROJECT_DOCUMENT_CAS_KEY.test(value.key)
+    || !Object.hasOwn(value, 'value')) return false;
+  if (value.expectedRevision === null) return Object.keys(value).length === 4;
+  return Object.keys(value).length === 6
+    && typeof value.expectedRevision === 'string'
+    && value.expectedRevision.length > 0
+    && value.expectedRevision.length <= 200
+    && typeof value.ownerId === 'string'
+    && /^[a-zA-Z0-9_-]{1,200}$/.test(value.ownerId)
+    && typeof value.ownershipEpoch === 'number'
+    && Number.isSafeInteger(value.ownershipEpoch)
+    && value.ownershipEpoch >= 1;
+}
+
+function isAgentRunLeaseRequest(value: Record<string, unknown>): boolean {
+  const keys = Object.keys(value);
+  const validLeaseToken = value.leaseToken === undefined
+    || (typeof value.leaseToken === 'string'
+      && value.leaseToken.length > 0
+      && value.leaseToken.length <= 200);
+  const validLeaseMs = value.leaseMs === undefined
+    || (typeof value.leaseMs === 'number'
+      && Number.isSafeInteger(value.leaseMs)
+      && value.leaseMs >= 1_000
+      && value.leaseMs <= 300_000);
+  return keys.length >= 5
+    && keys.length <= 7
+    && keys.every((key) => Object.hasOwn(AGENT_RUN_LEASE_KEYS, key))
+    && isProjectStoreKey(value.key)
+    && value.key.startsWith('agent-runtime:')
+    && typeof value.runId === 'string'
+    && value.runId.length > 0
+    && value.runId.length <= 200
+    && (
+      value.action === 'claim'
+      || value.action === 'renew'
+      || value.action === 'release'
+      || value.action === 'check'
+    )
+    && typeof value.ownerInstanceId === 'string'
+    && value.ownerInstanceId.length > 0
+    && value.ownerInstanceId.length <= 200
+    && validLeaseToken
+    && validLeaseMs;
+}
+
 export function isProjectStoreRequest(value: unknown): value is ProjectStoreRequest {
-  if (!isRecord(value) || typeof value.operation !== 'string') return false;
+  if (!isProjectStoreRecord(value) || typeof value.operation !== 'string') return false;
   if (value.operation === 'snapshot') return Object.keys(value).length === 1;
   if (value.operation === 'entry' || value.operation === 'delete') {
     return Object.keys(value).length === 2 && isProjectStoreKey(value.key);
+  }
+  if (value.operation === 'purge-project') {
+    return Object.keys(value).length === 2
+      && typeof value.projectId === 'string'
+      && VALID_AGENT_PROJECT_ID.test(value.projectId);
   }
   if (value.operation === 'merge') {
     return Object.keys(value).length === 2 && isProjectStoreEntries(value.entries);
@@ -28,5 +256,8 @@ export function isProjectStoreRequest(value: unknown): value is ProjectStoreRequ
   if (value.operation === 'set') {
     return Object.keys(value).length === 3 && isProjectStoreKey(value.key) && Object.hasOwn(value, 'value');
   }
+  if (value.operation === 'agent-runtime-cas') return isAgentRuntimeCasRequest(value);
+  if (value.operation === 'project-document-cas') return isProjectDocumentCasRequest(value);
+  if (value.operation === 'agent-run-lease') return isAgentRunLeaseRequest(value);
   return false;
 }

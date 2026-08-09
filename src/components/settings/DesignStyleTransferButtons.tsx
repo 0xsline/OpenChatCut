@@ -6,7 +6,7 @@ import {
   buildDesignStyleRecipe,
   parseDesignStyleRecipe,
 } from '../../persist/designStyleTransfer';
-import { saveOwnedStyle, type OwnedStyle } from '../../persist/projectStore';
+import { saveOwnedStyle, type OwnedStyle } from '../../persist/ownedStyleStore';
 import { theme } from '../../theme';
 
 const MAX_FILE_BYTES = 256 * 1024;

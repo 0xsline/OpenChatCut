@@ -35,6 +35,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added opt-in local music intelligence: downloadable, hash-verified Beat This and CLAP model packs analyze BPM, beats, downbeats, structure, energy, genre, mood, instrumentation, and usage entirely on-device. Media cards expose cached results, automatic analysis is user-controlled, and the Agent can inspect, plan, and atomically apply stale-safe beat-synced cuts through a dedicated skill. Long tracks use bounded windowed rhythm preprocessing and representative semantic sampling.
   新增可选的本地音乐智能：可下载并校验哈希的 Beat This 与 CLAP 模型包完全在端侧分析 BPM、节拍、强拍、段落、能量、流派、情绪、乐器与用途。素材卡可查看缓存结果，导入后自动分析由用户控制；Agent 通过专项技能检查分析、生成方案，并以单次可撤销操作安全执行带分析版本校验的卡点切分。长音频采用有界窗口节奏预处理与代表性语义采样。
 
+- Added a durable Agent harness shared by in-app, Codex, and external MCP runs: persisted run/event/approval/checkpoint/artifact records, safe reload and server-restart recovery, lease-fenced browser/offline editing, resumable proposals, portable project transfer, and a read-only run inspector.
+  新增由应用内 Agent、Codex 与外部 MCP 共用的持久化运行框架：保存运行、事件、审批、上下文检查点与结果归档；支持页面刷新和服务重启后的安全恢复；用租约隔离浏览器与离线编辑；提案可继续处理，工程包可携带恢复状态，并提供只读运行检查器。
+
 ### Changed / 变更
 
 - Reduced Agent token use with request-scoped tool schemas, one-shot `ToolSearch` expansion, bounded tool-result/history compaction, provider prompt-cache hints, and an in-chat system/tool/history/cache usage breakdown.

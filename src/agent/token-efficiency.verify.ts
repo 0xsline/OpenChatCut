@@ -9,6 +9,90 @@ import { docFromTimeline } from '../persist/projectStore';
 import { runCodexAgent } from './codex/runtime';
 import { runApiAgent } from './api-runtime';
 import { resolveModelCapabilities } from '../../shared/model-capabilities';
+import { attachAgentArtifactRef } from './runtime-artifact';
+import { projectLlmMessagesForPersistence } from './useAgentPersistence';
+import type { LLMMessage } from './runtime';
+import type { AgentContextUsage } from './context-compaction';
+
+function verifyArchivedLlmPersistenceProjection(): void {
+  const largePayload = 'nested-large-result-'.repeat(2_000);
+  const liveResult = attachAgentArtifactRef({ payload: largePayload }, {
+    artifactId: 'artifact-nested-persistence',
+    bodySha256: 'a'.repeat(64),
+    originalChars: largePayload.length,
+    storedBytes: largePayload.length,
+    redacted: false,
+    binaryOmitted: false,
+  });
+  const userMessage: LLMMessage = { role: 'user', content: 'Keep this message by identity.' };
+  const toolMessage: LLMMessage = {
+    role: 'tool',
+    content: [{
+      type: 'tool-result',
+      toolCallId: 'nested-artifact-call',
+      toolName: 'read_project',
+      output: { type: 'json', value: { nested: liveResult } },
+    }],
+  };
+  const projected = projectLlmMessagesForPersistence([userMessage, toolMessage]);
+  const savedJson = JSON.stringify(projected);
+  assert.equal(projected[0], userMessage, 'non-tool messages keep their original identity');
+  assert.notEqual(projected[1], toolMessage, 'only the affected tool message is copied');
+  assert.equal(liveResult.payload, largePayload, 'live provider history remains unchanged');
+  assert.equal(savedJson.includes(largePayload), false, 'chat JSON excludes the archived large payload');
+  assert.ok(savedJson.includes('artifact-nested-persistence'), 'chat JSON retains the bounded artifact reference');
+}
+
+function verifySanitizedLlmPersistenceProjection(): void {
+  const accessSecret = 'small-access-token-secret';
+  const skillSecret = 'load-skill-credential-secret';
+  const liveAccessResult = {
+    ok: true,
+    accessToken: accessSecret,
+    error: 'Provider echoed password: small-error-echo-secret',
+  };
+  const liveSkillResult = {
+    skill: 'credential-fixture',
+    contents: {
+      'SKILL.md': `# Credential fixture\nOPENAI_API_KEY=${skillSecret}\nKeep this instruction exact.`,
+    },
+  };
+  const toolMessage: LLMMessage = {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: 'small-secret-call',
+        toolName: 'read_project',
+        output: { type: 'json', value: liveAccessResult },
+      },
+      {
+        type: 'tool-result',
+        toolCallId: 'load-skill-secret-call',
+        toolName: 'load_skill',
+        output: { type: 'json', value: liveSkillResult },
+      },
+    ],
+  };
+  const savedJson = JSON.stringify(projectLlmMessagesForPersistence([toolMessage]));
+  assert.equal(liveAccessResult.accessToken, accessSecret, 'live small result remains exact');
+  assert.equal(
+    liveSkillResult.contents['SKILL.md'].includes(skillSecret),
+    true,
+    'live load_skill transport remains exact for the current request',
+  );
+  assert.doesNotMatch(
+    savedJson,
+    /small-access-token-secret|load-skill-credential-secret|small-error-echo-secret/,
+  );
+  assert.match(savedJson, /OPENAI_API_KEY=\[REDACTED\]/);
+  assert.match(savedJson, /"accessToken":"\[REDACTED\]"/);
+  assert.match(savedJson, /Provider echoed password: \[REDACTED\]/);
+}
+
+
+verifyArchivedLlmPersistenceProjection();
+verifySanitizedLlmPersistenceProjection();
 
 const schema = (name: string): AgentToolSchema => ({
   name,
@@ -115,11 +199,13 @@ const apiChoice = {
 } as const;
 let apiPreparedTools: string[] = [];
 const apiUsage = {
-  inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
-  outputTokens: { total: 1, text: 1, reasoning: undefined },
+  inputTokens: { total: 12, noCache: 5, cacheRead: 7, cacheWrite: undefined },
+  outputTokens: { total: 6, text: 4, reasoning: 2 },
 };
 const apiActivation = new ToolActivation(catalog, [{ role: 'user', content: 'Find a specialized publishing capability.' }]);
 let apiReprepares = 0;
+const persistedApiUsage: AgentContextUsage[] = [];
+const persistedApiToolShapes: string[][] = [];
 const apiResult = await runApiAgent(
   [{ role: 'user', content: 'Find a specialized publishing capability.' }],
   context,
@@ -138,6 +224,15 @@ const apiResult = await runApiAgent(
           : []
       ));
       return { messages: [...messages], compacted: false };
+    },
+    recordProviderContextUsage: async (usage, tools) => {
+      await Promise.resolve();
+      persistedApiUsage.push(usage);
+      persistedApiToolShapes.push(tools.flatMap((tool) => (
+        tool && typeof tool === 'object' && 'name' in tool && typeof tool.name === 'string'
+          ? [tool.name]
+          : []
+      )));
     },
   },
   {
@@ -174,6 +269,20 @@ assert.equal(apiReprepares, 1, 'API re-budgets history after ToolSearch expands 
 assert.ok(apiPreparedTools.includes('submit_export'));
 assert.equal(apiPreparedTools.includes('ToolSearch'), false,
   'API ToolSearch is limited to one discovery round per request');
+assert.equal(persistedApiUsage.length, 2,
+  'each API provider round persists usage before run completion');
+assert.deepEqual(
+  {
+    input: persistedApiUsage.at(-1)?.inputTokens,
+    output: persistedApiUsage.at(-1)?.outputTokens,
+    reasoning: persistedApiUsage.at(-1)?.reasoningTokens,
+    cache: persistedApiUsage.at(-1)?.cacheReadTokens,
+    noCache: persistedApiUsage.at(-1)?.noCacheInputTokens,
+  },
+  { input: 12, output: 6, reasoning: 2, cache: 7, noCache: 5 },
+);
+assert.ok(persistedApiToolShapes.at(-1)?.includes('submit_export'),
+  'API usage persistence receives the expanded request schema shape');
 assert.match(JSON.stringify(apiResult.at(-1)?.content), /API tools are ready\./);
 
 const apiStreamErrors: string[] = [];

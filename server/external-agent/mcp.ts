@@ -37,6 +37,11 @@ import { offlineExternalToolSchemas } from './offline-tools.ts';
 import type { OfflineEditorBinding } from './offline-runtime.ts';
 import { createExternalProject, listExternalProjects } from './projects.ts';
 import { registerMcpPrompts } from './mcp-prompts.ts';
+import {
+  redactTextForAgentRuntime,
+  sanitizeJsonForArtifact,
+} from '../../src/agent/runtime-artifact.ts';
+import { TOOL_ARTIFACT_THRESHOLD } from '../../src/agent/runtime-ledger.ts';
 
 export const OPENCHATCUT_SKILL_BASELINE = '2026-08-01.1';
 export const MCP_SESSION_IDLE_LIMIT_MS = 60 * 60 * 1000;
@@ -181,13 +186,33 @@ async function callTool(
   return invokeEditorTool(session.id, binding, name, args);
 }
 
+function projectMcpReply(value: unknown): unknown {
+  const sanitized = sanitizeJsonForArtifact(value);
+  if (!sanitized) {
+    throw new ExternalEditorCallError(
+      'failed',
+      'The external result could not be serialized safely.',
+    );
+  }
+  if (sanitized.originalChars > TOOL_ARTIFACT_THRESHOLD) {
+    throw new ExternalEditorCallError(
+      'failed',
+      'The external result was too large and no recoverable artifact reference was available.',
+    );
+  }
+  return JSON.parse(sanitized.body);
+}
+
 function toolError(error: unknown): {
   outcome: 'rejected' | 'cancelled' | 'stale' | 'failed';
   message: string;
 } {
+  const message = redactTextForAgentRuntime(
+    error instanceof Error ? error.message : String(error),
+  ).slice(0, 1_200) || 'External tool call failed.';
   return {
     outcome: error instanceof ExternalEditorCallError ? error.outcome : 'failed',
-    message: error instanceof Error ? error.message : String(error),
+    message,
   };
 }
 
@@ -211,7 +236,9 @@ function makeServer(baseUrl: string, session: McpSession): Server {
   registerMcpPrompts(server);
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
-      const result = await callTool(session, request.params.name, request.params.arguments, baseUrl);
+      const result = projectMcpReply(
+        await callTool(session, request.params.name, request.params.arguments, baseUrl),
+      );
       return {
         content: toMcpContent(result),
         structuredContent: toStructuredContent(result),

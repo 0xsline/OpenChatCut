@@ -1,6 +1,6 @@
 // costGuard.verify.ts — paid-tool guard invariants:
 // 1. Every paid API surface is registered in HIGH_COST_TOOLS (no future gaps).
-// 2. High-cost proposals never auto-apply, even in auto/YOLO mode.
+// 2. Auto-apply controls Proposal review only; paid runtime permission stays separate.
 // 3. Authorization memory roundtrips per category/project.
 // 4. Category mapping covers the live tools.
 import assert from 'node:assert/strict';
@@ -36,7 +36,7 @@ for (const name of Object.keys(HIGH_COST_TOOLS)) {
   if (live.has(name)) assert.ok(isHighCostTool(name), `registered but not flagged: ${name}`);
 }
 
-// ── 2. auto-apply never swallows high-cost proposals ──
+// ── 2. proposal auto-apply is independent from paid runtime permission ──
 const proposal = (ops: string[]): Proposal => ({
   title: '',
   summary: '',
@@ -46,10 +46,10 @@ const proposal = (ops: string[]): Proposal => ({
   resultState: undefined as never,
 });
 assert.equal(shouldBlockAutoApply(proposal(['move_item']), true), false, 'ordinary edit auto-applies in YOLO mode');
-assert.equal(shouldBlockAutoApply(proposal(['submit_image']), true), false, 'YOLO mode auto-applies paid generation (user chose full automation)');
-assert.equal(shouldBlockAutoApply(proposal(['transcribe_track']), true), false, 'YOLO mode auto-applies paid transcription');
-assert.equal(shouldBlockAutoApply(proposal(['web_browser']), true), false, 'YOLO mode auto-applies paid scraping');
-assert.equal(shouldBlockAutoApply(proposal(['run_code']), true), false, 'YOLO mode auto-applies paid sandbox');
+assert.equal(shouldBlockAutoApply(proposal(['submit_image']), true), false, 'approved paid result may auto-apply only its reversible proposal');
+assert.equal(shouldBlockAutoApply(proposal(['transcribe_track']), true), false, 'transcription proposal follows the same auto-apply preference');
+assert.equal(shouldBlockAutoApply(proposal(['web_browser']), true), false, 'web proposal follows the same auto-apply preference');
+assert.equal(shouldBlockAutoApply(proposal(['run_code']), true), false, 'sandbox proposal follows the same auto-apply preference');
 assert.equal(shouldBlockAutoApply(proposal(['submit_image']), false), true, 'Ask mode always shows the card');
 assert.equal(shouldBlockAutoApply(proposal(['submit_export']), false), true, 'manual mode always shows the card');
 assert.deepEqual(highCostOps(proposal(['edit_item', 'submit_voice', 'move_item'])), ['submit_voice'], 'highCostOps lists only paid ops');
@@ -78,4 +78,4 @@ assert.equal(costCategoryForTool('web_search'), 'high-cost-operation');
 assert.equal(costCategoryForTool('run_code'), 'high-cost-operation');
 assert.equal(costCategoryForTool('move_item'), null, 'free tools have no guard');
 
-console.log('costGuard.verify: ok (paid-tool registry complete, auto-apply blocked, memory scoped)');
+console.log('costGuard.verify: ok (paid-tool registry complete, proposal auto-apply isolated, memory scoped)');

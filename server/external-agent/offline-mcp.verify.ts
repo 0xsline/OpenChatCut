@@ -166,7 +166,7 @@ try {
   assert.equal(takeoverReview.isError, true);
   assert.equal(resultField(takeoverReview, 'outcome'), 'stale');
   assert.deepEqual((await getStoredEntry(`project:${projectId}`)).value, concurrent);
-  unregisterEditor(projectId, 'browser-owner');
+  await unregisterEditor(projectId, 'browser-owner');
 } finally {
   await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
   resetMcpSessionsForTest();

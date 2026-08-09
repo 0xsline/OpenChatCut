@@ -8,15 +8,18 @@ import {
   listProjects,
   loadChat,
   purgeProject,
-  ProjectIndexCoordinator,
   renameProject,
   resetProjectStoreMemory,
-  SaveCoordinator,
   saveChat,
   updateProjectMeta,
-  type ProjectMeta,
 } from './projectStore';
+import {
+  ProjectIndexCoordinator,
+  SaveCoordinator,
+  type ProjectMeta,
+} from './projectStoreCoordinators';
 import { recoverFailedAutosave } from './autosaveRecovery';
+import { kvKeys, kvSet } from './sharedKv';
 import {
   MAX_AUTOMATIC_VERSIONS,
   listVersions,
@@ -62,12 +65,31 @@ assert.deepEqual(
   [{ name: 'edit_item', reason: 'item not found' }],
   'unresolved Agent tool failures survive chat reloads',
 );
+const projectOwnedKeys = [
+  `agent-runtime:${project.id}`,
+  `agent-artifact:${project.id}:result_01`,
+  `agent-artifact:${project.id}:result_02`,
+  `external-proposal:${project.id}`,
+  `offline-edit-session:${project.id}`,
+  `project-edit-ownership:${project.id}`,
+  `review:${project.id}`,
+];
+for (const key of projectOwnedKeys) await kvSet(key, { marker: key });
+await kvSet('agent-artifact:another-project:keep', { marker: 'unrelated' });
 
 const clearedScopes: string[] = [];
 await purgeProject(project.id, { semanticCleanup: async (scopeId) => { clearedScopes.push(scopeId); } });
 assert.deepEqual(clearedScopes, [project.id], 'permanent purge clears semantic vectors for the project scope');
 assert.deepEqual(await listProjects(), [], 'the final project is permanently deleted');
 assert.equal(await hasProjectHistory(), true, 'deleting the final project must not recreate the demo');
+const keysAfterPurge = await kvKeys();
+for (const key of projectOwnedKeys) {
+  assert.ok(!keysAfterPurge.includes(key), `permanent purge removes ${key}`);
+}
+assert.ok(
+  keysAfterPurge.includes('agent-artifact:another-project:keep'),
+  'project purge does not remove another project sidecar',
+);
 
 const versionProjectId = 'automatic-version-retention-check';
 const manualDoc = versionDoc('Manual');

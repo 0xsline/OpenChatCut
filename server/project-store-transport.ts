@@ -4,11 +4,14 @@ import type {
 } from '../shared/project-store-transport.ts';
 import { isProjectStoreRequest } from '../shared/project-store-validation.ts';
 import {
+  compareAndSwapAgentRuntime,
+  compareAndSwapProjectDocument,
   deleteStoredEntry,
   getStoredEntry,
   mergeStoredEntries,
   readStore,
   setStoredEntry,
+  updateStoredAgentRunLease,
 } from './plugins/project-store.ts';
 
 export async function executeProjectStoreRequest(
@@ -29,11 +32,23 @@ export async function executeProjectStoreRequest(
         entries: projects === undefined ? {} : { projects },
       };
     }
+    case 'agent-runtime-cas':
+      return compareAndSwapAgentRuntime(request);
+    case 'project-document-cas':
+      return compareAndSwapProjectDocument(request);
+    case 'agent-run-lease':
+      return updateStoredAgentRunLease(request);
     case 'set':
+      if (/^project:[a-zA-Z0-9_-]{1,160}$/.test(request.key)) {
+        throw new Error('project document writes require authoritative ownership CAS');
+      }
       await setStoredEntry(request.key, request.value);
       return { ok: true };
     case 'delete':
       await deleteStoredEntry(request.key);
+      return { ok: true };
+    case 'purge-project':
+      await deleteStoredEntry(`project:${request.projectId}`);
       return { ok: true };
   }
 }

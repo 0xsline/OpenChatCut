@@ -3,6 +3,8 @@ import {
   compactToolResultForModel,
   compactToolResultForTransport,
 } from './tool-result-compaction';
+import { codexToolHistoryEntry } from './codex/tool-history';
+
 
 const small = { ok: true, items: [{ id: 'a' }] };
 assert.equal(compactToolResultForModel(small), small);
@@ -40,5 +42,17 @@ const imageResult = compactToolResultForTransport({
   __images: [{ frame: 1, base64 }],
 }, true) as { __images: Array<{ base64: string }> };
 assert.equal(imageResult.__images[0]?.base64, base64, 'Codex image bytes must remain unchanged');
+const exactSkillPage = '中文🙂'.repeat(8_000);
+const skillHistory = codexToolHistoryEntry(
+  { name: 'load_skill', args: { name: 'fixture' } },
+  { success: true, result: { contents: { 'SKILL.md': exactSkillPage }, nextOffset: 32_000 } },
+);
+assert.equal(typeof skillHistory.content, 'string');
+assert.ok(
+  (skillHistory.content as string).includes(exactSkillPage),
+  'Codex history keeps the exact budgeted load_skill page instead of compacting it again',
+);
+assert.doesNotMatch(skillHistory.content as string, /truncatedForModel/);
+
 
 console.log('tool result compaction checks passed');

@@ -61,7 +61,7 @@ try {
     assert(loaded && typeof loaded === 'object' && 'contents' in loaded);
     const contents = (loaded as { contents: Record<string, string> }).contents;
     assert.equal(contents['SKILL.md'], skill.body);
-    assert(Object.keys(contents).length >= 1, 'full load must include every support file');
+    assert.deepEqual(Object.keys(contents), ['SKILL.md'], 'initial load returns only the root workflow');
     const prompt = prompts.creativeModePrompt(skill);
     assert.match(prompt, new RegExp(`name="${skill.slug}"`));
     assert(!prompt.includes(skill.body));
@@ -69,17 +69,26 @@ try {
 
   const withSupport = pluginFiles.PLUGIN_SKILLS.find((skill) => skill.files.length > 0);
   assert(withSupport, 'at least one bundled skill must expose a support file');
+  const initial = loader.execPluginSkillTool('load_skill', { name: withSupport.slug });
+  assert(initial && typeof initial === 'object' && 'contents' in initial && 'omittedFiles' in initial);
+  const initialResult = initial as {
+    contents: Record<string, string>;
+    omittedFiles: string[];
+  };
+  assert.equal(initialResult.contents['SKILL.md'], withSupport.body);
+  assert.deepEqual(
+    initialResult.omittedFiles,
+    [...withSupport.files].sort(),
+    'initial load advertises every support file without injecting its contents',
+  );
   const support = loader.execPluginSkillTool('load_skill', {
     name: withSupport.slug,
     file: withSupport.files[0],
+    offset: 0,
   });
   assert(support && typeof support === 'object' && 'contents' in support);
   const supportContents = (support as { contents: Record<string, string> }).contents;
-  assert(typeof supportContents[withSupport.files[0]], 'string');
-  // full load: every support file of a bundled skill is returned up front
-  for (const file of withSupport.files) {
-    assert(supportContents[file] !== undefined, `full load missing ${file}`);
-  }
+  assert.equal(typeof supportContents[withSupport.files[0]], 'string');
 
   const custom: SkillDefinition = {
     id: 'skill_contract_check',

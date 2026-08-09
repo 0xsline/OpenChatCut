@@ -86,6 +86,10 @@ export type CodexTurnStreamEvent =
       readonly type: 'context-usage';
       readonly inputTokens: number;
       readonly contextWindowTokens?: number;
+      readonly outputTokens?: number;
+      readonly reasoningTokens?: number;
+      readonly cacheReadTokens?: number;
+      readonly noCacheInputTokens?: number;
     }
   | { readonly type: 'error'; readonly message: string }
   | { readonly type: 'done' };

@@ -8,10 +8,10 @@ export const DESIGN_TOOL_SCHEMAS: AgentToolSchema[] = [{
   description: [
     'Manage the project design style (brand). The applied style is the project brand and drives the colors and fonts used for motion graphics and captions.',
     'action: list | get | apply | update | clear | save | delete.',
-    'list returns {catalog (built-in presets), owned (user-saved styles)}; get returns the style applied to the current project;',
-    'apply applies a presetId (built-in or user-saved) or custom designSpec to the project; applyToProject defaults to true;',
-    'update partially changes the current project style; with presetId it can edit a saved style, name, scenario tags, or thumbnail; clear removes the project style;',
-    'save stores designSpec, or the current project style when omitted, in the user library; name is required and scenarios/thumbnailUrl are optional; delete removes a saved style by presetId; built-in presets cannot be deleted.',
+    'list and get are read-only and never need approval; apply/clear and update without presetId change only the reversible ProjectDoc.',
+    'apply applies a presetId (built-in or user-saved) or custom designSpec to the project; applyToProject defaults to true.',
+    'save, delete, and update with presetId mutate the persistent global “My Style” library and always require a durable confirmation before execution.',
+    'save stores designSpec, or the current project style when omitted, in the user library; name is required and scenarios/thumbnailUrl are optional; built-in presets cannot be updated or deleted.',
     'designSpec/patch shape: {colors:[{role,value}], fonts:[{family,role}], styleGuide}.',
     `role is free-form, for example "accent copper", "text secondary", or "Chinese heading". Common color roles: ${COLOR_ROLES.join('/')}; font roles: ${FONT_ROLES.join('/')}; other roles are allowed.`,
     'styleGuide may contain detailed motion, spring, and stagger specifications.',
@@ -19,6 +19,7 @@ export const DESIGN_TOOL_SCHEMAS: AgentToolSchema[] = [{
   ].join(' '),
   input_schema: {
     type: 'object',
+    additionalProperties: false,
     properties: {
       action: { type: 'string', enum: ['list', 'get', 'apply', 'update', 'clear', 'save', 'delete'] },
       presetId: { type: 'string', description: 'apply/delete: style id from a built-in or user-saved style; call list first.' },

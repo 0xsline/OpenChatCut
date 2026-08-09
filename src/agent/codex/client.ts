@@ -15,6 +15,11 @@ type JsonRecord = Record<string, unknown>;
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+function optionalTokenCount(value: unknown): boolean {
+  return value === undefined
+    || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
+}
+
 
 function isStreamEvent(value: unknown): value is CodexTurnStreamEvent {
   if (!isRecord(value) || typeof value.type !== 'string') return false;
@@ -34,10 +39,15 @@ function isStreamEvent(value: unknown): value is CodexTurnStreamEvent {
   if (value.type === 'context-usage') {
     const contextWindow = value.contextWindowTokens;
     return typeof value.inputTokens === 'number'
-      && Number.isFinite(value.inputTokens)
+      && Number.isSafeInteger(value.inputTokens)
       && value.inputTokens >= 0
+      && optionalTokenCount(value.outputTokens)
+      && optionalTokenCount(value.reasoningTokens)
+      && optionalTokenCount(value.cacheReadTokens)
+      && optionalTokenCount(value.noCacheInputTokens)
       && (contextWindow === undefined
-        || (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0));
+        || (typeof contextWindow === 'number' && Number.isSafeInteger(contextWindow)
+          && contextWindow > 0));
   }
   if (value.type === 'error') return typeof value.message === 'string';
   return value.type === 'done';

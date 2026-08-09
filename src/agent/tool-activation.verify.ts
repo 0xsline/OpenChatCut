@@ -156,12 +156,29 @@ const discoveryRouted = new ToolActivation(catalog, [
 ]);
 assert.ok(
   discoveryRouted.names().includes('list_audio'),
-  'domain-specific capability discovery avoids an extra ToolSearch round',
+  'domain-specific capability discovery exposes directly routed tools',
 );
 assert.equal(
   discoveryRouted.names().includes('ToolSearch'),
+  true,
+  'explicit capability discovery retains ToolSearch for deferred catalog coverage',
+);
+const overflowDiscovery = new ToolActivation(catalog, [{
+  role: 'user',
+  content: 'What tools are available for captions, audio, export, project, and web workflows?',
+}]);
+assert.ok(overflowDiscovery.names().includes('ToolSearch'));
+assert.equal(
+  overflowDiscovery.names().includes('web_crawl'),
   false,
-  'routed capability discovery cannot trigger a redundant search round',
+  'the fifth matched routing group remains deferred by the four-group cap',
+);
+const overflowSearch = overflowDiscovery.withSearchResult({
+  results: [{ name: 'web_crawl', description: 'crawl web pages' }],
+});
+assert.ok(
+  overflowSearch.activation.names().includes('web_crawl'),
+  'ToolSearch preserves a discovery path to a group omitted by routing overflow',
 );
 
 const neutralSearch = neutral.withSearchResult({

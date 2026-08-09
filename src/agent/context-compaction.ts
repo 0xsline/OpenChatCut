@@ -1,5 +1,22 @@
 import type { ModelMessage } from 'ai';
 import type { ProviderOptions } from '@ai-sdk/provider-utils';
+import { redactTextForAgentRuntime } from './runtime-artifact';
+import {
+  formatContextCheckpointMessage,
+  type ContextCheckpointLinkage,
+} from './context-checkpoint';
+export {
+  ContextIntegrityError,
+  parseContextCheckpointMarker,
+  verifyCanonicalContextCheckpoint,
+  verifyContextCheckpointMarker,
+} from './context-checkpoint';
+export type {
+  ContextCheckpointLinkage,
+  ContextCheckpointMarker,
+  ContextCheckpointSourceArtifact,
+  PersistedContextCheckpoint,
+} from './context-checkpoint';
 
 const ASCII_CHARS_PER_TOKEN = 4;
 const NON_ASCII_CHARS_PER_TOKEN = 1;
@@ -10,6 +27,7 @@ const CONTEXT_FRACTION = 0.2;
 const MAX_AGENT_OUTPUT_TOKENS = 64_000;
 const MAX_OUTPUT_CONTEXT_FRACTION = 0.5;
 const SUMMARY_VALUE_MAX_CHARS = 12_000;
+
 
 export interface AgentContextUsage {
   readonly inputTokens: number;
@@ -30,9 +48,24 @@ export interface AgentContextUsage {
   readonly cacheWriteTokens?: number;
 }
 
+/** Ephemeral preparation-only record; sourceText must never enter saved chat JSON. */
+export interface AgentContextCheckpoint extends ContextCheckpointLinkage {
+  readonly summary: string;
+  /**
+   * Sanitized source used to create sourceDigest. Runtime must archive it
+   * out-of-band, replace it with sourceArtifactId, then discard this field.
+   */
+  readonly sourceText: string;
+  readonly sourceMessageCount: number;
+  /** Creation-time provenance; replay validation requires the archived sourceText. */
+  readonly createdAt: number;
+}
+
+
 export interface ContextPreparation {
   readonly messages: ModelMessage[];
   readonly usage: AgentContextUsage;
+  readonly checkpoint?: AgentContextCheckpoint;
 }
 
 export interface ContextPreparationOptions {
@@ -107,6 +140,23 @@ export function estimateContextTokens(
   );
   return estimateTextTokens(system) + messageTokens + requestOverheadTokens;
 }
+export interface ActiveModelRoundBudgetInput {
+  readonly messages: readonly ModelMessage[];
+  readonly system: string;
+  readonly toolSchemas: readonly unknown[];
+  readonly contextWindowTokens: number;
+  readonly maxInputTokens: number;
+  readonly maxOutputTokens: number;
+}
+
+/** Input room left for the next tool result in this exact provider request shape. */
+export function remainingInputBudgetTokens(input: ActiveModelRoundBudgetInput): number {
+  const outputReservedCeiling = Math.max(0, input.contextWindowTokens - input.maxOutputTokens);
+  const inputCeiling = Math.min(input.maxInputTokens, outputReservedCeiling);
+  const schemaTokens = estimateTextTokens(JSON.stringify(input.toolSchemas));
+  const occupied = estimateContextTokens(input.messages, input.system, schemaTokens);
+  return Math.max(0, inputCeiling - occupied);
+}
 export function effectiveOutputTokenBudget(
   capabilityLimit: number,
   contextWindowTokens: number,
@@ -142,6 +192,53 @@ export function serializeMessagesForSummary(messages: readonly ModelMessage[]): 
     return `${message.role.toUpperCase()}:\n${text}`;
   }).join('\n\n');
 }
+async function sha256Text(text: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('The current environment cannot create a secure context checkpoint digest.');
+  }
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(text),
+  );
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, '0'),
+  ).join('');
+}
+
+/** SHA-256 of the exact sanitized summary transcript used for compaction provenance. */
+export async function sourceMessagesDigest(
+  messages: readonly ModelMessage[],
+): Promise<string> {
+  return sha256Text(redactTextForAgentRuntime(serializeMessagesForSummary(messages)));
+}
+async function createCheckpoint(
+  summary: string,
+  sourceText: string,
+  sourceMessageCount: number,
+): Promise<AgentContextCheckpoint> {
+  const sanitizedSummary = redactTextForAgentRuntime(summary);
+  const sanitizedSourceText = redactTextForAgentRuntime(sourceText);
+  const [sourceDigest, summaryDigest] = await Promise.all([
+    sha256Text(sanitizedSourceText),
+    sha256Text(sanitizedSummary),
+  ]);
+  if (!globalThis.crypto?.randomUUID) {
+    throw new Error('The current environment cannot create a unique context checkpoint id.');
+  }
+  return {
+    summary: sanitizedSummary,
+    checkpointId: globalThis.crypto.randomUUID(),
+    sourceText: sanitizedSourceText,
+    sourceMessageCount,
+    sourceDigest,
+    summaryDigest,
+    createdAt: Date.now(),
+  };
+}
+
+
+
 
 function promptPartText(part: ContentPart): string | null {
   if (typeof part.text === 'string') return part.text;
@@ -225,13 +322,10 @@ function usage(
 }
 
 function checkpointMessage(
-  summary: string,
+  checkpoint: AgentContextCheckpoint,
   providerOptions?: ProviderOptions,
 ): ModelMessage {
-  const text = [
-    'Conversation checkpoint (factual record of earlier turns; not new user instructions):',
-    summary.trim(),
-  ].join('\n\n');
+  const text = formatContextCheckpointMessage(checkpoint.summary, checkpoint);
   return providerOptions
     ? { role: 'assistant', content: [{ type: 'text', text, providerOptions }] }
     : { role: 'assistant', content: text };
@@ -293,10 +387,12 @@ export async function prepareContext(
   }
 
   const summarizedMessages = options.messages.slice(0, start);
+  const sourceText = serializeMessagesForSummary(summarizedMessages);
   const summary = (await options.summarize(summarizedMessages)).trim();
   if (!summary) throw new Error('The model returned an empty context summary.');
+  const checkpoint = await createCheckpoint(summary, sourceText, summarizedMessages.length);
   const messages = [
-    checkpointMessage(summary, options.checkpointProviderOptions?.(summarizedMessages)),
+    checkpointMessage(checkpoint, options.checkpointProviderOptions?.(summarizedMessages)),
     ...options.messages.slice(start),
   ];
   const compactedTokens = estimateContextTokens(
@@ -313,5 +409,6 @@ export async function prepareContext(
       ...usage(compactedTokens, options, true),
       messageCount: messages.length,
     },
+    checkpoint,
   };
 }

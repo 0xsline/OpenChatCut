@@ -1,5 +1,6 @@
 import type { AgentToolSchema } from './tool-schema';
 import type { AgentContext } from './context';
+import type { HarnessToolExecutionContext } from './harness-context';
 import { CORE_TOOL_SCHEMAS } from './tools/schemas/core-tools';
 import { AUDIO_ASSET_TOOL_NAMES } from './tools/schemas/audio-asset-tools';
 import { SCENE_QUALITY_TOOL_NAMES, SCENE_QUALITY_TOOL_SCHEMAS } from './tools/schemas/scene-quality-tools';
@@ -58,12 +59,17 @@ import {
   MUSIC_INTELLIGENCE_TOOL_SCHEMAS,
 } from './tools/schemas/music-intelligence-tools';
 import { withProgressTargets } from './tools/schemas/progress';
+import {
+  AGENT_RUNTIME_TOOL_NAMES,
+  AGENT_RUNTIME_TOOL_SCHEMAS,
+} from './tools/schemas/agent-runtime-tools';
 
 // Canonical tool definitions (name / description / JSON input_schema). Each one
 // executes against the EditorCore command layer (tool == command). Vercel AI SDK
 // adapts this existing JSON-schema catalog to the selected model provider.
 export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...CORE_TOOL_SCHEMAS,
+  ...AGENT_RUNTIME_TOOL_SCHEMAS,
   // transcript / captions / delete-text-=-delete-video (transcribe, find_transcript, clean_script, apply_script, edit_captions)
   ...TRANSCRIPT_TOOL_SCHEMAS,
   // multi-timeline management (manage_timelines: list/create/duplicate/switch/update/delete)
@@ -189,7 +195,12 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
 
 type Args = Record<string, unknown>;
 
-type ToolExecutor = (name: string, args: Args, ctx: AgentContext) => unknown | Promise<unknown>;
+type ToolExecutor = (
+  name: string,
+  args: Args,
+  ctx: AgentContext,
+  harness?: HarnessToolExecutionContext,
+) => unknown | Promise<unknown>;
 type ToolExecutorLoader = () => Promise<ToolExecutor>;
 
 // Tool-name-selected literal imports keep Vite's chunk graph finite and
@@ -253,6 +264,9 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
   ).execMusicIntelligenceTool],
   [AUDIO_ASSET_TOOL_NAMES, async () => (await import('./tools/audio-asset-tools')).execAudioAssetTool],
   [SCENE_QUALITY_TOOL_NAMES, async () => (await import('./tools/scene-quality-tools')).execSceneQualityTool],
+  [AGENT_RUNTIME_TOOL_NAMES, async () => (
+    await import('./tools/agent-runtime-tools')
+  ).execAgentRuntimeTool],
 ];
 
 const EXECUTOR_BY_NAME = new Map<string, ToolExecutorLoader>();
@@ -261,20 +275,21 @@ for (const [names, load] of EXECUTOR_GROUPS) {
 }
 
 
-// Execute a tool call against the live editor. Schema validation remains in the
-// AI SDK tool wrapper; executor modules are selected only after a validated call.
+// Low-level dispatch only. Every runtime caller must pass the active schema and
+// validated args through executeOpenChatCutTool (or the shared invocation validator).
 export async function executeTool(
   name: string,
   args: Args,
   ctx: AgentContext,
   searchCatalog: readonly AgentToolSchema[] = TOOL_SCHEMAS,
+  harness?: HarnessToolExecutionContext,
 ): Promise<unknown> {
   if (name === 'track_progress') {
     const { execProgressTool } = await import('./tools/progress-tools');
     return execProgressTool(name, args, ctx);
   }
   const loadExecutor = EXECUTOR_BY_NAME.get(name);
-  if (loadExecutor) return (await loadExecutor())(name, args, ctx);
+  if (loadExecutor) return (await loadExecutor())(name, args, ctx, harness);
   const { execCoreTool } = await import('./tools/core-tools');
   return execCoreTool(name, args, ctx, searchCatalog);
 }

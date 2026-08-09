@@ -11,6 +11,7 @@ const SESSION_STORAGE_KEY = 'openchatcut.projectStoreSession';
 let launchToken: string | null | undefined;
 let sessionToken: string | null | undefined;
 let sessionPromise: Promise<string> | null = null;
+const browserOwnerships = new Map<string, BrowserProjectOwnership>();
 
 interface StoredSession {
   token: string;
@@ -19,6 +20,40 @@ interface StoredSession {
 
 interface DesktopProjectStoreTransport {
   projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
+}
+
+export interface BrowserProjectOwnership {
+  readonly projectId: string;
+  readonly ownerId: string;
+  readonly epoch: number;
+  readonly baseRevision: string;
+  readonly registrationCapability: string;
+}
+
+export function installBrowserProjectOwnership(ownership: BrowserProjectOwnership): void {
+  browserOwnerships.set(ownership.projectId, ownership);
+}
+
+export function browserProjectOwnership(projectId: string): BrowserProjectOwnership | undefined {
+  return browserOwnerships.get(projectId);
+}
+
+export function advanceBrowserProjectOwnership(
+  ownership: BrowserProjectOwnership,
+  baseRevision: string,
+): BrowserProjectOwnership | undefined {
+  const current = browserOwnerships.get(ownership.projectId);
+  if (current?.ownerId !== ownership.ownerId || current.epoch !== ownership.epoch) return undefined;
+  const advanced = { ...current, baseRevision };
+  browserOwnerships.set(ownership.projectId, advanced);
+  return advanced;
+}
+
+export function clearBrowserProjectOwnership(ownership: BrowserProjectOwnership): void {
+  const current = browserOwnerships.get(ownership.projectId);
+  if (current?.ownerId === ownership.ownerId && current.epoch === ownership.epoch) {
+    browserOwnerships.delete(ownership.projectId);
+  }
 }
 
 function desktopTransport(): DesktopProjectStoreTransport | undefined {
@@ -118,6 +153,15 @@ export function projectStoreRemoteAvailable(): boolean {
   return !!desktopTransport() || httpAvailable();
 }
 
+function postJson(
+  init: RequestInit,
+  headers: Record<string, string>,
+  value: unknown,
+): RequestInit {
+  headers['Content-Type'] = 'application/json';
+  return { ...init, method: 'POST', body: JSON.stringify(value) };
+}
+
 async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreResponse> {
   const session = await ensureHttpSession();
   const headers: Record<string, string> = { [SESSION_HEADER]: session };
@@ -131,8 +175,19 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
       break;
     case 'merge':
       path = '/merge';
-      headers['Content-Type'] = 'application/json';
-      init = { ...init, method: 'POST', body: JSON.stringify({ entries: request.entries }) };
+      init = postJson(init, headers, { entries: request.entries });
+      break;
+    case 'agent-runtime-cas':
+      path = '/agent-runtime/cas';
+      init = postJson(init, headers, request);
+      break;
+    case 'project-document-cas':
+      path = '/project-document/cas';
+      init = postJson(init, headers, request);
+      break;
+    case 'agent-run-lease':
+      path = '/agent-runtime/lease';
+      init = postJson(init, headers, request);
       break;
     case 'set':
       path = '/entry';
@@ -142,6 +197,10 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
     case 'delete':
       path = `/entry?key=${encodeURIComponent(request.key)}`;
       init = { ...init, method: 'DELETE' };
+      break;
+    case 'purge-project':
+      path = '/project/purge';
+      init = postJson(init, headers, request);
       break;
   }
   const response = await fetch(`${API_PATH}${path}`, init);
@@ -166,6 +225,7 @@ export function resetProjectStoreTransport(): void {
   launchToken = undefined;
   sessionToken = undefined;
   sessionPromise = null;
+  browserOwnerships.clear();
   try {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
   } catch {

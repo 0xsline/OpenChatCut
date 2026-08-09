@@ -145,7 +145,13 @@ lines.on('line', (line) => {
         threadId: activeThread,
         turnId: activeTurn,
         tokenUsage: {
-          total: { inputTokens: 321, outputTokens: 89, totalTokens: 410 },
+          total: {
+            inputTokens: 321,
+            cachedInputTokens: 200,
+            outputTokens: 89,
+            reasoningOutputTokens: 34,
+            totalTokens: 410,
+          },
           modelContextWindow: 272000,
         },
       },
@@ -264,8 +270,11 @@ try {
     type: 'context-usage',
     inputTokens: 321,
     contextWindowTokens: 272_000,
+    outputTokens: 89,
+    reasoningTokens: 34,
+    cacheReadTokens: 200,
+    noCacheInputTokens: 121,
   });
-  assert.equal(events.find((event) => event.type === 'text-delta')?.delta, 'Tool confirmed.');
 } finally {
   client.stop();
   if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;

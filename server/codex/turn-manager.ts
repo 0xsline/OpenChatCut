@@ -61,11 +61,23 @@ function contextUsageEvent(
   const usage = object(params.tokenUsage);
   const total = object(usage?.total);
   const inputTokens = tokenCount(total?.inputTokens);
+  const outputTokens = tokenCount(total?.outputTokens);
+  const reasoningTokens = tokenCount(total?.reasoningOutputTokens);
+  const cacheReadTokens = tokenCount(total?.cachedInputTokens);
   const contextWindowTokens = tokenCount(usage?.modelContextWindow);
-  return inputTokens === null ? null : {
+  if (inputTokens === null) return null;
+  const validCache = cacheReadTokens !== null && cacheReadTokens <= inputTokens
+    ? cacheReadTokens : undefined;
+  return {
     type: 'context-usage',
     inputTokens,
     ...(contextWindowTokens && contextWindowTokens > 0 ? { contextWindowTokens } : {}),
+    ...(outputTokens === null ? {} : { outputTokens }),
+    ...(reasoningTokens === null ? {} : { reasoningTokens }),
+    ...(validCache === undefined ? {} : {
+      cacheReadTokens: validCache,
+      noCacheInputTokens: inputTokens - validCache,
+    }),
   };
 }
 

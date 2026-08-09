@@ -4,6 +4,7 @@ import {
   type ExternalRegisteredTool,
 } from '../../src/agent/external-tool-shape.js';
 import { isExternalServerDirectTool } from '../../src/agent/external-tool-policy.js';
+import { AGENT_RUNTIME_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/agent-runtime-tools.js';
 import { CORE_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/core-tools.js';
 import { CAPTIONS_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/captions-tools.js';
 import { MARKERS_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/markers-tools.js';
@@ -21,6 +22,7 @@ const OFFLINE_TOOL_DESCRIPTIONS: Record<string, string> = {
 };
 
 const OFFLINE_SCHEMA_GROUPS = [
+  AGENT_RUNTIME_TOOL_SCHEMAS,
   CORE_TOOL_SCHEMAS,
   TIMELINE_TOOL_SCHEMAS,
   TRACK_TOOL_SCHEMAS,

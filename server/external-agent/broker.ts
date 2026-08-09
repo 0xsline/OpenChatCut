@@ -1,49 +1,23 @@
 import { randomUUID } from 'node:crypto';
+import type { ProjectEditOwnershipClaim } from './project-edit-ownership.ts';
+import {
+  EditorConnectionRegistry,
+  sameEditorBinding as sameBinding,
+  sameEditorIdentity,
+} from './broker-registry.ts';
+import {
+  ExternalEditorCallError,
+  type EditorBinding,
+  type ExternalCallTerminalOutcome,
+  type ExternalToolSchema,
+} from './broker-types.ts';
 
-export interface ExternalToolSchema {
-  name: string;
-  description?: string;
-  annotations?: {
-    readOnlyHint?: boolean;
-    destructiveHint?: boolean;
-    idempotentHint?: boolean;
-    openWorldHint?: boolean;
-  };
-  input_schema: {
-    type: 'object';
-    properties?: Record<string, unknown>;
-    required?: string[];
-    [key: string]: unknown;
-  };
-}
-
-export interface EditorBinding {
-  projectId: string;
-  editorInstanceId: string;
-  baseRevision: string;
-}
-
-export type ExternalCallTerminalOutcome =
-  | 'applied'
-  | 'rejected'
-  | 'cancelled'
-  | 'stale'
-  | 'failed';
-
-export class ExternalEditorCallError extends Error {
-  readonly outcome: Exclude<ExternalCallTerminalOutcome, 'applied'>;
-
-  constructor(outcome: Exclude<ExternalCallTerminalOutcome, 'applied'>, message: string) {
-    super(message);
-    this.name = 'ExternalEditorCallError';
-    this.outcome = outcome;
-  }
-}
-
-interface EditorRegistration extends EditorBinding {
-  lastSeen: number;
-  tools: ExternalToolSchema[];
-}
+export { ExternalEditorCallError } from './broker-types.ts';
+export type {
+  EditorBinding,
+  ExternalCallTerminalOutcome,
+  ExternalToolSchema,
+} from './broker-types.ts';
 
 interface EditSessionOwner {
   ownerId: string;
@@ -76,37 +50,17 @@ export interface ExternalEditorCancellation {
   message: string;
 }
 
-const ONLINE_MS = 35_000;
 const DEFAULT_TIMEOUT_MS = 180_000;
 const MAX_TIMEOUT_MS = 600_000;
-const editors = new Map<string, EditorRegistration>();
 const queues = new Map<string, QueuedCall[]>();
 const pending = new Map<string, QueuedCall>();
 const waiters = new Map<string, Set<() => void>>();
 const editSessionOwners = new Map<string, EditSessionOwner>();
 const cancellationQueues = new Map<string, ExternalEditorCancellation[]>();
 const cancellationWaiters = new Map<string, Set<() => void>>();
-const toolChangeListeners = new Set<() => void>();
 
 const editorKey = (projectId: string, editorInstanceId: string) => `${projectId}\u0000${editorInstanceId}`;
 
-function sameBinding(left: EditorBinding, right: EditorBinding): boolean {
-  return left.projectId === right.projectId
-    && left.editorInstanceId === right.editorInstanceId
-    && left.baseRevision === right.baseRevision;
-}
-function sameEditorIdentity(left: EditorBinding, right: EditorBinding): boolean {
-  return left.projectId === right.projectId
-    && left.editorInstanceId === right.editorInstanceId;
-}
-
-function bindingOf(editor: EditorRegistration): EditorBinding {
-  return {
-    projectId: editor.projectId,
-    editorInstanceId: editor.editorInstanceId,
-    baseRevision: editor.baseRevision,
-  };
-}
 
 function wake(waiterMap: Map<string, Set<() => void>>, key: string): void {
   for (const waiter of waiterMap.get(key) ?? []) waiter();
@@ -139,10 +93,6 @@ function waitForWake(
   });
 }
 
-function announceToolsIfChanged(before: string): void {
-  if (JSON.stringify(registeredTools()) === before) return;
-  for (const listener of toolChangeListeners) listener();
-}
 
 function removeQueuedCall(call: QueuedCall): void {
   if (call.state !== 'queued') return;
@@ -225,118 +175,101 @@ function cancelCalls(
   return count;
 }
 
-export function registerEditor(
-  projectId: string,
-  editorInstanceId: string,
-  baseRevision: string,
-  tools: ExternalToolSchema[],
-): void {
-  const before = JSON.stringify(registeredTools());
-  const previous = editors.get(projectId);
-  if (previous && (
-    previous.editorInstanceId !== editorInstanceId
-    || previous.baseRevision !== baseRevision
-  )) {
-    const oldBinding = bindingOf(previous);
+const registry = new EditorConnectionRegistry({
+  bindingReplaced(binding, sameEditor) {
     cancelCalls(
-      (call) => previous.editorInstanceId === editorInstanceId
-        ? sameBinding(call.binding, oldBinding) && !call.allowRevisionDrift
-        : sameEditorIdentity(call.binding, oldBinding),
-      previous.editorInstanceId === editorInstanceId ? 'stale' : 'cancelled',
-      previous.editorInstanceId === editorInstanceId
-        ? `Project ${projectId} changed while the editor call was pending.`
-        : `Editor ${previous.editorInstanceId} closed or switched projects.`,
+      (call) => sameEditor
+        ? sameBinding(call.binding, binding) && !call.allowRevisionDrift
+        : sameEditorIdentity(call.binding, binding),
+      sameEditor ? 'stale' : 'cancelled',
+      sameEditor
+        ? `Project ${binding.projectId} changed while the editor call was pending.`
+        : `Editor ${binding.editorInstanceId} closed or switched projects.`,
     );
-  }
-  editors.set(projectId, {
+  },
+  revisionChanged(binding) {
+    cancelCalls(
+      (call) => sameBinding(call.binding, binding) && !call.allowRevisionDrift,
+      'stale',
+      `Project ${binding.projectId} changed while the editor call was pending.`,
+    );
+  },
+  editorRemoved(binding) {
+    cancelCalls(
+      (call) => sameEditorIdentity(call.binding, binding),
+      'cancelled',
+      `Editor ${binding.editorInstanceId} closed or switched projects.`,
+    );
+  },
+  wakeProject(projectId) {
+    wake(waiters, projectId);
+  },
+  hasInFlightCall(projectId) {
+    return [...pending.values()].some((call) => (
+      call.binding.projectId === projectId && call.state === 'in_flight'
+    ));
+  },
+});
+
+export function registerEditor(
+  projectId: string, editorInstanceId: string,
+  baseRevision: string, tools: ExternalToolSchema[],
+  ownership?: ProjectEditOwnershipClaim,
+  registrationCapability?: string | null,
+): string {
+  return registry.register(
     projectId,
     editorInstanceId,
     baseRevision,
-    lastSeen: Date.now(),
     tools,
-  });
-  announceToolsIfChanged(before);
-  wake(waiters, projectId);
+    ownership,
+    registrationCapability,
+  );
 }
 
-export function unregisterEditor(projectId: string, editorInstanceId: string): boolean {
-  const editor = editors.get(projectId);
-  if (!editor || editor.editorInstanceId !== editorInstanceId) return false;
-  const before = JSON.stringify(registeredTools());
-  const binding = bindingOf(editor);
-  editors.delete(projectId);
-  cancelCalls(
-    (call) => sameEditorIdentity(call.binding, binding),
-    'cancelled',
-    `Editor ${editorInstanceId} closed or switched projects.`,
-  );
-  announceToolsIfChanged(before);
-  wake(waiters, projectId);
-  return true;
+export function editorRegistrationMatches(
+  projectId: string, editorInstanceId: string,
+  registrationCapability: string | null | undefined,
+): boolean {
+  return registry.registrationMatches(projectId, editorInstanceId, registrationCapability);
+}
+
+export function unregisterEditor(
+  projectId: string, editorInstanceId: string,
+  registrationCapability?: string | null,
+): Promise<boolean> {
+  return registry.unregister(projectId, editorInstanceId, registrationCapability);
 }
 
 export function onRegisteredToolsChanged(listener: () => void): () => void {
-  toolChangeListeners.add(listener);
-  return () => toolChangeListeners.delete(listener);
+  return registry.onToolsChanged(listener);
 }
 
 export function touchEditor(
-  projectId: string,
-  editorInstanceId: string,
-  baseRevision?: string,
-): boolean {
-  const editor = editors.get(projectId);
-  if (!editor || editor.editorInstanceId !== editorInstanceId) return false;
-  if (baseRevision && editor.baseRevision !== baseRevision) {
-    const previous = bindingOf(editor);
-    editor.baseRevision = baseRevision;
-    cancelCalls(
-      (call) => sameBinding(call.binding, previous) && !call.allowRevisionDrift,
-      'stale',
-      `Project ${projectId} changed while the editor call was pending.`,
-    );
-  }
-  editor.lastSeen = Date.now();
-  return true;
+  projectId: string, editorInstanceId: string,
+  baseRevision?: string, registrationCapability?: string | null,
+): Promise<boolean> {
+  return registry.touch(projectId, editorInstanceId, baseRevision, registrationCapability);
 }
 
 export function editorBinding(projectId: string): EditorBinding | null {
-  const editor = editors.get(projectId);
-  return editor ? bindingOf(editor) : null;
+  return registry.binding(projectId);
 }
 
 export function editorBindingMatches(binding: EditorBinding): boolean {
-  const current = editorBinding(binding.projectId);
-  return Boolean(
-    current
-    && sameBinding(current, binding)
-    && isProjectConnected(binding.projectId),
-  );
-}
-export function editorBindingIdentityMatches(binding: EditorBinding): boolean {
-  const current = editorBinding(binding.projectId);
-  return Boolean(
-    current
-    && sameEditorIdentity(current, binding)
-    && isProjectConnected(binding.projectId),
-  );
+  return registry.bindingMatches(binding);
 }
 
+export function editorBindingIdentityMatches(binding: EditorBinding): boolean {
+  return registry.identityMatches(binding);
+}
 
 export function connectedProjectIds(): string[] {
-  const now = Date.now();
-  return [...editors.entries()]
-    .filter(([projectId]) => isProjectConnected(projectId, now))
-    .map(([projectId]) => projectId);
+  return registry.connectedProjectIds();
 }
 
 export function isProjectConnected(projectId: string, now = Date.now()): boolean {
-  const editor = editors.get(projectId);
-  if (!editor) return false;
-  if (now - editor.lastSeen < ONLINE_MS) return true;
-  return [...pending.values()].some((call) => (
-    call.binding.projectId === projectId && call.state === 'in_flight'
-  ));
+  return registry.isConnected(projectId, now);
 }
 
 export function editorStatuses(): Array<{
@@ -346,19 +279,11 @@ export function editorStatuses(): Array<{
   connected: boolean;
   toolCount: number;
 }> {
-  const now = Date.now();
-  return [...editors.entries()].map(([projectId, editor]) => ({
-    projectId,
-    editorId: editor.editorInstanceId,
-    baseRevision: editor.baseRevision,
-    connected: isProjectConnected(projectId, now),
-    toolCount: editor.tools.length,
-  }));
+  return registry.statuses();
 }
 
 export function registeredTools(): ExternalToolSchema[] {
-  const first = editors.values().next().value as EditorRegistration | undefined;
-  return first?.tools ?? [];
+  return registry.tools();
 }
 
 export function editSessionOwnerMatches(
@@ -387,6 +312,19 @@ function requireOwnedEditSession(
   );
 }
 
+function requireCurrentBinding(binding: EditorBinding, allowRevisionDrift: boolean): void {
+  // Terminal status reads may use the original editor identity after apply
+  // advances the revision; every mutation remains pinned to the exact binding.
+  const matches = allowRevisionDrift
+    ? editorBindingIdentityMatches(binding)
+    : editorBindingMatches(binding);
+  if (matches) return;
+  throw new ExternalEditorCallError(
+    'stale',
+    `MCP session binding for project ${binding.projectId} is stale. Re-initialize the MCP session.`,
+  );
+}
+
 export function invokeEditorTool(
   ownerId: string,
   binding: EditorBinding,
@@ -395,22 +333,10 @@ export function invokeEditorTool(
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<unknown> {
   const allowRevisionDrift = name === 'get_edit_session';
-  const discardAnyTransport = name === 'discard_edit_session';
-  // discard is a cross-transport release: a reconnecting client must be able
-  // to drop a stale session that blocks a new begin, even when it belongs to
-  // another transport. The editor-side discard never writes the project.
-  if (name !== 'begin_edit_session' && !discardAnyTransport && 'editSessionId' in args) {
+  if (name !== 'begin_edit_session' && 'editSessionId' in args) {
     requireOwnedEditSession(ownerId, binding, args);
   }
-  const bindingMatches = allowRevisionDrift || discardAnyTransport
-    ? editorBindingIdentityMatches(binding)
-    : editorBindingMatches(binding);
-  if (!bindingMatches) {
-    throw new ExternalEditorCallError(
-      'stale',
-      `MCP session binding for project ${binding.projectId} is stale. Re-initialize the MCP session.`,
-    );
-  }
+  requireCurrentBinding(binding, allowRevisionDrift);
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + Math.min(MAX_TIMEOUT_MS, Math.max(1_000, timeoutMs));
     const call: QueuedCall = {
@@ -475,13 +401,24 @@ export async function nextEditorCall(
   editorInstanceId: string,
   baseRevision: string,
   signal: AbortSignal,
+  registrationCapability?: string | null,
 ): Promise<ExternalEditorCall | null> {
-  if (!touchEditor(projectId, editorInstanceId, baseRevision)) return null;
+  if (!(await touchEditor(
+    projectId,
+    editorInstanceId,
+    baseRevision,
+    registrationCapability,
+  ))) return null;
   let binding = editorBinding(projectId);
   let call = binding ? takeNextCall(projectId, binding) : undefined;
   if (!call) {
     await waitForWake(waiters, projectId, signal, 25_000);
-    if (signal.aborted || !touchEditor(projectId, editorInstanceId, baseRevision)) return null;
+    if (signal.aborted || !(await touchEditor(
+      projectId,
+      editorInstanceId,
+      baseRevision,
+      registrationCapability,
+    ))) return null;
     binding = editorBinding(projectId);
     call = binding ? takeNextCall(projectId, binding) : undefined;
   }
@@ -498,11 +435,16 @@ export async function nextEditorCancellation(
   projectId: string,
   editorInstanceId: string,
   signal: AbortSignal,
+  registrationCapability?: string | null,
 ): Promise<ExternalEditorCancellation | null> {
+  if (registrationCapability !== undefined
+    && !editorRegistrationMatches(projectId, editorInstanceId, registrationCapability)) return null;
   const key = editorKey(projectId, editorInstanceId);
   let cancellation = cancellationQueues.get(key)?.shift();
   if (!cancellation) {
     await waitForWake(cancellationWaiters, key, signal, 25_000);
+    if (registrationCapability !== undefined
+      && !editorRegistrationMatches(projectId, editorInstanceId, registrationCapability)) return null;
     cancellation = cancellationQueues.get(key)?.shift();
   }
   if (!cancellationQueues.get(key)?.length) cancellationQueues.delete(key);
@@ -513,9 +455,16 @@ export function settleEditorCall(
   id: string,
   outcome: ExternalCallTerminalOutcome,
   value: unknown,
+  registrationCapability?: string | null,
 ): boolean {
   const call = pending.get(id);
   if (!call) return false;
+  if (registrationCapability !== undefined
+    && !editorRegistrationMatches(
+      call.binding.projectId,
+      call.binding.editorInstanceId,
+      registrationCapability,
+    )) return false;
   return finishCall(call, outcome, value, false);
 }
 
@@ -542,7 +491,7 @@ export function pendingEditorCallsForTest(ownerId?: string): Array<{
 
 export function resetExternalAgentBrokerForTest(): void {
   cancelCalls(() => true, 'cancelled', 'External agent broker reset.', false);
-  editors.clear();
+  registry.reset();
   queues.clear();
   waiters.clear();
   cancellationQueues.clear();

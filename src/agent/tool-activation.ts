@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai';
 import type { ProviderOptions } from '@ai-sdk/provider-utils';
 import type { AgentToolSchema } from './tool-schema';
 import { isExternalGlobalReadTool, isExternalReadTool } from './external-tool-policy';
+import { routedToolSelection } from './tool-routing';
 
 const BOOT_TOOL_NAMES: Record<string, true> = {
   ToolSearch: true,
@@ -10,74 +11,9 @@ const BOOT_TOOL_NAMES: Record<string, true> = {
   read_timeline: true,
   ask_followup_questions: true,
   report_user_friction: true,
+  read_agent_artifact: true,
 };
 
-interface RoutingGroup {
-  readonly requestKeywords?: readonly string[];
-  readonly requestContext?: readonly (readonly string[])[];
-  readonly mutating?: boolean;
-  readonly toolKeywords: readonly string[];
-}
-
-const ROUTING_GROUPS: readonly RoutingGroup[] = [
-  {
-    mutating: true,
-    requestKeywords: ['edit', 'trim', 'split', 'move', 'delete', 'remove', 'add', 'insert', 'create', 'update', 'modify', 'adjust', 'apply', 'reorder', 'background fill', 'blur', '剪辑', '裁剪', '分割', '移动', '删除', '移除', '添加', '新增', '插入', '创建', '修改', '调整', '设置', '应用', '排列', '排序', '重排', '填充', '模糊', '虚化'],
-    toolKeywords: ['edit_item', '_item', 'edit_track', 'manage_timelines', 'undo_', 'redo_', 'apply_layout'],
-  },
-  {
-    requestContext: [
-      ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fish audio', 'fishaudio', 'speechify', 'openai', 'gemini', 'mistral', 'cartesia'],
-      ['tts', 'text-to-speech', 'speech synthesis', 'voice generation', 'voiceover generation', '配音', '语音合成'],
-    ],
-    toolKeywords: ['submit_voice'],
-  },
-  {
-    requestContext: [
-      ['assemblyai', 'local', 'openai', 'mistral', 'deepgram', 'groq', 'elevenlabs', 'cartesia'],
-      ['transcribe', 'transcription', 'speech-to-text', 'stt', 'asr', '转写', '语音识别'],
-    ],
-    toolKeywords: ['transcribe_track'],
-  },
-  {
-    requestKeywords: ['transcript', 'caption', 'subtitle', 'script', 'speech', 'silence', 'voice', 'loudness', '文字稿', '字幕', '台词', '口播', '静音', '人声', '响度'],
-    toolKeywords: ['transcript', 'caption', 'script', 'silence', 'voice', 'loudness', 'text'],
-  },
-  {
-    requestKeywords: ['audio', 'music', 'sound', 'voice', 'loudness', 'bgm', '音频', '声音', '音乐', '音效', '人声', '响度', '配音', '背景音乐'],
-    toolKeywords: ['audio', 'music', 'sound', 'voice', 'loudness', 'transcribe'],
-  },
-  {
-    requestKeywords: ['library', 'template', 'effect', 'transition', 'zoom', 'lut', 'graphic', 'watermark', '素材库', '模板', '特效', '转场', '动效', '水印'],
-    toolKeywords: ['library', 'template', 'effect', 'transition', 'motion_graphic', 'watermark', 'graphic', 'font'],
-  },
-  {
-    requestKeywords: ['generate', 'image', 'video', 'music', 'sound', 'voiceover', 'shader', '生成', '图片', '视频', '音乐', '音效', '配音', '着色器'],
-    toolKeywords: ['submit_', 'generate', 'shader', 'motion_graphic', 'progress'],
-  },
-  {
-    requestKeywords: ['import', 'upload', 'download', 'media', 'asset', 'stock', '素材', '导入', '上传', '下载', '媒体', '版权'],
-    toolKeywords: ['media', 'asset', 'upload', 'download', 'stock', 'probe', 'push_'],
-  },
-  {
-    requestKeywords: ['export', 'render', 'xml', 'prores', 'premiere', 'resolve', '导出', '渲染', '成片'],
-    toolKeywords: ['export', 'render', 'download'],
-  },
-  {
-    requestKeywords: ['project', 'sequence', 'version', 'marker', 'design style', '项目', '序列', '版本', '标记', '设计风格'],
-    toolKeywords: ['project', 'timeline', 'version', 'marker', 'design_style'],
-  },
-  {
-    requestKeywords: ['scene', 'highlight', 'beat', 'downbeat', 'rhythm', 'multicam', 'reframe', 'color', '镜头', '高光', '节拍', '卡点', '重拍', '节奏', '多机位', '重构图', '调色', '分析'],
-    toolKeywords: ['scene', 'highlight', 'beat', 'music', 'multicam', 'reframe', 'color', 'grade', 'frame'],
-  },
-  {
-    requestKeywords: ['web', 'search', 'crawl', 'website', 'skill', 'code', '网页', '搜索', '抓取', '网站', '技能', '脚本'],
-    toolKeywords: ['web_', 'skill', 'run_code', 'search_'],
-  },
-];
-// Composite requests can span edit, audio, generation, and import without needing the full catalog.
-const MAX_ROUTING_GROUPS = 4;
 const READ_ONLY_TERMS = ['不要修改', '不要编辑', '只读', 'read only', 'read-only', 'do not edit', "don't edit", 'without editing'];
 const CAPABILITY_TERMS = ['tool', 'tools', 'capability', 'capabilities', 'ability', 'abilities', '工具', '能力'];
 const DISCOVERY_TERMS = ['what', 'which', 'available', 'list', 'find', 'show', 'discover', '哪些', '什么', '可用', '列出', '查看', '看看', '查一下', '找一下'];
@@ -111,11 +47,15 @@ function latestUserText(messages: readonly ModelMessage[]): string {
   }
   return '';
 }
-function bootNames(messages: readonly ModelMessage[], routed: readonly string[]): string[] {
-  const domainDiscovery = routed.length > 0
-    && isDomainToolDiscoveryRequest(latestUserText(messages));
+function bootNames(
+  messages: readonly ModelMessage[],
+  routed: readonly string[],
+  routingOverflow: boolean,
+): string[] {
+  const retainSearch = routingOverflow || routed.length === 0
+    || isDomainToolDiscoveryRequest(latestUserText(messages));
   return Object.keys(BOOT_TOOL_NAMES).filter((name) => (
-    name !== 'ToolSearch' || !domainDiscovery
+    name !== 'ToolSearch' || retainSearch
   ));
 }
 
@@ -202,22 +142,17 @@ function toolSearchConsumed(messages: readonly ModelMessage[]): boolean {
 }
 
 
-function routedNames(catalog: readonly AgentToolSchema[], messages: readonly ModelMessage[]): string[] {
+function routedNames(
+  catalog: readonly AgentToolSchema[],
+  messages: readonly ModelMessage[],
+): { readonly names: string[]; readonly overflow: boolean } {
   const request = latestUserText(messages);
-  if (!request) return [];
-  const readOnly = isReadOnlyRequest(request);
-  const matchingGroups = ROUTING_GROUPS.filter((group) => {
-    const directMatch = group.requestKeywords?.some((keyword) => request.includes(keyword)) ?? false;
-    const contextualMatch = group.requestContext?.every((alternatives) => (
-      alternatives.some((keyword) => request.includes(keyword))
-    )) ?? false;
-    return (!group.mutating || !readOnly) && (directMatch || contextualMatch);
-  }).slice(0, MAX_ROUTING_GROUPS);
-  return catalog
-    .filter((schema) => matchingGroups.some((group) => (
-      group.toolKeywords.some((keyword) => schema.name.includes(keyword))
-    )))
-    .map((schema) => schema.name);
+  if (!request) return { names: [], overflow: false };
+  const routed = routedToolSelection(request, isReadOnlyRequest(request));
+  return {
+    names: catalog.filter((schema) => routed.names.has(schema.name)).map((schema) => schema.name),
+    overflow: routed.overflow,
+  };
 }
 
 export class ToolActivation {
@@ -239,9 +174,9 @@ export class ToolActivation {
     const searchAllowed = allowSearch && !toolSearchConsumed(messages);
     this.readOnly = readOnly;
     const requested = [
-      ...bootNames(messages, routed),
+      ...bootNames(messages, routed.names, routed.overflow),
       ...activatedToolNamesFromMessages(messages),
-      ...routed,
+      ...routed.names,
       ...activeNames,
     ].filter((name) => (
       (searchAllowed || name !== 'ToolSearch')

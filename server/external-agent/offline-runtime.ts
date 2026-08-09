@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   captureExternalToolActions,
   checkpointExternalEditSession,
@@ -10,75 +11,52 @@ import {
   type ExternalEditSession,
   type ExternalEditSessionTerminalStatus,
 } from '../../src/agent/external-edit-session.ts';
-import { isExternalServerDirectCall, isExternalServerDirectTool } from '../../src/agent/external-tool-policy.ts';
+import { assertOfflineToolAllowed } from './offline-tool-authorization.ts';
 import type { AgentContext } from '../../src/agent/context.ts';
 import { ExternalEditorCallError, isProjectConnected } from './broker.ts';
 import { executeOfflineTool } from './offline-executor.ts';
+import { captureCheckpointedToolOutcome } from './offline-outcome.ts';
 import {
-  commitOfflineStoredProject,
-  deleteOfflineEditCheckpoint,
-  loadOfflineEditCheckpoint,
-  loadOfflineStoredProject,
-  saveOfflineEditCheckpoint,
-  type OfflineProjectCommitInput,
-  type OfflineProjectCommitResult,
-  type OfflineStoredProject,
+  externalToolFailureOutcome,
+  externalToolResultFailure,
+  type ExternalSessionRunLedger,
+} from '../../src/agent/external-run-ledger.ts';
+import { redactTextForAgentRuntime } from '../../src/agent/runtime-artifact.ts';
+import type {
+  OfflineProjectCommitResult,
+  OfflineStoredProject,
 } from './offline-project-store.ts';
+import type { ProjectEditOwnershipClaim } from './project-edit-ownership.ts';
+import { openOfflineSessionRun } from './offline-run-recovery.ts';
+import {
+  failedOfflineCommit,
+  isAppliedOfflineCommit,
+  publishAppliedOfflineReview,
+  publishOfflineReviewFailure,
+  rejectedOfflineCommit,
+  type AppliedOfflineCommit,
+  type OfflineReviewFailure,
+} from './offline-review-outcome.ts';
+import {
+  ACTIVE_SESSION_STATUSES,
+  DEFAULT_PERSISTENCE,
+  requiredSessionId,
+  validateOfflineInvocation,
+  type OfflineEditPersistence,
+  type OfflineEditorBinding,
+  type OfflineRuntimeDependencies,
+  type VersionedOfflineSession,
+} from './offline-runtime-support.ts';
 
-const ACTIVE_SESSION_STATUSES: Record<string, true> = {
-  drafting: true,
-  awaiting_review: true,
+export type {
+  OfflineEditPersistence,
+  OfflineEditorBinding,
+  OfflineRuntimeDependencies,
 };
-
-export interface OfflineEditorBinding {
-  mode: 'offline';
-  projectId: string;
-  baseRevision: string;
-}
-
-export interface OfflineEditPersistence {
-  loadProject: (projectId: string) => Promise<OfflineStoredProject | null>;
-  commitProject: (input: OfflineProjectCommitInput) => Promise<OfflineProjectCommitResult>;
-  loadCheckpoint?: typeof loadOfflineEditCheckpoint;
-  saveCheckpoint?: typeof saveOfflineEditCheckpoint;
-  deleteCheckpoint?: typeof deleteOfflineEditCheckpoint;
-}
-
-export interface OfflineRuntimeDependencies {
-  persistence?: OfflineEditPersistence;
-  isBrowserConnected?: (projectId: string) => boolean;
-  executeTool?: typeof executeOfflineTool;
-}
-
-interface VersionedOfflineSession {
-  readonly session: ExternalEditSession;
-  readonly generation: number;
-}
-
-const DEFAULT_PERSISTENCE: OfflineEditPersistence = {
-  loadProject: loadOfflineStoredProject,
-  commitProject: commitOfflineStoredProject,
-  loadCheckpoint: loadOfflineEditCheckpoint,
-  saveCheckpoint: saveOfflineEditCheckpoint,
-  deleteCheckpoint: deleteOfflineEditCheckpoint,
-};
-
-function requiredSessionId(args: Record<string, unknown>): string {
-  const value = args.editSessionId;
-  if (typeof value !== 'string' || !value.trim()) throw new Error('editSessionId is required');
-  return value.trim();
-}
-
-function toolReturnedError(result: unknown): boolean {
-  return result !== null
-    && typeof result === 'object'
-    && !Array.isArray(result)
-    && 'error' in result
-    && typeof result.error === 'string';
-}
 
 export class OfflineExternalEditRuntime {
   private readonly sessions = new Map<string, VersionedOfflineSession>();
+  private readonly runs = new Map<string, ExternalSessionRunLedger>();
   private readonly projectId: string;
   private readonly editorUrl: string;
   private readonly persistence: OfflineEditPersistence;
@@ -87,16 +65,19 @@ export class OfflineExternalEditRuntime {
   private operationTail: Promise<void> = Promise.resolve();
   private expectedRevision: string;
   private baseDoc: OfflineStoredProject['doc'];
+  private ownership: ProjectEditOwnershipClaim;
   private disposed = false;
 
   private constructor(
     snapshot: OfflineStoredProject,
+    ownership: ProjectEditOwnershipClaim,
     editorUrl: string,
     dependencies: OfflineRuntimeDependencies,
   ) {
     this.projectId = snapshot.projectId;
     this.expectedRevision = snapshot.revision;
     this.baseDoc = snapshot.doc;
+    this.ownership = ownership;
     this.editorUrl = editorUrl;
     this.persistence = dependencies.persistence ?? DEFAULT_PERSISTENCE;
     this.browserConnected = dependencies.isBrowserConnected ?? isProjectConnected;
@@ -113,43 +94,64 @@ export class OfflineExternalEditRuntime {
       throw new ExternalEditorCallError('rejected', `Project ${projectId} is open in an editor; use the browser binding.`);
     }
     const persistence = dependencies.persistence ?? DEFAULT_PERSISTENCE;
-    const snapshot = await persistence.loadProject(projectId);
-    if (!snapshot) {
-      throw new ExternalEditorCallError('rejected', `Stored project ${projectId} does not exist or is invalid.`);
+    const claimed = await persistence.claimProject(projectId, randomUUID());
+    if (claimed.status !== 'claimed') {
+      const message = claimed.status === 'missing'
+        ? `Stored project ${projectId} does not exist or is invalid.`
+        : claimed.status === 'busy'
+          ? `Project ${projectId} already has an active browser or offline editor.`
+          : `Project ${projectId} has an unsupported or corrupt ownership record.`;
+      throw new ExternalEditorCallError('rejected', message);
     }
-    if (browserConnected(projectId)) {
-      throw new ExternalEditorCallError('stale', `Project ${projectId} opened in an editor while the offline binding was starting.`);
-    }
-    return new OfflineExternalEditRuntime(snapshot, editorUrl, dependencies);
+    const snapshot = { projectId, doc: claimed.doc, revision: claimed.revision };
+    return new OfflineExternalEditRuntime(snapshot, claimed.claim, editorUrl, dependencies);
   }
-
   binding(): OfflineEditorBinding {
     return { mode: 'offline', projectId: this.projectId, baseRevision: this.expectedRevision };
   }
-
   async validateAvailability(): Promise<void> {
     return this.runExclusive(() => this.validateAvailabilityLocked());
   }
 
   async execute(name: string, rawArgs: Record<string, unknown>): Promise<unknown> {
+    validateOfflineInvocation(name, rawArgs);
+    const terminal = name === 'get_edit_session' ? this.sessions.get(requiredSessionId(rawArgs)) : undefined;
+    if (terminal && !ACTIVE_SESSION_STATUSES[terminal.session.status]) return this.info(terminal.session);
+    const releaseAfter = name === 'review_edit_session' || name === 'discard_edit_session';
     return this.runExclusive(async () => {
-      await this.validateAvailabilityLocked();
-      const args = { ...rawArgs };
-      if (name === 'begin_edit_session') return this.begin(args.clientName, args.approvalMode);
-      const state = this.requireSession(requiredSessionId(args));
-      if (name === 'get_edit_session') return this.info(state.session);
-      if (name === 'discard_edit_session') return this.discard(state);
-      if (name === 'review_edit_session') return this.review(state, args.summary);
-      delete args.editSessionId;
-      return this.runEditorTool(state, name, args);
+      try {
+        await this.validateAvailabilityLocked();
+        const args = { ...rawArgs };
+        if (name === 'begin_edit_session') return await this.begin(args.clientName, args.approvalMode);
+        const state = this.requireSession(requiredSessionId(args));
+        if (name === 'get_edit_session') return this.info(state.session);
+        if (name === 'discard_edit_session') return await this.discard(state);
+        if (name === 'review_edit_session') return await this.review(state, args.summary);
+        delete args.editSessionId;
+        return await this.runEditorTool(state, name, args);
+      } catch (error) {
+        if (error instanceof ExternalEditorCallError) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        throw new ExternalEditorCallError('failed', message);
+      } finally {
+        if (releaseAfter) {
+          await this.persistence.releaseOwnership(this.ownership).catch((error: unknown) =>
+            process.emitWarning(`Failed to release terminal offline project ownership: ${
+              error instanceof Error ? error.message : String(error)}`));
+        }
+      }
     });
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    void this.runExclusive(() => {
-      this.failActiveSessions('cancelled');
+    for (const run of this.runs.values()) run.dispose();
+    this.failActiveSessions('cancelled');
+    void this.persistence.releaseOwnership(this.ownership).catch((error: unknown) => {
+      process.emitWarning(
+        `Failed to release offline project ownership: ${error instanceof Error ? error.message : String(error)}`,
+      );
     });
   }
 
@@ -165,15 +167,16 @@ export class OfflineExternalEditRuntime {
         `Project ${this.projectId} is now open in a browser editor. Start a new MCP session and use ${this.editorUrl}.`,
       );
     }
-    const stored = await this.persistence.loadProject(this.projectId);
-    if (!stored || stored.revision !== this.expectedRevision) {
+    const renewed = await this.persistence.renewOwnership(this.ownership, this.expectedRevision);
+    if (renewed.status !== 'renewed') {
       this.failActiveSessions('stale');
       throw new ExternalEditorCallError(
         'stale',
-        `Stored project ${this.projectId} changed during the offline edit. Start a new MCP session.`,
+        `Stored project ${this.projectId} changed ownership or revision during the offline edit. Start a new MCP session.`,
       );
     }
-    this.baseDoc = stored.doc;
+    this.ownership = renewed.claim;
+    this.baseDoc = renewed.doc;
   }
 
   private async begin(
@@ -196,14 +199,24 @@ export class OfflineExternalEditRuntime {
     const session = checkpoint
       ? restoreDraftingExternalEditSession(checkpoint, this.baseDoc)
       : createExternalEditSession(this.baseDoc, clientName, approvalMode);
+    const run = await openOfflineSessionRun(
+      this.projectId,
+      session,
+      checkpoint !== null && checkpoint !== undefined,
+    );
+    this.runs.set(session.id, run);
     this.sessions.set(session.id, { session, generation: 0 });
     return { ...this.info(session), resumed: checkpoint !== null && checkpoint !== undefined };
   }
 
   private async discard(state: VersionedOfflineSession): Promise<Record<string, unknown>> {
     if (ACTIVE_SESSION_STATUSES[state.session.status] === true) {
-      await this.persistence.deleteCheckpoint?.(this.projectId, state.session.id);
+      await this.persistence.deleteCheckpoint?.(this.projectId, state.session.id, this.ownership);
       this.publishSession(state, finishExternalEditSession(state.session, 'cancelled'));
+      await this.runs.get(state.session.id)?.finalize(
+        'aborted',
+        'Offline external edit session cancelled.',
+      );
     }
     return this.info(this.requireSession(state.session.id).session);
   }
@@ -213,31 +226,44 @@ export class OfflineExternalEditRuntime {
     name: string,
     args: Record<string, unknown>,
   ): Promise<unknown> {
-    if (!isExternalServerDirectTool(name)) {
-      throw new ExternalEditorCallError(
-        'rejected',
-        `Tool ${name} requires the browser editor. Open ${this.editorUrl} for visual/canvas inspection, generation, upload, network, preset, render, or export tools.`,
-      );
-    }
-    if (!isExternalServerDirectCall(name, args)) {
-      throw new ExternalEditorCallError(
-        'rejected',
-        `Tool ${name} action ${String(args.action ?? '')} uses browser-backed data. Open ${this.editorUrl} to run it.`,
-      );
-    }
+    assertOfflineToolAllowed(name, args, this.editorUrl);
     const session = state.session;
     if (session.status !== 'drafting') {
-      throw new Error(`Edit session ${session.id} is ${session.status}; editor tools require drafting status.`);
+      throw new ExternalEditorCallError(
+        'rejected',
+        `Edit session ${session.id} is ${session.status}; editor tools require drafting status.`,
+      );
     }
+    const run = this.requireRun(session.id);
+    const invocation = await run.requested(name, args);
     const candidate = forkExternalEditSession(session);
-    const result = await this.executeTool(name, args, externalDraftContext(candidate, this.context(candidate)));
-    await this.validateAvailabilityLocked();
-    if (!toolReturnedError(result)) {
-      const captured = captureExternalToolActions(candidate, name, args);
-      await this.persistCheckpoint(state, captured);
-      this.publishSession(state, captured);
+    let result: unknown;
+    let started = false;
+    try {
+      await run.started(invocation);
+      started = true;
+      result = await this.executeTool(name, args, externalDraftContext(candidate, this.context(candidate)));
+      await this.validateAvailabilityLocked();
+    } catch (error) {
+      await run.captureToolOutcome(
+        invocation,
+        externalToolFailureOutcome(invocation, error, started),
+      );
+      if (error instanceof ExternalEditorCallError) throw error;
+      const message = redactTextForAgentRuntime(
+        error instanceof Error ? error.message : String(error),
+      ).slice(0, 1_200);
+      throw new ExternalEditorCallError('failed', message);
     }
-    return result;
+    const failure = externalToolResultFailure(invocation, result);
+    if (failure) {
+      const projected = await run.captureToolOutcome(invocation, failure, result);
+      throw new ExternalEditorCallError('failed', this.projectedFailureMessage(projected));
+    }
+    const captured = captureExternalToolActions(candidate, name, args);
+    await this.persistCheckpoint(state, captured);
+    this.publishSession(state, captured);
+    return captureCheckpointedToolOutcome(run, invocation, result);
   }
 
   private async review(
@@ -250,59 +276,62 @@ export class OfflineExternalEditRuntime {
     }
     const draftDoc = session.draft?.getDoc();
     if (!draftDoc) throw new Error(`Edit session ${session.id} is ${session.status}, not drafting.`);
+    const run = this.requireRun(session.id);
     const reviewedState = this.publishSession(state, reviewExternalEditSession(session, summary));
+    const proposalId = reviewedState.session.proposal?.id;
+    if (proposalId) await run.proposal(proposalId, 'created');
     let result: OfflineProjectCommitResult;
     try {
       result = await this.commitReviewedDraft(reviewedState, draftDoc);
     } catch {
-      const outcome = this.disposed ? 'cancelled' : 'failed';
-      this.finishIfCurrent(reviewedState, outcome);
-      const message = this.disposed
-        ? 'The MCP transport closed before commit; the incremental draft checkpoint was preserved.'
-        : 'The offline project commit failed; start a new MCP session to resume the saved draft.';
-      throw new ExternalEditorCallError(outcome, message);
+      return this.failReview(reviewedState, run, proposalId, failedOfflineCommit(this.disposed));
     }
-    if (result.status !== 'applied' || !result.revision) {
-      const outcome = this.disposed
-        ? 'cancelled'
-        : result.status === 'metadata-conflict'
-          ? 'failed'
-          : 'stale';
-      this.finishIfCurrent(reviewedState, outcome);
-      const message = this.disposed
-        ? 'The MCP transport closed before commit; the incremental draft checkpoint was preserved.'
-        : result.status === 'browser-takeover'
-          ? `Project ${this.projectId} opened in a browser before commit. Start a new MCP session at ${this.editorUrl}.`
-          : result.status === 'stale'
-            ? `Stored project ${this.projectId} changed before commit. Start a new MCP session.`
-            : 'Project metadata kept changing; no offline edits were written.';
-      throw new ExternalEditorCallError(outcome, message);
+    if (!isAppliedOfflineCommit(result)) {
+      return this.failReview(reviewedState, run, proposalId, rejectedOfflineCommit({
+        result,
+        disposed: this.disposed,
+        projectId: this.projectId,
+        editorUrl: this.editorUrl,
+      }));
     }
-    if (this.disposed || !this.isCurrent(reviewedState, 'awaiting_review')) {
-      const outcome = this.disposed ? 'cancelled' : 'stale';
-      this.finishIfCurrent(reviewedState, outcome);
-      throw new ExternalEditorCallError(
-        outcome,
-        this.disposed
-          ? 'The MCP transport closed before commit; the incremental draft checkpoint was preserved.'
-          : `Edit session ${session.id} changed before the commit result was published.`,
-      );
-    }
+    return this.publishReviewedCommit(reviewedState, draftDoc, run, proposalId, result);
+  }
+
+  private async failReview(
+    state: VersionedOfflineSession,
+    run: ExternalSessionRunLedger,
+    proposalId: string | undefined,
+    failure: OfflineReviewFailure,
+  ): Promise<never> {
+    this.finishIfCurrent(state, failure.outcome);
+    await publishOfflineReviewFailure(run, proposalId, failure);
+    throw new ExternalEditorCallError(failure.outcome, failure.message);
+  }
+
+  private async publishReviewedCommit(
+    state: VersionedOfflineSession,
+    draftDoc: OfflineStoredProject['doc'],
+    run: ExternalSessionRunLedger,
+    proposalId: string | undefined,
+    result: AppliedOfflineCommit,
+  ): Promise<Record<string, unknown>> {
     this.expectedRevision = result.revision;
+    this.ownership = result.ownership;
     this.baseDoc = draftDoc;
-    let cleanupWarning: string | undefined;
+    let warning: string | undefined;
     try {
-      await this.persistence.deleteCheckpoint?.(this.projectId, session.id);
+      await this.persistence.deleteCheckpoint?.(this.projectId, state.session.id, this.ownership);
     } catch {
-      cleanupWarning = 'The applied draft checkpoint could not be removed; its stale revision prevents reuse.';
+      warning = 'The applied draft checkpoint could not be removed; its stale revision prevents reuse.';
     }
     const applied = finishExternalEditSession(
-      reviewedState.session,
+      state.session,
       'applied',
-      reviewedState.session.operationCount,
+      state.session.operationCount,
     );
-    const info = this.info(this.publishSession(reviewedState, applied).session);
-    return cleanupWarning ? { ...info, warning: cleanupWarning } : info;
+    const info = this.info(this.publishAppliedSession(state, applied).session);
+    warning = await publishAppliedOfflineReview(run, proposalId, warning);
+    return warning ? { ...info, warning } : info;
   }
 
   private async commitReviewedDraft(
@@ -313,6 +342,7 @@ export class OfflineExternalEditRuntime {
       projectId: this.projectId,
       expectedRevision: this.expectedRevision,
       doc,
+      ownership: this.ownership,
       canCommit: () => (
         !this.disposed
         && !this.browserConnected(this.projectId)
@@ -329,6 +359,7 @@ export class OfflineExternalEditRuntime {
       projectId: this.projectId,
       expectedRevision: this.expectedRevision,
       checkpoint: checkpointExternalEditSession(session),
+      ownership: this.ownership,
       canSave: () => (
         !this.disposed
         && !this.browserConnected(this.projectId)
@@ -378,6 +409,21 @@ export class OfflineExternalEditRuntime {
     return next;
   }
 
+  private publishAppliedSession(
+    expected: VersionedOfflineSession,
+    session: ExternalEditSession,
+  ): VersionedOfflineSession {
+    if (this.isCurrent(expected)) return this.publishSession(expected, session);
+    const current = this.sessions.get(expected.session.id);
+    if (!this.disposed || !current) {
+      throw new ExternalEditorCallError('stale',
+        `Edit session ${expected.session.id} changed while an offline operation was running.`);
+    }
+    const next = { session, generation: current.generation + 1 };
+    this.sessions.set(session.id, next);
+    return next;
+  }
+
   private finishIfCurrent(
     expected: VersionedOfflineSession,
     status: ExternalEditSessionTerminalStatus,
@@ -403,8 +449,28 @@ export class OfflineExternalEditRuntime {
 
   private requireSession(sessionId: string): VersionedOfflineSession {
     const state = this.sessions.get(sessionId);
-    if (!state) throw new Error(`Unknown edit session ${sessionId}`);
+    if (!state) {
+      throw new ExternalEditorCallError('rejected', `Unknown edit session ${sessionId}`);
+    }
     return state;
+  }
+
+  private requireRun(sessionId: string): ExternalSessionRunLedger {
+    const run = this.runs.get(sessionId);
+    if (!run) throw new Error(`Agent run for offline edit session ${sessionId} is unavailable.`);
+    return run;
+  }
+
+  private projectedFailureMessage(projected: unknown): string {
+    if (projected && typeof projected === 'object' && !Array.isArray(projected)) {
+      if ('error' in projected && typeof projected.error === 'string') {
+        return projected.error.slice(0, 1_200);
+      }
+      if ('artifactId' in projected && typeof projected.artifactId === 'string') {
+        return `The tool returned an archived error result. Read artifact ${projected.artifactId} for details.`;
+      }
+    }
+    return 'The tool returned an error result.';
   }
 
   private failActiveSessions(status: Extract<ExternalEditSessionTerminalStatus, 'cancelled' | 'stale'>): void {
@@ -425,6 +491,7 @@ export class OfflineExternalEditRuntime {
       operationCount: session.operationCount,
       appliedOperationCount: session.appliedOperationCount,
       bindingMode: 'offline',
+      agentRunId: this.runs.get(session.id)?.runId,
       editorUrl: this.editorUrl,
       updatedAt: new Date(session.updatedAt).toISOString(),
     };

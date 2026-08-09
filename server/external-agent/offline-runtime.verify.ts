@@ -1,102 +1,22 @@
 import assert from 'node:assert/strict';
-import { CURRENT_PROJECT_VERSION } from '../../shared/project-version.ts';
-import {
-  revisionOf,
-  type ExternalDraftCheckpoint,
-} from '../../src/agent/external-edit-session.ts';
 import { isExternalServerDirectCall } from '../../src/agent/external-tool-policy.ts';
-import type { ProjectDoc } from '../../src/editor/types.ts';
 import { ExternalEditorCallError } from './broker.ts';
-import { OfflineExternalEditRuntime, type OfflineEditPersistence } from './offline-runtime.ts';
+import { OfflineExternalEditRuntime } from './offline-runtime.ts';
 import { offlineExternalToolSchemas } from './offline-tools.ts';
 import { executeOfflineTool } from './offline-executor.ts';
-import type {
-  OfflineCheckpointSaveInput,
-  OfflineProjectCommitInput,
-  OfflineStoredProject,
-} from './offline-project-store.ts';
+import {
+  editorUrl,
+  editSessionId,
+  MemoryPersistence,
+  projectDoc,
+  projectId,
+} from './offline-runtime.verify-fixtures.ts';
+import { verifyOfflineCommitAndProjectionScenarios } from './offline-runtime-safety.verify-scenarios.ts';
 
-const projectId = 'offline-project';
-const editorUrl = `http://localhost:5173/#/editor/${projectId}`;
 
-function projectDoc(width = 1920, height = 1080): ProjectDoc {
-  return {
-    version: CURRENT_PROJECT_VERSION,
-    assets: [],
-    mediaFolders: [],
-    activeTimelineId: 'timeline-1',
-    timelines: [{
-      id: 'timeline-1',
-      name: 'Timeline 1',
-      order: 0,
-      fps: 30,
-      width,
-      height,
-      items: [],
-      selectedId: null,
-      trackOrder: ['track-v1'],
-      tracks: { 'track-v1': { kind: 'video' } },
-    }],
-  };
-}
+const toolNames = new Set(offlineExternalToolSchemas().map((schema) => schema.name));
 
-class MemoryPersistence implements OfflineEditPersistence {
-  current: ProjectDoc;
-  versions: ProjectDoc[] = [];
-  commitCount = 0;
-  checkpoint: ExternalDraftCheckpoint | null = null;
-
-  constructor(doc: ProjectDoc) {
-    this.current = structuredClone(doc);
-  }
-
-  async loadProject(id: string): Promise<OfflineStoredProject | null> {
-    if (id !== projectId) return null;
-    const doc = structuredClone(this.current);
-    return { projectId: id, doc, revision: revisionOf(doc) };
-  }
-  async loadCheckpoint(
-    id: string,
-    expectedRevision: string,
-  ): Promise<ExternalDraftCheckpoint | null> {
-    if (id !== projectId || this.checkpoint?.baseRevision !== expectedRevision) return null;
-    return structuredClone(this.checkpoint);
-  }
-
-  async saveCheckpoint(input: OfflineCheckpointSaveInput) {
-    if (input.projectId !== projectId || revisionOf(this.current) !== input.expectedRevision) {
-      return 'stale' as const;
-    }
-    if (!input.canSave()) return 'browser-takeover' as const;
-    this.checkpoint = structuredClone(input.checkpoint);
-    if (input.canSave()) return 'saved' as const;
-    this.checkpoint = null;
-    return 'browser-takeover' as const;
-  }
-
-  async deleteCheckpoint(id: string, sessionId: string): Promise<void> {
-    if (id === projectId && this.checkpoint?.sessionId === sessionId) this.checkpoint = null;
-  }
-
-  async commitProject(input: OfflineProjectCommitInput) {
-    if (!input.canCommit()) return { status: 'browser-takeover' as const };
-    if (revisionOf(this.current) !== input.expectedRevision) return { status: 'stale' as const };
-    this.versions.push(structuredClone(this.current));
-    this.current = structuredClone(input.doc);
-    this.commitCount += 1;
-    return { status: 'applied' as const, revision: revisionOf(this.current), automaticVersionCreated: true };
-  }
-}
-
-function editSessionId(value: unknown): string {
-  assert(value && typeof value === 'object' && 'editSessionId' in value);
-  const id = value.editSessionId;
-  assert.equal(typeof id, 'string');
-  return id;
-}
-
-const toolNames = new Set(offlineExternalToolSchemas().map((tool) => tool.name));
-for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'set_aspect_ratio', 'edit_captions', 'update_watermark']) {
+for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark']) {
   assert.equal(toolNames.has(allowed), true, `${allowed} is server-direct`);
 }
 for (const excluded of ['edit_item', 'manage_effects', 'view_timeline_frames', 'submit_image', 'import_media', 'download_media', 'manage_versions', 'submit_render_job']) {
@@ -118,7 +38,15 @@ await assert.rejects(
     && error.outcome === 'rejected'
     && error.message.includes(editorUrl),
 );
+await assert.rejects(
+  () => runtime.execute('begin_edit_session', { approvalMode: 'automatic' }),
+  (error) => error instanceof ExternalEditorCallError
+    && error.outcome === 'rejected'
+    && error.message.includes('approvalMode'),
+  'offline lifecycle arguments are validated against the active external schema',
+);
 assert.equal(persistence.commitCount, 0);
+
 
 const begun = await runtime.execute('begin_edit_session', { approvalMode: 'auto', clientName: 'External editor' });
 const sessionId = editSessionId(begun);
@@ -134,6 +62,25 @@ const untouchedSession = await runtime.execute('get_edit_session', { editSession
 assert(untouchedSession && typeof untouchedSession === 'object' && 'operationCount' in untouchedSession);
 assert.equal(untouchedSession.operationCount, 0);
 assert.deepEqual(persistence.current, projectDoc());
+assert.equal(persistence.commitCount, 0);
+await assert.rejects(
+  () => runtime.execute('set_aspect_ratio', {
+    editSessionId: sessionId,
+    ratio: 'cinemascope',
+  }),
+  (error) => error instanceof ExternalEditorCallError
+    && error.outcome === 'rejected'
+    && error.message.includes('set_aspect_ratio'),
+  'invalid offline tool arguments fail before draft execution',
+);
+await assert.rejects(
+  () => runtime.execute('hidden_internal_tool', { editSessionId: sessionId }),
+  (error) => error instanceof ExternalEditorCallError
+    && error.outcome === 'rejected'
+    && error.message.includes('not active'),
+  'tools outside the registered offline catalog fail closed',
+);
+assert.equal(persistence.checkpoint, null);
 assert.equal(persistence.commitCount, 0);
 const read = await runtime.execute('read_timeline', { editSessionId: sessionId });
 assert(read && typeof read === 'object');
@@ -323,33 +270,11 @@ assert.equal(raceSession.status, 'cancelled');
 assert.equal(raceStore.commitCount, 0);
 assert.deepEqual(raceStore.current, projectDoc());
 
-let signalCommitStarted!: () => void;
-let releaseCommit!: () => void;
-const commitStarted = new Promise<void>((resolve) => { signalCommitStarted = resolve; });
-const commitGate = new Promise<void>((resolve) => { releaseCommit = resolve; });
-class DelayedMemoryPersistence extends MemoryPersistence {
-  override async commitProject(input: OfflineProjectCommitInput) {
-    signalCommitStarted();
-    await commitGate;
-    return super.commitProject(input);
-  }
-}
-const expiringStore = new DelayedMemoryPersistence(projectDoc());
-const expiringRuntime = await OfflineExternalEditRuntime.create(projectId, editorUrl, {
-  persistence: expiringStore,
-  isBrowserConnected: () => false,
-});
-const expiringId = editSessionId(await expiringRuntime.execute('begin_edit_session', { approvalMode: 'auto' }));
-await expiringRuntime.execute('set_aspect_ratio', { editSessionId: expiringId, ratio: '9:16' });
-const pendingReview = expiringRuntime.execute('review_edit_session', { editSessionId: expiringId });
-await commitStarted;
-expiringRuntime.dispose();
-releaseCommit();
-await assert.rejects(
-  pendingReview,
-  (error) => error instanceof ExternalEditorCallError && error.outcome === 'cancelled',
-);
-assert.equal(expiringStore.commitCount, 0);
-assert.deepEqual(expiringStore.current, projectDoc(), 'expiry during commit cannot publish a partial draft');
+await verifyOfflineCommitAndProjectionScenarios();
+
+for (const instance of [
+  runtime, interruptedRuntime, resumedRuntime, concurrentRuntime, staleRuntime,
+  takeoverRuntime, candidateRuntime, cancelledRuntime, raceRuntime,
+]) instance.dispose();
 
 console.log('offline-runtime.verify: ok');

@@ -17,6 +17,8 @@ import {
 } from './external-agent.ts';
 
 const calls: Record<keyof BridgeOperations, number> = {
+  editorRegistrationMatches: 0,
+  claimBrowserOwnership: 0,
   registerEditor: 0,
   unregisterEditor: 0,
   nextEditorCall: 0,
@@ -25,22 +27,48 @@ const calls: Record<keyof BridgeOperations, number> = {
   mcpTools: 0,
 };
 
+let staleBrowserRevision = false;
+const registrationCapability = 'r'.repeat(43);
 const operations = {
-  registerEditor: () => { calls.registerEditor += 1; },
-  unregisterEditor: () => {
+  claimBrowserOwnership: async (
+    projectId: string,
+    ownerId: string,
+    baseRevision: string,
+    _allowExistingBrowserOwner?: boolean,
+  ) => {
+    calls.claimBrowserOwnership += 1;
+    if (staleBrowserRevision) return { status: 'stale' as const, currentRevision: 'authoritative-revision' };
+    return {
+      status: 'claimed' as const,
+      claim: { projectId, ownerKind: 'browser' as const, ownerId, epoch: 1, baseRevision },
+    };
+  },
+  editorRegistrationMatches: (_projectId: string, _editorId: string, capability: unknown) => {
+    calls.editorRegistrationMatches += 1;
+    return capability === registrationCapability;
+  },
+  registerEditor: () => {
+    calls.registerEditor += 1;
+    return registrationCapability;
+  },
+  unregisterEditor: async (_projectId, _editorId, capability) => {
     calls.unregisterEditor += 1;
+    assert.equal(capability, registrationCapability);
     return true;
   },
-  nextEditorCall: async () => {
+  nextEditorCall: async (_projectId, _editorId, _revision, _signal, capability) => {
     calls.nextEditorCall += 1;
+    assert.equal(capability, registrationCapability);
     return null;
   },
-  nextEditorCancellation: async () => {
+  nextEditorCancellation: async (_projectId, _editorId, _signal, capability) => {
     calls.nextEditorCancellation += 1;
+    assert.equal(capability, registrationCapability);
     return null;
   },
-  settleEditorCall: () => {
+  settleEditorCall: (_id, _outcome, _value, capability) => {
     calls.settleEditorCall += 1;
+    assert.equal(capability, registrationCapability);
     return true;
   },
   mcpTools: () => {
@@ -178,6 +206,8 @@ try {
     assert.equal(response.status, 401, `${path} must reject the MCP Bearer without an editor credential`);
   }
   assert.deepEqual(calls, {
+    editorRegistrationMatches: 0,
+    claimBrowserOwnership: 0,
     registerEditor: 0,
     unregisterEditor: 0,
     nextEditorCall: 0,
@@ -249,11 +279,53 @@ try {
     409,
     'receipt must not replay',
   );
-  for (const [operation, path, init] of bridgeRequests) {
-    const response = await requestBridge(path, init, { credential });
+  const registerCount = calls.registerEditor;
+  staleBrowserRevision = true;
+  const staleRegistration = await requestBridge('/register', registerRequest, { credential });
+  staleBrowserRevision = false;
+  assert.equal(staleRegistration.status, 409);
+  assert.deepEqual(await staleRegistration.json(), {
+    error: 'project changed after the browser loaded it',
+    currentRevision: 'authoritative-revision',
+    reloadRequired: true,
+  });
+  assert.equal(calls.registerEditor, registerCount,
+    'a stale browser revision must not be installed in the broker');
+  const registrationResponse = await requestBridge('/register', registerRequest, { credential });
+  assert.equal(registrationResponse.status, 200);
+  const registrationValue = await registrationResponse.json() as Record<string, unknown>;
+  assert.equal(registrationValue.registrationCapability, registrationCapability);
+  assert.equal(calls.registerEditor, 1);
+  const wrongCapabilityHeaders = {
+    'X-OpenChatCut-Editor-Registration': 'w'.repeat(43),
+  };
+  const claimCount = calls.claimBrowserOwnership;
+  assert.equal((await requestBridge('/register', {
+    ...registerRequest,
+    headers: {
+      ...Object.fromEntries(new Headers(registerRequest.headers)),
+      ...wrongCapabilityHeaders,
+    },
+  }, { credential })).status, 409);
+  assert.equal(calls.claimBrowserOwnership, claimCount,
+    'a wrong registration capability cannot renew persisted browser ownership');
+  assert.equal((await requestBridge(
+    '/poll?projectId=project-a&editorId=editor-a&baseRevision=rev-a',
+    { headers: wrongCapabilityHeaders },
+    { credential },
+  )).status, 409);
+  assert.equal(calls.nextEditorCall, 0, 'a wrong capability cannot poll as the live editor');
+  for (const [operation, path, init] of bridgeRequests.slice(1)) {
+    const response = await requestBridge(path, {
+      ...init,
+      headers: {
+        ...Object.fromEntries(new Headers(init?.headers)),
+        'X-OpenChatCut-Editor-Registration': registrationCapability,
+      },
+    }, { credential });
     assert(
       response.status === 200 || response.status === 204,
-      `${path} must accept the bootstrapped editor credential`,
+      `${path} must accept the owning editor registration capability`,
     );
     assert.equal(calls[operation], 1);
   }

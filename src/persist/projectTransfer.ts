@@ -5,21 +5,35 @@ import type { ProjectDoc } from '../editor/types';
 import { parseAgentChangeLog } from '../agent/changeLog';
 import {
   createProject, isPersistedChat, loadChat, loadCreativeMode, loadProject,
-  migrateProjectDoc, saveChat, saveCreativeMode,
-  type PersistedChat, type ProjectMeta, type ProjectMigrationOptions,
+  migrateProjectDoc, purgeProject, saveChat, saveCreativeMode,
+  type PersistedChat, type ProjectMigrationOptions,
 } from './projectStore';
+import type { ProjectMeta } from './projectStoreCoordinators';
 import {
-  commitMediaBlobImport, createMediaBlobImportNamespace, discardMediaBlobImport,
-  getMediaBlob, publishMediaBlobImport, rollbackMediaBlobImport, stageMediaBlobImport,
+  createMediaBlobImportNamespace, discardMediaBlobImport, stageMediaBlobImport,
   type StagedMediaBlobImportEntry,
 } from './mediaBlobStore';
 import { sanitizeFileName } from '../media/fileName';
 import { sanitizePortableProjectDoc } from './portableProject';
+import {
+  loadAgentRuntimeTransfer, publishTransferredAgentRuntime,
+  validateProposalRuntimeTransfer,
+} from './agentRuntimeTransfer';
+import { purgeAgentRuntime, type AgentRuntimeSnapshot } from './agentRuntimeStore';
+import { clearProposal, type StoredProposalRecord } from './proposalStore';
+import {
+  includeProposalUploadSrcs, loadPortableProposal, portableProposalRecord, publishTransferredProposal,
+} from './projectProposalTransfer';
+import {
+  arrayBufferBlobPart, base64ToBytes, commitMediaBlobImport, MAX_MEDIA_ENTRY_BYTES,
+  projectExportChunks, publishMediaBlobImport, rollbackMediaBlobImport, stageProjectStream,
+  streamFrom,
+} from './projectTransferStream';
+export type { ProjectMediaManifestEntry } from './projectTransferStream';
 
 export const PROJECT_EXPORT_FORMAT = 'openchatcut-project@1';
 export const PROJECT_STREAM_FORMAT = 'openchatcut-project@2';
 const MEDIA_PREFIX = '/media/uploads/';
-const MAX_MEDIA_ENTRY_BYTES = 512 * 1024 * 1024;
 let streamPublicationQueue: Promise<void> = Promise.resolve();
 
 function enqueueStreamPublication<T>(work: () => Promise<T>): Promise<T> {
@@ -57,9 +71,8 @@ interface ProjectStreamManifest {
   doc: ProjectDoc;
   chat?: PersistedChat;
   creativeMode?: string;
+  proposal?: StoredProposalRecord;
 }
-
-export type ProjectMediaManifestEntry = Omit<ProjectMediaEntry, 'dataBase64'>;
 
 interface StagedProjectImport {
   name: string;
@@ -72,6 +85,8 @@ interface StagedProjectImport {
     namespace: string;
     entries: StagedMediaBlobImportEntry[];
   };
+  runtime?: AgentRuntimeSnapshot;
+  proposal?: StoredProposalRecord;
 }
 
 export interface ProjectImportOptions {
@@ -205,168 +220,6 @@ export function parseProjectEnvelope(
   };
 }
 
-const textEncoder = new TextEncoder();
-
-function arrayBufferBlobPart(bytes: Uint8Array<ArrayBufferLike>): ArrayBuffer {
-  const { buffer, byteLength, byteOffset } = bytes;
-  if (buffer instanceof ArrayBuffer) {
-    return byteOffset === 0 && byteLength === buffer.byteLength
-      ? buffer
-      : buffer.slice(byteOffset, byteOffset + byteLength);
-  }
-  const copy = new Uint8Array(byteLength);
-  copy.set(bytes);
-  return copy.buffer;
-}
-
-function jsonLine(value: unknown): Uint8Array {
-  return textEncoder.encode(`${JSON.stringify(value)}\n`);
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const step = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += step) {
-    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + step)));
-  }
-  return btoa(binary);
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  if (!value || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
-    throw new Error('工程包媒体 base64 数据损坏');
-  }
-  let binary: string;
-  try {
-    binary = atob(value);
-  } catch {
-    throw new Error('工程包媒体 base64 数据损坏');
-  }
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-
-async function* base64Chunks(blob: Blob): AsyncGenerator<string> {
-  const reader = blob.stream().getReader();
-  let carry = new Uint8Array(0);
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const joined = new Uint8Array(carry.length + value.length);
-      joined.set(carry);
-      joined.set(value, carry.length);
-      const complete = joined.length - (joined.length % 3);
-      if (complete > 0) yield bytesToBase64(joined.subarray(0, complete));
-      carry = joined.slice(complete);
-    }
-    if (carry.length > 0) yield bytesToBase64(carry);
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-async function* projectExportChunks(
-  manifest: ProjectStreamManifest,
-  srcs: readonly string[],
-  missing: string[],
-): AsyncGenerator<Uint8Array> {
-  yield jsonLine(manifest);
-  for (const src of srcs) {
-    const found = await mediaBlobFor(src);
-    if (!found || found.blob.size <= 0 || found.blob.size > MAX_MEDIA_ENTRY_BYTES) {
-      missing.push(src);
-      continue;
-    }
-    const asset = manifest.doc.assets.find((candidate) => candidate.src === src);
-    const entry: ProjectMediaManifestEntry = {
-      src,
-      name: found.name,
-      mime: found.mime,
-      bytes: found.blob.size,
-      ...(asset?.sourceRevision ? { sourceRevision: asset.sourceRevision } : {}),
-      ...(typeof asset?.sourceSize === 'number' ? { sourceSize: asset.sourceSize } : {}),
-      ...(typeof asset?.sourceModifiedAt === 'number' ? { sourceModifiedAt: asset.sourceModifiedAt } : {}),
-    };
-    yield jsonLine({ type: 'media-start', ...entry });
-    for await (const data of base64Chunks(found.blob)) {
-      yield jsonLine({ type: 'media-chunk', data });
-    }
-    yield jsonLine({ type: 'media-end', src });
-  }
-}
-
-function streamFrom(iterator: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const next = await iterator.next();
-        if (next.done) controller.close();
-        else controller.enqueue(next.value);
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-    async cancel() {
-      await iterator.return(undefined);
-    },
-  });
-}
-
-async function* textLines(blob: Blob): AsyncGenerator<string> {
-  const reader = blob.stream().getReader();
-  const decoder = new TextDecoder();
-  let pending = '';
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      pending += decoder.decode(value, { stream: true });
-      let newline = pending.indexOf('\n');
-      while (newline >= 0) {
-        yield pending.slice(0, newline);
-        pending = pending.slice(newline + 1);
-        newline = pending.indexOf('\n');
-      }
-    }
-    pending += decoder.decode();
-    if (pending) yield pending;
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function mediaManifestEntry(value: unknown): ProjectMediaManifestEntry | null {
-  if (!value || typeof value !== 'object') return null;
-  const entry = value as Partial<ProjectMediaManifestEntry>;
-  if (typeof entry.src !== 'string' || !entry.src.startsWith(MEDIA_PREFIX)
-    || !isSafeMediaName(entry.src.slice(MEDIA_PREFIX.length))
-    || typeof entry.name !== 'string' || !isSafeMediaName(entry.name)
-    || typeof entry.mime !== 'string'
-    || typeof entry.bytes !== 'number' || !Number.isInteger(entry.bytes)
-    || entry.bytes <= 0 || entry.bytes > MAX_MEDIA_ENTRY_BYTES
-    || (entry.sourceRevision !== undefined && typeof entry.sourceRevision !== 'string')
-    || (entry.sourceSize !== undefined && (typeof entry.sourceSize !== 'number' || !Number.isFinite(entry.sourceSize)))
-    || (entry.sourceModifiedAt !== undefined
-      && (typeof entry.sourceModifiedAt !== 'number' || !Number.isFinite(entry.sourceModifiedAt)))) return null;
-  return entry as ProjectMediaManifestEntry;
-}
-
-async function mediaBlobFor(src: string): Promise<{ blob: Blob; name: string; mime: string } | null> {
-  const rec = await getMediaBlob(src);
-  if (rec) return { blob: rec.blob, name: rec.name, mime: rec.mime };
-  // IDB does not have (super cache limit/upload from other terminals) → fetch from server
-  try {
-    const res = await fetch(src);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const name = src.slice(MEDIA_PREFIX.length);
-    return { blob, name, mime: blob.type || 'application/octet-stream' };
-  } catch {
-    return null;
-  }
-}
 
 export interface ProjectExportResult {
   filename: string;
@@ -393,8 +246,10 @@ export async function buildProjectExport(id: string, name: string): Promise<Proj
   const exportDoc = sanitizePortableProjectDoc(doc);
   const loadedChat = await loadChat(id);
   const chat = loadedChat ? sanitizePortableChat(loadedChat) : undefined;
+  const proposal = await loadPortableProposal(id);
+  const runtime = await loadAgentRuntimeTransfer(id, chat, proposal);
   const creativeMode = await loadCreativeMode(id);
-  const srcs = collectUploadSrcs(exportDoc);
+  const srcs = includeProposalUploadSrcs(collectUploadSrcs(exportDoc), proposal);
   const mediaMissing: string[] = [];
   const manifest: ProjectStreamManifest = {
     format: PROJECT_STREAM_FORMAT,
@@ -404,8 +259,9 @@ export async function buildProjectExport(id: string, name: string): Promise<Proj
     doc: exportDoc,
     ...(chat ? { chat } : {}),
     ...(creativeMode ? { creativeMode } : {}),
+    ...(proposal ? { proposal } : {}),
   };
-  const stream = streamFrom(projectExportChunks(manifest, srcs, mediaMissing));
+  const stream = streamFrom(projectExportChunks(manifest, runtime, srcs, mediaMissing));
   const blob = await new Response(stream, {
     headers: { 'Content-Type': 'application/x-openchatcut-project' },
   }).blob();
@@ -425,16 +281,59 @@ export interface ProjectImportResult {
   mediaMissing: string[];
 }
 
+async function persistImportedChat(projectId: string, chat: PersistedChat): Promise<void> {
+  await saveChat(projectId, chat);
+  if (JSON.stringify(await loadChat(projectId)) !== JSON.stringify(chat)) {
+    throw new Error('Imported Agent-linked chat could not be persisted.');
+  }
+}
+
 
 async function publishStagedProject(
   staged: StagedProjectImport,
   publish?: ProjectImportOptions['publish'],
 ): Promise<ProjectMeta> {
-  if (publish) return publish(staged);
+  validateProposalRuntimeTransfer(staged.runtime ?? null, staged.proposal);
+  if (publish) {
+    const publishable = staged.runtime && staged.chat
+      ? { name: staged.name, doc: staged.doc, ...(staged.creativeMode ? { creativeMode: staged.creativeMode } : {}) }
+      : staged;
+    const meta = await publish(publishable);
+    try {
+      if (staged.runtime) {
+        await publishTransferredAgentRuntime(staged.runtime, meta.id, staged.proposal);
+      }
+      await publishTransferredProposal(meta.id, staged.proposal);
+      if (staged.runtime && staged.chat) await persistImportedChat(meta.id, staged.chat);
+      return meta;
+    } catch (error) {
+      await Promise.all([
+        purgeAgentRuntime(meta.id).catch(() => undefined),
+        clearProposal(meta.id).catch(() => undefined),
+      ]);
+      throw error;
+    }
+  }
   const meta = await createProject(staged.name, staged.doc);
-  if (staged.chat) await saveChat(meta.id, staged.chat);
-  if (staged.creativeMode) await saveCreativeMode(meta.id, staged.creativeMode);
-  return meta;
+  try {
+    if (staged.runtime) {
+      await publishTransferredAgentRuntime(staged.runtime, meta.id, staged.proposal);
+    }
+    await publishTransferredProposal(meta.id, staged.proposal);
+    if (staged.chat) {
+      if (staged.runtime) await persistImportedChat(meta.id, staged.chat);
+      else await saveChat(meta.id, staged.chat);
+    }
+    if (staged.creativeMode) await saveCreativeMode(meta.id, staged.creativeMode);
+    return meta;
+  } catch (error) {
+    await Promise.all([
+      purgeAgentRuntime(meta.id).catch(() => undefined),
+      clearProposal(meta.id).catch(() => undefined),
+    ]);
+    await purgeProject(meta.id).catch(() => undefined);
+    throw error;
+  }
 }
 
 function importResult(staged: StagedProjectImport, meta: ProjectMeta): ProjectImportResult {
@@ -511,6 +410,7 @@ function streamManifest(
   const migratedDoc = migrateProjectDoc(manifest.doc, migrationOptions);
   if (!migratedDoc) throw new Error('工程数据(doc)校验不通过');
   const doc = sanitizePortableProjectDoc(migratedDoc);
+  const proposal = portableProposalRecord(manifest.proposal);
   return {
     format: PROJECT_STREAM_FORMAT,
     type: 'manifest',
@@ -518,6 +418,7 @@ function streamManifest(
     exportedAt: typeof manifest.exportedAt === 'string' ? manifest.exportedAt : '',
     doc,
     ...(isPersistedChat(manifest.chat) ? { chat: sanitizePortableChat(manifest.chat) } : {}),
+    ...(proposal ? { proposal } : {}),
     ...(typeof manifest.creativeMode === 'string' && manifest.creativeMode
       ? { creativeMode: manifest.creativeMode }
       : {}),
@@ -528,98 +429,12 @@ async function stageStreamPackage(
   file: Blob,
   options: ProjectImportOptions,
 ): Promise<StagedProjectImport> {
-  const namespace = createMediaBlobImportNamespace();
-  const stagedEntries: StagedMediaBlobImportEntry[] = [];
-  let manifest: ProjectStreamManifest | null = null;
-  let current: {
-    entry: ProjectMediaManifestEntry;
-    parts: ArrayBuffer[];
-    bytes: number;
-  } | null = null;
-  const packageSrcs = new Set<string>();
-  const replacements = new Map<string, string>();
-  const stagedByTarget = new Map<string, StagedMediaBlobImportEntry>();
-  let mediaRestored = 0;
-
-  try {
-    for await (const line of textLines(file)) {
-      if (!line) continue;
-      let record: unknown;
-      try {
-        record = JSON.parse(line);
-      } catch {
-        throw new Error('工程包记录不是合法 JSON');
-      }
-      if (!manifest) {
-        manifest = streamManifest(record, options.migrationOptions);
-        continue;
-      }
-      if (!record || typeof record !== 'object') throw new Error('工程包媒体记录不是对象');
-      const row = record as Record<string, unknown>;
-      if (row.type === 'media-start') {
-        if (current) throw new Error('工程包媒体记录未结束');
-        const entry = mediaManifestEntry(row);
-        if (!entry) throw new Error('工程包媒体条目校验不通过');
-        if (packageSrcs.has(entry.src)) throw new Error(`工程包媒体 src 重复: ${entry.src}`);
-        packageSrcs.add(entry.src);
-        current = { entry, parts: [], bytes: 0 };
-        continue;
-      }
-      if (row.type === 'media-chunk') {
-        if (!current || typeof row.data !== 'string') throw new Error('工程包媒体分片顺序错误');
-        const bytes = base64ToBytes(row.data);
-        current.bytes += bytes.byteLength;
-        if (current.bytes > current.entry.bytes) throw new Error(`工程包媒体大小超限: ${current.entry.name}`);
-        current.parts.push(arrayBufferBlobPart(bytes));
-        continue;
-      }
-      if (row.type === 'media-end') {
-        if (!current || row.src !== current.entry.src) throw new Error('工程包媒体结束记录不匹配');
-        if (current.bytes !== current.entry.bytes) throw new Error(`工程包媒体大小不匹配: ${current.entry.name}`);
-        const blob = new Blob(current.parts, { type: current.entry.mime });
-        const staged = await stageMediaBlobImport(namespace, current.entry.src, blob, {
-          name: current.entry.name,
-          mime: current.entry.mime,
-          sourceRevision: current.entry.sourceRevision,
-          sourceSize: current.entry.sourceSize,
-          sourceModifiedAt: current.entry.sourceModifiedAt,
-        });
-        const sameTarget = stagedByTarget.get(staged.src);
-        if (sameTarget && sameTarget.sha256 !== staged.sha256) {
-          throw new Error(`工程包媒体安全名称冲突: ${staged.src}`);
-        }
-        if (!sameTarget) {
-          stagedByTarget.set(staged.src, staged);
-          stagedEntries.push(staged);
-        }
-        replacements.set(current.entry.src, staged.src);
-        mediaRestored += 1;
-        current = null;
-        continue;
-      }
-      throw new Error('工程包含未知记录');
-    }
-
-    if (!manifest) throw new Error('工程包缺 manifest');
-    if (current) throw new Error('工程包媒体记录被截断');
-    const carriedSrcs = [...new Set(replacements.values())];
-    return {
-      name: manifest.name,
-      doc: rewriteProjectMediaSrcs(manifest.doc, replacements),
-      ...(manifest.chat ? { chat: manifest.chat } : {}),
-      ...(manifest.creativeMode ? { creativeMode: manifest.creativeMode } : {}),
-      carriedSrcs,
-      mediaRestored,
-      mediaImport: { namespace, entries: stagedEntries },
-    };
-  } catch (error) {
-    try {
-      await discardMediaBlobImport(namespace);
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], '工程包解析失败，临时媒体清理也失败');
-    }
-    throw error;
-  }
+  return stageProjectStream(
+    file,
+    (value) => streamManifest(value, options.migrationOptions),
+    rewriteProjectMediaSrcs,
+    (proposal, replacements) => portableProposalRecord(proposal, replacements)!,
+  );
 }
 
 /**

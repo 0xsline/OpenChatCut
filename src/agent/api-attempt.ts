@@ -12,7 +12,11 @@ import type { AgentToolSchema } from './tool-schema';
 import type { AgentEvent } from './runtime';
 import type { ChatCompletionsMediaPreparation } from './messages';
 import { createInlineThinkingExtractor } from './settings/agentSettings';
-import { estimateContextTokens, estimateTextTokens } from './context-compaction';
+import {
+  estimateContextTokens,
+  estimateTextTokens,
+  type AgentContextUsage,
+} from './context-compaction';
 import {
   captureSynchronousStart,
   shouldRetryCompatibleMediaRequest,
@@ -36,6 +40,7 @@ export interface ApiAttemptOptions {
   readonly contextWasCompacted: boolean;
   readonly toolSchemas: readonly AgentToolSchema[];
   readonly onEvent: (event: AgentEvent) => void;
+  readonly onContextUsage?: (usage: AgentContextUsage) => Promise<void>;
   readonly onText: (text: string) => void;
   readonly toolFailures: ToolFailureTracker;
 }
@@ -95,34 +100,35 @@ class ApiRequestAttempt {
     throw error;
   }
 
-  private emitUsage(part: Extract<TextStreamPart<ToolSet>, { type: 'finish' }>): void {
+  private async emitUsage(
+    part: Extract<TextStreamPart<ToolSet>, { type: 'finish' }>,
+  ): Promise<void> {
     const usage = part.totalUsage;
     if (usage.inputTokens === undefined) return;
     const { choice, contextWasCompacted, system, toolSchemas, onEvent } = this.options;
-    onEvent({
-      type: 'context-usage',
-      usage: {
-        inputTokens: usage.inputTokens,
-        contextWindowTokens: choice.capabilities.contextWindowTokens.value,
-        contextWindowEstimated: choice.capabilities.contextWindowTokens.estimated,
-        isEstimated: false,
-        modelId: choice.id,
-        compacted: contextWasCompacted,
-        messageCount: this.requestMessages.length,
-        systemTokens: estimateTextTokens(system),
-        toolSchemaTokens: estimateTextTokens(JSON.stringify(toolSchemas)),
-        historyTokens: estimateContextTokens(this.requestMessages),
-        toolCount: toolSchemas.length,
-        outputTokens: usage.outputTokens,
-        reasoningTokens: usage.outputTokenDetails.reasoningTokens,
-        noCacheInputTokens: usage.inputTokenDetails.noCacheTokens,
-        cacheReadTokens: usage.inputTokenDetails.cacheReadTokens,
-        cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens,
-      },
-    });
+    const contextUsage: AgentContextUsage = {
+      inputTokens: usage.inputTokens,
+      contextWindowTokens: choice.capabilities.contextWindowTokens.value,
+      contextWindowEstimated: choice.capabilities.contextWindowTokens.estimated,
+      isEstimated: false,
+      modelId: choice.id,
+      compacted: contextWasCompacted,
+      messageCount: this.requestMessages.length,
+      systemTokens: estimateTextTokens(system),
+      toolSchemaTokens: estimateTextTokens(JSON.stringify(toolSchemas)),
+      historyTokens: estimateContextTokens(this.requestMessages),
+      toolCount: toolSchemas.length,
+      outputTokens: usage.outputTokens,
+      reasoningTokens: usage.outputTokenDetails.reasoningTokens,
+      noCacheInputTokens: usage.inputTokenDetails.noCacheTokens,
+      cacheReadTokens: usage.inputTokenDetails.cacheReadTokens,
+      cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens,
+    };
+    onEvent({ type: 'context-usage', usage: contextUsage });
+    await this.options.onContextUsage?.(contextUsage);
   }
 
-  private consumePart(part: TextStreamPart<ToolSet>): void {
+  private async consumePart(part: TextStreamPart<ToolSet>): Promise<void> {
     const { onEvent, onText, toolFailures } = this.options;
     if (streamPartStartsCompatibleMediaOutput(part.type)) this.outputStarted = true;
     if (part.type === 'text-delta') {
@@ -142,7 +148,7 @@ class ApiRequestAttempt {
     } else if (part.type === 'error') {
       throw part.error;
     } else if (part.type === 'finish') {
-      this.emitUsage(part);
+      await this.emitUsage(part);
     } else if (part.type === 'abort') {
       this.aborted = true;
     }
@@ -150,7 +156,7 @@ class ApiRequestAttempt {
 
   private async consume(stream: AsyncIterable<TextStreamPart<ToolSet>>): Promise<void> {
     for await (const part of stream) {
-      this.consumePart(part);
+      await this.consumePart(part);
       if (this.aborted) break;
     }
   }

@@ -11,8 +11,8 @@ import {
   duplicateProject,
   deleteProject,
   restoreProject,
-  type ProjectMeta,
 } from '../../persist/projectStore';
+import type { ProjectMeta } from '../../persist/projectStoreCoordinators';
 
 // Local-first MCP project session tools:
 // create/list/delete/duplicate/edit/restore/target_project + get_editor_url.

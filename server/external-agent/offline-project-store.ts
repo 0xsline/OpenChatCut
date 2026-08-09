@@ -12,6 +12,12 @@ import {
 } from '../../src/agent/external-edit-session.ts';
 import type { Operation } from '../../src/agent/proposal.ts';
 import type { ProjectDoc } from '../../src/editor/types.ts';
+import {
+  projectEditOwnershipKey,
+  projectEditOwnershipMatches,
+  renewedProjectEditOwnership,
+  type ProjectEditOwnershipClaim,
+} from './project-edit-ownership.ts';
 
 const VALID_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
 const MAX_AUTOMATIC_VERSIONS = 30;
@@ -81,12 +87,14 @@ export interface OfflineProjectCommitResult {
   status: OfflineProjectCommitStatus;
   revision?: string;
   automaticVersionCreated?: boolean;
+  ownership?: ProjectEditOwnershipClaim;
 }
 
 export interface OfflineProjectCommitInput {
   projectId: string;
   expectedRevision: string;
   doc: ProjectDoc;
+  ownership: ProjectEditOwnershipClaim;
   canCommit: () => boolean;
 }
 
@@ -234,23 +242,33 @@ async function attemptCommit(input: CommitAttemptInput): Promise<OfflineProjectC
       };
       if (!metadataMatches(currentMetadata, input.metadata)) return { status: 'metadata-conflict' };
       if (!input.canCommit()) return { status: 'browser-takeover' };
+      const ownershipKey = projectEditOwnershipKey(input.projectId);
+      const ownership = await store.readEntry(ownershipKey);
+      if (!projectEditOwnershipMatches(ownership.value, input.ownership)) {
+        return { status: 'browser-takeover' };
+      }
       const now = Date.now();
+      const nextRevision = revisionOf(input.normalizedDoc);
       const versions = automaticVersionEntries(currentMetadata.versions.value, before, now);
       const changes = {
         [versionsKey]: versions.entries,
         projects: updatedProjectIndex(currentMetadata.projects.value, input.projectId, now),
         [projectKey]: input.normalizedDoc,
+        [ownershipKey]: renewedProjectEditOwnership(input.ownership, nextRevision, now),
       };
       const originals = {
         [versionsKey]: currentMetadata.versions,
         projects: currentMetadata.projects,
         [projectKey]: project,
+        [ownershipKey]: ownership,
       };
       await writeCommitEntries(store, changes, originals, input.canCommit);
+      const appliedOwnership = { ...input.ownership, baseRevision: nextRevision };
       return {
         status: 'applied',
-        revision: revisionOf(input.normalizedDoc),
+        revision: nextRevision,
         automaticVersionCreated: versions.created,
+        ownership: appliedOwnership,
       };
     });
   } catch (error) {
@@ -270,6 +288,7 @@ export interface OfflineCheckpointSaveInput {
   projectId: string;
   expectedRevision: string;
   checkpoint: ExternalDraftCheckpoint;
+  ownership: ProjectEditOwnershipClaim;
   canSave: () => boolean;
 }
 
@@ -280,7 +299,15 @@ export async function loadOfflineEditCheckpoint(
 ): Promise<ExternalDraftCheckpoint | null> {
   if (!VALID_PROJECT_ID.test(projectId)) throw new Error('invalid project id');
   const entry = await getStoredEntry(`${CHECKPOINT_PREFIX}${projectId}`);
-  return entry.found ? normalizedCheckpoint(entry.value, expectedRevision) : null;
+  if (!entry.found) return null;
+  if (isRecord(entry.value) && typeof entry.value.version === 'number' && entry.value.version > 1) {
+    throw new Error(`offline edit checkpoint version ${entry.value.version} is not supported`);
+  }
+  const checkpoint = normalizedCheckpoint(entry.value, expectedRevision);
+  if (checkpoint) return checkpoint;
+  if (isRecord(entry.value) && entry.value.version === 1
+    && entry.value.baseRevision !== expectedRevision) return null;
+  throw new Error('offline edit checkpoint is corrupt');
 }
 
 export async function saveOfflineEditCheckpoint(
@@ -293,11 +320,33 @@ export async function saveOfflineEditCheckpoint(
     const project = await store.readEntry(`project:${input.projectId}`);
     const doc = project.found ? normalizedProject(project.value) : null;
     if (!doc || revisionOf(doc) !== input.expectedRevision) return 'stale';
+    const ownershipKey = projectEditOwnershipKey(input.projectId);
+    const ownership = await store.readEntry(ownershipKey);
+    if (!projectEditOwnershipMatches(ownership.value, input.ownership)) return 'browser-takeover';
     if (!input.canSave()) return 'browser-takeover';
     const key = `${CHECKPOINT_PREFIX}${input.projectId}`;
     const previous = await store.readEntry(key);
+    if (previous.found) {
+      if (isRecord(previous.value)
+        && typeof previous.value.version === 'number'
+        && previous.value.version > 1) {
+        throw new Error(`offline edit checkpoint version ${previous.value.version} is not supported`);
+      }
+      if (!isRecord(previous.value)
+        || previous.value.version !== 1
+        || typeof previous.value.baseRevision !== 'string'
+        || !normalizedCheckpoint(previous.value, previous.value.baseRevision)) {
+        throw new Error('offline edit checkpoint is corrupt');
+      }
+    }
     await store.writeEntry(key, checkpoint);
-    if (input.canSave()) return 'saved';
+    if (input.canSave()) {
+      await store.writeEntry(
+        ownershipKey,
+        renewedProjectEditOwnership(input.ownership, input.expectedRevision),
+      );
+      return 'saved';
+    }
     if (previous.found) await store.writeEntry(key, previous.value);
     else await store.removeEntry(key);
     return 'browser-takeover';
@@ -307,14 +356,23 @@ export async function saveOfflineEditCheckpoint(
 export async function deleteOfflineEditCheckpoint(
   projectId: string,
   sessionId: string,
+  ownership: ProjectEditOwnershipClaim,
 ): Promise<void> {
   if (!VALID_PROJECT_ID.test(projectId)) throw new Error('invalid project id');
   await withProjectStoreLock(async (store) => {
+    const owned = await store.readEntry(projectEditOwnershipKey(projectId));
+    if (!projectEditOwnershipMatches(owned.value, ownership)) return;
     const key = `${CHECKPOINT_PREFIX}${projectId}`;
     const current = await store.readEntry(key);
-    if (current.found && isRecord(current.value) && current.value.sessionId === sessionId) {
-      await store.removeEntry(key);
+    if (!current.found) return;
+    if (!isRecord(current.value)
+      || typeof current.value.version !== 'number'
+      || current.value.version !== 1
+      || typeof current.value.baseRevision !== 'string'
+      || !normalizedCheckpoint(current.value, current.value.baseRevision)) {
+      throw new Error('offline edit checkpoint is corrupt or unsupported');
     }
+    if (current.value.sessionId === sessionId) await store.removeEntry(key);
   });
 }
 

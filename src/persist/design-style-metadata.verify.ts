@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import type { DesignStyle } from '../editor/types';
 import {
   loadOwnedStyles,
-  resetProjectStoreMemory,
   saveOwnedStyle,
   updateOwnedStyle,
-} from './projectStore';
+} from './ownedStyleStore';
+import { resetProjectStoreMemory } from './projectStore';
 import { kvSet } from './sharedKv';
 
 const editorial: DesignStyle = {

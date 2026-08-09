@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
-const editor = source('../../Editor.tsx');
+const editor = source('../../editor/useEditorController.tsx');
 const timeline = source('./Timeline.tsx');
 const controller = source('./useTimelineController.ts');
 const pointer = source('./useTimelinePointer.ts');
 const trackLane = source('./TrackLane.tsx');
 
-assert.match(editor, /selectedCaptions=\{captionSelections\}/);
-assert.match(editor, /onMarqueeCaptionSelect=\{selectMarqueeCaptions\}/);
-assert.match(editor, /onDropExternalFiles=\{dropExternalFilesToTimeline\}/);
-assert.match(editor, /selectAll:\s*selectAllTimelineContent/);
+assert.match(editor, /selectedCaptions:\s*captionSelections/);
+assert.match(editor, /onMarqueeCaptionSelect:\s*selectMarqueeCaptions/);
+assert.match(editor, /onDropExternalFiles:\s*dropExternalFilesToTimeline/);
+assert.match(editor, /selectAllTimelineContent/);
 
 assert.match(controller, /createCaptionTimelineClipboard/);
 assert.match(controller, /createCaptionTrackFromClipboard/);

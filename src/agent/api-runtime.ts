@@ -19,7 +19,12 @@ import type { AgentModelChoice } from './model-selection';
 import { TOOL_SCHEMAS } from './tools';
 import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import type { AgentToolSchema } from './tool-schema';
+import type { AgentRunRecorder } from './runtime-ledger';
 import { ToolActivation } from './tool-activation';
+import {
+  harnessContextForModelRound,
+  type HarnessToolExecutionContext,
+} from './harness-context';
 import { compactToolResultForModel } from './tool-result-compaction';
 import {
   getLanguageModel,
@@ -50,7 +55,7 @@ import {
 const MAX_TOOL_TURNS = 30;
 type ToolResultOutput = ToolResultPart['output'];
 
-function toolModelOutput(output: unknown): ToolResultOutput {
+function toolModelOutput(output: unknown, preserveExact = false): ToolResultOutput {
   const shaped = output as {
     denied?: boolean;
     note?: string;
@@ -60,6 +65,7 @@ function toolModelOutput(output: unknown): ToolResultOutput {
     return { type: 'execution-denied', reason: shaped.note ?? 'User denied tool execution.' };
   }
   if (Array.isArray(shaped?.__images)) {
+    const projected = compactToolResultForModel(output);
     return {
       type: 'content',
       value: [
@@ -71,12 +77,12 @@ function toolModelOutput(output: unknown): ToolResultOutput {
         })),
         {
           type: 'text' as const,
-          text: shaped.note ?? `${shaped.__images.length} frames rendered`,
+          text: JSON.stringify(projected ?? shaped.note ?? `${shaped.__images.length} frames rendered`),
         },
       ],
     };
   }
-  const value = JSON.stringify(compactToolResultForModel(output) ?? null);
+  const value = JSON.stringify((preserveExact ? output : compactToolResultForModel(output)) ?? null);
   return { type: 'text', value };
 }
 export function apiToolExecutionOutput(execution: CodexToolExecution): unknown {
@@ -92,8 +98,10 @@ function createAgentTools(
   ctx: AgentContext,
   onEvent: (event: AgentEvent) => void,
   settings: AgentSettings,
+  harness: HarnessToolExecutionContext,
   onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>,
   onFollowup?: () => void,
+  runRecorder?: AgentRunRecorder,
 ): ToolSet {
   return Object.fromEntries(schemas.map((schema) => [
     schema.name,
@@ -102,7 +110,7 @@ function createAgentTools(
       inputSchema: jsonSchema<Record<string, unknown>>(
         schema.input_schema as Parameters<typeof jsonSchema<Record<string, unknown>>>[0],
       ),
-      execute: async (input) => {
+      execute: async (input, options) => {
         const execution = await executeOpenChatCutTool(schema, input ?? {}, {
           ctx,
           onEvent,
@@ -111,6 +119,11 @@ function createAgentTools(
           onSkillGuard,
           onFollowup,
           toolCatalog: getActivation().allSchemas(),
+          activeToolCatalog: getActivation().schemas(),
+          harness,
+          runRecorder,
+          toolCallId: options.toolCallId,
+          signal: options.abortSignal,
         });
         const result = apiToolExecutionOutput(execution);
         if (schema.name !== 'ToolSearch') return result;
@@ -118,7 +131,7 @@ function createAgentTools(
         setActivation(activated.activation);
         return activated.result;
       },
-      toModelOutput: ({ output }) => toolModelOutput(output),
+      toModelOutput: ({ output }) => toolModelOutput(output, schema.name === 'load_skill'),
     }),
   ]));
 }
@@ -191,6 +204,21 @@ class ApiAgentRunner {
       this.requestContextWasCompacted ||= prepared.compacted;
     }
     const toolSchemas = this.activation.schemas();
+    const messages = await prepareApiMessages(
+      this.conv, choice, this.compatibleMediaFallbackRequired, opts?.signal,
+    );
+    const maxInput = choice.capabilities.maxInputTokens;
+    const maxInputTokens = maxInput.estimated
+      ? Math.max(1, choice.capabilities.contextWindowTokens.value - this.input.maxOutputTokens)
+      : maxInput.value;
+    const harness = harnessContextForModelRound({
+      messages: messages.requestMessages,
+      system: this.input.system,
+      toolSchemas,
+      contextWindowTokens: choice.capabilities.contextWindowTokens.value,
+      maxInputTokens,
+      maxOutputTokens: this.input.maxOutputTokens,
+    });
     const tools = createAgentTools(
       toolSchemas,
       () => this.activation,
@@ -198,11 +226,10 @@ class ApiAgentRunner {
       ctx,
       onEvent,
       this.settings,
+      harness,
       opts?.onSkillGuard,
       output.markFollowup,
-    );
-    const messages = await prepareApiMessages(
-      this.conv, choice, this.compatibleMediaFallbackRequired, opts?.signal,
+      opts?.runRecorder,
     );
     return {
       ...messages,
@@ -268,6 +295,9 @@ class ApiAgentRunner {
         messages: prepared.requestMessages,
         system: this.input.system,
         maxOutputTokens: this.input.maxOutputTokens,
+        onContextUsage: async (usage) => {
+          await this.input.opts?.recordProviderContextUsage?.(usage, prepared.toolSchemas);
+        },
         signal: this.input.opts?.signal,
         choice: this.input.choice,
         contextWasCompacted: this.requestContextWasCompacted,

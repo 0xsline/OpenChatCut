@@ -88,6 +88,15 @@ try {
   assert.equal(calls.length, 2, 'first HTTP request should exchange once then access the store');
   await requestProjectStore({ operation: 'entry', key: 'projects' });
   assert.equal(calls.length, 3, 'subsequent requests must reuse the editor session');
+  await requestProjectStore({ operation: 'purge-project', projectId: 'project-to-purge' });
+  assert.equal(calls.length, 4, 'project purge sends one value-free request without fetching a snapshot');
+  const purgeCall = calls.at(-1);
+  assert.equal(purgeCall?.url, '/api/project-store/project/purge');
+  assert.equal(purgeCall?.init?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(purgeCall?.init?.body)), {
+    operation: 'purge-project',
+    projectId: 'project-to-purge',
+  });
   assert.equal(globals.location.hash, '', 'launch credential must be removed from the visible URL');
 
   resetProjectStoreTransport();

@@ -240,6 +240,10 @@ globalThis.fetch = (async (input, init) => {
       type: 'context-usage',
       inputTokens: 1_000,
       contextWindowTokens: 1_000_000,
+      outputTokens: 120,
+      reasoningTokens: 40,
+      cacheReadTokens: 700,
+      noCacheInputTokens: 300,
     })}\n${JSON.stringify({ type: 'done' })}\n`));
     normalController.close();
     return new Response(null, { status: 200 });
@@ -248,6 +252,8 @@ globalThis.fetch = (async (input, init) => {
 }) as typeof fetch;
 const normalEvents: AgentEvent[] = [];
 const normalFailures = new ToolFailureTracker();
+const persistedCodexUsages: Extract<AgentEvent, { type: 'context-usage' }>['usage'][] = [];
+let persistedCodexTools: readonly { readonly name: string }[] = [];
 normalFailures.record('read_project', { success: false, result: { error: 'stale read' } });
 
 try {
@@ -263,6 +269,11 @@ try {
       maxOutputTokens: 64_000,
       toolFailures: normalFailures,
       tools: [{ name: 'read_project', inputSchema: { type: 'object' } }],
+      onContextUsage: async (usage, tools) => {
+        await Promise.resolve();
+        persistedCodexUsages.push(usage);
+        persistedCodexTools = tools;
+      },
       executeTool: async () => ({ success: true, result: { duration: 42 } }),
     },
   );
@@ -273,6 +284,16 @@ try {
   const usageEvent = normalEvents.find((event) => event.type === 'context-usage');
   assert.equal(usageEvent?.type === 'context-usage' ? usageEvent.usage.contextWindowTokens : 0, 64_000,
     'Codex provider usage cannot replace an explicit context override');
+  assert.equal(persistedCodexUsages.length, 1,
+    'Codex completion persists exactly one observed usage sample');
+  const [persistedCodexUsage] = persistedCodexUsages;
+  assert.ok(persistedCodexUsage, 'the persisted Codex usage sample must be available for inspection');
+  assert.equal(persistedCodexUsage.outputTokens, 120);
+  assert.equal(persistedCodexUsage.reasoningTokens, 40);
+  assert.equal(persistedCodexUsage.cacheReadTokens, 700);
+  assert.equal(persistedCodexUsage.noCacheInputTokens, 300);
+  assert.deepEqual(persistedCodexTools.map((tool) => tool.name), ['read_project'],
+    'Codex usage persistence receives the exact tool schema shape before completion');
 } finally {
   globalThis.fetch = originalFetch;
 }

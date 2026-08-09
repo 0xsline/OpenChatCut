@@ -6,12 +6,17 @@ import type {
 import type { AgentEvent } from '../runtime';
 import type { AgentContextUsage } from '../context-compaction';
 import { estimateTextTokens } from '../context-compaction';
+import {
+  harnessContextForModelRound,
+  type HarnessToolExecutionContext,
+} from '../harness-context';
 import { describeImageWithVision } from '../vision';
 import { getActiveAgentModelChoice } from '../model-selection';
 import { resolveVisionModel } from '../visionConfig';
 import { submitCodexToolResult } from './client';
 import { ToolFailureTracker } from '../toolFailure';
 import { compactToolResultForTransport } from '../tool-result-compaction';
+import { agentArtifactRefOf, attachAgentArtifactRef } from '../runtime-artifact';
 import { codexToolHistoryEntry, codexToolInput } from './tool-history';
 
 const MAX_TOOL_TURNS = 30;
@@ -37,6 +42,7 @@ export interface CodexRuntimeOptions {
   readonly contextWindowEstimated: boolean;
   readonly contextWindowOverride?: boolean;
   readonly maxOutputTokens: number;
+  readonly maxInputTokens?: number;
   readonly supportsImages?: boolean;
   readonly requestMessageCount?: number;
   readonly contextWasCompacted?: boolean;
@@ -46,13 +52,25 @@ export interface CodexRuntimeOptions {
   readonly toolSchemaTokens?: number;
   readonly historyTokens?: number;
   readonly toolCount?: number;
+  readonly requestMessages?: readonly ModelMessage[];
+  readonly requestTools?: readonly CodexAgentToolSpec[];
   readonly tools: readonly CodexAgentToolSpec[];
   readonly resolveTools?: () => readonly CodexAgentToolSpec[];
   readonly prepareContextForTools?: (
     messages: readonly ModelMessage[],
     tools: readonly CodexAgentToolSpec[],
   ) => Promise<{ readonly messages: ModelMessage[]; readonly compacted: boolean }>;
-  readonly executeTool: (name: string, args: Record<string, unknown>) => Promise<CodexToolExecution>;
+  readonly onContextUsage?: (
+    usage: AgentContextUsage,
+    tools: readonly CodexAgentToolSpec[],
+  ) => Promise<void>;
+  readonly executeTool: (
+    name: string,
+    args: Record<string, unknown>,
+    toolCallId?: string,
+    signal?: AbortSignal,
+    harness?: HarnessToolExecutionContext,
+  ) => Promise<CodexToolExecution>;
 }
 
 export interface StreamState {
@@ -96,7 +114,7 @@ export class CodexFollowupPause extends Error {
 }
 
 export function currentCodexTools(opts: CodexRuntimeOptions): readonly CodexAgentToolSpec[] {
-  return opts.resolveTools?.() ?? opts.tools;
+  return opts.requestTools ?? opts.resolveTools?.() ?? opts.tools;
 }
 
 export function unresolvedFailureCompletion(
@@ -139,6 +157,11 @@ async function submitToolExecution(
   });
 }
 
+function preservingArtifactRef(source: unknown, projected: Record<string, unknown>): Record<string, unknown> {
+  const ref = agentArtifactRefOf(source);
+  return ref ? attachAgentArtifactRef(projected, ref) : projected;
+}
+
 function withoutToolImages(execution: CodexToolExecution): CodexToolExecution {
   if (!execution.result || typeof execution.result !== 'object' || Array.isArray(execution.result)) return execution;
   const result = execution.result as Record<string, unknown>;
@@ -146,12 +169,12 @@ function withoutToolImages(execution: CodexToolExecution): CodexToolExecution {
   const { __images: _images, ...rest } = result;
   return {
     ...execution,
-    result: {
+    result: preservingArtifactRef(result, {
       ...rest,
       note: typeof rest.note === 'string'
         ? rest.note
         : 'Image output omitted because the selected model does not support image input.',
-    },
+    }),
   };
 }
 
@@ -171,11 +194,27 @@ async function describeToolImages(execution: CodexToolExecution): Promise<CodexT
   ).catch(() => null);
   if (!description) return withoutToolImages(execution);
   const { __images, ...rest } = result;
-  return { ...execution, result: { ...rest, visualSummary: description } };
+  return {
+    ...execution,
+    result: preservingArtifactRef(result, { ...rest, visualSummary: description }),
+  };
 }
 
 function isToolArgs(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function requestHarnessContext(opts: CodexRuntimeOptions): HarnessToolExecutionContext | undefined {
+  if (!opts.requestMessages) return undefined;
+  const maxInputTokens = opts.maxInputTokens
+    ?? Math.max(1, opts.contextWindowTokens - opts.maxOutputTokens);
+  return harnessContextForModelRound({
+    messages: opts.requestMessages,
+    system: opts.system ?? '',
+    toolSchemas: currentCodexTools(opts),
+    contextWindowTokens: opts.contextWindowTokens,
+    maxInputTokens,
+    maxOutputTokens: opts.maxOutputTokens,
+  });
 }
 
 async function stopAtToolLimit(
@@ -210,7 +249,9 @@ async function executeStreamTool(
     ? failedTool(`Unknown Codex tool: ${event.name}`)
     : !validArgs
       ? failedTool(`Invalid arguments for Codex tool: ${event.name}`)
-      : await opts.executeTool(event.name, event.args);
+      : await opts.executeTool(
+        event.name, event.args, event.callId, opts.signal, requestHarnessContext(opts),
+      );
   if (!known || !validArgs) {
     onEvent({ type: 'tool', name: event.name, args: event.args, result: execution.result });
   }
@@ -220,7 +261,9 @@ async function executeStreamTool(
     : execution;
   const submitted = {
     ...preparedForModel,
-    result: compactToolResultForTransport(preparedForModel.result, opts.supportsImages === true),
+    result: event.name === 'load_skill'
+      ? preparedForModel.result
+      : compactToolResultForTransport(preparedForModel.result, opts.supportsImages === true),
   };
   await submitToolExecution(requestId, event.callId, submitted);
   const nextState = {
@@ -282,6 +325,10 @@ function contextUsage(event: ContextUsageEvent, opts: CodexRuntimeOptions): Agen
     toolSchemaTokens: opts.toolSchemaTokens,
     historyTokens: opts.historyTokens,
     toolCount: opts.toolCount,
+    outputTokens: event.outputTokens,
+    reasoningTokens: event.reasoningTokens,
+    noCacheInputTokens: event.noCacheInputTokens,
+    cacheReadTokens: event.cacheReadTokens,
   };
 }
 
@@ -313,7 +360,9 @@ export async function handleCodexStreamEvent(
     return handleOutputDelta(event, state, opts, onEvent);
   }
   if (event.type === 'context-usage') {
-    onEvent({ type: 'context-usage', usage: contextUsage(event, opts) });
+    const usage = contextUsage(event, opts);
+    onEvent({ type: 'context-usage', usage });
+    await opts.onContextUsage?.(usage, currentCodexTools(opts));
   } else if (event.type === 'error') {
     throw new Error(event.message);
   } else if (event.type === 'done') {

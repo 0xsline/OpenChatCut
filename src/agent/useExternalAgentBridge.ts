@@ -1,32 +1,43 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction,
+} from 'react';
 import type { AgentContext } from './context';
 import {
-  ExternalBridgeRuntime,
-  type ExternalBridgeBinding,
-  type ExternalGuardRequest,
-  type ExternalProposalSnapshot,
+  ExternalBridgeRuntime, type ExternalGuardRequest, type ExternalProposalSnapshot,
 } from './external-bridge-runtime';
 import {
-  ExternalEditSessionOutcomeError,
-  type ExternalEditSessionTerminalStatus,
+  ExternalEditSessionOutcomeError, type ExternalEditSessionTerminalStatus,
 } from './external-edit-session';
 import { ExternalCallCancellationRegistry } from './external-call-cancellation';
-import { externalToolSchemas } from './external-tool-schemas';
 import type { Proposal } from './proposal';
 import { loadExternalProposal } from '../persist/externalProposalStore';
-import { projectStoreRemoteAvailable } from '../persist/projectStoreTransport';
-import { editorBootstrapInfo } from './editor-credential';
 import {
-  externalBridgeCanStart,
-  type ExternalBridgeReadinessToken,
-} from './external-bridge-readiness';
+  clearBrowserProjectOwnership,
+  browserProjectOwnership,
+  installBrowserProjectOwnership,
+  projectStoreRemoteAvailable,
+  type BrowserProjectOwnership,
+} from '../persist/projectStoreTransport';
+import { editorBootstrapInfo } from './editor-credential';
+import { redactTextForAgentRuntime, sanitizeJsonForArtifact } from './runtime-artifact';
+import { TOOL_ARTIFACT_THRESHOLD } from './runtime-ledger';
+import { externalBridgeCanStart, type ExternalBridgeReadinessToken } from './external-bridge-readiness';
+import {
+  EditorBridgeRequestError,
+  editorBridgeHeaders,
+  registerEditorBridge,
+  sendEditorBridgeResult,
+  unregisterEditorBridge,
+} from './external-bridge-registration';
+import { handleExternalBridgeAttemptError } from './external-bridge-attempt-error';
+import { useT } from '../i18n/locale';
+import {
+  parseExternalCall,
+  parseExternalCancellation as parseCancellation,
+  type ExternalCall,
+} from './externalBridgePayload';
+export type { ExternalCall } from './externalBridgePayload';
 
-export interface ExternalCall {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  binding: ExternalBridgeBinding;
-}
 interface ExternalCallRuntime {
   execute: ExternalBridgeRuntime['execute'];
 }
@@ -38,19 +49,12 @@ export type ExternalResultSender = (
   signal: AbortSignal,
 ) => Promise<void>;
 
-interface ExternalCancellation {
-  id: string;
-  outcome: Exclude<ExternalEditSessionTerminalStatus, 'applied'>;
-  message: string;
-}
-
 interface ExternalBridgeRuntimeSlot extends ExternalBridgeReadinessToken {
   runtime: ExternalBridgeRuntime;
 }
 interface ExternalBridgeHydrator {
   hydrate: ExternalBridgeRuntime['hydrate'];
 }
-
 
 export interface ExternalProposalController {
   proposal: Proposal | null;
@@ -64,115 +68,33 @@ export interface ExternalProposalController {
   confirmGuard: (id: string, allow: boolean) => void;
 }
 
-const retryDelay = () => new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+function retryDelay(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, 1_000);
+  return promise;
+}
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
-const EDITOR_BRIDGE_CREDENTIAL_HEADER = 'X-OpenChatCut-Editor-Credential';
 let editorBridgeCredential: string | null = null;
-
-class EditorBridgeRequestError extends Error {
-  readonly status: number;
-
-  constructor(operation: string, status: number) {
-    super(`${operation} failed: HTTP ${status}`);
-    this.name = 'EditorBridgeRequestError';
-    this.status = status;
-  }
-}
-
-function editorBridgeHeaders(credential: string, json = false): Record<string, string> {
-  const headers: Record<string, string> = {
-    [EDITOR_BRIDGE_CREDENTIAL_HEADER]: credential,
-  };
-  if (json) headers['Content-Type'] = 'application/json';
-  return headers;
-}
 
 async function bootstrapEditorBridge(signal: AbortSignal): Promise<string> {
   return (await editorBootstrapInfo(signal)).credential;
 }
 
-function isFailureOutcome(
-  value: unknown,
-): value is Exclude<ExternalEditSessionTerminalStatus, 'applied'> {
-  return value === 'rejected'
-    || value === 'cancelled'
-    || value === 'stale'
-    || value === 'failed';
-}
-
-function parseExternalCall(value: unknown): ExternalCall {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('invalid external editor call');
+function projectExternalReply(value: unknown): unknown {
+  const sanitized = sanitizeJsonForArtifact(value);
+  if (!sanitized) {
+    throw new ExternalEditSessionOutcomeError(
+      'failed',
+      'The external result could not be serialized safely.',
+    );
   }
-  if (
-    !('id' in value)
-    || typeof value.id !== 'string'
-    || !('name' in value)
-    || typeof value.name !== 'string'
-    || !('arguments' in value)
-    || !value.arguments
-    || typeof value.arguments !== 'object'
-    || Array.isArray(value.arguments)
-    || !('binding' in value)
-    || !value.binding
-    || typeof value.binding !== 'object'
-    || Array.isArray(value.binding)
-    || !('projectId' in value.binding)
-    || typeof value.binding.projectId !== 'string'
-    || !('editorInstanceId' in value.binding)
-    || typeof value.binding.editorInstanceId !== 'string'
-    || !('baseRevision' in value.binding)
-    || typeof value.binding.baseRevision !== 'string'
-  ) {
-    throw new Error('invalid external editor call');
+  if (sanitized.originalChars > TOOL_ARTIFACT_THRESHOLD) {
+    throw new ExternalEditSessionOutcomeError(
+      'failed',
+      'The external result was too large and no recoverable artifact reference was available.',
+    );
   }
-  const args = value.arguments as Record<string, unknown>;
-  return {
-    id: value.id,
-    name: value.name,
-    arguments: args,
-    binding: {
-      projectId: value.binding.projectId,
-      editorInstanceId: value.binding.editorInstanceId,
-      baseRevision: value.binding.baseRevision,
-    },
-  };
-}
-
-function parseCancellation(value: unknown): ExternalCancellation {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('invalid external editor cancellation');
-  }
-  if (
-    !('id' in value)
-    || typeof value.id !== 'string'
-    || !('outcome' in value)
-    || !isFailureOutcome(value.outcome)
-    || !('message' in value)
-    || typeof value.message !== 'string'
-  ) {
-    throw new Error('invalid external editor cancellation');
-  }
-  return { id: value.id, outcome: value.outcome, message: value.message };
-}
-
-async function sendResult(
-  id: string,
-  outcome: ExternalEditSessionTerminalStatus,
-  value: unknown,
-  signal: AbortSignal,
-  credential = editorBridgeCredential,
-): Promise<void> {
-  if (!credential) throw new Error('editor bridge credential is unavailable');
-  const response = await fetch('/api/external-agent/result', {
-    method: 'POST',
-    headers: editorBridgeHeaders(credential, true),
-    body: JSON.stringify({ id, outcome, value }),
-    signal,
-  });
-  if (!response.ok && response.status !== 404) {
-    throw new EditorBridgeRequestError('result', response.status);
-  }
+  return JSON.parse(sanitized.body);
 }
 
 function failedOutcome(
@@ -182,12 +104,15 @@ function failedOutcome(
   outcome: Exclude<ExternalEditSessionTerminalStatus, 'applied'>;
   message: string;
 } {
+  const message = redactTextForAgentRuntime(
+    error instanceof Error ? error.message : String(error),
+  ).slice(0, 1_200) || 'External editor call failed.';
   if (error instanceof ExternalEditSessionOutcomeError) {
-    return { outcome: error.outcome, message: error.message };
+    return { outcome: error.outcome, message };
   }
   return {
     outcome: signal.aborted ? 'cancelled' : 'failed',
-    message: errorMessage(error),
+    message,
   };
 }
 
@@ -196,7 +121,7 @@ export async function executeExternalCall(
   runtime: ExternalCallRuntime,
   bridgeSignal: AbortSignal,
   cancellations: ExternalCallCancellationRegistry,
-  deliverResult: ExternalResultSender = sendResult,
+  deliverResult: ExternalResultSender,
 ): Promise<void> {
   const controller = new AbortController();
   const cancel = () => controller.abort(bridgeSignal.reason);
@@ -207,11 +132,13 @@ export async function executeExternalCall(
   let value: unknown;
   try {
     try {
-      value = await runtime.execute(call.name, call.arguments, call.binding, controller.signal);
+      value = projectExternalReply(
+        await runtime.execute(call.name, call.arguments, call.binding, controller.signal),
+      );
     } catch (error) {
       const failed = failedOutcome(error, controller.signal);
       outcome = failed.outcome;
-      value = failed.message;
+      value = projectExternalReply(failed.message);
     }
     await deliverResult(call.id, outcome, value, bridgeSignal);
   } finally {
@@ -225,6 +152,7 @@ async function pollEditor(
   runtime: ExternalBridgeRuntime,
   cancellations: ExternalCallCancellationRegistry,
   credential: string,
+  ownership: BrowserProjectOwnership,
   signal: AbortSignal,
 ): Promise<void> {
   while (!signal.aborted) {
@@ -232,10 +160,10 @@ async function pollEditor(
     const query = new URLSearchParams({
       projectId,
       editorId: binding.editorInstanceId,
-      baseRevision: binding.baseRevision,
+      baseRevision: browserProjectOwnership(projectId)?.baseRevision ?? binding.baseRevision,
     });
     const response = await fetch(`/api/external-agent/poll?${query}`, {
-      headers: editorBridgeHeaders(credential),
+      headers: editorBridgeHeaders(credential, false, ownership.registrationCapability),
       signal,
     });
     if (response.status === 204) continue;
@@ -245,8 +173,13 @@ async function pollEditor(
       runtime,
       signal,
       cancellations,
-      (id, outcome, value, resultSignal) => (
-        sendResult(id, outcome, value, resultSignal, credential)
+      (id, outcome, value, resultSignal) => sendEditorBridgeResult(
+        id,
+        outcome,
+        value,
+        resultSignal,
+        credential,
+        ownership.registrationCapability,
       ),
     );
   }
@@ -257,12 +190,13 @@ async function pollCancellations(
   editorInstanceId: string,
   cancellations: ExternalCallCancellationRegistry,
   credential: string,
+  registrationCapability: string,
   signal: AbortSignal,
 ): Promise<void> {
   const query = new URLSearchParams({ projectId, editorId: editorInstanceId });
   while (!signal.aborted) {
     const response = await fetch(`/api/external-agent/cancellation?${query}`, {
-      headers: editorBridgeHeaders(credential),
+      headers: editorBridgeHeaders(credential, false, registrationCapability),
       signal,
     });
     if (response.status === 204) continue;
@@ -272,18 +206,76 @@ async function pollCancellations(
   }
 }
 
-async function unregisterBridge(
+
+async function pollRegisteredBridge(
   projectId: string,
   editorInstanceId: string,
-  credential = editorBridgeCredential,
+  runtime: ExternalBridgeRuntime,
+  cancellations: ExternalCallCancellationRegistry,
+  credential: string,
+  ownership: BrowserProjectOwnership,
+  signal: AbortSignal,
 ): Promise<void> {
-  if (!credential) return;
-  await fetch('/api/external-agent/unregister', {
-    method: 'POST',
-    headers: editorBridgeHeaders(credential, true),
-    body: JSON.stringify({ projectId, editorId: editorInstanceId }),
-    keepalive: true,
-  }).catch(() => undefined);
+  await Promise.all([
+    pollEditor(projectId, runtime, cancellations, credential, ownership, signal),
+    pollCancellations(
+      projectId,
+      editorInstanceId,
+      cancellations,
+      credential,
+      ownership.registrationCapability,
+      signal,
+    ),
+  ]);
+}
+
+async function runBridgeAttempt(
+  projectId: string, editorInstanceId: string,
+  runtime: ExternalBridgeRuntime, signal: AbortSignal,
+  onError: (message: string | null) => void,
+): Promise<void> {
+  const cancellations = new ExternalCallCancellationRegistry();
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal.reason);
+  let credential = editorBridgeCredential;
+  let refreshCredential = false;
+  let ownership: BrowserProjectOwnership | undefined;
+  if (signal.aborted) controller.abort(signal.reason);
+  else signal.addEventListener('abort', cancel, { once: true });
+  try {
+    if (!credential) {
+      credential = await bootstrapEditorBridge(controller.signal);
+      editorBridgeCredential = credential;
+    }
+    ownership = await registerEditorBridge(
+      projectId, editorInstanceId, runtime.binding().baseRevision,
+      credential, controller.signal,
+      browserProjectOwnership(projectId)?.registrationCapability,
+    );
+    installBrowserProjectOwnership(ownership);
+    onError(null);
+    await pollRegisteredBridge(
+      projectId,
+      editorInstanceId,
+      runtime,
+      cancellations,
+      credential,
+      ownership,
+      controller.signal,
+    );
+  } catch (error) {
+    refreshCredential = handleExternalBridgeAttemptError(error, signal, onError);
+  } finally {
+    controller.abort();
+    signal.removeEventListener('abort', cancel);
+    cancellations.abortAll(controller.signal.reason);
+    await unregisterEditorBridge(
+      projectId, editorInstanceId, credential,
+      ownership?.registrationCapability,
+    );
+    if (ownership) clearBrowserProjectOwnership(ownership);
+    if (refreshCredential && editorBridgeCredential === credential) editorBridgeCredential = null;
+  }
 }
 
 async function runBridge(
@@ -294,54 +286,7 @@ async function runBridge(
 ): Promise<void> {
   const { editorInstanceId } = runtime.binding();
   while (!signal.aborted) {
-    const cancellations = new ExternalCallCancellationRegistry();
-    const controller = new AbortController();
-    const cancel = () => controller.abort(signal.reason);
-    let credential = editorBridgeCredential;
-    let refreshCredential = false;
-    if (signal.aborted) controller.abort(signal.reason);
-    else signal.addEventListener('abort', cancel, { once: true });
-    try {
-      if (!credential) {
-        credential = await bootstrapEditorBridge(controller.signal);
-        editorBridgeCredential = credential;
-      }
-      const binding = runtime.binding();
-      const response = await fetch('/api/external-agent/register', {
-        method: 'POST',
-        headers: editorBridgeHeaders(credential, true),
-        body: JSON.stringify({
-          projectId,
-          editorId: editorInstanceId,
-          baseRevision: binding.baseRevision,
-          tools: externalToolSchemas(),
-        }),
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new EditorBridgeRequestError('registration', response.status);
-      onError(null);
-      await Promise.all([
-        pollEditor(projectId, runtime, cancellations, credential, controller.signal),
-        pollCancellations(
-          projectId,
-          editorInstanceId,
-          cancellations,
-          credential,
-          controller.signal,
-        ),
-      ]);
-    } catch (error) {
-      refreshCredential = error instanceof EditorBridgeRequestError && error.status === 401;
-      if (!signal.aborted) onError(errorMessage(error));
-    } finally {
-      controller.abort();
-      signal.removeEventListener('abort', cancel);
-      cancellations.abortAll(controller.signal.reason);
-      await unregisterBridge(projectId, editorInstanceId, credential);
-      if (refreshCredential && editorBridgeCredential === credential) {
-        editorBridgeCredential = null;
-      }
-    }
+    await runBridgeAttempt(projectId, editorInstanceId, runtime, signal, onError);
     if (!signal.aborted) await retryDelay();
   }
 }
@@ -370,91 +315,144 @@ export async function hydrateExternalBridge(
   if (isAlive()) onHydrated();
 }
 
-export function useExternalAgentBridge(ctx: AgentContext, projectId: string): ExternalProposalController {
-  const [snapshot, setSnapshot] = useState<ExternalProposalSnapshot>({ proposal: null, stale: false });
-  const [error, setError] = useState<string | null>(null);
+type StateSetter<T> = Dispatch<SetStateAction<T>>;
+interface RuntimeSlotRef { current: ExternalBridgeRuntimeSlot | null }
+interface ContextRef { current: AgentContext }
+interface ExternalRuntimeController {
+  runtimeRef: RuntimeSlotRef;
+  readiness: ExternalBridgeReadinessToken | null;
+}
+
+function installExternalRuntime(
+  projectId: string,
+  ctxRef: ContextRef,
+  runtimeRef: RuntimeSlotRef,
+  setSnapshot: StateSetter<ExternalProposalSnapshot>,
+  setError: StateSetter<string | null>,
+  setReadiness: StateSetter<ExternalBridgeReadinessToken | null>,
+): () => void {
+  let alive = true;
+  const editorInstanceId = crypto.randomUUID();
+  const runtimeIdentity = {};
+  const isCurrent = () => alive && runtimeRef.current?.runtimeIdentity === runtimeIdentity;
+  const runtime = new ExternalBridgeRuntime(
+    projectId,
+    editorInstanceId,
+    () => ctxRef.current,
+    (next) => { if (isCurrent()) setSnapshot(next); },
+  );
+  runtimeRef.current = { projectId, editorInstanceId, runtimeIdentity, runtime };
+  setReadiness(null);
+  void hydrateExternalBridge(
+    projectId,
+    runtime,
+    isCurrent,
+    (message) => { if (isCurrent()) setError(message); },
+    () => {
+      if (isCurrent()) setReadiness({ projectId, editorInstanceId, runtimeIdentity });
+    },
+  );
+  return () => {
+    alive = false;
+    void runtime.disconnect().catch(() => undefined);
+    if (runtimeRef.current?.runtimeIdentity === runtimeIdentity) runtimeRef.current = null;
+  };
+}
+
+function useExternalRuntime(
+  ctx: AgentContext,
+  projectId: string,
+  setSnapshot: StateSetter<ExternalProposalSnapshot>,
+  setError: StateSetter<string | null>,
+): ExternalRuntimeController {
   const [readiness, setReadiness] = useState<ExternalBridgeReadinessToken | null>(null);
-  const [pendingGuard, setPendingGuard] = useState<ExternalGuardRequest | null>(null);
   const ctxRef = useRef(ctx);
   const runtimeRef = useRef<ExternalBridgeRuntimeSlot | null>(null);
   ctxRef.current = ctx;
+  useEffect(
+    () => installExternalRuntime(projectId, ctxRef, runtimeRef, setSnapshot, setError, setReadiness),
+    [projectId, setError, setSnapshot],
+  );
+  return { runtimeRef, readiness };
+}
 
+function useExternalPolling(
+  projectId: string,
+  controller: ExternalRuntimeController,
+  setError: StateSetter<string | null>,
+): void {
   useEffect(() => {
-    let alive = true;
-    const editorInstanceId = crypto.randomUUID();
-    const runtimeIdentity = {};
-    const isCurrent = () => (
-      alive
-      && runtimeRef.current?.runtimeIdentity === runtimeIdentity
-    );
-    const runtime = new ExternalBridgeRuntime(
-      projectId,
-      editorInstanceId,
-      () => ctxRef.current,
-      (next) => { if (isCurrent()) setSnapshot(next); },
-    );
-    const slot: ExternalBridgeRuntimeSlot = {
-      projectId,
-      editorInstanceId,
-      runtimeIdentity,
-      runtime,
-    };
-    runtimeRef.current = slot;
-    setReadiness(null);
-    void hydrateExternalBridge(
-      projectId,
-      runtime,
-      isCurrent,
-      (message) => { if (isCurrent()) setError(message); },
-      () => {
-        if (isCurrent()) setReadiness({ projectId, editorInstanceId, runtimeIdentity });
-      },
-    );
-    return () => {
-      alive = false;
-      if (runtimeRef.current?.runtimeIdentity === runtimeIdentity) runtimeRef.current = null;
-    };
-  }, [projectId]);
-
-  useEffect(() => {
-    const slot = runtimeRef.current;
+    const slot = controller.runtimeRef.current;
+    const readiness = controller.readiness;
     if (!readiness || !slot) return undefined;
     const transportAvailable = projectStoreRemoteAvailable();
     if (!externalBridgeCanStart(readiness, slot, projectId, transportAvailable)) {
       if (!transportAvailable) setError(null);
       return undefined;
     }
-    const controller = new AbortController();
-    const close = () => { void unregisterBridge(projectId, readiness.editorInstanceId); };
+    const abortController = new AbortController();
+    const close = () => {
+      void unregisterEditorBridge(
+        projectId,
+        readiness.editorInstanceId,
+        editorBridgeCredential,
+        browserProjectOwnership(projectId)?.registrationCapability,
+      );
+    };
     window.addEventListener('pagehide', close);
-    void runBridge(projectId, slot.runtime, controller.signal, setError);
+    void runBridge(projectId, slot.runtime, abortController.signal, setError);
     return () => {
       window.removeEventListener('pagehide', close);
-      controller.abort();
+      abortController.abort();
       close();
     };
-  }, [readiness, projectId]);
+  }, [controller.readiness, controller.runtimeRef, projectId, setError]);
+}
 
+function useExternalActions(
+  runtimeRef: RuntimeSlotRef,
+  setError: StateSetter<string | null>,
+) {
   const runAction = useCallback((action: Promise<void> | undefined) => {
     if (!action) return;
     setError(null);
     void action.catch((actionError) => setError(errorMessage(actionError)));
-  }, []);
+  }, [setError]);
   const applyProposal = useCallback(
     (selected: Set<number>) => runAction(runtimeRef.current?.runtime.apply(selected)),
-    [runAction],
+    [runAction, runtimeRef],
   );
   const forceApplyProposal = useCallback(
     (selected: Set<number>) => runAction(runtimeRef.current?.runtime.apply(selected, true)),
-    [runAction],
+    [runAction, runtimeRef],
   );
-  const rejectProposal = useCallback(() => runAction(runtimeRef.current?.runtime.reject()), [runAction]);
-  const confirmGuard = useCallback((id: string, allow: boolean) => {
-    runtimeRef.current?.runtime.confirmRealTool(id, allow);
-    setPendingGuard((current) => (current && current.id === id ? null : current));
-  }, []);
+  const rejectProposal = useCallback(
+    () => runAction(runtimeRef.current?.runtime.reject()),
+    [runAction, runtimeRef],
+  );
+  return { applyProposal, forceApplyProposal, rejectProposal };
+}
+
+function useExternalGuard(
+  runtime: ExternalRuntimeController,
+  projectId: string,
+  setError: StateSetter<string | null>,
+  t: (key: string, params?: Record<string, string | number>) => string,
+) {
+  const [pendingGuard, setPendingGuard] = useState<ExternalGuardRequest | null>(null);
+  const confirmGuard = useCallback(async (id: string, allow: boolean) => {
+    const bridge = runtime.runtimeRef.current?.runtime;
+    if (!bridge) return;
+    setError(null);
+    try {
+      await bridge.confirmRealTool(id, allow);
+      setPendingGuard((current) => (current?.id === id ? null : current));
+    } catch (confirmationError) {
+      setError(t('工具确认未保存，请重试：{message}', { message: errorMessage(confirmationError) }));
+    }
+  }, [runtime.runtimeRef, setError, t]);
   useEffect(() => {
-    const slot = runtimeRef.current;
+    const slot = runtime.runtimeRef.current;
     if (!slot) return undefined;
     const refresh = () => setPendingGuard(slot.runtime.pendingGuard());
     refresh();
@@ -464,15 +462,22 @@ export function useExternalAgentBridge(ctx: AgentContext, projectId: string): Ex
       slot.runtime.onGuardRequest = null;
       window.clearInterval(timer);
     };
-  }, [readiness, projectId]);
+  }, [runtime.readiness, runtime.runtimeRef, projectId]);
+  return { pendingGuard, confirmGuard };
+}
+export function useExternalAgentBridge(ctx: AgentContext, projectId: string): ExternalProposalController {
+  const [snapshot, setSnapshot] = useState<ExternalProposalSnapshot>({ proposal: null, stale: false });
+  const [error, setError] = useState<string | null>(null);
+  const t = useT();
+  const runtime = useExternalRuntime(ctx, projectId, setSnapshot, setError);
+  useExternalPolling(projectId, runtime, setError);
+  const actions = useExternalActions(runtime.runtimeRef, setError);
+  const guard = useExternalGuard(runtime, projectId, setError, t);
   return {
     proposal: snapshot.proposal,
     proposalStale: snapshot.stale,
     error,
-    applyProposal,
-    forceApplyProposal,
-    rejectProposal,
-    pendingGuard,
-    confirmGuard,
+    ...actions,
+    ...guard,
   };
 }
