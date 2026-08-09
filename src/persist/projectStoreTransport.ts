@@ -13,6 +13,8 @@ let launchToken: string | null | undefined;
 let sessionToken: string | null | undefined;
 let sessionPromise: Promise<string> | null = null;
 const browserOwnerships = new Map<string, BrowserProjectOwnership>();
+const PROJECT_OWNERSHIP_READY_TIMEOUT_MS = 15_000;
+const browserOwnershipWaiters = new Map<string, Set<BrowserProjectOwnershipWaiter>>();
 
 interface StoredSession {
   token: string;
@@ -30,12 +32,51 @@ export interface BrowserProjectOwnership {
   readonly registrationCapability: string;
 }
 
+interface BrowserProjectOwnershipWaiter {
+  resolve: (ownership: BrowserProjectOwnership | undefined) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+function resolveBrowserProjectOwnershipWaiters(
+  projectId: string,
+  ownership: BrowserProjectOwnership | undefined,
+): void {
+  const waiters = browserOwnershipWaiters.get(projectId);
+  if (!waiters) return;
+  browserOwnershipWaiters.delete(projectId);
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timeout);
+    waiter.resolve(ownership);
+  }
+}
+
 export function installBrowserProjectOwnership(ownership: BrowserProjectOwnership): void {
   browserOwnerships.set(ownership.projectId, ownership);
+  resolveBrowserProjectOwnershipWaiters(ownership.projectId, ownership);
 }
 
 export function browserProjectOwnership(projectId: string): BrowserProjectOwnership | undefined {
   return browserOwnerships.get(projectId);
+}
+
+export function waitForBrowserProjectOwnership(
+  projectId: string,
+  timeoutMs = PROJECT_OWNERSHIP_READY_TIMEOUT_MS,
+): Promise<BrowserProjectOwnership | undefined> {
+  const current = browserOwnerships.get(projectId);
+  if (current) return Promise.resolve(current);
+  return new Promise((resolve) => {
+    const waiters = browserOwnershipWaiters.get(projectId) ?? new Set();
+    let waiter: BrowserProjectOwnershipWaiter;
+    const timeout = setTimeout(() => {
+      waiters.delete(waiter);
+      if (waiters.size === 0) browserOwnershipWaiters.delete(projectId);
+      resolve(browserOwnerships.get(projectId));
+    }, timeoutMs);
+    waiter = { resolve, timeout };
+    waiters.add(waiter);
+    browserOwnershipWaiters.set(projectId, waiters);
+  });
 }
 
 export function advanceBrowserProjectOwnership(
@@ -300,6 +341,9 @@ export function resetProjectStoreTransport(): void {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     sessionStorage.removeItem(LAUNCH_STORAGE_KEY);
   } catch {
+  for (const projectId of browserOwnershipWaiters.keys()) {
+    resolveBrowserProjectOwnershipWaiters(projectId, undefined);
+  }
     // Test or privacy-restricted environments may not expose storage.
   }
 }

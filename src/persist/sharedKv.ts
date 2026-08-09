@@ -5,6 +5,7 @@ import {
   projectStoreWriteCredential,
   requestProjectStore,
   resetProjectStoreTransport,
+  waitForBrowserProjectOwnership,
 } from './projectStoreTransport';
 import type {
   ProjectStoreMutationResponse,
@@ -326,10 +327,11 @@ async function setProjectDocument(key: string, value: unknown): Promise<void> {
   }
   if (!remoteCache) throw new Error('共享工程数据库暂时不可用，工程未保存');
   const projectId = key.slice('project:'.length);
-  const ownership = browserProjectOwnership(projectId);
+  let ownership = browserProjectOwnership(projectId);
   const local = await localGet<unknown>(key);
   if (!ownership && local !== undefined) {
-    throw new Error('工程编辑权尚未注册，工程未保存');
+    ownership = await waitForBrowserProjectOwnership(projectId);
+    if (!ownership) throw new Error('工程编辑权尚未注册，工程未保存');
   }
   const request: ProjectDocumentCasRequest = ownership
     ? {

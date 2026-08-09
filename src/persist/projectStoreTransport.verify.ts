@@ -4,11 +4,14 @@ import {
   invalidateEditorBootstrapInfo,
 } from '../agent/editor-credential.ts';
 import {
+  browserProjectOwnership,
   fetchWithEditorSession,
+  installBrowserProjectOwnership,
   projectStoreRemoteAvailable,
   projectStoreWriteCredential,
   requestProjectStore,
   resetProjectStoreTransport,
+  waitForBrowserProjectOwnership,
 } from './projectStoreTransport.ts';
 
 interface TestGlobals {
@@ -158,6 +161,31 @@ try {
   invalidateEditorBootstrapInfo(firstCredential.credential);
   assert.deepEqual(await editorBootstrapInfo(), credentials[1]);
   assert.equal(credentialCalls, 2, 'a rejected bridge credential must bootstrap again');
+
+  resetProjectStoreTransport();
+  const pendingOwnership = waitForBrowserProjectOwnership('project-race', 1_000);
+  const installedOwnership = {
+    projectId: 'project-race',
+    ownerId: 'browser-owner',
+    epoch: 1,
+    baseRevision: 'v7-initial',
+    registrationCapability: 'capability',
+  };
+  installBrowserProjectOwnership(installedOwnership);
+  assert.deepEqual(
+    await pendingOwnership,
+    installedOwnership,
+    'a save started during editor registration must resume with the installed ownership',
+  );
+  assert.deepEqual(
+    await waitForBrowserProjectOwnership('project-race', 1),
+    installedOwnership,
+    'an existing ownership must be returned without waiting',
+  );
+  const resetWait = waitForBrowserProjectOwnership('project-reset', 1_000);
+  resetProjectStoreTransport();
+  assert.equal(await resetWait, undefined, 'transport reset must settle pending ownership waits');
+  assert.equal(browserProjectOwnership('project-race'), undefined);
 } finally {
   globalThis.fetch = originalFetch;
   globals.window = originalWindow;
