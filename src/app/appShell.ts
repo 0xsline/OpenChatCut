@@ -10,6 +10,8 @@ import {
   listProjects,
 } from '../persist/projectStore';
 import type { ProjectMeta } from '../persist/projectStoreCoordinators';
+import { kvRemoteMode } from '../persist/sharedKv';
+import { projectStoreWriteCredential } from '../persist/projectStoreTransport';
 import { warmUpLocalAsr } from '../transcript/local-asr';
 import {
   preferredTranscriptionProvider,
@@ -131,6 +133,29 @@ export function useLocalAsrWarmup(routeName: AppRoute['name']): void {
   }, [routeName]);
 }
 
+export interface ProjectStartupSource {
+  list(): Promise<ProjectMeta[]>;
+  hasHistory(): Promise<boolean>;
+  canSeedDemo(): boolean;
+  createDemo(): Promise<ProjectMeta>;
+}
+
+const projectStartupSource: ProjectStartupSource = {
+  list: listProjects,
+  hasHistory: hasProjectHistory,
+  canSeedDemo: () => kvRemoteMode() === 'local' || projectStoreWriteCredential(),
+  createDemo: async () => createProject('示例工程', await seedDoc()),
+};
+
+export async function loadInitialProjects(
+  source: ProjectStartupSource = projectStartupSource,
+): Promise<ProjectMeta[]> {
+  const list = await source.list();
+  if (list.length > 0 || await source.hasHistory()) return list;
+  if (!source.canSeedDemo()) return [];
+  return [await source.createDemo()];
+}
+
 export function useProjects(): {
   projects: ProjectMeta[] | null;
   refresh: () => Promise<void>;
@@ -138,13 +163,7 @@ export function useProjects(): {
   const [projects, setProjects] = useState<ProjectMeta[] | null>(null);
   const refresh = useCallback(async () => { setProjects(await listProjects()); }, []);
   useEffect(() => {
-    void (async () => {
-      let list = await listProjects();
-      if (list.length === 0 && !(await hasProjectHistory())) {
-        list = [await createProject('示例工程', await seedDoc())];
-      }
-      setProjects(list);
-    })();
+    void loadInitialProjects().then(setProjects);
   }, []);
   return { projects, refresh };
 }

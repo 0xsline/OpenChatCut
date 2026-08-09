@@ -44,6 +44,7 @@ interface EntryResponse {
 let remoteCache: Record<string, unknown> | null = null;
 const remoteKnown = new Set<string>();
 let readyPromise: Promise<void> | undefined;
+let projectMigrationPending = false;
 
 const hasIdb = (): boolean => typeof indexedDB !== 'undefined';
 const canSync = (): boolean => !injectedBackend && projectStoreRemoteAvailable();
@@ -55,6 +56,7 @@ export function configureSharedKvBackend(backend: SharedKvBackend | undefined): 
   injectedBackend = backend;
   remoteCache = null;
   remoteKnown.clear();
+  projectMigrationPending = false;
   readyPromise = undefined;
 }
 
@@ -167,6 +169,7 @@ function cacheEntry(key: string, entry: EntryResponse): void {
 async function fetchRemoteEntry(key: string): Promise<void> {
   const entry = await requestEntry(key);
   cacheEntry(key, entry);
+  if (key === 'projects' && projectMigrationPending) return;
   if (entry.found) await localSet(key, entry.value);
   else await localDel(key);
 }
@@ -262,21 +265,23 @@ async function bootstrap(): Promise<void> {
   try {
     const migrated = await localGet<boolean>(MIGRATION_KEY);
     let projects = await requestEntry('projects');
-    if (!migrated || !projects.found) {
-      if (projectStoreWriteCredential()) {
-        // First migration / empty server index: upload local entries. A
-        // sessionless tab skips this (writes are not allowed) and simply
-        // adopts the server snapshot as authoritative.
-        const local = await localEntries();
-        const snapshot = await requestMerge(local);
-        projects = 'projects' in snapshot.entries
-          ? { found: true, value: snapshot.entries.projects }
-          : { found: false };
-      }
+    const canWrite = projectStoreWriteCredential();
+    projectMigrationPending = !canWrite
+      && (!projects.found || (Array.isArray(projects.value) && projects.value.length === 0));
+    if ((!migrated || !projects.found) && canWrite) {
+      const local = await localEntries();
+      const snapshot = await requestMerge(local);
+      projects = 'projects' in snapshot.entries
+        ? { found: true, value: snapshot.entries.projects }
+        : { found: false };
     }
     remoteCache = {};
     remoteKnown.clear();
     cacheEntry('projects', projects);
+    if (projectMigrationPending) {
+      await localDel(MIGRATION_KEY);
+      return;
+    }
     if (projects.found) await localSet('projects', projects.value);
     else await localDel('projects');
     await localSet(MIGRATION_KEY, true);
@@ -366,16 +371,13 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
     await setProjectDocument(key, value);
     return;
   }
-  await localSet(key, value);
-  if (!remoteCache) return;
-  // A browser tab without an editor session can READ the shared library but
-  // must not silently pretend a write succeeded: fail loudly instead of
-  // dropping into offline mode (reads stay consistent across ports).
+  if (!remoteCache) {
+    await localSet(key, value);
+    return;
+  }
   if (!projectStoreWriteCredential()) {
     throw new Error('共享工程库为只读模式（未连接编辑器会话），修改未同步');
   }
-  remoteKnown.add(key);
-  remoteCache = { ...remoteCache, [key]: value };
   try {
     await requestProjectStore({ operation: 'set', key, value });
   } catch (error) {
@@ -383,7 +385,12 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
       throw new Error('共享工程库只读（编辑器会话失效），修改未同步');
     }
     await disableRemote();
+    await localSet(key, value);
+    return;
   }
+  await localSet(key, value);
+  remoteKnown.add(key);
+  remoteCache = { ...remoteCache, [key]: value };
 }
 
 export async function kvDel(key: string): Promise<void> {
@@ -486,6 +493,7 @@ export function resetSharedKvMemory(): void {
   remoteCache = null;
   remoteKnown.clear();
   readyPromise = undefined;
+  projectMigrationPending = false;
   injectedBackend = undefined;
   resetProjectStoreTransport();
 }
