@@ -6,12 +6,17 @@
 /** MG generates three levels of quality. */
 export type MgTier = 'speed' | 'balance' | 'quality';
 export const MG_TIERS: readonly MgTier[] = ['speed', 'balance', 'quality'];
+export type AgentCacheMode = 'short' | 'long';
+export const AGENT_CACHE_MODES: readonly AgentCacheMode[] = ['short', 'long'];
+
 
 export interface AgentSettings {
   /** MG quality file (default balance), injected through <agent_settings>. */
   mgTier: MgTier;
   /** Plan mode (Agent Settings planMode switch): come up with the numbering plan first, and then start after the user confirms it. */
   planMode: boolean;
+  /** Provider prompt-cache duration: short sessions favor the default TTL; long sessions request 1h where supported. */
+  cacheMode: AgentCacheMode;
 }
 
 const KEY = 'cc.agentSettings.v1';
@@ -19,6 +24,7 @@ const KEY = 'cc.agentSettings.v1';
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   mgTier: 'balance',
   planMode: false,
+  cacheMode: 'short',
 };
 
 export function loadAgentSettings(): AgentSettings {
@@ -29,6 +35,9 @@ export function loadAgentSettings(): AgentSettings {
     return {
       mgTier: MG_TIERS.includes(parsed.mgTier as MgTier) ? (parsed.mgTier as MgTier) : DEFAULT_AGENT_SETTINGS.mgTier,
       planMode: parsed.planMode === true,
+      cacheMode: AGENT_CACHE_MODES.includes(parsed.cacheMode as AgentCacheMode)
+        ? parsed.cacheMode as AgentCacheMode
+        : DEFAULT_AGENT_SETTINGS.cacheMode,
     };
   } catch {
     return { ...DEFAULT_AGENT_SETTINGS };

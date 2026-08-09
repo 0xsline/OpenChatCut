@@ -194,6 +194,20 @@ assert.ok(neutralSearch.activation.names().includes('verify_export'));
 assert.ok(!neutralSearch.activation.names().includes('not_in_catalog'));
 assert.equal(neutralSearch.activation.names().includes('ToolSearch'), false,
   'a successful search is limited to one discovery round per request');
+const skillActivation = neutral.withToolResult('load_skill', {
+  skill: 'export',
+  contents: {
+    'SKILL.md': 'Inspect with read_timeline, then call submit_export and verify_export.',
+  },
+});
+assert.equal(skillActivation.activation.names().includes('submit_export'), true);
+assert.equal(skillActivation.activation.names().includes('verify_export'), true);
+assert.equal(skillActivation.activation.names().includes('ToolSearch'), true,
+  'loading a skill preserves deferred search for optional capabilities');
+assert.deepEqual(
+  (skillActivation.result as { activatedTools: string[] }).activatedTools,
+  ['read_timeline', 'submit_export', 'verify_export'],
+);
 const emptySearch = neutral.withSearchResult({ results: [] });
 assert.equal(emptySearch.activation.names().includes('ToolSearch'), true,
   'a zero-match search may retry with the tool hint');

@@ -24,6 +24,10 @@ import {
   sanitizeJsonForArtifact,
   type AgentArtifactRef,
 } from './runtime-artifact';
+import {
+  accumulateAgentRunUsage,
+  preserveAgentRunUsage,
+} from './run-context-usage';
 
 export const TOOL_ARTIFACT_THRESHOLD = 16_000;
 const PREVIEW_CHARS = 800;
@@ -160,6 +164,7 @@ export class AgentRunRecorder {
   private leaseTimer: NodeJS.Timeout | null = null;
   private leaseOwned = true;
   private readonly leaseToken: string;
+  private lastActualContext: AgentRunContext | null | undefined;
 
   constructor(projectId: string, runId: string, leaseToken: string) {
     this.projectId = projectId;
@@ -263,6 +268,14 @@ export class AgentRunRecorder {
     this.tail = result.then(() => undefined, () => undefined);
     return result;
   }
+  private async previousActualContext(): Promise<AgentRunContext | undefined> {
+    if (this.lastActualContext !== undefined) return this.lastActualContext ?? undefined;
+    const run = (await loadAgentRuntimeSidecar(this.projectId)).runs
+      .find((item) => item.runId === this.runId);
+    const previous = run?.events.findLast((event) => event.type === 'context_usage')?.context;
+    this.lastActualContext = previous ?? null;
+    return previous;
+  }
   configure(input: { readonly modelId: string; readonly backend: string; readonly askOnly?: boolean }): Promise<void> {
     return this.serialize(async () => {
       const modelId = sanitizeText(input.modelId, 160);
@@ -279,7 +292,8 @@ export class AgentRunRecorder {
 
   recordContext(context: AgentRunContext): Promise<void> {
     return this.serialize(async () => {
-      await patchAgentRun(this.projectId, this.runId, { context });
+      const projected = preserveAgentRunUsage(context, await this.previousActualContext());
+      await patchAgentRun(this.projectId, this.runId, { context: projected });
       await appendAgentRunEvent(this.projectId, this.runId, {
         type: 'context_projected', summary: context.requestShapeHash,
       });
@@ -287,11 +301,16 @@ export class AgentRunRecorder {
   }
   recordContextUsage(context: AgentRunContext): Promise<void> {
     return this.serialize(async () => {
-      await patchAgentRun(this.projectId, this.runId, { context });
+      const accumulated = accumulateAgentRunUsage(
+        await this.previousActualContext(),
+        context,
+      );
+      this.lastActualContext = accumulated;
+      await patchAgentRun(this.projectId, this.runId, { context: accumulated });
       await appendAgentRunEvent(this.projectId, this.runId, {
         type: 'context_usage',
         summary: context.requestShapeHash,
-        context,
+        context: accumulated,
       });
     });
   }

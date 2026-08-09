@@ -13,8 +13,10 @@ import type { AgentEvent } from './runtime';
 import type { ChatCompletionsMediaPreparation } from './messages';
 import { createInlineThinkingExtractor } from './settings/agentSettings';
 import {
+  countContextMedia,
   estimateContextTokens,
   estimateTextTokens,
+  MODEL_MEDIA_TOKEN_ESTIMATE,
   type AgentContextUsage,
 } from './context-compaction';
 import {
@@ -38,6 +40,8 @@ export interface ApiAttemptOptions {
   readonly requestCarriesMedia: boolean;
   readonly choice: AgentModelChoice;
   readonly contextWasCompacted: boolean;
+  readonly requestIndex: number;
+  readonly cacheTtlMs?: number;
   readonly toolSchemas: readonly AgentToolSchema[];
   readonly onEvent: (event: AgentEvent) => void;
   readonly onContextUsage?: (usage: AgentContextUsage) => Promise<void>;
@@ -51,6 +55,7 @@ export interface ApiAttemptOutcome {
   readonly compatibleMediaFallbackRequired: boolean;
 }
 
+
 class ApiRequestAttempt {
   private requestMessages: ModelMessage[];
   private requestCarriesMedia: boolean;
@@ -59,7 +64,11 @@ class ApiRequestAttempt {
   private aborted = false;
   private outputStarted = false;
   private compatibleMediaFallbackRequired = false;
+  private attemptIndex = 0;
+  private readonly retryReasons: string[] = [];
   private readonly extract = createInlineThinkingExtractor();
+  private responseText = '';
+  private reasoningText = '';
   private readonly options: ApiAttemptOptions;
 
   constructor(options: ApiAttemptOptions) {
@@ -88,6 +97,7 @@ class ApiRequestAttempt {
       this.requestCarriesMedia = false;
       this.retriedWithoutMedia = true;
       this.compatibleMediaFallbackRequired = true;
+      this.retryReasons.push('media_compatibility');
       return true;
     }
     if (shouldRetryTransientAgentRequest({
@@ -95,6 +105,7 @@ class ApiRequestAttempt {
       retryAttempted: this.retriedTransientRequest,
     })) {
       this.retriedTransientRequest = true;
+      this.retryReasons.push('transient_transport');
       return true;
     }
     throw error;
@@ -104,13 +115,20 @@ class ApiRequestAttempt {
     part: Extract<TextStreamPart<ToolSet>, { type: 'finish' }>,
   ): Promise<void> {
     const usage = part.totalUsage;
-    if (usage.inputTokens === undefined) return;
     const { choice, contextWasCompacted, system, toolSchemas, onEvent } = this.options;
+    const estimatedInputTokens = estimateTextTokens(system)
+      + estimateTextTokens(JSON.stringify(toolSchemas))
+      + estimateContextTokens(this.requestMessages);
+    const inputTokens = usage.inputTokens ?? estimatedInputTokens;
+    const outputTokens = usage.outputTokens ?? estimateTextTokens(this.responseText);
+    const reasoningTokens = usage.outputTokenDetails.reasoningTokens
+      ?? (this.reasoningText ? estimateTextTokens(this.reasoningText) : undefined);
+    const mediaInputCount = countContextMedia(this.requestMessages);
     const contextUsage: AgentContextUsage = {
-      inputTokens: usage.inputTokens,
+      inputTokens,
       contextWindowTokens: choice.capabilities.contextWindowTokens.value,
       contextWindowEstimated: choice.capabilities.contextWindowTokens.estimated,
-      isEstimated: false,
+      isEstimated: usage.inputTokens === undefined || usage.outputTokens === undefined,
       modelId: choice.id,
       compacted: contextWasCompacted,
       messageCount: this.requestMessages.length,
@@ -118,11 +136,18 @@ class ApiRequestAttempt {
       toolSchemaTokens: estimateTextTokens(JSON.stringify(toolSchemas)),
       historyTokens: estimateContextTokens(this.requestMessages),
       toolCount: toolSchemas.length,
-      outputTokens: usage.outputTokens,
-      reasoningTokens: usage.outputTokenDetails.reasoningTokens,
+      outputTokens,
+      reasoningTokens,
       noCacheInputTokens: usage.inputTokenDetails.noCacheTokens,
       cacheReadTokens: usage.inputTokenDetails.cacheReadTokens,
       cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens,
+      cacheTtlMs: this.options.cacheTtlMs,
+      requestIndex: this.options.requestIndex,
+      attemptIndex: this.attemptIndex,
+      retryCount: this.retryReasons.length,
+      retryReasons: [...this.retryReasons],
+      mediaInputCount,
+      mediaTokenEstimate: mediaInputCount * MODEL_MEDIA_TOKEN_ESTIMATE,
     };
     onEvent({ type: 'context-usage', usage: contextUsage });
     await this.options.onContextUsage?.(contextUsage);
@@ -132,14 +157,21 @@ class ApiRequestAttempt {
     const { onEvent, onText, toolFailures } = this.options;
     if (streamPartStartsCompatibleMediaOutput(part.type)) this.outputStarted = true;
     if (part.type === 'text-delta') {
+      this.responseText += part.text;
       const extracted = this.extract.push(part.text);
-      if (extracted.thinking) onEvent({ type: 'thinking-delta', delta: extracted.thinking });
+      if (extracted.thinking) {
+        this.reasoningText += extracted.thinking;
+        onEvent({ type: 'thinking-delta', delta: extracted.thinking });
+      }
       if (extracted.text) onText(extracted.text);
     } else if (part.type === 'reasoning-delta' && part.text) {
+      this.responseText += part.text;
+      this.reasoningText += part.text;
       onEvent({ type: 'thinking-delta', delta: part.text });
     } else if (part.type === 'tool-input-start') {
       onEvent({ type: 'tool-input-start', name: part.toolName });
     } else if (part.type === 'tool-input-delta' && part.delta) {
+      this.responseText += part.delta;
       onEvent({ type: 'tool-input-delta', delta: part.delta });
     } else if (part.type === 'tool-result') {
       toolFailures.record(part.toolName, { success: true, result: part.output });
@@ -170,6 +202,7 @@ class ApiRequestAttempt {
   async run(): Promise<ApiAttemptOutcome> {
     let responseMessages: ModelMessage[] = [];
     for (;;) {
+      this.attemptIndex += 1;
       this.outputStarted = false;
       const started = captureSynchronousStart(() => streamText({
         model: this.options.model,

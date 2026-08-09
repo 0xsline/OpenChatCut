@@ -10,6 +10,7 @@ import {
 } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import {
+  cacheTtlMsForProvider,
   defaultModelForProvider,
   getLanguageModel,
   getLanguageModelProviderOptions,
@@ -87,6 +88,15 @@ assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
 assert.deepEqual(getLanguageModelProviderOptions('minimax'), {
   minimax: { reasoning_split: true },
 });
+assert.deepEqual(getLanguageModelProviderOptions('anthropic', 'responses', 'short'), {
+  anthropic: { cacheControl: { type: 'ephemeral' } },
+});
+assert.deepEqual(getLanguageModelProviderOptions('anthropic', 'responses', 'long'), {
+  anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } },
+});
+assert.equal(cacheTtlMsForProvider('anthropic', 'short'), 5 * 60 * 1000);
+assert.equal(cacheTtlMsForProvider('anthropic', 'long'), 60 * 60 * 1000);
+assert.equal(cacheTtlMsForProvider('openai', 'long'), undefined);
 assert.equal(
   new Set(LLM_PROVIDER_PRESETS.map(({ id }) => id)).size,
   LLM_PROVIDER_PRESETS.length,
@@ -752,6 +762,53 @@ const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
   outputTokens: { total: 1, text: 1, reasoning: undefined },
 };
+
+const missingUsageEvents: AgentEvent[] = [];
+await runApiAgent(
+  [{ role: 'user', content: 'Answer briefly.' }],
+  apiContext,
+  (event) => missingUsageEvents.push(event),
+  apiChoice,
+  'Test system prompt.',
+  false,
+  1_000,
+  undefined,
+  {
+    model: new MockLanguageModelV4({
+      doStream: {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'text-start', id: 'missing-usage-text' },
+            { type: 'text-delta', id: 'missing-usage-text', delta: 'OK' },
+            { type: 'text-end', id: 'missing-usage-text' },
+            {
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: undefined },
+              usage: {
+                inputTokens: {
+                  total: undefined,
+                  noCache: undefined,
+                  cacheRead: undefined,
+                  cacheWrite: undefined,
+                },
+                outputTokens: { total: undefined, text: undefined, reasoning: undefined },
+              },
+            },
+          ],
+        }),
+      },
+    }),
+  },
+);
+const estimatedProviderUsage = missingUsageEvents.find(
+  (event): event is Extract<AgentEvent, { type: 'context-usage' }> => event.type === 'context-usage',
+)?.usage;
+assert.equal(estimatedProviderUsage?.requestIndex, 1);
+assert.equal(estimatedProviderUsage?.isEstimated, true);
+assert.ok((estimatedProviderUsage?.inputTokens ?? 0) > 0,
+  'providers without usage metadata still emit estimated request telemetry');
+assert.ok((estimatedProviderUsage?.outputTokens ?? 0) > 0,
+  'providers without usage metadata still estimate output telemetry');
 const apiFailureModel = new MockLanguageModelV4({
   doStream: [
     {

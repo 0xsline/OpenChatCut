@@ -10,6 +10,7 @@ import type { LlmProvider, OpenAiApiMode } from './providerConfig';
 import { normalizeLlmMessages, withoutModelImages } from './messages';
 import { getActiveAgentModelChoice, getAgentModelSnapshot, type AgentModelChoice } from './model-selection';
 import { effectiveOutputTokenBudget } from './context-compaction';
+import type { AgentCacheMode } from './settings/agentSettings';
 
 export {
   MODEL,
@@ -119,11 +120,13 @@ export async function getLanguageModel(
 export function getLanguageModelProviderOptions(
   provider: LlmProvider = PROVIDER,
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
+  cacheMode: AgentCacheMode = 'short',
 ): Record<string, Record<string, boolean>> | undefined {
   if (provider === 'anthropic') {
-    // Anthropic caches prompt prefixes automatically (5m TTL); the
-    // provider option extends the cache window to 1h for long sessions.
-    return { anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } } as unknown as Record<string, boolean> };
+    const cacheControl = cacheMode === 'long'
+      ? { type: 'ephemeral', ttl: '1h' }
+      : { type: 'ephemeral' };
+    return { anthropic: { cacheControl } as unknown as Record<string, boolean> };
   }
   if (provider === 'minimax') {
     return { minimax: { reasoning_split: true } };
@@ -132,6 +135,14 @@ export function getLanguageModelProviderOptions(
     ? { openai: { store: false } }
     : undefined;
 }
+export function cacheTtlMsForProvider(
+  provider: LlmProvider,
+  cacheMode: AgentCacheMode,
+): number | undefined {
+  if (provider !== 'anthropic') return undefined;
+  return cacheMode === 'long' ? 60 * 60 * 1000 : 5 * 60 * 1000;
+}
+
 
 function generationChoice(): AgentModelChoice | undefined {
   const active = getActiveAgentModelChoice();

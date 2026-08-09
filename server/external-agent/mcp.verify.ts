@@ -3,9 +3,11 @@ import { createServer, type Server } from 'node:http';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import {
   pendingEditorCallsForTest,
+  nextEditorCall,
   registerEditor,
   resetExternalAgentBrokerForTest,
   unregisterEditor,
+  settleEditorCall,
 } from './broker.ts';
 import {
   handleMcpRequest,
@@ -57,7 +59,7 @@ async function rawSessionRequest(
   return response;
 }
 
-resetMcpSessionsForTest();
+await resetMcpSessionsForTest();
 resetExternalAgentBrokerForTest();
 
 const projectA = 'mcp-project-a';
@@ -114,7 +116,27 @@ const editTools = [
     },
   },
 ];
-const editorTools = [dynamicTool, extraTool, ...editTools];
+const discoveryTools = [
+  {
+    name: 'ToolSearch',
+    description: 'Search editor tools',
+    input_schema: {
+      type: 'object' as const,
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'load_skill',
+    description: 'Load a skill playbook',
+    input_schema: {
+      type: 'object' as const,
+      properties: { name: { type: 'string' } },
+      required: ['name'],
+    },
+  },
+];
+const editorTools = [dynamicTool, extraTool, ...discoveryTools, ...editTools];
 registerEditor(projectA, editorA, revisionA, [dynamicTool]);
 
 const server = createServer((req, res) => {
@@ -152,6 +174,65 @@ try {
     new Promise((_, reject) => setTimeout(() => reject(new Error('tools/list_changed timeout')), 2_000)),
   ]);
   assert.ok((await boundA.client.listTools()).tools.some((tool) => tool.name === extraTool.name));
+  const exposureHeaders = { 'x-openchatcut-tool-exposure': 'progressive' };
+  const progressiveA = await connectClient(mcpUrl, 'openchatcut-progressive-a', exposureHeaders);
+  const progressiveB = await connectClient(mcpUrl, 'openchatcut-progressive-b', exposureHeaders);
+  clients.push(progressiveA, progressiveB);
+  const initialProgressive = await progressiveA.client.listTools();
+  assert.equal(initialProgressive.tools.some((tool) => tool.name === 'ToolSearch'), true);
+  assert.equal(initialProgressive.tools.some((tool) => tool.name === dynamicTool.name), false);
+  await progressiveA.client.callTool({ name: 'target_project', arguments: { projectId: projectA } });
+  await progressiveB.client.callTool({ name: 'target_project', arguments: { projectId: projectA } });
+  const hiddenBeforeSearch = await progressiveA.client.callTool({
+    name: dynamicTool.name,
+    arguments: {},
+  });
+  assert.equal(hiddenBeforeSearch.isError, true, 'a hidden tool cannot bypass the session projection');
+  let progressiveChanged!: () => void;
+  const progressiveListChanged = new Promise<void>((resolve) => { progressiveChanged = resolve; });
+  progressiveA.client.setNotificationHandler(
+    ToolListChangedNotificationSchema,
+    () => progressiveChanged(),
+  );
+  const searchPending = progressiveA.client.callTool({
+    name: 'ToolSearch',
+    arguments: { query: 'dynamic check' },
+  });
+  const searchCall = await nextEditorCall(
+    projectA,
+    editorA,
+    revisionA,
+    AbortSignal.timeout(1_000),
+  );
+  assert.equal(searchCall?.name, 'ToolSearch');
+  settleEditorCall(searchCall!.id, 'applied', {
+    results: [{ name: dynamicTool.name, description: dynamicTool.description }],
+  });
+  const searchResult = await searchPending;
+  assert.notEqual(searchResult.isError, true);
+  assert.deepEqual(searchResult.structuredContent?.activatedTools, [dynamicTool.name]);
+  await Promise.race([
+    progressiveListChanged,
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error('progressive tools/list_changed timeout')),
+      2_000,
+    )),
+  ]);
+  assert.equal(
+    (await progressiveA.client.listTools()).tools.some((tool) => tool.name === dynamicTool.name),
+    true,
+  );
+  assert.equal(
+    (await progressiveB.client.listTools()).tools.some((tool) => tool.name === dynamicTool.name),
+    false,
+    'tool activation remains isolated to one MCP transport session',
+  );
+  assert.equal(
+    mcpSessionsForTest().find((session) => session.id === progressiveA.sessionId)
+      ?.exposure.lastActivation?.source,
+    'tool_search',
+  );
+
 
   registerEditor(projectB, editorB, revisionB, editorTools);
   const targetA = await boundA.client.callTool({
@@ -253,7 +334,7 @@ try {
   );
 
   await Promise.all(clients.splice(0).map(closeClient));
-  resetMcpSessionsForTest();
+  await resetMcpSessionsForTest();
   const cappedClients: ConnectedClient[] = [];
   for (let index = 0; index < MCP_SESSION_COUNT_LIMIT; index += 1) {
     cappedClients.push(await connectClient(mcpUrl, `openchatcut-mcp-cap-${index}`));
@@ -302,7 +383,7 @@ try {
   );
 } finally {
   await Promise.all(clients.map(closeClient));
-  resetMcpSessionsForTest();
+  await resetMcpSessionsForTest();
   resetExternalAgentBrokerForTest();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 }

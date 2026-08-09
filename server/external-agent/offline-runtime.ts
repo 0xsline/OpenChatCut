@@ -67,6 +67,7 @@ export class OfflineExternalEditRuntime {
   private baseDoc: OfflineStoredProject['doc'];
   private ownership: ProjectEditOwnershipClaim;
   private disposed = false;
+  private disposal: Promise<void> | null = null;
 
   private constructor(
     snapshot: OfflineStoredProject,
@@ -143,16 +144,17 @@ export class OfflineExternalEditRuntime {
     });
   }
 
-  dispose(): void {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
     this.disposed = true;
     for (const run of this.runs.values()) run.dispose();
     this.failActiveSessions('cancelled');
-    void this.persistence.releaseOwnership(this.ownership).catch((error: unknown) => {
+    this.disposal = this.persistence.releaseOwnership(this.ownership).catch((error: unknown) => {
       process.emitWarning(
         `Failed to release offline project ownership: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
+    return this.disposal;
   }
 
   private async validateAvailabilityLocked(): Promise<void> {
@@ -374,8 +376,6 @@ export class OfflineExternalEditRuntime {
       : `Stored project ${this.projectId} changed before the draft checkpoint was saved.`;
     throw new ExternalEditorCallError(outcome, `${reason} Start a new MCP session.`);
   }
-
-
 
   private runExclusive<T>(operation: () => Promise<T> | T): Promise<T> {
     const result = this.operationTail.then(operation, operation);

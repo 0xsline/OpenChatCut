@@ -20,9 +20,12 @@ export type {
 
 const ASCII_CHARS_PER_TOKEN = 4;
 const NON_ASCII_CHARS_PER_TOKEN = 1;
-const IMAGE_TOKEN_ESTIMATE = 1_200;
+export const MODEL_MEDIA_TOKEN_ESTIMATE = 1_200;
 const COMPACTION_RESERVE_TOKENS = 16_384;
 const RECENT_CONTEXT_TARGET_TOKENS = 20_000;
+const DEFAULT_COMPACTION_TRIGGER_FRACTION = 0.7;
+const CACHE_FRIENDLY_TRIGGER_FRACTION = 0.8;
+const CACHE_MISS_TRIGGER_FRACTION = 0.65;
 const CONTEXT_FRACTION = 0.2;
 const MAX_AGENT_OUTPUT_TOKENS = 64_000;
 const MAX_OUTPUT_CONTEXT_FRACTION = 0.5;
@@ -46,6 +49,13 @@ export interface AgentContextUsage {
   readonly noCacheInputTokens?: number;
   readonly cacheReadTokens?: number;
   readonly cacheWriteTokens?: number;
+  readonly cacheTtlMs?: number;
+  readonly requestIndex?: number;
+  readonly attemptIndex?: number;
+  readonly retryCount?: number;
+  readonly retryReasons?: readonly string[];
+  readonly mediaInputCount?: number;
+  readonly mediaTokenEstimate?: number;
 }
 
 /** Ephemeral preparation-only record; sourceText must never enter saved chat JSON. */
@@ -86,6 +96,7 @@ export interface ContextPreparationOptions {
 
 type ContentPart = {
   readonly type?: unknown;
+  readonly toolCallId?: unknown;
   readonly text?: unknown;
   readonly toolName?: unknown;
   readonly input?: unknown;
@@ -122,12 +133,20 @@ function contentTokens(content: unknown): number {
   return content.reduce((tokens, rawPart) => {
     const part = rawPart as ContentPart;
     if (typeof part.text === 'string') return tokens + estimateTextTokens(part.text);
-    if (part.type === 'file') return tokens + IMAGE_TOKEN_ESTIMATE;
+    if (part.type === 'file') return tokens + MODEL_MEDIA_TOKEN_ESTIMATE;
     if (part.type === 'tool-call') return tokens + estimateTextTokens(safeJson(part.input));
     if (part.type === 'tool-result') return tokens + estimateTextTokens(safeJson(part.output));
     return tokens;
   }, 0);
 }
+export function countContextMedia(messages: readonly ModelMessage[]): number {
+  return messages.reduce((count, message) => {
+    if (!Array.isArray(message.content)) return count;
+    return count + message.content.filter((part) =>
+      part.type === 'file' || part.type === 'image').length;
+  }, 0);
+}
+
 
 export function estimateContextTokens(
   messages: readonly ModelMessage[],
@@ -191,6 +210,40 @@ export function serializeMessagesForSummary(messages: readonly ModelMessage[]): 
     const text = messageSummaryText(message).trim() || '[no text content]';
     return `${message.role.toUpperCase()}:\n${text}`;
   }).join('\n\n');
+}
+
+const IDENTIFIER_PATTERN = /\b(?:operationId|assetId|itemId|clipId|trackId|jobId|proposalId|editSessionId|toolCallId)\b["']?\s*[:=]\s*["']?([A-Za-z0-9._:/-]{3,160})/gi;
+const MEDIA_PATH_PATTERN = /\/media\/uploads\/[A-Za-z0-9._%/-]+/g;
+
+function deterministicCheckpointEvidence(
+  summary: string,
+  messages: readonly ModelMessage[],
+  sourceText: string,
+): string {
+  const evidence = new Set<string>();
+  for (const match of sourceText.matchAll(IDENTIFIER_PATTERN)) {
+    const value = match[0].trim().slice(0, 200);
+    if (!summary.includes(value)) evidence.add(value);
+    if (evidence.size >= 64) break;
+  }
+  for (const match of sourceText.matchAll(MEDIA_PATH_PATTERN)) {
+    if (!summary.includes(match[0])) evidence.add(match[0]);
+    if (evidence.size >= 64) break;
+  }
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content as readonly ContentPart[]) {
+      if (part.type !== 'tool-call' && part.type !== 'tool-result') continue;
+      const callId = typeof part.toolCallId === 'string' ? part.toolCallId : '';
+      if (!callId || summary.includes(callId)) continue;
+      evidence.add(`${String(part.toolName ?? 'unknown')} toolCallId=${callId}`.slice(0, 200));
+      if (evidence.size >= 64) break;
+    }
+    if (evidence.size >= 64) break;
+  }
+  return evidence.size
+    ? `${summary}\n\n### Deterministically retained identifiers\n${[...evidence].map((value) => `- ${value}`).join('\n')}`
+    : summary;
 }
 async function sha256Text(text: string): Promise<string> {
   if (!globalThis.crypto?.subtle) {
@@ -320,6 +373,16 @@ function usage(
     messageCount: compacted ? 0 : options.messages.length,
   };
 }
+function compactionTriggerFraction(previous?: AgentContextUsage): number {
+  if (!previous?.inputTokens) return DEFAULT_COMPACTION_TRIGGER_FRACTION;
+  const cacheReadRatio = (previous.cacheReadTokens ?? 0) / previous.inputTokens;
+  if (cacheReadRatio >= 0.8) return CACHE_FRIENDLY_TRIGGER_FRACTION;
+  const noCacheRatio = (previous.noCacheInputTokens ?? 0) / previous.inputTokens;
+  return noCacheRatio >= 0.7
+    ? CACHE_MISS_TRIGGER_FRACTION
+    : DEFAULT_COMPACTION_TRIGGER_FRACTION;
+}
+
 
 function checkpointMessage(
   checkpoint: AgentContextCheckpoint,
@@ -353,6 +416,7 @@ function compactionBudget(options: ContextPreparationOptions): {
   const triggerTokens = Math.min(
     options.maxInputTokens,
     options.contextWindowTokens - reserve,
+    Math.floor(options.contextWindowTokens * compactionTriggerFraction(options.previousUsage)),
   );
   return {
     currentTokens,
@@ -388,8 +452,13 @@ export async function prepareContext(
 
   const summarizedMessages = options.messages.slice(0, start);
   const sourceText = serializeMessagesForSummary(summarizedMessages);
-  const summary = (await options.summarize(summarizedMessages)).trim();
-  if (!summary) throw new Error('The model returned an empty context summary.');
+  const generatedSummary = (await options.summarize(summarizedMessages)).trim();
+  if (!generatedSummary) throw new Error('The model returned an empty context summary.');
+  const summary = deterministicCheckpointEvidence(
+    generatedSummary,
+    summarizedMessages,
+    sourceText,
+  );
   const checkpoint = await createCheckpoint(summary, sourceText, summarizedMessages.length);
   const messages = [
     checkpointMessage(checkpoint, options.checkpointProviderOptions?.(summarizedMessages)),

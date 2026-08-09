@@ -26,6 +26,8 @@ running editor and is loaded on demand with `load_skill`.
 3. Call `load_skill` before specialized work. It is read-only and requires
    neither `begin_edit_session` nor `editSessionId`; available names and support
    files come from the live MCP tool description.
+   With progressive exposure enabled, this call reveals the skill's referenced
+   tools and emits `tools/list_changed`; refresh the list before continuing.
 4. Before project reads or edits, call `begin_edit_session`. Keep its
    `editSessionId` and pass it to every draft-safe editor tool.
 5. Use `approvalMode: "manual"` unless the user explicitly asks for unattended
@@ -36,7 +38,7 @@ running editor and is loaded on demand with `load_skill`.
 
 ## Skill version
 
-`2026-08-01.1`
+`2026-08-10.1`
 
 The OpenChatCut MCP server announces its required skill baseline. If the server
 baseline is newer, run:

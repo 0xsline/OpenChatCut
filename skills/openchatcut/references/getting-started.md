@@ -54,6 +54,20 @@ claude mcp add --transport http \
 
 For another client, register the endpoint as a Streamable HTTP MCP server and
 set its `Authorization` header to `Bearer <token>`.
+Clients that honor MCP `tools/list_changed` can reduce their initial prompt by
+negotiating progressive exposure:
+
+```text
+http://localhost:5199/api/external-mcp/mcp?toolExposure=progressive
+```
+
+The equivalent request header is
+`X-OpenChatCut-Tool-Exposure: progressive`. The initial list keeps connection,
+session, project-read, `ToolSearch`, and `load_skill` tools. `ToolSearch` and
+`load_skill` expand only that transport session's list. Clients that cache one
+fixed tool list for the whole connection must use the default URL, which retains
+the full compatibility surface.
+
 
 ## 3. Verify
 

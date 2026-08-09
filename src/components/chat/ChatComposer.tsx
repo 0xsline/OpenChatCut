@@ -9,7 +9,7 @@ import { MenuDrillHeader } from '../timeline/MenuDrillHeader';
 import { findSkill, setCustomSkills, allCreativeSkills } from '../../agent/skills/skills-catalog';
 import type { SkillDefinition } from '../../agent/skills/skill-types';
 import { loadCustomSkills } from '../../persist/skillStore';
-import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, type MgTier } from '../../agent/settings/agentSettings';
+import { loadAgentSettings, saveAgentSettings, type AgentSettings } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import {
   ComposerMoreMenu,
@@ -23,6 +23,7 @@ import { hasPendingComposerAttachment, shouldSubmitComposerOnKeyDown } from './c
 import { WorkflowPickerContent } from './WorkflowPickerContent';
 import { hasEditorDrag, parseEditorDrag, type EditorDragPayload } from '../../editor/editorDrag';
 import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
+import { AgentComposerSettings } from './AgentComposerSettings';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -78,8 +79,6 @@ interface ChatComposerProps {
 }
 
 
-// MG three-level quality label (speed|balance|quality)
-const TIER_LABELS: Record<MgTier, string> = { speed: '速度', balance: '均衡', quality: '质量' };
 
 const REF_ICON: Record<RefItem['kind'], IconName> = {
   video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image',
@@ -120,7 +119,9 @@ export function ChatComposer(props: ChatComposerProps) {
   }, []);
   const activeSkill = findSkill(creativeMode);
   const modelView = useComposerModelView(contextUsage);
-  const { activeModel, contextLabel, contextTitle, modelReady, modelState } = modelView;
+  const {
+    activeModel, contextLabel, contextTitle, contextNearLimit, modelReady, modelState,
+  } = modelView;
   const [pop, setPop] = useState<ComposerPopoverName>(null);
   const [popAnchor, setPopAnchor] = useState<HTMLElement | null>(null);
   /** @ picker drill level: root → assets/timeline/templates → track items. */
@@ -549,7 +550,7 @@ export function ChatComposer(props: ChatComposerProps) {
       />
       <ComposerToolbar
         mode={mode} activeModel={activeModel} activeSkillName={activeSkill ? skillName(activeSkill) : undefined}
-        contextLabel={contextLabel} contextTitle={contextTitle}
+        contextLabel={contextLabel} contextTitle={contextTitle} contextNearLimit={contextNearLimit}
         pop={pop} selecting={selecting} enhancing={enhancing} running={running}
         canEnhance={canEnhance} canSend={canSend} sendTitle={sendTitle}
         onTogglePop={toggle} onToggleSelecting={onToggleSelecting} onEnhance={onEnhance}
@@ -567,45 +568,12 @@ export function ChatComposer(props: ChatComposerProps) {
       )}
       {pop === 'settings' && (
         <ComposerPopover anchor={popAnchor} onClose={closePop}>
-          <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('模式')}</div>
-          <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>
-            {(['ask', 'yolo'] as const).map((m) => {
-              const active = (m === 'yolo') === autoApply;
-              return (
-                <button key={m} onClick={() => onAutoApplyChange(m === 'yolo')}
-                  style={{ flex: 1, padding: '4px 0', fontSize: 11.5, borderRadius: 6, cursor: 'pointer', border: `0.5px solid ${active ? theme.accent : theme.borderLight}`, background: active ? theme.panel : 'none', color: active ? theme.text : theme.textDim }}>
-                  {m === 'ask' ? t('Ask 模式') : t('YOLO 模式')}
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-            {autoApply
-              ? t('YOLO 模式：所有操作直接执行，不会逐条确认（仍可撤销）。')
-              : t('Ask 模式：AI 的改动先经你确认；有多个可选项时 AI 会先问你。')}
-          </div>
-          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-            {!autoApply && t('生成/导出/转写/网页抓取等付费操作在 Ask 模式下会先经你确认。')}
-          </div>
-          <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG 质量')}</div>
-          <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>
-            {MG_TIERS.map((tier) => (
-              <button key={tier} onClick={() => patchAgent({ mgTier: tier })}
-                style={{ flex: 1, padding: '4px 0', fontSize: 11.5, borderRadius: 6, cursor: 'pointer', border: `0.5px solid ${agentSettings.mgTier === tier ? theme.accent : theme.borderLight}`, background: agentSettings.mgTier === tier ? theme.panel : 'none', color: agentSettings.mgTier === tier ? theme.text : theme.textDim }}>
-                {t(TIER_LABELS[tier])}
-              </button>
-            ))}
-          </div>
-          <div style={{ fontSize: 11, color: theme.textDim, padding: '4px 10px 6px' }}>
-            {t('速度=最快出活 / 均衡 / 质量=打磨动效细节。')}
-          </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
-            <input type="checkbox" checked={agentSettings.planMode} onChange={(e) => patchAgent({ planMode: e.target.checked })} style={{ accentColor: theme.accent }} />
-            {t('计划模式')}
-          </label>
-          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
-            {t('先出编号计划，确认后再动手。')}
-          </div>
+          <AgentComposerSettings
+            autoApply={autoApply}
+            onAutoApplyChange={onAutoApplyChange}
+            settings={agentSettings}
+            onSettingsChange={patchAgent}
+          />
         </ComposerPopover>
       )}
       {pop === 'assets' && (
