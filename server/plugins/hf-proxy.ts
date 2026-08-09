@@ -23,6 +23,7 @@ const MAX_CACHE_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB hard cap
 const CURL_TIMEOUT_S = 1800;
 const CURL_ROUNDS = 6; // each round also retries internally (--retry 8)
 const PARALLEL_CHUNKS = 4; // per-connection throttling → parallel byte ranges
+const PARALLEL_MIN_BYTES = 8 * 1024 * 1024;
 
 /** Official source uses parallel ranges; the mirror is the same-content fallback. */
 const SOURCES: ReadonlyArray<{ name: string; url: (target: ProxyTarget) => string }> = [
@@ -118,9 +119,10 @@ function runCurl(
   url: string, out: string, range: string | undefined, maxBytes: number, context: CurlContext,
 ): Promise<void> {
   throwIfDownloadAborted(context.signal);
+  const transferLimit = Math.min(MAX_CACHE_FILE_BYTES, maxBytes + 64 * 1024);
   const args = [
     '-sSL', '--fail', '--max-time', String(CURL_TIMEOUT_S),
-    '--max-filesize', String(maxBytes),
+    '--max-filesize', String(transferLimit),
     '--speed-limit', '1024', '--speed-time', '30',
     '--retry', '8', '--retry-delay', '3', '--retry-all-errors',
   ];
@@ -289,6 +291,10 @@ async function downloadFromSource(
     return;
   }
   const size = await probeRemoteSize(url, context.expectedBytes, context.signal);
+  if (size < PARALLEL_MIN_BYTES) {
+    await downloadSingle(url, tmpPath, context);
+    return;
+  }
   await downloadParallel(url, size, tmpPath, context);
 }
 

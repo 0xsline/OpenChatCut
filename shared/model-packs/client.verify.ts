@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  MODEL_PACK_CATALOG_CHANGE_EVENT,
   cancelModelPackInstall,
   deleteModelPack,
   installModelPack,
@@ -12,6 +13,17 @@ interface FetchCall {
 
 const calls: FetchCall[] = [];
 const originalFetch = globalThis.fetch;
+const changeEvents: string[] = [];
+const originalWindow = globalThis.window;
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: {
+    dispatchEvent: (event: Event) => {
+      changeEvents.push(event.type);
+      return true;
+    },
+  },
+});
 globalThis.fetch = async (input, init) => {
   calls.push({ input, init });
   const body = String(input).endsWith('/download')
@@ -53,9 +65,11 @@ try {
     assert.equal(headers.get('content-type'), 'application/json');
     assert.equal(headers.get('x-openchatcut-editor-credential'), 'editor-secret');
   }
+  assert.deepEqual(changeEvents, Array(3).fill(MODEL_PACK_CATALOG_CHANGE_EVENT));
   assert.equal(credentialHeaders.get('content-type'), 'text/plain', 'the caller-owned headers must not be mutated');
 } finally {
   globalThis.fetch = originalFetch;
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 }
 
 console.log('model-packs-client.verify: mutation credentials forwarded');

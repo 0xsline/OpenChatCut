@@ -25,6 +25,7 @@ import {
 import { installProjectStoreIpc } from './project-store-ipc.ts';
 import { installEditorAuthIpc } from './editor-auth-ipc.ts';
 import { installDesktopUpdateIpc } from './update-ipc.ts';
+import { installDesktopInferenceIpc } from './native-inference-ipc.ts';
 import {
   assertTrustedDesktopSenderUrl,
   resolveDesktopDevOrigin,
@@ -372,6 +373,23 @@ async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
   ) as unknown;
   if (updaterType !== 'function') throw new Error('desktop updater preload is unavailable');
   console.log('[smoke] desktop updater preload ok');
+  const inference = await win.webContents.executeJavaScript(
+    'window.openChatCutDesktop?.inference?.getCapabilities()',
+  ) as {
+    version?: unknown;
+    asr?: { available?: unknown };
+    semantic?: { available?: unknown };
+    clap?: { available?: unknown };
+    rhythm?: { available?: unknown };
+  } | null;
+  if (inference?.version !== 3
+    || typeof inference.asr?.available !== 'boolean'
+    || typeof inference.semantic?.available !== 'boolean'
+    || typeof inference.clap?.available !== 'boolean'
+    || typeof inference.rhythm?.available !== 'boolean') {
+    throw new Error('desktop native inference preload is unavailable');
+  }
+  console.log('[smoke] desktop native inference preload ok');
   if (SMOKE_RENDER) {
     const state = { fps: 30, width: 640, height: 360, items: [], selectedId: null };
     const r = await fetch(`${origin}/render-still`, {
@@ -408,6 +426,11 @@ async function boot(): Promise<void> {
   installProjectStoreIpc(origin);
   installEditorAuthIpc(origin);
   installDesktopUpdateIpc(origin, { enabled: app.isPackaged && !SMOKE });
+  const desktopInference = installDesktopInferenceIpc(
+    origin,
+    join(app.getPath('home'), '.openchatcut', 'asr-models'),
+  );
+  app.once('before-quit', () => desktopInference.dispose());
   console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);
 
   const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);

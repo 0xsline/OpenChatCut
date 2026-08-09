@@ -21,9 +21,27 @@ const COMPOSITORS = [
   'darwin-arm64', 'darwin-x64', 'win32-x64-msvc',
   'linux-arm64-gnu', 'linux-arm64-musl', 'linux-x64-gnu', 'linux-x64-musl',
 ];
+const ONNX_RUNTIME_TARGETS = [
+  'darwin/arm64', 'darwin/x64', 'win32/arm64', 'win32/x64', 'linux/arm64', 'linux/x64',
+];
 const TARGET_COMPOSITOR = { 'darwin-arm64': 'darwin-arm64', 'darwin-x64': 'darwin-x64', 'win32-x64': 'win32-x64-msvc', 'linux-x64': 'linux-x64-gnu' };
 const target = process.env.CC_EB_TARGET ?? `${process.platform}-${process.arch}`;
 const keep = TARGET_COMPOSITOR[target] ?? target;
+const nativeInferenceSupported = target.startsWith('darwin-') || target.startsWith('win32-');
+const keepOnnxRuntime = nativeInferenceSupported ? target.replace('-', '/').replace('-msvc', '') : null;
+const nativeInferenceWorkers = nativeInferenceSupported
+  ? [
+      'desktop-dist/native-asr-worker.mjs',
+      'desktop-dist/native-semantic-worker.mjs',
+      'desktop-dist/native-clap-worker.mjs',
+      'desktop-dist/native-rhythm-worker.mjs',
+    ]
+  : [];
+const onnxRuntimeFilters = keepOnnxRuntime
+  ? ONNX_RUNTIME_TARGETS
+      .filter((runtimeTarget) => runtimeTarget !== keepOnnxRuntime)
+      .map((runtimeTarget) => `!node_modules/onnxruntime-node/bin/napi-v6/${runtimeTarget}/**`)
+  : ['!node_modules/onnxruntime-node/**'];
 const updateChannel = target.includes('arm64') ? 'latest-arm64' : 'latest-x64';
 const hasMacSigningCertificate = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
 
@@ -41,9 +59,12 @@ export default {
   files: [
     'desktop-dist/main.mjs',
     'desktop-dist/preload.cjs',
+    ...nativeInferenceWorkers,
     'package.json',
     // Keep only the target compositor; renderer selects its package from process.platform at runtime.
     ...COMPOSITORS.filter((c) => c !== keep).map((c) => `!node_modules/@remotion/compositor-${c}/**`),
+    // onnxruntime-node publishes every platform in one package; ship only this artifact's binary.
+    ...onnxRuntimeFilters,
   ],
   asar: false,
   extraResources: [

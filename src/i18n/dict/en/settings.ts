@@ -390,6 +390,9 @@ export default {
   '下载': 'Download',
   '模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。':
     'Models are downloaded to this machine on demand — they are not bundled with the app. Downloads use the accelerated pipeline automatically.',
+  '桌面原生推理加速（实验）': 'Native desktop inference acceleration (experimental)',
+  '启用后，转写、画面语义、节拍与音乐语义模型自动选择 Windows DirectML 或 macOS CoreML/原生 CPU；转写模型在编辑器打开后后台预热，其他模型首次使用时按需加载；失败时回退浏览器引擎。':
+    'When enabled, transcription, visual-semantic, rhythm, and music-semantic models automatically use Windows DirectML or macOS CoreML/native CPU. Transcription preloads after the editor opens; other models load on first use. Failures fall back to the browser engine.',
   '无法读取模型列表：{err}': 'Cannot load the model list: {err}',
   '默认模型': 'Default model',
   '自动（按设备内存选择）': 'Auto (by device memory)',
