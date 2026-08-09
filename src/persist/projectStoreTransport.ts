@@ -82,28 +82,64 @@ function rememberLaunchToken(token: string): void {
   } catch {
     // The in-memory launch credential remains usable for this page lifetime.
   }
+  try {
+    localStorage.setItem(LAUNCH_STORAGE_KEY, token);
+  } catch {
+    // Persistence across tabs is best-effort; the session storage copy
+    // keeps this tab alive either way.
+  }
 }
 
-function consumeLaunchToken(): string | null {
-  if (launchToken !== undefined) return launchToken;
-  launchToken = null;
+function readStoredLaunchToken(): string | null {
   try {
-    const stored = sessionStorage.getItem(LAUNCH_STORAGE_KEY)?.trim() ?? '';
-    if (stored.length >= 32) launchToken = stored;
+    const tabScoped = sessionStorage.getItem(LAUNCH_STORAGE_KEY)?.trim() ?? '';
+    if (tabScoped.length >= 32) return tabScoped;
   } catch {
     // Privacy-restricted environments may not expose storage.
   }
-  if (typeof location === 'undefined' || typeof history === 'undefined') return launchToken;
+  try {
+    const persistent = localStorage.getItem(LAUNCH_STORAGE_KEY)?.trim() ?? '';
+    if (persistent.length >= 32) return persistent;
+  } catch {
+    // Non-browser environments have no persistent storage.
+  }
+  return null;
+}
+
+// The URL fragment is the only place a fresh launch credential can arrive
+// (vite opens /#openchatcut-editor-token=...). Consume it as early as
+// possible: the hash router may rewrite the URL before the first write
+// request triggers ensureHttpSession.
+if (typeof location !== 'undefined' && typeof history !== 'undefined' && typeof window !== 'undefined') {
+  try {
+    const params = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : '');
+    const candidate = params.get(TOKEN_FRAGMENT_KEY)?.trim() ?? '';
+    if (candidate.length >= 32) rememberLaunchToken(candidate);
+  } catch {
+    // Non-browser environments leave the fragment for the first consume.
+  }
+}
+
+function consumeLaunchToken(): string | null {
+  // Cache only SUCCESSFUL lookups: a failed read must not poison later
+  // attempts (e.g. a token stored by another tab after this one booted).
+  if (launchToken !== undefined) return launchToken;
+  const stored = readStoredLaunchToken();
+  if (stored) {
+    launchToken = stored;
+    return launchToken;
+  }
+  if (typeof location === 'undefined' || typeof history === 'undefined') return null;
   const params = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : '');
   const candidate = params.get(TOKEN_FRAGMENT_KEY)?.trim() ?? '';
   if (candidate.length >= 32) rememberLaunchToken(candidate);
   removeLaunchFragment(params);
-  return launchToken;
+  return launchToken ?? null;
 }
 
 function loadStoredSession(): string | null {
+  // Cache only SUCCESSFUL lookups (same reasoning as consumeLaunchToken).
   if (sessionToken !== undefined) return sessionToken;
-  sessionToken = null;
   if (typeof sessionStorage === 'undefined') return null;
   try {
     const parsed: unknown = JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY) ?? 'null');
@@ -111,14 +147,14 @@ function loadStoredSession(): string | null {
       const value = parsed as Partial<StoredSession>;
       if (typeof value.token === 'string' && value.token.length >= 32) {
         sessionToken = value.token;
-      } else {
-        sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        return sessionToken;
       }
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
     }
   } catch {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
   }
-  return sessionToken;
+  return null;
 }
 
 function clearStoredSession(expected?: string): void {
@@ -133,7 +169,11 @@ function clearStoredSession(expected?: string): void {
 
 async function exchangeLaunchToken(): Promise<string> {
   const token = consumeLaunchToken();
-  if (!token) throw new Error('project store HTTP transport is unavailable');
+  if (!token) {
+    throw new Error(
+      'project store HTTP transport is unavailable (editor launch credential missing; reopen the editor from its launcher link)',
+    );
+  }
   const response = await fetch(`${API_PATH}/session`, {
     method: 'POST',
     cache: 'no-store',
