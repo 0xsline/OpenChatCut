@@ -1,3 +1,4 @@
+import { SEMANTIC_INFERENCE_CONTRACT } from '../../../shared/vector-inference-contract';
 import type {
   DuplicateMatch, PackedSemanticVectors, SemanticMatch, SemanticVectorRecord,
 } from './types';
@@ -5,6 +6,20 @@ import type {
 export const SEMANTIC_RESULT_LIMIT = 24;
 export const DUPLICATE_SIMILARITY_THRESHOLD = 0.985;
 const MAX_PACKED_OFFSET = 0xffff_ffff;
+const DUPLICATE_PRUNE_SIZE = SEMANTIC_INFERENCE_CONTRACT.duplicateResultLimit * 2;
+
+function addDuplicateMatch(matches: DuplicateMatch[], match: DuplicateMatch): void {
+  matches.push(match);
+  if (matches.length < DUPLICATE_PRUNE_SIZE) return;
+  matches.sort((left, right) => right.score - left.score);
+  matches.length = SEMANTIC_INFERENCE_CONTRACT.duplicateResultLimit;
+}
+
+function rankedDuplicateMatches(matches: DuplicateMatch[]): DuplicateMatch[] {
+  return matches
+    .toSorted((left, right) => right.score - left.score)
+    .slice(0, SEMANTIC_INFERENCE_CONTRACT.duplicateResultLimit);
+}
 
 export const dot = (left: ArrayLike<number>, right: ArrayLike<number>) => {
   let sum = 0;
@@ -67,11 +82,13 @@ export function findDuplicateAssets(
     for (let right = left + 1; right < assets.length; right += 1) {
       const score = coverageSimilarity(assets[left]![1], assets[right]![1]);
       if (score >= threshold) {
-        matches.push({ leftAssetId: assets[left]![0], rightAssetId: assets[right]![0], score });
+        addDuplicateMatch(matches, {
+          leftAssetId: assets[left]![0], rightAssetId: assets[right]![0], score,
+        });
       }
     }
   }
-  return matches.toSorted((left, right) => right.score - left.score);
+  return rankedDuplicateMatches(matches);
 }
 
 export function packSemanticVectors(records: readonly SemanticVectorRecord[]): PackedSemanticVectors {
@@ -99,11 +116,43 @@ export function findDuplicateAssetsPacked(
     for (let right = left + 1; right < packed.assetIds.length; right += 1) {
       const score = packedCoverageSimilarity(packed, left, right);
       if (score >= threshold) {
-        matches.push({ leftAssetId: packed.assetIds[left]!, rightAssetId: packed.assetIds[right]!, score });
+        addDuplicateMatch(matches, {
+          leftAssetId: packed.assetIds[left]!, rightAssetId: packed.assetIds[right]!, score,
+        });
       }
     }
   }
-  return matches.toSorted((left, right) => right.score - left.score);
+  return rankedDuplicateMatches(matches);
+}
+
+const DUPLICATE_SCAN_YIELD_PAIRS = 1;
+
+export async function findDuplicateAssetsPackedInterruptible(
+  packed: PackedSemanticVectors,
+  threshold: number,
+  assertActive: () => void,
+  yieldControl: () => Promise<void>,
+): Promise<DuplicateMatch[]> {
+  const matches: DuplicateMatch[] = [];
+  let pairsSinceYield = 0;
+  for (let left = 0; left < packed.assetIds.length; left += 1) {
+    for (let right = left + 1; right < packed.assetIds.length; right += 1) {
+      const score = packedCoverageSimilarity(packed, left, right);
+      if (score >= threshold) {
+        addDuplicateMatch(matches, {
+          leftAssetId: packed.assetIds[left]!, rightAssetId: packed.assetIds[right]!, score,
+        });
+      }
+      pairsSinceYield += 1;
+      if (pairsSinceYield >= DUPLICATE_SCAN_YIELD_PAIRS) {
+        assertActive();
+        await yieldControl();
+        assertActive();
+        pairsSinceYield = 0;
+      }
+    }
+  }
+  return rankedDuplicateMatches(matches);
 }
 
 function groupVectorsByAsset(records: readonly SemanticVectorRecord[]): Map<string, ArrayLike<number>[]> {

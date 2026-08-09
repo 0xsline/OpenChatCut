@@ -34,6 +34,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增无需浏览器常驻的外部 Agent 服务端直编：隔离草稿、显式审阅/提交门槛、依赖闭合的工具暴露，以及带工程作用域、过期与防重放校验的同源一次性上传交接。
 - Added opt-in local music intelligence: downloadable, hash-verified Beat This and CLAP model packs analyze BPM, beats, downbeats, structure, energy, genre, mood, instrumentation, and usage entirely on-device. Media cards expose cached results, automatic analysis is user-controlled, and the Agent can inspect, plan, and atomically apply stale-safe beat-synced cuts through a dedicated skill. Long tracks use bounded windowed rhythm preprocessing and representative semantic sampling.
   新增可选的本地音乐智能：可下载并校验哈希的 Beat This 与 CLAP 模型包完全在端侧分析 BPM、节拍、强拍、段落、能量、流派、情绪、乐器与用途。素材卡可查看缓存结果，导入后自动分析由用户控制；Agent 通过专项技能检查分析、生成方案，并以单次可撤销操作安全执行带分析版本校验的卡点切分。长音频采用有界窗口节奏预处理与代表性语义采样。
+- Added opt-in desktop native inference acceleration for Windows and macOS: Windows prefers DirectML, while macOS uses CoreML for Beat This and native Apple-silicon CPU execution for Whisper, Chinese-CLIP, and CLAP. After explicit opt-in, the already-downloaded selected transcription model preloads when an editor opens; other downloaded models load on first use. Unsupported hardware, admission limits, and native failures transparently return the same request to the existing browser WebGPU/WASM engines.
+  新增 Windows 与 macOS 可选桌面原生推理加速：Windows 优先使用 DirectML；macOS 的 Beat This 使用 CoreML，Whisper、Chinese-CLIP 与 CLAP 使用 Apple 芯片原生 CPU 执行。用户显式启用后，已下载且当前选中的转写模型会在编辑器打开时预热，其他已下载模型首次使用时按需加载；硬件不支持、资源准入受限或原生推理失败时，同一次请求会透明回退既有浏览器 WebGPU/WASM 引擎。
 
 ### Changed / 变更
 

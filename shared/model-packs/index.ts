@@ -11,6 +11,7 @@ export {
 } from './catalog';
 
 export {
+  MODEL_PACK_CATALOG_CHANGE_EVENT,
   areModelPacksInstalled,
   cancelModelPackInstall,
   deleteModelPack,

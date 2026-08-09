@@ -1,4 +1,7 @@
-export const SEMANTIC_MODEL_ID = 'Xenova/chinese-clip-vit-base-patch16';
+import { SEMANTIC_INFERENCE_CONTRACT } from '../../../shared/vector-inference-contract';
+
+export const SEMANTIC_MODEL_ID = SEMANTIC_INFERENCE_CONTRACT.modelId;
+export const SEMANTIC_MODEL_REVISION = SEMANTIC_INFERENCE_CONTRACT.revision;
 export const SEMANTIC_MODEL_VERSION = 'chinese-clip-vit-base-patch16-q4-v1';
 export const MAX_SEMANTIC_QUERY_LENGTH = 240;
 

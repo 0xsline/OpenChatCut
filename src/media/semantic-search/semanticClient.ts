@@ -1,3 +1,4 @@
+import { createNativeSemanticWorkerAdapter } from './nativeSemanticWorkerAdapter';
 import { DUPLICATE_SIMILARITY_THRESHOLD, packSemanticVectors } from './vectorSearch';
 import type {
   DuplicateMatch, FramePixels, SemanticDevice, SemanticVectorRecord,
@@ -156,7 +157,8 @@ export class SemanticClient {
 }
 
 function createSemanticWorker(): Worker {
-  return new Worker(new URL('./semantic.worker.ts', import.meta.url), { type: 'module' });
+  return createNativeSemanticWorkerAdapter()
+    ?? new Worker(new URL('./semantic.worker.ts', import.meta.url), { type: 'module' });
 }
 
 function semanticAbortError(): DOMException {

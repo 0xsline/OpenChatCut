@@ -7,11 +7,10 @@ import type {
   AsrChunk, AsrResult, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
 } from './local-asr-types';
 import { localAsrLoadError, localAsrModelHosts } from './local-asr-model-source';
+import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
 
-const MAX_AUDIO_SAMPLES = 60 * 60 * 16_000; // 60 min of 16 kHz mono
-const CHUNK_SECONDS = 30;
-const STRIDE_SECONDS = 5;
-const DEFAULT_DTYPE = 'q8'; // P0: verify q4 on webgpu; q8 is the stable baseline
+const MAX_AUDIO_SAMPLES = ASR_INFERENCE_CONTRACT.maxAudioSeconds
+  * ASR_INFERENCE_CONTRACT.sampleRate;
 /**
  * The proxy is the only model source. It enforces the pinned model/revision/file
  * tuple and verifies size and SHA-256 before serving bytes.
@@ -58,7 +57,7 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
       const attemptPromise = (pipeline('automatic-speech-recognition', request.modelId, {
         revision: request.revision,
         device: request.device,
-        dtype: DEFAULT_DTYPE,
+        dtype: ASR_INFERENCE_CONTRACT.dtype,
         progress_callback: progress,
       }) as Promise<unknown>);
       const next = await Promise.race([
@@ -110,12 +109,12 @@ async function transcribe(
   if (!(request.samples instanceof Float32Array)) throw new Error('Invalid audio samples');
   const n = request.samples.length;
   if (n === 0 || n > MAX_AUDIO_SAMPLES) {
-    throw new Error(`Audio length out of range (${Math.round(n / 16_000)}s; max 3600s)`);
+    throw new Error(`Audio length out of range (${Math.round(n / ASR_INFERENCE_CONTRACT.sampleRate)}s; max ${ASR_INFERENCE_CONTRACT.maxAudioSeconds}s)`);
   }
   const output = await asr(request.samples, {
     return_timestamps: 'word',
-    chunk_length_s: CHUNK_SECONDS,
-    stride_length_s: STRIDE_SECONDS,
+    chunk_length_s: ASR_INFERENCE_CONTRACT.chunkSeconds,
+    stride_length_s: ASR_INFERENCE_CONTRACT.strideSeconds,
     language: request.language,
   }) as unknown as WhisperOutput;
   return { text: output.text ?? '', chunks: toChunks(output) };

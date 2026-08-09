@@ -1,7 +1,9 @@
-export const CLAP_MODEL_ID = 'Xenova/clap-htsat-unfused';
-export const CLAP_MODEL_REVISION = 'c28f2883575e590e04d3146ff0713c2448d691ba';
-export const CLAP_SAMPLE_RATE = 48_000;
-export const CLAP_EMBEDDING_DIMENSION = 512;
+import { CLAP_INFERENCE_CONTRACT } from '../../../shared/vector-inference-contract';
+
+export const CLAP_MODEL_ID = CLAP_INFERENCE_CONTRACT.modelId;
+export const CLAP_MODEL_REVISION = CLAP_INFERENCE_CONTRACT.revision;
+export const CLAP_SAMPLE_RATE = CLAP_INFERENCE_CONTRACT.sampleRate;
+export const CLAP_EMBEDDING_DIMENSION = CLAP_INFERENCE_CONTRACT.embeddingDimension;
 
 export type ClapBackend = 'webgpu' | 'wasm';
 

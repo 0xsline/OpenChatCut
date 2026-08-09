@@ -10,9 +10,11 @@ import {
   type AssemblyAiCheckpointWriter, type AssemblyAiResumeCheckpoint, type TranscribeOptions,
 } from './assemblyai';
 import { downsampleMono } from './client-asr-extract';
+import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
+import { tryDesktopNativeAsr, warmUpDesktopNativeAsr } from './desktop-native-asr';
+import { desktopNativeInferenceEnabled } from './desktop-inference-preference';
 
-const TARGET_SR = 16_000;
-const MAX_AUDIO_SECONDS = 60 * 60;
+const TARGET_SR = ASR_INFERENCE_CONTRACT.sampleRate;
 /** WebGPU load can hang on software renderers (headless/SwiftShader); force-fail
  *  so ensureLoaded falls back to wasm instead of stalling transcription forever. */
 const WEBGPU_LOAD_TIMEOUT_MS = 90_000;
@@ -179,10 +181,10 @@ async function decodeSourceToSamples(path: string): Promise<Float32Array> {
     const arrayBuffer = await response.arrayBuffer();
     const decoded = await context.decodeAudioData(arrayBuffer);
     const mono = downsampleMono(decoded, TARGET_SR);
-    if (mono.length > MAX_AUDIO_SECONDS * TARGET_SR) {
+    if (mono.length > ASR_INFERENCE_CONTRACT.maxAudioSeconds * TARGET_SR) {
       throw new TranscriptionError(
         'service-unavailable',
-        `audio exceeds ${MAX_AUDIO_SECONDS}s local ASR limit`,
+        `audio exceeds ${ASR_INFERENCE_CONTRACT.maxAudioSeconds}s local ASR limit`,
       );
     }
     return mono;
@@ -205,6 +207,15 @@ function toTranscriptResult(result: AsrResult): TranscriptResult {
   return { text, words, utterances };
 }
 
+function reportModelProgress(
+  onWait: ((note?: string) => void) | undefined,
+  progress?: number,
+  file?: string,
+): void {
+  if (progress != null) onWait?.(`模型下载 ${Math.min(100, Math.round(progress))}%`);
+  else if (file) onWait?.(`加载模型 ${file.split('/').pop() ?? ''}`);
+}
+
 /** Transcribe a same-origin media path with the on-device model. */
 export async function localTranscribePathResumable(
   path: string,
@@ -220,18 +231,27 @@ export async function localTranscribePathResumable(
 
   const profile = await detectDeviceProfile();
   const config = chooseAsrConfig(profile);
-  const client = getSharedClient();
-  client.attachProgress((progress, file) => {
-    if (progress != null) {
-      onWait?.(`模型下载 ${Math.min(100, Math.round(progress))}%`);
-    } else if (file) {
-      onWait?.(`加载模型 ${file.split('/').pop() ?? ''}`);
+  let source: string | undefined;
+  if (desktopNativeInferenceEnabled()) {
+    source = await transcriptionSourceForPath(path, opts);
+    const native = await tryDesktopNativeAsr({
+      sourcePath: source,
+      config,
+      language: opts.languageCode ?? 'zh',
+      onProgress: (progress, file) => reportModelProgress(onWait, progress, file),
+      onFallback: () => onWait?.('桌面原生推理不可用，已回退浏览器引擎'),
+    });
+    if (native) {
+      await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
+      return toTranscriptResult(native.result);
     }
-  });
+  }
+  const client = getSharedClient();
+  client.attachProgress((progress, file) => reportModelProgress(onWait, progress, file));
   await client.ensureLoaded(config);
   await onCheckpoint({ ...checkpoint, providerStatus: 'processing' });
 
-  const source = await transcriptionSourceForPath(path, opts);
+  source ??= await transcriptionSourceForPath(path, opts);
   const samples = await decodeSourceToSamples(source);
   const result = await client.transcribe(samples, opts.languageCode ?? 'zh');
   await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
@@ -252,24 +272,23 @@ export function __resetLocalAsrClient(): void {
   sharedClient = null;
 }
 
-interface DownloadedAsrModel {
-  modelId?: string;
-  downloaded?: boolean;
-}
-
 async function fetchDownloadedModelIds(): Promise<string[]> {
-  const body = await fetch('/api/asr-models', { cache: 'no-store' })
+  const body: unknown = await fetch('/api/asr-models', { cache: 'no-store' })
     .then((response) => (response.ok ? response.json() : null))
-    .catch(() => null) as { models?: DownloadedAsrModel[] } | null;
-  if (!Array.isArray(body?.models)) return [];
-  return body.models
-    .filter((model) => model.downloaded && typeof model.modelId === 'string')
-    .map((model) => model.modelId as string);
+    .catch(() => null);
+  if (typeof body !== 'object' || body === null || !('models' in body)
+    || !Array.isArray(body.models)) return [];
+  return body.models.flatMap((model): string[] => {
+    if (typeof model !== 'object' || model === null
+      || !('downloaded' in model) || model.downloaded !== true
+      || !('modelId' in model) || typeof model.modelId !== 'string') return [];
+    return [model.modelId];
+  });
 }
 
 /**
- * Compile the ort wasm runtime and initialize an already-downloaded model in
- * the background. Failures stay silent; a real transcription reports them.
+ * Initialize an already-downloaded model in the desktop utility process or
+ * browser worker. Failures stay silent; a real transcription reports them.
  */
 export async function warmUpLocalAsr(downloadedModelIds?: readonly string[]): Promise<void> {
   try {
@@ -277,6 +296,7 @@ export async function warmUpLocalAsr(downloadedModelIds?: readonly string[]): Pr
     const config = chooseAsrConfig(profile);
     const available = downloadedModelIds ?? await fetchDownloadedModelIds();
     if (!available.includes(config.modelId)) return;
+    if (await warmUpDesktopNativeAsr(config)) return;
     await getSharedClient().ensureLoaded(config);
   } catch {
     // Best-effort only.
