@@ -114,7 +114,13 @@ export interface AgentRequestShapeInput {
 }
 export async function computeAgentRequestShapeFingerprint(
   input: AgentRequestShapeInput,
-): Promise<{ requestShapeHash: string; systemTokens: number; toolSchemaChars: number }> {
+): Promise<{
+  requestShapeHash: string;
+  systemTokens: number;
+  toolSchemaChars: number;
+  systemDigest: string;
+  toolSchemaDigest: string;
+}> {
   const schemaText = JSON.stringify(input.schemas);
   const systemTokens = estimateTextTokens(input.system);
   const shape = {
@@ -133,6 +139,8 @@ export async function computeAgentRequestShapeFingerprint(
     requestShapeHash: await sha256Text(JSON.stringify(shape)),
     systemTokens,
     toolSchemaChars: schemaText.length,
+    systemDigest: shape.systemDigest,
+    toolSchemaDigest: shape.toolSchemaDigest,
   };
 }
 async function contextRecord(
@@ -146,12 +154,25 @@ async function contextRecord(
     system, backend: choice.backend, modelId: choice.id, schemas, checkpointId,
   });
   return {
-    ...fingerprint, toolSchemaCount: schemas.length, activeToolCount: schemas.length,
-    historyTokens: usage.historyTokens, checkpointId,
-    inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+    ...fingerprint,
+    modelId: choice.id,
+    toolSchemaCount: schemas.length,
+    activeToolCount: schemas.length,
+    historyTokens: usage.historyTokens,
+    checkpointId,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
     reasoningTokens: usage.reasoningTokens,
-    cacheReadTokens: usage.cacheReadTokens, cacheWriteTokens: usage.cacheWriteTokens,
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
     noCacheTokens: usage.noCacheInputTokens,
+    cacheTtlMs: usage.cacheTtlMs,
+    requestIndex: usage.requestIndex,
+    attemptIndex: usage.attemptIndex,
+    retryCount: usage.retryCount,
+    retryReasons: usage.retryReasons,
+    mediaInputCount: usage.mediaInputCount,
+    mediaTokenEstimate: usage.mediaTokenEstimate,
   };
 }
 
@@ -235,8 +256,10 @@ async function executeCodexTool(request: CodexToolRequest): Promise<{
     toolCallId,
     signal,
   });
-  if (name !== 'ToolSearch' || !execution.success) return { activation, execution };
-  const activated = activation.withSearchResult(execution.result);
+  if ((name !== 'ToolSearch' && name !== 'load_skill') || !execution.success) {
+    return { activation, execution };
+  }
+  const activated = activation.withToolResult(name, execution.result);
   return {
     activation: activated.activation,
     execution: {

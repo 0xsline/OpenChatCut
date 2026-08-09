@@ -41,8 +41,19 @@ export interface AgentRunEvent {
   readonly summary?: string;
   readonly context?: AgentRunContext;
 }
+export type AgentCacheMissReason =
+  | 'none'
+  | 'first_request'
+  | 'model_changed'
+  | 'system_prompt_changed'
+  | 'tool_surface_changed'
+  | 'idle_ttl_expired'
+  | 'unknown';
 export interface AgentRunContext {
   readonly requestShapeHash: string;
+  readonly modelId?: string;
+  readonly systemDigest?: string;
+  readonly toolSchemaDigest?: string;
   readonly systemTokens?: number;
   readonly toolSchemaChars?: number;
   readonly historyTokens?: number;
@@ -55,6 +66,27 @@ export interface AgentRunContext {
   readonly cacheReadTokens?: number;
   readonly cacheWriteTokens?: number;
   readonly noCacheTokens?: number;
+  readonly cacheTtlMs?: number;
+  readonly requestIndex?: number;
+  readonly attemptIndex?: number;
+  readonly retryCount?: number;
+  readonly retryReasons?: readonly string[];
+  readonly mediaInputCount?: number;
+  readonly mediaTokenEstimate?: number;
+  readonly modelRequestCount?: number;
+  readonly totalInputTokens?: number;
+  readonly totalFreshInputTokens?: number;
+  readonly totalCacheReadTokens?: number;
+  readonly totalCacheWriteTokens?: number;
+  readonly totalOutputTokens?: number;
+  readonly totalReasoningTokens?: number;
+  readonly totalRetryCount?: number;
+  readonly totalMediaInputs?: number;
+  readonly totalMediaTokenEstimate?: number;
+  readonly cacheHitRatio?: number;
+  readonly cacheMissTokens?: number;
+  readonly cacheMissReason?: AgentCacheMissReason;
+  readonly lastRequestAt?: number;
 }
 export interface AgentRunRecord {
   readonly version: 1;

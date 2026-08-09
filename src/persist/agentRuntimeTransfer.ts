@@ -40,6 +40,9 @@ const string = (value: unknown, max = 262_144): value is string =>
 const safeId = (value: unknown): value is string => typeof value === 'string' && SAFE_ID.test(value);
 const optionalString = (value: unknown, max?: number): boolean => value === undefined || string(value, max);
 const optionalSha = (value: unknown): boolean => value === undefined || (typeof value === 'string' && SHA256.test(value));
+const optionalInteger = (value: unknown): boolean => value === undefined || integer(value);
+const optionalStringList = (value: unknown): boolean => value === undefined
+  || (Array.isArray(value) && value.length <= 8 && value.every((item) => string(item, 64)));
 const uniqueStrings = (value: unknown, pattern = SAFE_ID): value is string[] =>
   Array.isArray(value) && value.length === new Set(value).size
   && value.every((item) => typeof item === 'string' && pattern.test(item));
@@ -76,12 +79,37 @@ function validEvent(value: unknown, projectId: string, runId: string): value is 
 
 function validContext(value: unknown): boolean {
   if (value === undefined) return true;
-  if (!isRecord(value) || !allowedKeys(value, ['requestShapeHash', 'systemTokens', 'toolSchemaChars',
-    'historyTokens', 'activeToolCount', 'toolSchemaCount', 'checkpointId', 'inputTokens', 'outputTokens',
-    'reasoningTokens', 'cacheReadTokens', 'cacheWriteTokens', 'noCacheTokens'])) return false;
-  if (typeof value.requestShapeHash !== 'string' || !SHA256.test(value.requestShapeHash)) return false;
-  return Object.entries(value).every(([key, item]) => key === 'requestShapeHash'
-    || (key === 'checkpointId' ? safeId(item) : integer(item)));
+  const numericKeys = [
+    'systemTokens', 'toolSchemaChars', 'historyTokens', 'activeToolCount',
+    'toolSchemaCount', 'inputTokens', 'outputTokens', 'reasoningTokens',
+    'cacheReadTokens', 'cacheWriteTokens', 'noCacheTokens', 'cacheTtlMs',
+    'requestIndex', 'attemptIndex', 'retryCount', 'mediaInputCount',
+    'mediaTokenEstimate', 'modelRequestCount', 'totalInputTokens',
+    'totalFreshInputTokens', 'totalCacheReadTokens', 'totalCacheWriteTokens',
+    'totalOutputTokens', 'totalReasoningTokens', 'totalRetryCount',
+    'totalMediaInputs', 'totalMediaTokenEstimate', 'cacheMissTokens',
+    'lastRequestAt',
+  ] as const;
+  const keys = [
+    'requestShapeHash', 'modelId', 'systemDigest', 'toolSchemaDigest',
+    'checkpointId', 'retryReasons', 'cacheHitRatio', 'cacheMissReason',
+    ...numericKeys,
+  ];
+  if (!isRecord(value) || !allowedKeys(value, keys)
+    || typeof value.requestShapeHash !== 'string' || !SHA256.test(value.requestShapeHash)
+    || !optionalString(value.modelId, 512)
+    || !optionalSha(value.systemDigest) || !optionalSha(value.toolSchemaDigest)
+    || (value.checkpointId !== undefined && !safeId(value.checkpointId))
+    || !optionalStringList(value.retryReasons)
+    || !numericKeys.every((key) => optionalInteger(value[key]))) return false;
+  if (value.cacheHitRatio !== undefined && (
+    typeof value.cacheHitRatio !== 'number' || !Number.isFinite(value.cacheHitRatio)
+    || value.cacheHitRatio < 0 || value.cacheHitRatio > 1
+  )) return false;
+  return value.cacheMissReason === undefined || [
+    'none', 'first_request', 'model_changed', 'system_prompt_changed',
+    'tool_surface_changed', 'idle_ttl_expired', 'unknown',
+  ].includes(String(value.cacheMissReason));
 }
 
 function validRun(value: unknown, projectId: string): value is AgentRunRecord {

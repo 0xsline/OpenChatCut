@@ -105,10 +105,30 @@ const shrunkSchemas = await prepareContext({
 });
 assert.equal(shrunkSchemas.usage.compacted, false,
   'provider calibration rebases a prior large schema set onto current overhead');
+const cacheFriendly = await prepareContext({
+  ...options(small, async () => 'unused'),
+  previousUsage: {
+    ...maxInputUsage(700),
+    cacheReadTokens: 700,
+  },
+});
+assert.equal(cacheFriendly.usage.compacted, false,
+  'a stable high-cache prefix may grow to the 80% soft ceiling');
+await assert.rejects(
+  prepareContext({
+    ...options(small, async () => 'unused'),
+    previousUsage: {
+      ...maxInputUsage(700),
+      noCacheInputTokens: 600,
+    },
+  }),
+  /current request is too large/,
+  'a high uncached ratio lowers the soft ceiling before the hard model limit',
+);
 
 
 const history = [
-  message('user', 'A'.repeat(1_600)),
+  message('user', `operationId="operation-123" /media/uploads/source.mp4 ${'A'.repeat(1_600)}`),
   message('assistant', 'B'.repeat(1_200)),
   message('user', 'C'.repeat(1_200)),
   message('assistant', 'D'.repeat(400)),
@@ -124,6 +144,8 @@ assert.equal(compacted.messages.length, 3);
 assert.match(String(compacted.messages[0]?.content), /Conversation checkpoint/);
 assert.equal(compacted.messages[1], history[2], 'recent messages stay verbatim');
 assert.ok(compacted.usage.inputTokens < 800, 'compacted request restores the configured reserve');
+assert.match(String(compacted.messages[0]?.content), /operation-123/);
+assert.match(String(compacted.messages[0]?.content), /\/media\/uploads\/source\.mp4/);
 const activationHistory: ModelMessage[] = [
   message('user', 'A'.repeat(1_600)),
   {

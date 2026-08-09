@@ -271,48 +271,64 @@ async function verifyRequestShapeFingerprint(): Promise<void> {
   assert.equal(first.systemTokens, systemChanged.systemTokens);
   assert.equal(first.toolSchemaChars, schemaChanged.toolSchemaChars);
 }
+async function recordUsageSamples(
+  recorder: Awaited<ReturnType<typeof startAgentRun>>,
+): Promise<void> {
+  const shared = {
+    modelId: 'same-model',
+    systemDigest: 'c'.repeat(64),
+    systemTokens: 120,
+    historyTokens: 2_000,
+    activeToolCount: 4,
+    toolSchemaCount: 4,
+  };
+  await recorder.recordContextUsage({
+    ...shared,
+    requestShapeHash: 'a'.repeat(64),
+    toolSchemaDigest: 'd'.repeat(64),
+    toolSchemaChars: 800,
+    inputTokens: 2_500,
+    outputTokens: 300,
+    reasoningTokens: 125,
+    cacheReadTokens: 1_700,
+    cacheWriteTokens: 80,
+    noCacheTokens: 800,
+  });
+  await recorder.recordContextUsage({
+    ...shared,
+    requestShapeHash: 'b'.repeat(64),
+    toolSchemaDigest: 'e'.repeat(64),
+    toolSchemaChars: 600,
+    inputTokens: 1_000,
+    outputTokens: 50,
+    noCacheTokens: 1_000,
+    retryCount: 1,
+    mediaInputCount: 2,
+    mediaTokenEstimate: 2_400,
+  });
+}
 async function verifyActualUsagePersistence(): Promise<void> {
   const recorder = await startAgentRun({
     projectId,
     userInput: 'persist provider usage',
     askOnly: true,
   });
-  const requestShapeHash = 'a'.repeat(64);
-  await recorder.recordContextUsage({
-    requestShapeHash,
-    systemTokens: 120,
-    toolSchemaChars: 800,
-    historyTokens: 2_000,
-    activeToolCount: 4,
-    toolSchemaCount: 4,
-    inputTokens: 2_500,
-    outputTokens: 300,
-    reasoningTokens: 125,
-    cacheReadTokens: 1_700,
-    cacheWriteTokens: 80,
-    noCacheTokens: 800,
-  });
+  await recordUsageSamples(recorder);
   await recorder.finalize('completed', 'usage persisted');
   const saved = (await loadAgentRuntimeSidecar(projectId)).runs
     .find((run) => run.runId === recorder.runId);
-  assert.deepEqual(saved?.context, {
-    requestShapeHash,
-    systemTokens: 120,
-    toolSchemaChars: 800,
-    historyTokens: 2_000,
-    activeToolCount: 4,
-    toolSchemaCount: 4,
-    inputTokens: 2_500,
-    outputTokens: 300,
-    reasoningTokens: 125,
-    cacheReadTokens: 1_700,
-    cacheWriteTokens: 80,
-    noCacheTokens: 800,
-  }, 'Run Inspector sidecar retains actual provider usage fields through finalization');
+  assert.equal(saved?.context?.modelRequestCount, 2);
+  assert.equal(saved?.context?.totalInputTokens, 3_500);
+  assert.equal(saved?.context?.totalFreshInputTokens, 1_880);
+  assert.equal(saved?.context?.totalCacheReadTokens, 1_700);
+  assert.equal(saved?.context?.totalOutputTokens, 350);
+  assert.equal(saved?.context?.totalRetryCount, 1);
+  assert.equal(saved?.context?.totalMediaInputs, 2);
+  assert.equal(saved?.context?.cacheMissReason, 'tool_surface_changed');
   assert.deepEqual(
-    saved?.events.find((event) => event.type === 'context_usage')?.context,
+    saved?.events.findLast((event) => event.type === 'context_usage')?.context,
     saved?.context,
-    'the actual provider usage event retains its exact request-shape snapshot',
+    'the latest usage event retains the run aggregate and request snapshot',
   );
 }
 async function verifyExternalSkillProjection(): Promise<void> {

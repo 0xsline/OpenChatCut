@@ -96,6 +96,12 @@ function statusColor(status: string): string {
 function numberText(value: unknown): string | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? compactNumber.format(value) : undefined;
 }
+function percentText(value: unknown): string | undefined {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : undefined;
+}
+
 
 function validTime(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
@@ -115,6 +121,19 @@ function contextMetric(context: unknown, key: string): unknown {
   if (!context || typeof context !== 'object' || Array.isArray(context)) return undefined;
   return Reflect.get(context, key);
 }
+function cacheMissLabel(value: unknown, t: Translate): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return {
+    none: t('已命中缓存'),
+    first_request: t('首次请求'),
+    model_changed: t('模型已变化'),
+    system_prompt_changed: t('系统提示已变化'),
+    tool_surface_changed: t('工具面已变化'),
+    idle_ttl_expired: t('缓存已过期'),
+    unknown: t('未确认原因'),
+  }[value];
+}
+
 
 function isOutcomeKind(value: unknown): value is AgentToolOutcomeKind {
   return typeof value === 'string' && [
@@ -141,6 +160,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function ContextSection({ run, t }: { run: AgentRunRecord; t: Translate }) {
   const context = run.context;
   return <Section title={t('上下文与工具')}>
+    <div style={subtle}>{t('最近一次模型请求')}</div>
     <div style={metrics}>
       <Metric label={t('输入')} value={numberText(contextMetric(context, 'inputTokens'))} />
       <Metric label={t('输出')} value={numberText(contextMetric(context, 'outputTokens'))} />
@@ -152,6 +172,17 @@ function ContextSection({ run, t }: { run: AgentRunRecord; t: Translate }) {
       <Metric label={t('活跃工具')} value={numberText(contextMetric(context, 'activeToolCount'))} />
       <Metric label={t('工具 Schema')} value={numberText(contextMetric(context, 'toolSchemaCount'))} />
       <Metric label={t('Schema 字符')} value={numberText(contextMetric(context, 'toolSchemaChars'))} />
+    </div>
+    <div style={subtle}>{t('本次运行累计')}</div>
+    <div style={metrics}>
+      <Metric label={t('模型请求')} value={numberText(contextMetric(context, 'modelRequestCount'))} />
+      <Metric label={t('累计输入')} value={numberText(contextMetric(context, 'totalInputTokens'))} />
+      <Metric label={t('新鲜输入')} value={numberText(contextMetric(context, 'totalFreshInputTokens'))} />
+      <Metric label={t('累计输出')} value={numberText(contextMetric(context, 'totalOutputTokens'))} />
+      <Metric label={t('缓存命中率')} value={percentText(contextMetric(context, 'cacheHitRatio'))} />
+      <Metric label={t('累计重试')} value={numberText(contextMetric(context, 'totalRetryCount'))} />
+      <Metric label={t('图片输入')} value={numberText(contextMetric(context, 'totalMediaInputs'))} />
+      <Metric label={t('缓存诊断')} value={cacheMissLabel(contextMetric(context, 'cacheMissReason'), t)} />
     </div>
   </Section>;
 }

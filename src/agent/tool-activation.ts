@@ -3,6 +3,7 @@ import type { ProviderOptions } from '@ai-sdk/provider-utils';
 import type { AgentToolSchema } from './tool-schema';
 import { isExternalGlobalReadTool, isExternalReadTool } from './external-tool-policy';
 import { routedToolSelection } from './tool-routing';
+import { activatedToolNamesForResult } from './skills/skill-tool-activation';
 
 const BOOT_TOOL_NAMES: Record<string, true> = {
   ToolSearch: true,
@@ -185,34 +186,34 @@ export class ToolActivation {
     this.activeNames = new Set(requested.filter((name) => this.byName.has(name)));
   }
 
-  withSearchResult(result: unknown): {
+  withToolResult(toolName: string, result: unknown): {
     readonly activation: ToolActivation;
     readonly result: unknown;
   } {
-    if (!result || typeof result !== 'object'
-      || !('results' in result) || !Array.isArray(result.results)) {
-      return { activation: this, result };
-    }
-    const discovered = new Set(result.results.flatMap((row) => {
-      if (!row || typeof row !== 'object' || !('name' in row)) return [];
-      return typeof row.name === 'string' ? [row.name] : [];
-    }));
-    const activatedTools = this.catalog
-      .filter((schema) => (
-        discovered.has(schema.name)
-        && (!this.readOnly || isReadOnlyTool(schema.name))
-      ))
-      .map((schema) => schema.name);
+    const activatedTools = activatedToolNamesForResult(toolName, result, this.catalog)
+      .filter((name) => !this.readOnly || isReadOnlyTool(name));
+    const retainSearch = toolName === 'ToolSearch'
+      ? activatedTools.length === 0
+      : this.activeNames.has('ToolSearch');
     return {
       activation: new ToolActivation(
         this.catalog,
         [],
         [...this.activeNames, ...activatedTools],
-        activatedTools.length === 0,
+        retainSearch,
         this.readOnly,
       ),
-      result: { ...result, activatedTools },
+      result: result && typeof result === 'object' && !Array.isArray(result)
+        ? { ...result, activatedTools }
+        : result,
     };
+  }
+
+  withSearchResult(result: unknown): {
+    readonly activation: ToolActivation;
+    readonly result: unknown;
+  } {
+    return this.withToolResult('ToolSearch', result);
   }
 
   schemas(): readonly AgentToolSchema[] {

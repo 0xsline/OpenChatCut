@@ -6,7 +6,6 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  type CallToolResult,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import {
@@ -38,12 +37,25 @@ import type { OfflineEditorBinding } from './offline-runtime.ts';
 import { createExternalProject, listExternalProjects } from './projects.ts';
 import { registerMcpPrompts } from './mcp-prompts.ts';
 import {
-  redactTextForAgentRuntime,
-  sanitizeJsonForArtifact,
-} from '../../src/agent/runtime-artifact.ts';
-import { TOOL_ARTIFACT_THRESHOLD } from '../../src/agent/runtime-ledger.ts';
+  activateMcpToolExposure,
+  activatedMcpToolNames,
+  initialMcpToolExposure,
+  mcpToolExposureStatus,
+  mcpToolListDigest,
+  projectMcpToolExposure,
+  requestedMcpToolExposure,
+  sendMcpToolListChangedIfChanged,
+  type McpToolExposure,
+} from './mcp-tool-exposure.ts';
+import {
+  mcpToolError,
+  projectMcpReply,
+  toMcpContent,
+  toStructuredContent,
+} from './mcp-result.ts';
+export { toMcpContent, toStructuredContent } from './mcp-result.ts';
 
-export const OPENCHATCUT_SKILL_BASELINE = '2026-08-01.1';
+export const OPENCHATCUT_SKILL_BASELINE = '2026-08-10.1';
 export const MCP_SESSION_IDLE_LIMIT_MS = 60 * 60 * 1000;
 export const MCP_SESSION_COUNT_LIMIT = 64;
 export const MCP_POST_BODY_LIMIT_BYTES = 2 * 1024 * 1024;
@@ -57,6 +69,8 @@ const PROJECT_SELECTOR = {
 interface McpSession extends McpBindingSession {
   server: Server | null;
   transport: StreamableHTTPServerTransport;
+  toolListDigest: string;
+  exposure: McpToolExposure;
   lastUsed: number;
 }
 
@@ -67,7 +81,7 @@ function editorUrl(args: Record<string, unknown>, projectId: string, fallbackBas
   return `${base.replace(/\/+$/, '')}/#/editor/${encodeURIComponent(projectId)}`;
 }
 
-export function mcpTools(session?: McpSession): Tool[] {
+function fullMcpTools(session?: McpSession): Tool[] {
   const browserTools = registeredTools();
   const hasConnectedBrowser = connectedProjectIds().length > 0;
   const catalog = session?.offline
@@ -90,6 +104,18 @@ export function mcpTools(session?: McpSession): Tool[] {
   return [...MCP_CONTROL_TOOLS, ...editorTools];
 }
 
+export function mcpTools(session?: McpSession): Tool[] {
+  const tools = fullMcpTools(session);
+  return session
+    ? projectMcpToolExposure(session.exposure, tools, MCP_CONTROL_TOOL_NAMES)
+    : tools;
+}
+function currentToolList(session: McpSession): Tool[] {
+  const tools = mcpTools(session);
+  session.toolListDigest = mcpToolListDigest(tools);
+  return tools;
+}
+
 function mcpStatus(session: McpSession): Record<string, unknown> {
   const mode = bindingMode(session);
   const connected = connectedProjectIds();
@@ -102,6 +128,7 @@ function mcpStatus(session: McpSession): Record<string, unknown> {
     offlineFallback: 'Target an existing stored project with no browser owner, then begin with approvalMode="auto".',
     browserRequiredFor: ['visual/canvas inspection', 'generation', 'upload', 'network', 'preset', 'render', 'export', 'manual approval'],
     toolCount: mcpTools(session).length,
+    ...mcpToolExposureStatus(session.exposure, mcpTools(session).length, fullMcpTools(session).length),
   };
 }
 
@@ -134,7 +161,7 @@ async function callControlTool(
     if (!projectId) throw new ExternalEditorCallError('rejected', 'projectId is required');
     const url = editorUrl(args, projectId, baseUrl);
     const binding = await targetMcpProject(session, projectId, url);
-    await session.server?.sendToolListChanged().catch(() => undefined);
+    await sendMcpToolListChangedIfChanged(session, mcpTools(session));
     return { ok: true, bindingMode: bindingMode(session), binding, editorUrl: url };
   }
   if (name === 'get_editor_url') {
@@ -185,36 +212,37 @@ async function callTool(
   }
   return invokeEditorTool(session.id, binding, name, args);
 }
-
-function projectMcpReply(value: unknown): unknown {
-  const sanitized = sanitizeJsonForArtifact(value);
-  if (!sanitized) {
-    throw new ExternalEditorCallError(
-      'failed',
-      'The external result could not be serialized safely.',
-    );
-  }
-  if (sanitized.originalChars > TOOL_ARTIFACT_THRESHOLD) {
-    throw new ExternalEditorCallError(
-      'failed',
-      'The external result was too large and no recoverable artifact reference was available.',
-    );
-  }
-  return JSON.parse(sanitized.body);
+function ensureMcpToolExposed(session: McpSession, name: string): void {
+  if (mcpTools(session).some((tool) => tool.name === name)) return;
+  throw new ExternalEditorCallError(
+    'rejected',
+    `Tool "${name}" is not exposed in this MCP session. Call ToolSearch or load_skill first.`,
+  );
 }
 
-function toolError(error: unknown): {
-  outcome: 'rejected' | 'cancelled' | 'stale' | 'failed';
-  message: string;
-} {
-  const message = redactTextForAgentRuntime(
-    error instanceof Error ? error.message : String(error),
-  ).slice(0, 1_200) || 'External tool call failed.';
-  return {
-    outcome: error instanceof ExternalEditorCallError ? error.outcome : 'failed',
-    message,
-  };
+async function activateMcpResult(
+  session: McpSession,
+  toolName: string,
+  result: unknown,
+): Promise<unknown> {
+  const catalog = fullMcpTools(session);
+  const activatedTools = activatedMcpToolNames(toolName, result, catalog);
+  const next = activateMcpToolExposure(
+    session.exposure,
+    toolName,
+    result,
+    catalog,
+  );
+  if (next !== session.exposure) {
+    session.exposure = next;
+    await sendMcpToolListChangedIfChanged(session, mcpTools(session));
+  }
+  return activatedTools.length && result && typeof result === 'object' && !Array.isArray(result)
+    ? { ...result, activatedTools }
+    : result;
 }
+
+
 
 function makeServer(baseUrl: string, session: McpSession): Server {
   const server = new Server(
@@ -225,6 +253,9 @@ function makeServer(baseUrl: string, session: McpSession): Server {
         `OpenChatCut external skill baseline: ${OPENCHATCUT_SKILL_BASELINE}. Update with npx skills update openchatcut when the installed skill is older.`,
         'Bind this MCP transport with target_project before editing. A connected browser is preferred; an existing stored project can use the offline fallback when no browser owns it.',
         'The target response and openchatcut_status report bindingMode. Offline bindings expose only server-direct data tools and require approvalMode="auto".',
+        session.exposure.mode === 'progressive'
+          ? 'This client negotiated progressive tool exposure. Call ToolSearch or load_skill to reveal task tools; tools/list_changed is sent when the visible set grows.'
+          : 'This client uses the compatibility tool surface. All currently available tools are listed.',
         'Call begin_edit_session first, pass editSessionId to every editor tool, then call review_edit_session. Do not claim success until status is applied.',
         'Manual approval and visual/canvas inspection, generation, upload, network, preset, render, and export tools require opening the returned editorUrl.',
         'Offline review atomically commits the complete draft. A browser takeover or stored-project change makes the session stale with no partial edit.',
@@ -232,13 +263,23 @@ function makeServer(baseUrl: string, session: McpSession): Server {
       ].join(' '),
     },
   );
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: mcpTools(session) }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentToolList(session) }));
   registerMcpPrompts(server);
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
-      const result = projectMcpReply(
-        await callTool(session, request.params.name, request.params.arguments, baseUrl),
+      ensureMcpToolExposed(session, request.params.name);
+      const rawResult = await callTool(
+        session,
+        request.params.name,
+        request.params.arguments,
+        baseUrl,
       );
+      const activatedResult = await activateMcpResult(
+        session,
+        request.params.name,
+        rawResult,
+      );
+      const result = projectMcpReply(activatedResult);
       return {
         content: toMcpContent(result),
         structuredContent: toStructuredContent(result),
@@ -251,7 +292,7 @@ function makeServer(baseUrl: string, session: McpSession): Server {
       ) {
         markMcpSessionStale(session, error.message);
       }
-      const result = toolError(error);
+      const result = mcpToolError(error);
       return {
         isError: true,
         content: toMcpContent(result),
@@ -267,7 +308,7 @@ function forgetSession(
   outcome: 'cancelled' | 'stale' | 'failed',
   message: string,
 ): void {
-  session.offline?.dispose();
+  void session.offline?.dispose();
   const id = session.id;
   if (!id) return;
   if (sessions.get(id) === session) sessions.delete(id);
@@ -303,8 +344,10 @@ export function pruneMcpSessions(now = Date.now()): void {
 setInterval(() => pruneMcpSessions(), 10 * 60 * 1000).unref?.();
 
 onRegisteredToolsChanged(() => {
-  for (const { server, offline } of sessions.values()) {
-    if (server && !offline) void server.sendToolListChanged().catch(() => undefined);
+  for (const session of sessions.values()) {
+    if (session.server && !session.offline) {
+      void sendMcpToolListChangedIfChanged(session, mcpTools(session));
+    }
   }
 });
 
@@ -363,6 +406,8 @@ async function startMcpSession(
     id: null,
     server: null,
     transport,
+    exposure: initialMcpToolExposure(requestedMcpToolExposure(req)),
+    toolListDigest: '',
     binding: null,
     offline: null,
     staleReason: null,
@@ -382,51 +427,6 @@ async function startMcpSession(
   if (!transport.sessionId) await server.close();
 }
 
-interface EmbeddedImage {
-  base64: string;
-  frame?: number;
-  mimeType?: string;
-}
-
-function embeddedImages(result: unknown): EmbeddedImage[] {
-  if (!result || typeof result !== 'object' || Array.isArray(result)) return [];
-  if (!('__images' in result)) return [];
-  const images = result.__images;
-  if (!Array.isArray(images)) return [];
-  return images.filter((image): image is EmbeddedImage => (
-    image !== null
-    && typeof image === 'object'
-    && 'base64' in image
-    && typeof image.base64 === 'string'
-  ));
-}
-
-export function toStructuredContent(result: unknown): Record<string, unknown> {
-  if (!result || typeof result !== 'object' || Array.isArray(result)) return { result };
-  const record = result as Record<string, unknown>;
-  const images = embeddedImages(record);
-  if (!images.length) return record;
-  const { __images: _images, ...rest } = record;
-  return {
-    ...rest,
-    images: images.map((image) => ({
-      frame: image.frame,
-      mimeType: image.mimeType ?? 'image/jpeg',
-    })),
-  };
-}
-
-export function toMcpContent(result: unknown): CallToolResult['content'] {
-  const structured = toStructuredContent(result);
-  return [
-    { type: 'text', text: JSON.stringify(structured) },
-    ...embeddedImages(result).map((image) => ({
-      type: 'image' as const,
-      data: image.base64,
-      mimeType: image.mimeType ?? 'image/jpeg',
-    })),
-  ];
-}
 
 export function mcpSessionsForTest(): Array<{
   id: string;
@@ -434,6 +434,7 @@ export function mcpSessionsForTest(): Array<{
   binding: EditorBinding | OfflineEditorBinding | null;
   bindingMode: 'browser' | 'offline' | null;
   staleReason: string | null;
+  exposure: McpToolExposure;
 }> {
   return [...sessions.entries()].map(([id, session]) => ({
     id,
@@ -441,6 +442,7 @@ export function mcpSessionsForTest(): Array<{
     binding: session.binding ? { ...session.binding } : session.offline?.binding() ?? null,
     bindingMode: bindingMode(session),
     staleReason: session.staleReason,
+    exposure: session.exposure,
   }));
 }
 
@@ -449,8 +451,11 @@ export function setMcpSessionLastUsedForTest(id: string, lastUsed: number): void
   if (session) session.lastUsed = lastUsed;
 }
 
-export function resetMcpSessionsForTest(): void {
+export async function resetMcpSessionsForTest(): Promise<void> {
+  const disposals = [...sessions.values()].flatMap((session) =>
+    session.offline ? [session.offline.dispose()] : []);
   for (const id of [...sessions.keys()]) evictSession(id);
+  await Promise.all(disposals);
 }
 
 export async function handleMcpRequest(

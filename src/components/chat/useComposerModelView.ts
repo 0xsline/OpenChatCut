@@ -23,6 +23,7 @@ export interface ComposerModelView {
   readonly activeModel: AgentModelChoice | undefined;
   readonly contextLabel: string;
   readonly contextTitle: string;
+  readonly contextNearLimit: boolean;
   readonly modelReady: boolean;
   readonly modelState: AgentModelSnapshot;
 }
@@ -47,6 +48,7 @@ export function useComposerModelView(
   const limitEstimated = usageMatchesModel
     ? contextUsage?.contextWindowEstimated !== false
     : resolvedContext?.estimated !== false;
+  const contextNearLimit = limit > 0 && used / limit >= 0.65;
   const contextLabel = activeModel
     ? `${usedEstimated ? '~' : ''}${compactTokens(used)} / ${limitEstimated ? '~' : ''}${compactTokens(limit)}`
     : '';
@@ -67,10 +69,14 @@ export function useComposerModelView(
         limit: `${limitEstimated ? '≈' : ''}${compactTokens(limit)}`,
       })
     : t('选择模型');
-  const contextTitle = [contextSummary, breakdown, cache].filter(Boolean).join('\n');
+  const warning = contextNearLimit
+    ? t('上下文接近上限，发送后可能自动压缩较早对话。')
+    : '';
+  const contextTitle = [contextSummary, warning, breakdown, cache].filter(Boolean).join('\n');
   return {
     activeModel,
     contextLabel,
+    contextNearLimit,
     contextTitle,
     modelReady: isAgentModelReady(modelState),
     modelState,

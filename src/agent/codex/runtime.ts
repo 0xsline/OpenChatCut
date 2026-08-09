@@ -396,9 +396,19 @@ export async function runCodexAgent(
     handledCallIds: new Set(), toolHistory: [], bufferedText: '',
     toolFailures: opts.toolFailures ?? new ToolFailureTracker(),
   };
+  let requestCount = 0;
   for (;;) {
     try {
-      state = await runCodexAttempt(conv, projectId, state, opts, onEvent, buildCodexSystemPrompt(ctx), (next) => { state = next; });
+      requestCount += 1;
+      state = await runCodexAttempt(
+        conv,
+        projectId,
+        state,
+        { ...opts, requestIndex: requestCount },
+        onEvent,
+        buildCodexSystemPrompt(ctx),
+        (next) => { state = next; },
+      );
       return completedMessages(conv, state, onEvent);
     } catch (error) {
       if (error instanceof CodexToolRefresh) {

@@ -4,8 +4,12 @@ import type {
   CodexTurnStreamEvent,
 } from '../../../shared/codex-agent';
 import type { AgentEvent } from '../runtime';
-import type { AgentContextUsage } from '../context-compaction';
-import { estimateTextTokens } from '../context-compaction';
+import {
+  countContextMedia,
+  MODEL_MEDIA_TOKEN_ESTIMATE,
+  estimateTextTokens,
+  type AgentContextUsage,
+} from '../context-compaction';
 import {
   harnessContextForModelRound,
   type HarnessToolExecutionContext,
@@ -45,6 +49,8 @@ export interface CodexRuntimeOptions {
   readonly maxInputTokens?: number;
   readonly supportsImages?: boolean;
   readonly requestMessageCount?: number;
+  readonly requestIndex?: number;
+  readonly cacheTtlMs?: number;
   readonly contextWasCompacted?: boolean;
   readonly system?: string;
   readonly toolFailures?: ToolFailureTracker;
@@ -311,6 +317,7 @@ function handleOutputDelta(
 
 function contextUsage(event: ContextUsageEvent, opts: CodexRuntimeOptions): AgentContextUsage {
   const providerWindow = event.contextWindowTokens || opts.contextWindowTokens;
+  const mediaInputCount = countContextMedia(opts.requestMessages ?? []);
   return {
     inputTokens: event.inputTokens,
     contextWindowTokens: opts.contextWindowOverride ? opts.contextWindowTokens : providerWindow,
@@ -329,6 +336,12 @@ function contextUsage(event: ContextUsageEvent, opts: CodexRuntimeOptions): Agen
     reasoningTokens: event.reasoningTokens,
     noCacheInputTokens: event.noCacheInputTokens,
     cacheReadTokens: event.cacheReadTokens,
+    requestIndex: opts.requestIndex,
+    attemptIndex: 1,
+    retryCount: 0,
+    mediaInputCount,
+    mediaTokenEstimate: mediaInputCount * MODEL_MEDIA_TOKEN_ESTIMATE,
+    cacheTtlMs: opts.cacheTtlMs,
   };
 }
 

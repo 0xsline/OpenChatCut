@@ -34,10 +34,14 @@ interface AppliedSession {
   editSessionId: string;
 }
 
-export async function connectClient(url: URL, name: string): Promise<ConnectedClient> {
+export async function connectClient(
+  url: URL,
+  name: string,
+  headers?: HeadersInit,
+): Promise<ConnectedClient> {
   const before = new Set(mcpSessionsForTest().map((session) => session.id));
   const client = new Client({ name, version: '1.0.0' });
-  const transport = new StreamableHTTPClientTransport(url);
+  const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers } });
   await client.connect(transport);
   const session = mcpSessionsForTest().find((candidate) => !before.has(candidate.id));
   assert(session, 'initialization registers exactly one new MCP session');

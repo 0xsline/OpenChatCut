@@ -12,6 +12,7 @@ interface ToolbarProps {
   activeModel?: { providerLabel: string; model: string };
   contextLabel: string;
   contextTitle: string;
+  contextNearLimit: boolean;
   activeSkillName?: string;
   pop: ComposerPopover;
   selecting: boolean;
@@ -50,8 +51,9 @@ function BarBtn({ icon, title, onClick, active, disabled, className, expanded, h
 }
 
 export function ComposerToolbar({
-  mode, activeModel, activeSkillName, contextLabel, contextTitle, pop, selecting, enhancing, running,
-  canEnhance, canSend, sendTitle, onTogglePop, onToggleSelecting, onEnhance, onSubmit, onStop,
+  mode, activeModel, activeSkillName, contextLabel, contextTitle, contextNearLimit,
+  pop, selecting, enhancing, running, canEnhance, canSend, sendTitle, onTogglePop,
+  onToggleSelecting, onEnhance, onSubmit, onStop,
 }: ToolbarProps) {
   const t = useT();
   const secondaryActive = selecting || !!activeSkillName
@@ -70,7 +72,7 @@ export function ComposerToolbar({
             ? `${t('当前模型：{name}', { name: `${activeModel.providerLabel} · ${activeModel.model}` })} · ${contextTitle}`
             : t('选择模型')}
           onClick={(event) => onTogglePop('model', event.currentTarget)}
-          style={{ height: 28, minWidth: 0, maxWidth: 196, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', border: 0, borderRadius: 4, background: pop === 'model' ? theme.panel : 'transparent', color: theme.textDim, cursor: running ? 'default' : 'pointer', fontSize: 11, flexShrink: 1 }}>
+          style={{ height: 28, minWidth: 0, maxWidth: 196, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', border: 0, borderRadius: 4, background: pop === 'model' ? theme.panel : 'transparent', color: contextNearLimit ? theme.gold : theme.textDim, cursor: running ? 'default' : 'pointer', fontSize: 11, flexShrink: 1 }}>
           <Icon name="cloud" size={13} />
           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeModel?.model ?? t('模型')}</span>
           {contextLabel && <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontSize: 10 }}>{contextLabel}</span>}

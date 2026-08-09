@@ -27,6 +27,7 @@ import {
 } from './harness-context';
 import { compactToolResultForModel } from './tool-result-compaction';
 import {
+  cacheTtlMsForProvider,
   getLanguageModel,
   getLanguageModelProviderOptions,
 } from './client';
@@ -126,8 +127,8 @@ function createAgentTools(
           signal: options.abortSignal,
         });
         const result = apiToolExecutionOutput(execution);
-        if (schema.name !== 'ToolSearch') return result;
-        const activated = getActivation().withSearchResult(result);
+        if (schema.name !== 'ToolSearch' && schema.name !== 'load_skill') return result;
+        const activated = getActivation().withToolResult(schema.name, result);
         setActivation(activated.activation);
         return activated.result;
       },
@@ -172,12 +173,14 @@ interface PreparedApiRound extends PreparedApiMessages {
   readonly tools: ToolSet;
   readonly toolSchemas: readonly AgentToolSchema[];
   readonly providerOptions?: ProviderOptions;
+  readonly cacheTtlMs?: number;
 }
 
 class ApiAgentRunner {
   private conv: ModelMessage[];
   private activation: ToolActivation;
   private toolTurns = 0;
+  private requestCount = 0;
   private compatibleMediaFallbackRequired = false;
   private requestContextWasCompacted: boolean;
   private readonly input: ApiRunnerInput;
@@ -235,7 +238,12 @@ class ApiAgentRunner {
       ...messages,
       tools,
       toolSchemas,
-      providerOptions: getLanguageModelProviderOptions(choice.provider, choice.openAiApiMode),
+      providerOptions: getLanguageModelProviderOptions(
+        choice.provider,
+        choice.openAiApiMode,
+        this.settings.cacheMode,
+      ),
+      cacheTtlMs: cacheTtlMsForProvider(choice.provider, this.settings.cacheMode),
       model: dependencies.model
         ?? await getLanguageModel(choice.provider, choice.model, choice.openAiApiMode),
     };
@@ -290,9 +298,12 @@ class ApiAgentRunner {
     const output = new ApiRoundOutput(this.input.onEvent, this.toolFailures);
     try {
       const prepared = await this.prepareRound(output);
+      const requestIndex = this.requestCount + 1;
+      this.requestCount = requestIndex;
       const outcome = await runApiRequestAttempt({
         ...prepared,
         messages: prepared.requestMessages,
+        requestIndex,
         system: this.input.system,
         maxOutputTokens: this.input.maxOutputTokens,
         onContextUsage: async (usage) => {

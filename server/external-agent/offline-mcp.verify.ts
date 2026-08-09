@@ -8,11 +8,6 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version.ts';
 import type { ProjectDoc } from '../../src/editor/types.ts';
-import {
-  registerEditor,
-  resetExternalAgentBrokerForTest,
-  unregisterEditor,
-} from './broker.ts';
 
 function projectDoc(width = 1920, height = 1080, fit?: 'cover' | 'contain'): ProjectDoc {
   return {
@@ -66,6 +61,11 @@ process.env.HOME = root;
 // verification can never touch the user's real project data.
 const { getStoredEntry, setStoredEntry } = await import('../plugins/project-store.ts');
 const {
+  registerEditor,
+  resetExternalAgentBrokerForTest,
+  unregisterEditor,
+} = await import('./broker.ts');
+const {
   handleMcpRequest,
   mcpSessionsForTest,
   resetMcpSessionsForTest,
@@ -74,7 +74,7 @@ const {
 const projectId = 'offline-mcp-project';
 await setStoredEntry(`project:${projectId}`, projectDoc());
 await setStoredEntry('projects', [{ id: projectId, name: 'Offline MCP', updatedAt: 1 }]);
-resetMcpSessionsForTest();
+await resetMcpSessionsForTest();
 resetExternalAgentBrokerForTest();
 
 const server = createServer((req, res) => {
@@ -168,13 +168,14 @@ try {
   assert.deepEqual((await getStoredEntry(`project:${projectId}`)).value, concurrent);
   await unregisterEditor(projectId, 'browser-owner');
 } finally {
+  await resetMcpSessionsForTest();
   await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
-  resetMcpSessionsForTest();
   resetExternalAgentBrokerForTest();
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  await getStoredEntry('projects');
   if (previousHome === undefined) delete process.env.HOME;
   else process.env.HOME = previousHome;
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 10 });
 }
 
 console.log('offline-mcp.verify: ok');
