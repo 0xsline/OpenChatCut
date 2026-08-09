@@ -295,6 +295,10 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
       path = '/agent-runtime/cas';
       init = postJson(init, headers, request);
       break;
+    case 'agent-session-rotate':
+      path = '/agent-session/rotate';
+      init = postJson(init, headers, request);
+      break;
     case 'project-document-cas':
       path = '/project-document/cas';
       init = postJson(init, headers, request);
@@ -337,13 +341,13 @@ export function resetProjectStoreTransport(): void {
   sessionToken = undefined;
   sessionPromise = null;
   browserOwnerships.clear();
+  for (const projectId of browserOwnershipWaiters.keys()) {
+    resolveBrowserProjectOwnershipWaiters(projectId, undefined);
+  }
   try {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     sessionStorage.removeItem(LAUNCH_STORAGE_KEY);
   } catch {
-  for (const projectId of browserOwnershipWaiters.keys()) {
-    resolveBrowserProjectOwnershipWaiters(projectId, undefined);
-  }
     // Test or privacy-restricted environments may not expose storage.
   }
 }

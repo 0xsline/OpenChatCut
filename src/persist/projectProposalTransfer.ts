@@ -53,7 +53,8 @@ export function portableProposalRecord(
   if (raw === undefined) return undefined;
   const parsed = parseStoredProposalRecord(raw);
   if (!parsed) throw new Error('工程包提案记录校验不通过');
-  const portable = parseStoredProposalRecord(transformPortableValue(parsed, replacements));
+  const { sessionGeneration: _sessionGeneration, ...proposal } = parsed;
+  const portable = parseStoredProposalRecord(transformPortableValue(proposal, replacements));
   if (!portable) throw new Error('工程包提案记录转换失败');
   return portable;
 }

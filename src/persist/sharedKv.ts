@@ -13,11 +13,9 @@ import type {
   ProjectStoreRequest,
 } from '../../shared/project-store-transport';
 import { projectIdFromProjectStoreKey } from '../../shared/project-store-validation';
-
 type AgentRuntimeCasRequest = Extract<ProjectStoreRequest, { operation: 'agent-runtime-cas' }>;
 type AgentRunLeaseRequest = Extract<ProjectStoreRequest, { operation: 'agent-run-lease' }>;
 type ProjectDocumentCasRequest = Extract<ProjectStoreRequest, { operation: 'project-document-cas' }>;
-
 export interface SharedKvBackend {
   get<T>(key: string): Promise<T | undefined>;
   set(key: string, value: unknown): Promise<void>;
@@ -31,28 +29,23 @@ const STORE = 'kv';
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
 const memoryStore = new Map<string, unknown>();
 let injectedBackend: SharedKvBackend | undefined;
-
 interface StoreSnapshot {
   version: 1;
   entries: Record<string, unknown>;
 }
-
 interface EntryResponse {
   found: boolean;
   value?: unknown;
 }
-
 let remoteCache: Record<string, unknown> | null = null;
 const remoteKnown = new Set<string>();
 let readyPromise: Promise<void> | undefined;
 let projectMigrationPending = false;
-
 const hasIdb = (): boolean => typeof indexedDB !== 'undefined';
 const canSync = (): boolean => !injectedBackend && projectStoreRemoteAvailable();
 const isProjectDocumentKey = (key: string): boolean => /^project:[a-zA-Z0-9_-]{1,160}$/.test(key);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
-
 export function configureSharedKvBackend(backend: SharedKvBackend | undefined): void {
   injectedBackend = backend;
   remoteCache = null;
@@ -60,7 +53,6 @@ export function configureSharedKvBackend(backend: SharedKvBackend | undefined): 
   projectMigrationPending = false;
   readyPromise = undefined;
 }
-
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
@@ -69,7 +61,6 @@ function openDb(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error);
   });
 }
-
 async function localGet<T>(key: string): Promise<T | undefined> {
   if (injectedBackend) return injectedBackend.get<T>(key);
   if (!hasIdb()) return memoryStore.get(key) as T | undefined;
@@ -80,7 +71,6 @@ async function localGet<T>(key: string): Promise<T | undefined> {
     request.onerror = () => reject(request.error);
   });
 }
-
 async function localSet(key: string, value: unknown): Promise<void> {
   if (injectedBackend) {
     await injectedBackend.set(key, value);
@@ -98,7 +88,6 @@ async function localSet(key: string, value: unknown): Promise<void> {
     transaction.onerror = () => reject(transaction.error);
   });
 }
-
 async function localDel(key: string): Promise<void> {
   if (injectedBackend) {
     await injectedBackend.delete(key);
@@ -116,7 +105,6 @@ async function localDel(key: string): Promise<void> {
     transaction.onerror = () => reject(transaction.error);
   });
 }
-
 async function localKeys(): Promise<string[]> {
   if (injectedBackend) return injectedBackend.keys();
   if (!hasIdb()) return [...memoryStore.keys()];
@@ -127,7 +115,6 @@ async function localKeys(): Promise<string[]> {
     request.onerror = () => reject(request.error);
   });
 }
-
 async function localEntries(): Promise<Record<string, unknown>> {
   const entries: Record<string, unknown> = {};
   for (const key of await localKeys()) {
@@ -135,23 +122,19 @@ async function localEntries(): Promise<Record<string, unknown>> {
   }
   return entries;
 }
-
 function validSnapshot(value: unknown): value is StoreSnapshot {
   return isRecord(value) && value.version === 1 && isRecord(value.entries);
 }
-
 async function requestSnapshot(): Promise<StoreSnapshot> {
   const value = await requestProjectStore({ operation: 'snapshot' });
   if (!validSnapshot(value)) throw new Error('invalid project store response');
   return value;
 }
-
 async function requestMerge(entries: Record<string, unknown>): Promise<StoreSnapshot> {
   const value = await requestProjectStore({ operation: 'merge', entries });
   if (!validSnapshot(value)) throw new Error('invalid project store response');
   return value;
 }
-
 async function requestEntry(key: string): Promise<EntryResponse> {
   const value = await requestProjectStore({ operation: 'entry', key });
   if (!('found' in value) || typeof value.found !== 'boolean') {
@@ -159,14 +142,12 @@ async function requestEntry(key: string): Promise<EntryResponse> {
   }
   return value;
 }
-
 function cacheEntry(key: string, entry: EntryResponse): void {
   remoteKnown.add(key);
   remoteCache = entry.found
     ? { ...remoteCache, [key]: entry.value }
     : Object.fromEntries(Object.entries(remoteCache ?? {}).filter(([name]) => name !== key));
 }
-
 async function fetchRemoteEntry(key: string): Promise<void> {
   const entry = await requestEntry(key);
   cacheEntry(key, entry);
@@ -174,14 +155,12 @@ async function fetchRemoteEntry(key: string): Promise<void> {
   if (entry.found) await localSet(key, entry.value);
   else await localDel(key);
 }
-
 function validMutationResponse(value: unknown): value is ProjectStoreMutationResponse {
   return isRecord(value)
     && typeof value.accepted === 'boolean'
     && typeof value.found === 'boolean'
     && (!value.found || Object.hasOwn(value, 'value'));
 }
-
 function validProjectDocumentMutation(
   value: unknown,
 ): value is ProjectDocumentMutationResponse {
@@ -194,7 +173,6 @@ function validProjectDocumentMutation(
         && Number.isSafeInteger(ownershipEpoch)
         && ownershipEpoch >= 1));
 }
-
 async function requestProjectDocumentMutation(
   request: ProjectDocumentCasRequest,
 ): Promise<ProjectDocumentMutationResponse> {
@@ -204,7 +182,6 @@ async function requestProjectDocumentMutation(
   }
   return value;
 }
-
 async function requestMutation(
   request: AgentRuntimeCasRequest | AgentRunLeaseRequest,
 ): Promise<ProjectStoreMutationResponse> {
@@ -212,13 +189,11 @@ async function requestMutation(
   if (!validMutationResponse(value)) throw new Error('invalid project store mutation response');
   return value;
 }
-
 async function cacheMutation(key: string, result: ProjectStoreMutationResponse): Promise<void> {
   cacheEntry(key, result);
   if (result.found) await localSet(key, result.value);
   else await localDel(key);
 }
-
 export async function kvCompareAndSwapAgentRuntime(
   request: AgentRuntimeCasRequest,
 ): Promise<ProjectStoreMutationResponse> {
@@ -233,7 +208,6 @@ export async function kvCompareAndSwapAgentRuntime(
   if (remote) await cacheMutation(request.key, result);
   return result;
 }
-
 async function localAgentRuntimeCas(
   request: AgentRuntimeCasRequest,
 ): Promise<ProjectStoreMutationResponse> {
@@ -305,6 +279,33 @@ async function disableRemote(): Promise<void> {
   } catch {
     // Local writes remain usable; the next successful page load can retry migration.
   }
+}
+
+export async function kvGetFresh<T>(key: string): Promise<T | undefined> {
+  await ready();
+  if (!injectedBackend && projectStoreRemoteAvailable()) {
+    await fetchRemoteEntry(key);
+    return remoteCache?.[key] as T | undefined;
+  }
+  return localGet<T>(key);
+}
+
+export async function kvAdoptAuthoritativeValue(key: string, value: unknown): Promise<void> {
+  await localSet(key, value);
+  remoteKnown.add(key);
+  remoteCache = { ...(remoteCache ?? {}), [key]: value };
+}
+
+export function kvForgetCachedAgentSessionEntries(projectId: string): void {
+  const isSessionEntry = (key: string): boolean =>
+    projectIdFromProjectStoreKey(key) === projectId
+    && /^(?:chat:|proposal:|agent-runtime:|agent-artifact:|agent-session-(?:chat|proposal|runtime|artifact):)/.test(key);
+  for (const key of remoteKnown) {
+    if (isSessionEntry(key)) remoteKnown.delete(key);
+  }
+  remoteCache = Object.fromEntries(
+    Object.entries(remoteCache ?? {}).filter(([key]) => !isSessionEntry(key)),
+  );
 }
 
 export async function kvGet<T>(key: string): Promise<T | undefined> {

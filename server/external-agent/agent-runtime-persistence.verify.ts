@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { agentSessionGenerationKey } from '../../shared/agent-session-generation.ts';
 import type {
   AgentRunLeaseState,
   ProjectStoreMutationResponse,
@@ -19,6 +20,7 @@ import {
 } from '../plugins/project-store-agent-runtime.ts';
 import type { LockedProjectStore } from '../plugins/project-store.ts';
 import { configureOfflineAgentRuntimeBackend } from './agent-runtime-persistence.ts';
+import { openOfflineSessionRun } from './offline-run-recovery.ts';
 
 interface MemoryStore {
   backend: SharedKvBackend;
@@ -288,6 +290,37 @@ async function verifyOfflineAuditRestart(): Promise<void> {
   await resumed.disconnect();
 }
 
+async function verifyNewOfflineRunAdoptsCurrentGeneration(): Promise<void> {
+  const projectId = 'offline-generation-cutover-verify';
+  const store = memoryStore();
+  configureOfflineAgentRuntimeBackend(store.backend);
+  const stale = await ExternalSessionRunLedger.start(
+    projectId,
+    'Verifier MCP',
+    'offline-before-clear',
+    'external-offline',
+  );
+  await stale.disconnect();
+  store.entries.delete(`agent-runtime:${projectId}`);
+  const generation = 'server-generation-after-clear';
+  store.entries.set(agentSessionGenerationKey(projectId), {
+    version: 1,
+    generation,
+    clearedAt: Date.now(),
+  });
+  const current = await openOfflineSessionRun(projectId, {
+    id: 'offline-after-clear',
+    clientName: 'Verifier MCP',
+  } as Parameters<typeof openOfflineSessionRun>[1], false);
+  await current.disconnect();
+  const scoped = store.entries.get(`agent-session-runtime:${projectId}:${generation}`);
+  assert(scoped, 'a new offline run writes into the freshly observed generation');
+  assert.equal(
+    (scoped as AgentRuntimeSidecar).runs.some((run) => run.runId === current.runId),
+    true,
+  );
+}
+
 const realNow = Date.now;
 let now = 1_000_000;
 Date.now = () => now;
@@ -295,6 +328,7 @@ try {
   await verifyAuthoritativeLeaseFence();
   now += 1_001;
   await verifyOfflineAuditRestart();
+  await verifyNewOfflineRunAdoptsCurrentGeneration();
 } finally {
   Date.now = realNow;
   resetAgentRuntimeStoreMemory();

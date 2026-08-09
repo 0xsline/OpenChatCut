@@ -13,6 +13,10 @@ import {
   loadExternalProposal,
   type StoredExternalProposal,
 } from '../persist/externalProposalStore';
+import {
+  adoptAgentSessionWriteGeneration,
+  currentAgentSessionGeneration,
+} from '../persist/agentSessionGeneration';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
 import { normalizeLlmProvider, PROVIDER } from './providerConfig';
 import { initialAgentMessages, type DisplayMessage } from './agent-session';
@@ -139,11 +143,13 @@ export async function loadRecoveredAgentSession(
   recover: typeof recoverInterruptedAgentRuns = recoverInterruptedAgentRuns,
   currentDoc?: Parameters<typeof isProposalStale>[1],
 ) {
+  const generation = await currentAgentSessionGeneration(projectId);
+  adoptAgentSessionWriteGeneration(projectId, generation);
   const [record, external] = await Promise.all([
     loadProposalRecord(projectId),
     loadExternalProposal(projectId),
   ]);
-  if (!alive()) return null;
+  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   const externalRunIds = externalProposalRunIds(external);
   await recover(
     projectId,
@@ -152,9 +158,9 @@ export async function loadRecoveredAgentSession(
     externalRunIds,
     currentAgentRunOwnerInstanceId(),
   );
-  if (!alive()) return null;
+  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   const proposalRecorder = await claimRecoveredProposalRun(projectId, record);
-  if (!alive()) {
+  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) {
     await proposalRecorder?.releaseLease().catch(() => undefined);
     return null;
   }
@@ -170,7 +176,11 @@ export async function loadRecoveredAgentSession(
     await proposalRecorder.finalize('waiting_approval', 'proposal recovered awaiting approval');
   }
   const saved = await loadChat(projectId);
-  return alive() ? { saved, pending } : null;
+  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) {
+    await proposalRecorder?.releaseLease().catch(() => undefined);
+    return null;
+  }
+  return { saved, pending, generation };
 }
 
 export async function hydrateAgentSession(
@@ -217,16 +227,18 @@ export function useAgentHydration(state: AgentHookState, projectId: string): voi
   const stateRef = useRef(state);
   stateRef.current = state;
   useEffect(() => {
-    let alive = true;
+    let mounted = true;
     const current = stateRef.current;
+    const hydrationEpoch = ++current.hydrationEpochRef.current;
+    const alive = () => mounted && current.hydrationEpochRef.current === hydrationEpoch;
     current.hydratedRef.current = false;
     current.toolFailuresRef.current.clear();
     current.setHydrated(false);
     current.setChangeLog([]);
     current.setProposal(null);
     current.setProposalStale(false);
-    void hydrateAgentSession(current, projectId, () => alive).catch((error) => {
-      if (!alive) return;
+    void hydrateAgentSession(current, projectId, alive).catch((error) => {
+      if (!alive()) return;
       current.setMessages((messages) => [...messages, {
         role: 'error',
         text: `Agent 恢复状态无法验证：${error instanceof Error ? error.message : String(error)}`,
@@ -235,7 +247,7 @@ export function useAgentHydration(state: AgentHookState, projectId: string): voi
       current.setHydrated(true);
     });
     return () => {
-      alive = false;
+      mounted = false;
       cleanupAgentHydration(current, projectId);
     };
   }, [projectId, state.refreshEstimatedContextUsage]);

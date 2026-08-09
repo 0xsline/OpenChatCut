@@ -181,11 +181,12 @@ function validateCounts(sidecar: AgentRuntimeSidecar, artifacts: readonly AgentA
 async function validateRuntime(snapshot: AgentRuntimeSnapshot): Promise<void> {
   const { sidecar, artifacts } = snapshot;
   if (!isRecord(sidecar) || !allowedKeys(sidecar, ['version', 'revision', 'projectId', 'durability',
-    'updatedAt', 'lastWriterId', 'runs', 'approvals', 'checkpoints', 'artifacts'])
+    'updatedAt', 'lastWriterId', 'sessionGeneration', 'runs', 'approvals', 'checkpoints', 'artifacts'])
     || sidecar.version !== 1 || typeof sidecar.projectId !== 'string'
     || !PROJECT_ID.test(sidecar.projectId) || sidecar.durability !== 'local-sidecar'
     || !integer(sidecar.revision) || !integer(sidecar.updatedAt)
     || (sidecar.lastWriterId !== undefined && !safeId(sidecar.lastWriterId))
+    || (sidecar.sessionGeneration !== undefined && !safeId(sidecar.sessionGeneration))
     || !Array.isArray(sidecar.runs) || !Array.isArray(sidecar.approvals)
     || !Array.isArray(sidecar.checkpoints) || !Array.isArray(sidecar.artifacts)
     || !Array.isArray(artifacts)) throw new Error('Invalid Agent runtime sidecar.');

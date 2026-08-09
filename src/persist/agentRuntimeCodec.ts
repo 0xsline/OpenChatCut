@@ -74,6 +74,9 @@ export function normalizeAgentRuntimeSidecar(
     durability: 'local-sidecar',
     updatedAt: finite(supported.updatedAt),
     lastWriterId: typeof supported.lastWriterId === 'string' ? supported.lastWriterId : undefined,
+    sessionGeneration: typeof supported.sessionGeneration === 'string'
+      ? supported.sessionGeneration
+      : undefined,
     runs,
     approvals,
     checkpoints,

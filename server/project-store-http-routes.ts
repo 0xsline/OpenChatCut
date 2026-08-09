@@ -26,6 +26,7 @@ export interface ProjectStoreHttpOperations {
   purgeProject(projectId: string): Promise<void>;
   readSnapshot(): Promise<ProjectStoreResponse>;
   setEntry(key: string, value: unknown): Promise<void>;
+  rotateAgentSession(projectId: string): Promise<ProjectStoreMutationResponse>;
   updateAgentRunLease(
     input: Extract<ProjectStoreRequest, { operation: 'agent-run-lease' }>,
   ): Promise<ProjectStoreMutationResponse>;
@@ -120,6 +121,18 @@ async function handleAgentRunLease(
   sendProjectStoreJson(res, 200, await operations.updateAgentRunLease(body));
 }
 
+async function handleAgentSessionRotate(
+  req: IncomingMessage,
+  res: ServerResponse,
+  operations: ProjectStoreHttpOperations,
+): Promise<void> {
+  const body = await readBody(req);
+  if (!isProjectStoreRequest(body) || body.operation !== 'agent-session-rotate') {
+    throw new Error('invalid Agent session rotation request');
+  }
+  sendProjectStoreJson(res, 200, await operations.rotateAgentSession(body.projectId));
+}
+
 async function handleMerge(
   req: IncomingMessage,
   res: ServerResponse,
@@ -154,6 +167,7 @@ async function handlePost(
   if (req.url === '/agent-runtime/cas') await handleAgentRuntimeCas(req, res, operations);
   else if (req.url === '/project-document/cas') await handleProjectDocumentCas(req, res, operations);
   else if (req.url === '/agent-runtime/lease') await handleAgentRunLease(req, res, operations);
+  else if (req.url === '/agent-session/rotate') await handleAgentSessionRotate(req, res, operations);
   else if (req.url === '/merge') await handleMerge(req, res, operations);
   else if (req.url === '/project/purge') await handleProjectPurge(req, res, operations);
   else return false;

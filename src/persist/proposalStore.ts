@@ -11,8 +11,16 @@ import {
   kvSet as idbSet,
   resetSharedKvMemory,
 } from './sharedKv';
+import {
+  agentSessionGenerationMatches,
+  agentSessionWriteGeneration,
+  currentAgentSessionGeneration,
+  resetAgentSessionGenerationMemory,
+} from './agentSessionGeneration';
 
-const proposalKey = (projectId: string) => `proposal:${projectId}`;
+const proposalKey = (projectId: string, generation = 'legacy') => generation === 'legacy'
+  ? `proposal:${projectId}`
+  : `agent-session-proposal:${projectId}:${generation}`;
 const writeQueues = new Map<string, Promise<void>>();
 
 export type ProposalSettlementOutcome = 'applied' | 'rejected' | 'stale' | 'reproposed';
@@ -28,6 +36,7 @@ export interface ProposalSettlement {
 interface StoredProposalBase {
   readonly version: 1;
   readonly proposal: Proposal;
+  readonly sessionGeneration?: string;
 }
 export interface StoredPreparedProposalRecord extends StoredProposalBase {
   readonly phase: 'prepared';
@@ -59,6 +68,7 @@ export class UnsupportedProposalStoreVersionError extends Error {
 export function resetProposalStoreMemory(): void {
   writeQueues.clear();
   resetSharedKvMemory();
+  resetAgentSessionGenerationMemory();
 }
 
 function isTimelineState(v: unknown): v is TimelineState {
@@ -150,6 +160,7 @@ interface RawStoredProposalRecord {
   readonly proposal?: unknown;
   readonly application?: unknown;
   readonly settlement?: unknown;
+  readonly sessionGeneration?: unknown;
 }
 
 export function parseStoredProposalRecord(raw: unknown): StoredProposalRecord | null {
@@ -167,13 +178,16 @@ export function parseStoredProposalRecord(raw: unknown): StoredProposalRecord | 
   const settlement = value.settlement === undefined ? undefined : parseSettlement(value.settlement);
   if (value.application !== undefined && !application) return null;
   if (value.settlement !== undefined && !settlement) return null;
+  const generation = typeof value.sessionGeneration === 'string'
+    ? { sessionGeneration: value.sessionGeneration }
+    : {};
   if (value.phase === 'prepared') {
     if (application || settlement) return null;
-    return { version: 1, phase: 'prepared', proposal };
+    return { version: 1, phase: 'prepared', proposal, ...generation };
   }
   if (value.phase === 'applying') {
     if (!application || settlement) return null;
-    return { version: 1, phase: 'applying', proposal, application };
+    return { version: 1, phase: 'applying', proposal, application, ...generation };
   }
   if (value.phase === 'settled') {
     if (!settlement) return null;
@@ -183,6 +197,7 @@ export function parseStoredProposalRecord(raw: unknown): StoredProposalRecord | 
       proposal,
       ...(application ? { application } : {}),
       settlement,
+      ...generation,
     };
   }
   return null;
@@ -199,22 +214,28 @@ function serialize<T>(projectId: string, work: () => Promise<T>): Promise<T> {
 }
 
 function sameRecord(left: StoredProposalRecord, right: StoredProposalRecord): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  const { sessionGeneration: _leftGeneration, ...leftContent } = left;
+  const { sessionGeneration: _rightGeneration, ...rightContent } = right;
+  return JSON.stringify(leftContent) === JSON.stringify(rightContent);
 }
 
 async function persistRecord(projectId: string, record: StoredProposalRecord): Promise<void> {
-  await idbSet(proposalKey(projectId), record);
-  const stored = parseStoredProposalRecord(await idbGet<unknown>(proposalKey(projectId)));
-  if (!stored || !sameRecord(stored, record)) {
+  const sessionGeneration = await agentSessionWriteGeneration(projectId);
+  const next = { ...record, sessionGeneration } satisfies StoredProposalRecord;
+  const key = proposalKey(projectId, sessionGeneration);
+  await idbSet(key, next);
+  const stored = parseStoredProposalRecord(await idbGet<unknown>(key));
+  if (!stored || stored.sessionGeneration !== sessionGeneration || !sameRecord(stored, next)) {
     throw new Error('Proposal durability verification failed.');
   }
 }
 async function existingRecord(projectId: string): Promise<StoredProposalRecord | null> {
-  const raw = await idbGet<unknown>(proposalKey(projectId));
+  const generation = await currentAgentSessionGeneration(projectId);
+  const raw = await idbGet<unknown>(proposalKey(projectId, generation));
   if (raw === undefined) return null;
   const record = parseStoredProposalRecord(raw);
   if (!record) throw new Error('Stored proposal is invalid and was preserved for recovery.');
-  return record;
+  return agentSessionGenerationMatches(record.sessionGeneration, generation) ? record : null;
 }
 
 
@@ -295,7 +316,7 @@ export function settleProposal(
   outcome: ProposalSettlementOutcome,
 ): Promise<void> {
   return serialize(projectId, async () => {
-    const current = parseStoredProposalRecord(await idbGet<unknown>(proposalKey(projectId)));
+    const current = await existingRecord(projectId);
     if (!current || current.proposal.id !== proposal.id) {
       throw new Error('Proposal settlement does not match the durable proposal.');
     }
@@ -313,8 +334,10 @@ export function clearProposal(projectId: string, expectedProposalId?: string): P
     if (expectedProposalId && current?.proposal.id !== expectedProposalId) {
       throw new Error('Proposal removal does not match the durable proposal.');
     }
-    await idbDel(proposalKey(projectId));
-    if (await idbGet<unknown>(proposalKey(projectId)) !== undefined) {
+    const generation = await currentAgentSessionGeneration(projectId);
+    const key = proposalKey(projectId, generation);
+    await idbDel(key);
+    if (await idbGet<unknown>(key) !== undefined) {
       throw new Error('Proposal removal durability verification failed.');
     }
   });

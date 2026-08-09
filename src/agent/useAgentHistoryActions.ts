@@ -1,33 +1,48 @@
 import { useCallback, useRef } from 'react';
-import { clearProposal, settleProposal } from '../persist/proposalStore';
+import { flushChatWrites } from '../persist/projectStore';
+import { clearAgentSessionContext } from '../persist/agentRuntimeStore';
+import { loadProposalRecord } from '../persist/proposalStore';
 import { initialAgentMessages } from './agent-session';
 import { PROVIDER } from './providerConfig';
 import { canRollbackAgentChange, rollbackAgentChange } from './changeLog';
-import { recordProposalOutcome } from './useAgentPersistence';
 import type { AgentHookState } from './useAgentState';
 
-async function clearAgentHistory(state: AgentHookState, projectId: string): Promise<void> {
+export async function clearAgentHistory(state: AgentHookState, projectId: string): Promise<void> {
   if (state.runningRef.current) return;
-  const previous = state.proposalRef.current;
+  const hydrationEpoch = ++state.hydrationEpochRef.current;
+  state.hydratedRef.current = false;
+  state.setHydrated(false);
   try {
-    if (previous) {
-      await settleProposal(projectId, previous, 'rejected');
-      await recordProposalOutcome(projectId, previous, 'rejected', 'aborted', 'proposal cleared with chat');
-    }
-    await clearProposal(projectId, previous?.id);
+    await flushChatWrites(projectId);
+    const durable = await loadProposalRecord(projectId);
+    const durableRunId = durable?.phase !== 'settled'
+      ? durable?.proposal.agentRunId
+      : undefined;
+    await clearAgentSessionContext(
+      projectId,
+      durableRunId ? new Set([durableRunId]) : new Set(),
+    );
   } catch {
+    if (state.hydrationEpochRef.current !== hydrationEpoch) return;
+    state.hydratedRef.current = true;
+    state.setHydrated(true);
     state.setMessages((current) => [...current, {
       role: 'error',
-      text: '无法持久化提案清理状态，聊天记录未清除。请重试。',
+      text: '无法清空上下文与运行记录。请确认没有其他 Agent 正在运行，并重试。',
     }]);
     return;
   }
+  if (state.hydrationEpochRef.current !== hydrationEpoch) return;
   state.llmRef.current = initialAgentMessages();
   state.toolFailuresRef.current.clear();
   state.llmProviderRef.current = PROVIDER;
   state.setProposal(null);
+  state.setProposalStale(false);
+  state.setChangeLog([]);
   state.setMessages([]);
   state.replaceContextUsage(null);
+  state.hydratedRef.current = true;
+  state.setHydrated(true);
 }
 
 function rollbackSession(state: AgentHookState, id: string, force: boolean): boolean {

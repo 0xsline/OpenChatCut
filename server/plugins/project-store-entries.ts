@@ -2,6 +2,7 @@ import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   classifyAgentRuntimeStoreValue,
+  isAgentSessionGenerationStoreValue,
   isAgentArtifactStoreValue,
   isProjectStoreRecord,
   projectIdFromProjectStoreKey,
@@ -174,7 +175,7 @@ export function mergeAgentSidecar(
   incoming: unknown,
   hasBase: boolean,
 ): { accepted: boolean; value: unknown } {
-  if (key.startsWith('agent-artifact:')) {
+  if (key.startsWith('agent-artifact:') || key.startsWith('agent-session-artifact:')) {
     if (hasBase) return { accepted: true, value: base };
     return { accepted: isAgentArtifactStoreValue(key, incoming), value: incoming };
   }
@@ -306,7 +307,14 @@ export function mergeProjectEntries(
       result[key] = mergeProjectIndex(safeBase[key], value);
       continue;
     }
-    if (key.startsWith('agent-runtime:') || key.startsWith('agent-artifact:')) {
+    if (key.startsWith('agent-session-generation:')) {
+      if (!(key in safeBase) && isAgentSessionGenerationStoreValue(key, value)) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (key.startsWith('agent-runtime:') || key.startsWith('agent-session-runtime:')
+      || key.startsWith('agent-artifact:') || key.startsWith('agent-session-artifact:')) {
       const sidecar = mergeAgentSidecar(key, safeBase[key], value, key in safeBase);
       if (sidecar.accepted) result[key] = sidecar.value;
       continue;

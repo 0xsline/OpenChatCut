@@ -10,6 +10,7 @@ import {
   getStoredEntry,
   mergeStoredEntries,
   readStore,
+  rotateAgentSession,
   setStoredEntry,
   updateStoredAgentRunLease,
 } from './plugins/project-store.ts';
@@ -38,6 +39,8 @@ export async function executeProjectStoreRequest(
       return compareAndSwapProjectDocument(request);
     case 'agent-run-lease':
       return updateStoredAgentRunLease(request);
+    case 'agent-session-rotate':
+      return rotateAgentSession(request.projectId);
     case 'set':
       if (/^project:[a-zA-Z0-9_-]{1,160}$/.test(request.key)) {
         throw new Error('project document writes require authoritative ownership CAS');

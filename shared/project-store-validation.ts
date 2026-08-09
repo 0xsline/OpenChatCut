@@ -1,16 +1,25 @@
+import { parseAgentSessionGenerationRecord } from './agent-session-generation.ts';
 import type { ProjectStoreRequest } from './project-store-transport.ts';
 
-const VALID_KEY = /^(?!__proto__$)(?!prototype$)(?!constructor$)[a-zA-Z0-9:_-]{1,200}$/;
+const VALID_KEY = /^(?!__proto__$)(?!prototype$)(?!constructor$)[a-zA-Z0-9:_-]{1,300}$/;
 const VALID_AGENT_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
 const VALID_AGENT_ARTIFACT_ID = /^[a-zA-Z0-9_-]{1,20}$/;
-const STRICT_PROJECT_SCOPED_KEY = /^(?:agent-runtime|external-proposal|offline-edit-session|project-edit-ownership|review):([a-zA-Z0-9_-]{1,160})$/;
-const STRICT_PROJECT_SCOPED_PREFIX = /^(?:agent-runtime|agent-artifact|external-proposal|offline-edit-session|project-edit-ownership|review):/;
+const VALID_SESSION_GENERATION = /^[a-zA-Z0-9_-]{1,80}$/;
+const STRICT_PROJECT_SCOPED_KEY = /^(?:agent-runtime|agent-session-generation|external-proposal|offline-edit-session|project-edit-ownership|review):([a-zA-Z0-9_-]{1,160})$/;
+const STRICT_PROJECT_SCOPED_PREFIX = /^(?:agent-runtime|agent-artifact|agent-session-generation|agent-session-chat|agent-session-proposal|agent-session-runtime|agent-session-artifact|external-proposal|offline-edit-session|project-edit-ownership|review):/;
 const LEGACY_PROJECT_SCOPED_KEY = /^(?:project|chat|creative-mode|thumb|proposal|versions|jobs):(.+)$/;
 
-/**
- * Return the owning project without treating an artifact id as part of it.
- * Legacy namespaces deliberately retain their historical permissive suffix.
- */
+function sessionProjectId(key: string, namespace: string, trailingParts: number): string | undefined {
+  if (!key.startsWith(`${namespace}:`)) return undefined;
+  const parts = key.slice(namespace.length + 1).split(':');
+  return parts.length === trailingParts + 2
+    && VALID_AGENT_PROJECT_ID.test(parts[0]!)
+    && VALID_SESSION_GENERATION.test(parts[1]!)
+    ? parts[0]
+    : undefined;
+}
+
+/** Return the owning project without treating generation or artifact ids as part of it. */
 export function projectIdFromProjectStoreKey(key: string): string | undefined {
   const strictProjectId = STRICT_PROJECT_SCOPED_KEY.exec(key)?.[1];
   if (strictProjectId) return strictProjectId;
@@ -22,10 +31,40 @@ export function projectIdFromProjectStoreKey(key: string): string | undefined {
       ? parts[0]
       : undefined;
   }
-  return LEGACY_PROJECT_SCOPED_KEY.exec(key)?.[1];
+  const sessionArtifactProject = sessionProjectId(key, 'agent-session-artifact', 1);
+  if (sessionArtifactProject) {
+    const artifactId = key.split(':').at(-1);
+    return artifactId && VALID_AGENT_ARTIFACT_ID.test(artifactId)
+      ? sessionArtifactProject
+      : undefined;
+  }
+  return sessionProjectId(key, 'agent-session-chat', 0)
+    ?? sessionProjectId(key, 'agent-session-proposal', 0)
+    ?? sessionProjectId(key, 'agent-session-runtime', 0)
+    ?? LEGACY_PROJECT_SCOPED_KEY.exec(key)?.[1];
+}
+
+function isAgentRuntimeKey(key: string): boolean {
+  return key.startsWith('agent-runtime:') || key.startsWith('agent-session-runtime:');
+}
+
+function agentArtifactKeyParts(key: string): [string, string] | null {
+  const legacy = key.startsWith('agent-artifact:')
+    ? key.slice('agent-artifact:'.length).split(':')
+    : [];
+  if (legacy.length === 2) return [legacy[0]!, legacy[1]!];
+  const scoped = key.startsWith('agent-session-artifact:')
+    ? key.slice('agent-session-artifact:'.length).split(':')
+    : [];
+  return scoped.length === 3 ? [scoped[0]!, scoped[2]!] : null;
 }
 
 const MAX_ENTRY_COUNT = 20_000;
+export function isAgentSessionGenerationStoreValue(key: string, value: unknown): boolean {
+  return key.startsWith('agent-session-generation:')
+    && projectIdFromProjectStoreKey(key) !== undefined
+    && parseAgentSessionGenerationRecord(value) !== null;
+}
 
 export const isProjectStoreRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -36,6 +75,7 @@ export interface SupportedAgentRuntimeStoreValue extends Record<string, unknown>
   durability: 'local-sidecar';
   updatedAt: number;
   lastWriterId?: string;
+  sessionGeneration?: string;
   runs: unknown[];
   approvals: unknown[];
   checkpoints: unknown[];
@@ -69,7 +109,7 @@ function isSupportedAgentRuntimeStoreValue(
 ): value is SupportedAgentRuntimeStoreValue {
   const projectId = projectIdFromProjectStoreKey(key);
   return isProjectStoreRecord(value)
-    && key.startsWith('agent-runtime:')
+    && isAgentRuntimeKey(key)
     && value.version === 1
     && projectId !== undefined
     && value.projectId === projectId
@@ -81,6 +121,10 @@ function isSupportedAgentRuntimeStoreValue(
     && Number.isFinite(value.updatedAt)
     && value.updatedAt >= 0
     && (value.lastWriterId === undefined || typeof value.lastWriterId === 'string')
+    && (value.sessionGeneration === undefined || (
+      typeof value.sessionGeneration === 'string'
+      && /^[A-Za-z0-9_-]{1,80}$/.test(value.sessionGeneration)
+    ))
     && Array.isArray(value.runs)
     && Array.isArray(value.approvals)
     && Array.isArray(value.checkpoints)
@@ -98,7 +142,7 @@ export function classifyAgentRuntimeStoreValue(
   if (value === undefined) return { kind: 'absent' };
   if (
     isProjectStoreRecord(value)
-    && key.startsWith('agent-runtime:')
+    && isAgentRuntimeKey(key)
     && projectId !== undefined
     && value.projectId === projectId
     && typeof value.version === 'number'
@@ -122,11 +166,9 @@ export function isAgentRuntimeStoreValue(
 }
 
 export function isAgentArtifactStoreValue(key: string, value: unknown): value is Record<string, unknown> {
-  const parts = key.startsWith('agent-artifact:')
-    ? key.slice('agent-artifact:'.length).split(':')
-    : [];
+  const parts = agentArtifactKeyParts(key);
   return isProjectStoreRecord(value)
-    && parts.length === 2
+    && parts !== null
     && projectIdFromProjectStoreKey(key) === parts[0]
     && value.version === 1
     && value.projectId === parts[0]
@@ -186,7 +228,7 @@ function isAgentRuntimeCasRequest(value: Record<string, unknown>): boolean {
       && expectedRevision >= 0);
   return Object.keys(value).length === 4
     && isProjectStoreKey(value.key)
-    && value.key.startsWith('agent-runtime:')
+    && isAgentRuntimeKey(value.key)
     && validRevision
     && isAgentRuntimeStoreValue(value.key, value.value);
 }
@@ -222,7 +264,7 @@ function isAgentRunLeaseRequest(value: Record<string, unknown>): boolean {
     && keys.length <= 7
     && keys.every((key) => Object.hasOwn(AGENT_RUN_LEASE_KEYS, key))
     && isProjectStoreKey(value.key)
-    && value.key.startsWith('agent-runtime:')
+    && isAgentRuntimeKey(value.key)
     && typeof value.runId === 'string'
     && value.runId.length > 0
     && value.runId.length <= 200
@@ -242,10 +284,15 @@ function isAgentRunLeaseRequest(value: Record<string, unknown>): boolean {
 export function isProjectStoreRequest(value: unknown): value is ProjectStoreRequest {
   if (!isProjectStoreRecord(value) || typeof value.operation !== 'string') return false;
   if (value.operation === 'snapshot') return Object.keys(value).length === 1;
-  if (value.operation === 'entry' || value.operation === 'delete') {
+  if (value.operation === 'entry') {
     return Object.keys(value).length === 2 && isProjectStoreKey(value.key);
   }
-  if (value.operation === 'purge-project') {
+  if (value.operation === 'delete') {
+    return Object.keys(value).length === 2
+      && isProjectStoreKey(value.key)
+      && !value.key.startsWith('agent-session-generation:');
+  }
+  if (value.operation === 'purge-project' || value.operation === 'agent-session-rotate') {
     return Object.keys(value).length === 2
       && typeof value.projectId === 'string'
       && VALID_AGENT_PROJECT_ID.test(value.projectId);
@@ -254,7 +301,10 @@ export function isProjectStoreRequest(value: unknown): value is ProjectStoreRequ
     return Object.keys(value).length === 2 && isProjectStoreEntries(value.entries);
   }
   if (value.operation === 'set') {
-    return Object.keys(value).length === 3 && isProjectStoreKey(value.key) && Object.hasOwn(value, 'value');
+    return Object.keys(value).length === 3
+      && isProjectStoreKey(value.key)
+      && !value.key.startsWith('agent-session-generation:')
+      && Object.hasOwn(value, 'value');
   }
   if (value.operation === 'agent-runtime-cas') return isAgentRuntimeCasRequest(value);
   if (value.operation === 'project-document-cas') return isProjectDocumentCasRequest(value);

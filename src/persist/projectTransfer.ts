@@ -2,13 +2,17 @@
 // validated once, then each media blob is encoded/decoded in bounded chunks.
 // Legacy openchatcut-project@1 JSON remains readable for cross-version transfer.
 import type { ProjectDoc } from '../editor/types';
-import { parseAgentChangeLog } from '../agent/changeLog';
 import {
   createProject, isPersistedChat, loadChat, loadCreativeMode, loadProject,
   migrateProjectDoc, purgeProject, saveChat, saveCreativeMode,
   type PersistedChat, type ProjectMigrationOptions,
 } from './projectStore';
 import type { ProjectMeta } from './projectStoreCoordinators';
+import {
+  initializeImportedAgentSession,
+  persistImportedChat,
+  sanitizePortableChat,
+} from './projectChatTransfer';
 import {
   createMediaBlobImportNamespace, discardMediaBlobImport, stageMediaBlobImport,
   type StagedMediaBlobImportEntry,
@@ -229,16 +233,6 @@ export interface ProjectExportResult {
   mediaMissing: string[];
 }
 
-function sanitizePortableChat(chat: PersistedChat): PersistedChat {
-  const changeLog = parseAgentChangeLog(chat.changeLog).map((session) => ({
-    ...session,
-    beforeDoc: sanitizePortableProjectDoc(session.beforeDoc),
-  }));
-  return {
-    ...chat,
-    ...(chat.changeLog === undefined ? {} : { changeLog }),
-  };
-}
 
 export async function buildProjectExport(id: string, name: string): Promise<ProjectExportResult> {
   const doc = await loadProject(id);
@@ -281,14 +275,6 @@ export interface ProjectImportResult {
   mediaMissing: string[];
 }
 
-async function persistImportedChat(projectId: string, chat: PersistedChat): Promise<void> {
-  await saveChat(projectId, chat);
-  if (JSON.stringify(await loadChat(projectId)) !== JSON.stringify(chat)) {
-    throw new Error('Imported Agent-linked chat could not be persisted.');
-  }
-}
-
-
 async function publishStagedProject(
   staged: StagedProjectImport,
   publish?: ProjectImportOptions['publish'],
@@ -300,6 +286,9 @@ async function publishStagedProject(
       : staged;
     const meta = await publish(publishable);
     try {
+      if (staged.runtime || staged.chat || staged.proposal) {
+        await initializeImportedAgentSession(meta.id);
+      }
       if (staged.runtime) {
         await publishTransferredAgentRuntime(staged.runtime, meta.id, staged.proposal);
       }
@@ -316,6 +305,9 @@ async function publishStagedProject(
   }
   const meta = await createProject(staged.name, staged.doc);
   try {
+    if (staged.runtime || staged.chat || staged.proposal) {
+      await initializeImportedAgentSession(meta.id);
+    }
     if (staged.runtime) {
       await publishTransferredAgentRuntime(staged.runtime, meta.id, staged.proposal);
     }

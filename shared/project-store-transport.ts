@@ -34,6 +34,10 @@ export type ProjectStoreRequest =
     value: unknown;
   }
   | {
+    operation: 'agent-session-rotate';
+    projectId: string;
+  }
+  | {
     operation: 'project-document-cas';
     key: string;
     expectedRevision: null;

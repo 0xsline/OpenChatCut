@@ -8,6 +8,11 @@ import {
   resetAgentRuntimeStoreMemory,
   upsertAgentApproval,
 } from '../persist/agentRuntimeStore';
+import {
+  adoptAgentSessionWriteGeneration,
+  agentSessionWriteGeneration,
+  rotateAgentSessionGeneration,
+} from '../persist/agentSessionGeneration';
 import { docFromTimeline } from '../persist/projectStore';
 import {
   loadProposalRecord,
@@ -148,6 +153,35 @@ const cancelled = loadRecoveredAgentSession(projectId, () => alive, async () => 
   return loadAgentRuntimeSidecar(projectId);
 });
 assert.equal(await cancelled, null, 'unmounted hydration does not continue into chat/proposal loading');
+let releaseRecovery!: () => void;
+let recoveryStarted!: () => void;
+const recoveryReached = new Promise<void>((resolve) => { recoveryStarted = resolve; });
+const recoveryGate = new Promise<void>((resolve) => { releaseRecovery = resolve; });
+const staleGenerationHydration = loadRecoveredAgentSession(projectId, () => true, async () => {
+  recoveryStarted();
+  await recoveryGate;
+  return loadAgentRuntimeSidecar(projectId);
+});
+await recoveryReached;
+await rotateAgentSessionGeneration(projectId);
+releaseRecovery();
+assert.equal(
+  await staleGenerationHydration,
+  null,
+  'generation rotation invalidates an in-flight hydration before it can restore old context',
+);
+const authoritativeGeneration = await rotateAgentSessionGeneration(projectId);
+adoptAgentSessionWriteGeneration(projectId, 'stale-tab-generation');
+let recoveryWriteGeneration = '';
+await loadRecoveredAgentSession(projectId, () => true, async () => {
+  recoveryWriteGeneration = await agentSessionWriteGeneration(projectId);
+  return loadAgentRuntimeSidecar(projectId);
+});
+assert.equal(
+  recoveryWriteGeneration,
+  authoritativeGeneration,
+  'hydration adopts the freshly observed generation before recovery mutates runtime state',
+);
 
 const cleanupEvents: string[] = [];
 const activeAbort = new AbortController();

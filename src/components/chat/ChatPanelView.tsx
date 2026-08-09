@@ -56,12 +56,10 @@ function ChatHeader({ controller }: { controller: ChatPanelController }) {
       </span>
     </div>
     <AgentRunInspector projectId={props.projectId} />
-    {agent.messages.length > 0 && (
-      <button type="button" onClick={agent.clearHistory} disabled={agent.running} title={t('清空对话')}
-        style={{ background: 'none', border: 'none', color: theme.textDim, cursor: agent.running ? 'default' : 'pointer', opacity: agent.running ? 0.4 : 1, padding: 2, lineHeight: 0 }}>
-        <Icon name="trash" size={14} />
-      </button>
-    )}
+    <button type="button" onClick={agent.clearHistory} disabled={agent.running} title={t('清空对话')}
+      style={{ background: 'none', border: 'none', color: theme.textDim, cursor: agent.running ? 'default' : 'pointer', opacity: agent.running ? 0.4 : 1, padding: 2, lineHeight: 0 }}>
+      <Icon name="trash" size={14} />
+    </button>
     <button type="button" onClick={props.onToggleCollapse} title={t('收起 OpenChatCut Agent')}
       style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 13 }}>
       <span style={{ transform: 'rotate(90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span>

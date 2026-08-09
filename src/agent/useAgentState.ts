@@ -35,6 +35,7 @@ export interface AgentHookState {
   runningRef: MutableValue<boolean>;
   changeLogRef: MutableValue<AgentChangeSession[]>;
   hydratedRef: MutableValue<boolean>;
+  hydrationEpochRef: MutableValue<number>;
   proposalRef: MutableValue<Proposal | null>;
   pendingGuardRef: MutableValue<PendingGuard | null>;
   abortRef: MutableValue<AbortController | null>;
@@ -62,6 +63,7 @@ export function useAgentState(ctx: AgentContext): AgentHookState {
   const runningRef = useRef(false);
   const changeLogRef = useRef<AgentChangeSession[]>([]);
   const hydratedRef = useRef(false);
+  const hydrationEpochRef = useRef(0);
   const proposalRef = useRef<Proposal | null>(null);
   const pendingGuardRef = useRef<PendingGuard | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -75,8 +77,9 @@ export function useAgentState(ctx: AgentContext): AgentHookState {
   return {
     messages, setMessages, changeLog, setChangeLog, running, setRunning, hydrated, setHydrated,
     proposal, setProposal, proposalStale, setProposalStale, pendingGuard, setPendingGuard,
-    liveTool, setLiveTool, llmRef, llmProviderRef, ctxRef, hydratedRef, proposalRef,
-    runningRef, changeLogRef, pendingGuardRef, abortRef, applyingProposalRef, toolFailuresRef,
+    liveTool, setLiveTool, llmRef, llmProviderRef, ctxRef, hydratedRef, hydrationEpochRef,
+    proposalRef, runningRef, changeLogRef, pendingGuardRef, abortRef,
+    applyingProposalRef, toolFailuresRef,
     contextUsage: context.usage,
     contextUsageRef: context.usageRef, replaceContextUsage: context.replace,
     refreshEstimatedContextUsage: context.refreshEstimate,

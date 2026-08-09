@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { parseAgentSessionGenerationRecord } from '../../shared/agent-session-generation';
 import {
   isProjectStoreKey,
   isProjectStoreRequest,
   projectIdFromProjectStoreKey,
 } from '../../shared/project-store-validation';
 import { mergeProjectEntries } from './project-store-entries';
+import { prepareAgentSessionMigrationEntries } from './project-store-agent-session';
 
 const left = {
   projects: [{ id: 'a', name: 'Chrome 工程', updatedAt: 10 }],
@@ -58,6 +60,16 @@ const artifactKey = `agent-artifact:${projectId}:${artifactId}`;
 assert.equal(isProjectStoreKey(`agent-runtime:${projectId}`), true);
 assert.equal(isProjectStoreKey(artifactKey), true, 'maximum legal agent artifact key is accepted');
 assert.equal(projectIdFromProjectStoreKey(artifactKey), projectId, 'artifact id is never parsed as project id');
+const generation = 'g'.repeat(80);
+const sessionRuntimeKey = `agent-session-runtime:${projectId}:${generation}`;
+const sessionArtifactKey = `agent-session-artifact:${projectId}:${generation}:${artifactId}`;
+assert.equal(isProjectStoreKey(`agent-session-chat:${projectId}:${generation}`), true);
+assert.equal(isProjectStoreKey(`agent-session-proposal:${projectId}:${generation}`), true);
+assert.equal(isProjectStoreKey(sessionRuntimeKey), true);
+assert.equal(isProjectStoreKey(sessionArtifactKey), true);
+assert.equal(projectIdFromProjectStoreKey(sessionArtifactKey), projectId);
+assert.equal(isProjectStoreKey(`agent-session-runtime:${projectId}:bad.generation`), false);
+assert.equal(isProjectStoreKey(`${sessionArtifactKey}x`), false);
 assert.equal(isProjectStoreKey(`agent-artifact:${projectId}:${artifactId}x`), false);
 assert.equal(isProjectStoreKey(`agent-artifact:${projectId}:bad.id`), false);
 assert.equal(isProjectStoreKey(`agent-runtime:${projectId}x`), false);
@@ -95,6 +107,110 @@ const artifactRecord = (owner: string, id: string, body: string, digestChar: str
   binaryOmitted: false,
   body,
 });
+const shortSessionRuntimeKey = 'agent-session-runtime:a:generation_1';
+const shortSessionArtifactKey = 'agent-session-artifact:a:generation_1:session_artifact';
+const sessionEntries = mergeProjectEntries({}, {
+  [shortSessionRuntimeKey]: {
+    ...runtimeSidecar('a', 1, 1, 'session-run'),
+    sessionGeneration: 'generation_1',
+  },
+  [shortSessionArtifactKey]: artifactRecord('a', 'session_artifact', 'body', 'a'),
+});
+assert.equal((sessionEntries[shortSessionRuntimeKey] as { revision: number }).revision, 1);
+assert.equal((sessionEntries[shortSessionArtifactKey] as { body: string }).body, 'body');
+assert.equal(isProjectStoreRequest({
+  operation: 'agent-runtime-cas',
+  key: shortSessionRuntimeKey,
+  expectedRevision: null,
+  value: {
+    ...runtimeSidecar('a', 1, 1, 'session-run'),
+    sessionGeneration: 'generation_1',
+  },
+}), true);
+assert.equal(isProjectStoreRequest({
+  operation: 'agent-run-lease',
+  key: shortSessionRuntimeKey,
+  runId: 'session-run',
+  action: 'claim',
+  ownerInstanceId: 'owner_1',
+  leaseMs: 10_000,
+}), true);
+const generationKey = 'agent-session-generation:a';
+const olderGeneration = { version: 1, generation: 'older', clearedAt: 10 };
+const newerGeneration = { version: 1, generation: 'newer', clearedAt: 20 };
+const migratedSession = prepareAgentSessionMigrationEntries({}, {
+  [generationKey]: newerGeneration,
+  'agent-session-chat:a:newer': {
+    messages: [],
+    llm: [],
+    sessionGeneration: 'newer',
+  },
+  'agent-session-proposal:a:newer': {
+    version: 1,
+    phase: 'prepared',
+    proposal: { id: 'proposal-migrate' },
+    sessionGeneration: 'newer',
+  },
+});
+const migratedGeneration = parseAgentSessionGenerationRecord(migratedSession[generationKey]);
+assert.ok(migratedGeneration && migratedGeneration.generation !== 'newer');
+assert.equal(Object.hasOwn(migratedSession, 'agent-session-chat:a:newer'), false);
+assert.deepEqual(
+  migratedSession[`agent-session-chat:a:${migratedGeneration.generation}`],
+  { messages: [], llm: [], sessionGeneration: migratedGeneration.generation },
+  'first remote migration remaps local session data to a server-generated generation',
+);
+assert.deepEqual(
+  migratedSession[`agent-session-proposal:a:${migratedGeneration.generation}`],
+  {
+    version: 1,
+    phase: 'prepared',
+    proposal: { id: 'proposal-migrate' },
+    sessionGeneration: migratedGeneration.generation,
+  },
+  'first remote migration remaps proposal authority to the server generation',
+);
+assert.equal(
+  Object.keys(prepareAgentSessionMigrationEntries(
+    { [generationKey]: olderGeneration },
+    { [generationKey]: newerGeneration, 'agent-session-chat:a:newer': { messages: [] } },
+  )).some((key) => key.includes('agent-session-chat:a:newer')),
+  false,
+  'an existing server marker drops stale browser-scoped migration data',
+);
+assert.deepEqual(
+  mergeProjectEntries({ [generationKey]: newerGeneration }, { [generationKey]: olderGeneration })[generationKey],
+  newerGeneration,
+  'an older browser cannot roll back the clear-context generation',
+);
+assert.deepEqual(
+  mergeProjectEntries({ [generationKey]: olderGeneration }, { [generationKey]: newerGeneration })[generationKey],
+  olderGeneration,
+  'browser migration cannot replace an existing server generation marker',
+);
+assert.deepEqual(
+  mergeProjectEntries({}, { [generationKey]: newerGeneration })[generationKey],
+  newerGeneration,
+  'first remote migration may seed a marker only when none exists',
+);
+assert.equal(isProjectStoreRequest({
+  operation: 'set',
+  key: generationKey,
+  value: newerGeneration,
+}), false, 'generic writes cannot forge the server-managed generation marker');
+assert.equal(isProjectStoreRequest({
+  operation: 'agent-session-rotate',
+  projectId: 'a',
+}), true);
+assert.equal(isProjectStoreRequest({
+  operation: 'delete',
+  key: generationKey,
+}), false, 'generic deletes cannot remove the server-managed generation marker');
+assert.equal(isProjectStoreRequest({
+  operation: 'set',
+  key: generationKey,
+  value: { version: 1, generation: 'bad.generation', clearedAt: 30 },
+}), false);
 
 const runtimeRun = (
   owner: string,

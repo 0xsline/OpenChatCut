@@ -68,6 +68,11 @@ assert.deepEqual(
 const projectOwnedKeys = [
   `agent-runtime:${project.id}`,
   `agent-artifact:${project.id}:result_01`,
+  `agent-session-generation:${project.id}`,
+  `agent-session-chat:${project.id}:generation_1`,
+  `agent-session-proposal:${project.id}:generation_1`,
+  `agent-session-runtime:${project.id}:generation_1`,
+  `agent-session-artifact:${project.id}:generation_1:result_03`,
   `agent-artifact:${project.id}:result_02`,
   `external-proposal:${project.id}`,
   `offline-edit-session:${project.id}`,

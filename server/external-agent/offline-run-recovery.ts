@@ -1,7 +1,11 @@
 import type { ExternalEditSession } from '../../src/agent/external-edit-session.ts';
 import { ExternalSessionRunLedger } from '../../src/agent/external-run-ledger.ts';
 import { currentAgentRunOwnerInstanceId } from '../../src/agent/runtime-ledger.ts';
-import { loadAgentRuntimeSidecar } from '../../src/persist/agentRuntimeStore.ts';
+import { agentRuntimeKey, loadAgentRuntimeSidecar } from '../../src/persist/agentRuntimeStore.ts';
+import {
+  adoptAgentSessionWriteGeneration,
+  currentAgentSessionGeneration,
+} from '../../src/persist/agentSessionGeneration.ts';
 import { kvUpdateAgentRunLease } from '../../src/persist/sharedKv.ts';
 import { ExternalEditorCallError } from './broker.ts';
 import { activateOfflineAgentRuntimeBackend } from './agent-runtime-persistence.ts';
@@ -19,6 +23,8 @@ export async function openOfflineSessionRun(
   resumedCheckpoint: boolean,
 ): Promise<ExternalSessionRunLedger> {
   activateOfflineAgentRuntimeBackend();
+  const generation = await currentAgentSessionGeneration(projectId);
+  adoptAgentSessionWriteGeneration(projectId, generation);
   if (resumedCheckpoint) {
     const sidecar = await loadAgentRuntimeSidecar(projectId);
     const persisted = sidecar.runs.find((run) => (
@@ -29,7 +35,7 @@ export async function openOfflineSessionRun(
     if (persisted) {
       const claimed = await kvUpdateAgentRunLease({
         operation: 'agent-run-lease',
-        key: `agent-runtime:${projectId}`,
+        key: agentRuntimeKey(projectId, sidecar.sessionGeneration),
         runId: persisted.runId,
         action: 'claim',
         ownerInstanceId: currentAgentRunOwnerInstanceId(),

@@ -38,9 +38,10 @@ export function validateProposalRuntimeTransfer(
 export function projectPortableAgentRuntimeSnapshot(
   snapshot: AgentRuntimeSnapshot,
 ): AgentRuntimeSnapshot {
+  const { sessionGeneration: _sessionGeneration, ...portableSidecar } = snapshot.sidecar;
   return {
     sidecar: {
-      ...snapshot.sidecar,
+      ...portableSidecar,
       runs: snapshot.sidecar.runs.map((source) => {
         const {
           ownerInstanceId: _owner,

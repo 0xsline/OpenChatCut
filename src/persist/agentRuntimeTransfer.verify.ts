@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { ModelMessage } from 'ai';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
+import { LEGACY_AGENT_SESSION_GENERATION } from '../../shared/agent-session-generation';
 import type { AgentContext } from '../agent/context';
 import { verifyCanonicalContextCheckpoint } from '../agent/context-compaction';
 import { execAgentRuntimeTool } from '../agent/tools/agent-runtime-tools';
@@ -11,6 +12,7 @@ import {
   resetAgentRuntimeStoreMemory, sha256Text, storeAgentArtifact, upsertAgentApproval,
   type AgentRuntimeSidecar,
 } from './agentRuntimeStore';
+import { currentAgentSessionGeneration } from './agentSessionGeneration';
 import { createProject, loadChat, resetProjectStoreMemory, saveChat, type PersistedChat } from './projectStore';
 import {
   loadProposalRecord,
@@ -201,6 +203,11 @@ async function verifyRoundTrip(): Promise<Record<string, unknown>[]> {
   assert.ok(rows.some((row) => row.type === 'agent-runtime-start'));
   assert.ok(rows.some((row) => row.type === 'agent-artifact-chunk'));
   assert.ok(rows.every((row) => JSON.stringify(row).length < 128 * 1024), 'runtime and artifact records stay bounded');
+  assert.doesNotMatch(
+    JSON.stringify(rows),
+    /sessionGeneration/,
+    'session generation is local authority and is never exported',
+  );
   await verifyPortableRuntimeExport(rows, seeded.chat);
   await verifySourceAuthorityPreserved(seeded.projectId);
 
@@ -210,6 +217,13 @@ async function verifyRoundTrip(): Promise<Record<string, unknown>[]> {
   assert.notEqual(imported.meta.id, seeded.projectId);
   const importedChat = await loadChat(imported.meta.id);
   assert.ok(importedChat, 'linked chat is published after its runtime data');
+  const importedGeneration = await currentAgentSessionGeneration(imported.meta.id);
+  assert.notEqual(
+    importedGeneration,
+    LEGACY_AGENT_SESSION_GENERATION,
+    'import creates a fresh Agent session generation',
+  );
+  assert.equal(importedChat?.sessionGeneration, importedGeneration);
   const sidecar = await loadAgentRuntimeSidecar(imported.meta.id);
   const marker = await verifyCanonicalContextCheckpoint(
     importedChat!.llm as ModelMessage[],
@@ -226,6 +240,7 @@ async function verifyRoundTrip(): Promise<Record<string, unknown>[]> {
   assert.ok(sidecar.approvals.every((row) => row.projectId === imported.meta.id));
   assert.ok(sidecar.checkpoints.every((row) => row.projectId === imported.meta.id));
   assert.ok(sidecar.artifacts.every((row) => row.projectId === imported.meta.id));
+  assert.equal(sidecar.sessionGeneration, importedGeneration);
   const importedProposal = await loadProposalRecord(imported.meta.id);
   verifyImportedProposalClosure(sidecar, importedProposal);
   const page = await execAgentRuntimeTool('read_agent_artifact', {

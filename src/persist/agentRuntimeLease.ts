@@ -24,6 +24,7 @@ type RuntimeMutator = <T>(
 
 interface UpdateLeaseInput {
   projectId: string;
+  runtimeKey: string;
   runId: string;
   ownerInstanceId: string;
   leaseToken?: string;
@@ -69,7 +70,7 @@ export async function updateAgentRunLeaseAuthority(
   }
   const canonical = await kvUpdateAgentRunLease({
     operation: 'agent-run-lease',
-    key: `agent-runtime:${input.projectId}`,
+    key: input.runtimeKey,
     runId: input.runId,
     action: input.claim ? 'claim' : 'renew',
     ownerInstanceId: input.ownerInstanceId,
@@ -86,7 +87,7 @@ export async function updateAgentRunLeaseAuthority(
 }
 
 export async function releaseAgentRunLeaseAuthority(
-  projectId: string,
+  runtimeKey: string,
   runId: string,
   ownerInstanceId: string,
   leaseToken: string,
@@ -95,7 +96,7 @@ export async function releaseAgentRunLeaseAuthority(
   if (!ownerInstanceId || !leaseToken) return { authoritative: false, accepted: false };
   const canonical = await kvUpdateAgentRunLease({
     operation: 'agent-run-lease',
-    key: `agent-runtime:${projectId}`,
+    key: runtimeKey,
     runId,
     action: 'release',
     ownerInstanceId,

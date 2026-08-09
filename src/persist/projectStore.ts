@@ -9,6 +9,12 @@ import {
   kvPurgeProject,
   resetSharedKvMemory,
 } from './sharedKv';
+import {
+  agentSessionGenerationMatches,
+  agentSessionWriteGeneration,
+  currentAgentSessionGeneration,
+  resetAgentSessionGenerationMemory,
+} from './agentSessionGeneration';
 import { clearProjectSessionPrefs } from './sessionPrefs';
 import { dedupeAssets, normalizeTimelineTracks } from './migrations/normalize';
 import {
@@ -62,7 +68,9 @@ export const projectSaveCoordinator = new SaveCoordinator(persistProjectSnapshot
 export function resetProjectStoreMemory(): void {
   projectSaveCoordinator.reset();
   projectIndexCoordinator.reset();
+  chatWriteQueues.clear();
   resetSharedKvMemory();
+  resetAgentSessionGenerationMemory();
 }
 
 const tlId = () => `tl_${newId()}`;
@@ -94,7 +102,21 @@ export type { ProjectMigrationOptions, ProjectMigrationProgress };
 // model history. Kept as unknown[] here so this layer stays agnostic of the
 // agent types; optional metadata lets the agent migrate older Anthropic history
 // and safely remove provider-specific reasoning when the user switches vendors.
-const chatKey = (id: string) => `chat:${id}`;
+const chatKey = (id: string, generation = 'legacy') => generation === 'legacy'
+  ? `chat:${id}`
+  : `agent-session-chat:${id}:${generation}`;
+const chatWriteQueues = new Map<string, Promise<void>>();
+
+function serializeChatWrite(projectId: string, work: () => Promise<void>): Promise<void> {
+  const previous = chatWriteQueues.get(projectId) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(work);
+  const settled = run.then(() => undefined, () => undefined);
+  chatWriteQueues.set(projectId, settled);
+  void settled.finally(() => {
+    if (chatWriteQueues.get(projectId) === settled) chatWriteQueues.delete(projectId);
+  });
+  return run;
+}
 
 export interface PersistedChat {
   messages: unknown[];
@@ -103,6 +125,7 @@ export interface PersistedChat {
   llmFormat?: 'ai-sdk-v1';
   llmProvider?: LlmProvider;
   toolFailures?: unknown;
+  sessionGeneration?: string;
 }
 
 export function isPersistedChat(v: unknown): v is PersistedChat {
@@ -113,27 +136,40 @@ export function isPersistedChat(v: unknown): v is PersistedChat {
 
 export async function loadChat(projectId: string): Promise<PersistedChat | null> {
   try {
-    const raw = await idbGet<unknown>(chatKey(projectId));
-    return isPersistedChat(raw) ? raw : null;
+    await chatWriteQueues.get(projectId);
+    const generation = await currentAgentSessionGeneration(projectId);
+    const raw = await idbGet<unknown>(chatKey(projectId, generation));
+    return isPersistedChat(raw)
+      && agentSessionGenerationMatches(raw.sessionGeneration, generation) ? raw : null;
   } catch {
     return null;
   }
 }
 
-export async function saveChat(projectId: string, chat: PersistedChat): Promise<void> {
-  try {
-    await idbSet(chatKey(projectId), chat);
-  } catch {
-    /* ignore persist failures; the session still works in-memory */
-  }
+export function saveChat(projectId: string, chat: PersistedChat): Promise<void> {
+  const generation = agentSessionWriteGeneration(projectId);
+  return serializeChatWrite(projectId, async () => {
+    try {
+      const sessionGeneration = await generation;
+      await idbSet(chatKey(projectId, sessionGeneration), {
+        ...chat,
+        sessionGeneration,
+      });
+    } catch {
+      /* ignore persist failures; the session still works in-memory */
+    }
+  });
 }
 
-export async function clearChat(projectId: string): Promise<void> {
-  try {
-    await idbDel(chatKey(projectId));
-  } catch {
-    /* ignore */
-  }
+export async function flushChatWrites(projectId: string): Promise<void> {
+  await chatWriteQueues.get(projectId);
+}
+
+export function clearChat(projectId: string): Promise<void> {
+  return serializeChatWrite(projectId, async () => {
+    const generation = await currentAgentSessionGeneration(projectId);
+    await idbDel(chatKey(projectId, generation));
+  });
 }
 
 // ── Creative mode: which skill is active for a project.

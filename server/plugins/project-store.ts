@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { access, readFile, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { Plugin } from 'vite';
 import {
   isProjectStoreEntries,
   isProjectStoreKey,
@@ -10,18 +9,17 @@ import {
   projectIdFromProjectStoreKey,
 } from '../../shared/project-store-validation.ts';
 import {
-  exchangeProjectStoreLaunchToken,
-  projectStoreHttpAuthorized,
-  projectStoreReadAuthorized,
-} from '../project-store-http-auth.ts';
-import { handleProjectStoreRequest, sendProjectStoreJson } from '../project-store-http.ts';
-import {
   mergeAgentSidecar,
   mergeProjectEntries,
   mergeProjectIndex,
   withoutDeletedProjects,
 } from './project-store-entries.ts';
 import { createAgentRuntimeStoreOperations } from './project-store-agent-runtime.ts';
+import {
+  assertAgentSessionMigrationSafe,
+  createAgentSessionStoreOperation,
+  prepareAgentSessionMigrationEntries,
+} from './project-store-agent-session.ts';
 import { createProjectDocumentStoreOperation } from './project-store-project-document.ts';
 import {
   atomicWriteFile,
@@ -227,9 +225,12 @@ export async function mergeStoredEntries(incoming: Record<string, unknown>): Pro
   const release = await acquireLock();
   try {
     const deletedIds = new Set(Object.keys(await readDeletedProjects()));
+    const current = await readDirectoryEntries();
+    await assertAgentSessionMigrationSafe(createLockedProjectStore(deletedIds), current, incoming);
+    const prepared = prepareAgentSessionMigrationEntries(current, incoming);
     const next: StoreFile = {
       version: 1,
-      entries: mergeProjectEntries(await readDirectoryEntries(), incoming, deletedIds),
+      entries: mergeProjectEntries(current, prepared, deletedIds),
     };
     await writeEntries(next.entries);
     return next;
@@ -240,8 +241,9 @@ export async function mergeStoredEntries(incoming: Record<string, unknown>): Pro
 
 export async function setStoredEntry(key: string, value: unknown): Promise<void> {
   if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
-  if (key.startsWith(PROJECT_EDIT_OWNERSHIP_PREFIX)) {
-    throw new Error('project edit ownership is server-managed');
+  if (key.startsWith(PROJECT_EDIT_OWNERSHIP_PREFIX)
+    || key.startsWith('agent-session-generation:')) {
+    throw new Error('project store entry is server-managed');
   }
   await ensureStoreReady();
   const release = await acquireLock();
@@ -270,7 +272,8 @@ export async function setStoredEntry(key: string, value: unknown): Promise<void>
       await writeStoredEntry(key, existing);
       return;
     }
-    if (key.startsWith('agent-runtime:') || key.startsWith('agent-artifact:')) {
+    if (key.startsWith('agent-runtime:') || key.startsWith('agent-session-runtime:')
+      || key.startsWith('agent-artifact:') || key.startsWith('agent-session-artifact:')) {
       const current = await readEntryFile(key);
       const sidecar = mergeAgentSidecar(key, current.value, value, current.found);
       if (sidecar.accepted) await writeStoredEntry(key, sidecar.value);
@@ -315,8 +318,9 @@ async function purgeProjectLocked(id: string): Promise<void> {
 
 export async function deleteStoredEntry(key: string): Promise<void> {
   if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
-  if (key.startsWith(PROJECT_EDIT_OWNERSHIP_PREFIX)) {
-    throw new Error('project edit ownership is server-managed');
+  if (key.startsWith(PROJECT_EDIT_OWNERSHIP_PREFIX)
+    || key.startsWith('agent-session-generation:')) {
+    throw new Error('project store entry is server-managed');
   }
   await ensureStoreReady();
   const release = await acquireLock();
@@ -384,7 +388,8 @@ async function writeLockedEntry(
   deletedIds: ReadonlySet<string>,
 ): Promise<void> {
   assertProjectNotDeleted(validateLockedEntryKey(key), deletedIds);
-  if (key.startsWith('agent-runtime:') || key.startsWith('agent-artifact:')) {
+  if (key.startsWith('agent-runtime:') || key.startsWith('agent-session-runtime:')
+    || key.startsWith('agent-artifact:') || key.startsWith('agent-session-artifact:')) {
     const current = await readEntryFile(key);
     const sidecar = mergeAgentSidecar(key, current.value, value, current.found);
     if (sidecar.accepted) await writeStoredEntry(key, sidecar.value);
@@ -399,7 +404,9 @@ async function writeAgentRuntimeExactLocked(
   deletedIds: ReadonlySet<string>,
 ): Promise<void> {
   const projectId = validateLockedEntryKey(key);
-  if (!key.startsWith('agent-runtime:')) throw new Error('exact write is limited to agent runtime');
+  if (!key.startsWith('agent-runtime:') && !key.startsWith('agent-session-runtime:')) {
+    throw new Error('exact write is limited to agent runtime');
+  }
   assertProjectNotDeleted(projectId, deletedIds);
   await writeStoredEntry(key, value);
 }
@@ -451,56 +458,4 @@ export const {
 export const compareAndSwapProjectDocument =
   createProjectDocumentStoreOperation(withProjectStoreLock);
 
-
-
-const HTTP_OPERATIONS = {
-  compareAndSwapAgentRuntime,
-  compareAndSwapProjectDocument,
-  deleteEntry: deleteStoredEntry,
-  getEntry: getStoredEntry,
-  purgeProject: (projectId: string) => deleteStoredEntry(`project:${projectId}`),
-  mergeEntries: mergeStoredEntries,
-  readSnapshot: readStore,
-  setEntry: setStoredEntry,
-  updateAgentRunLease: updateStoredAgentRunLease,
-};
-
-export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
-  return {
-    name: 'openchatcut-project-store',
-    configureServer(server) {
-      if (options.http === false) return;
-      server.middlewares.use('/api/project-store', async (req, res) => {
-        if (req.method === 'POST' && req.url === '/session') {
-          const session = exchangeProjectStoreLaunchToken(req);
-          sendProjectStoreJson(
-            res,
-            session ? 200 : 403,
-            session ?? { error: 'invalid or expired editor launch credential' },
-          );
-          return;
-        }
-        const readOnly = req.method === 'GET';
-        if (readOnly) {
-          // Reads are allowed for any loopback origin (sessionless) so that
-          // other dev ports / windows always see fresh server state instead of
-          // their own stale IndexedDB cache (deleted projects "resurrecting").
-          if (!projectStoreReadAuthorized(req) && !projectStoreHttpAuthorized(req)) {
-            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
-            return;
-          }
-        } else if (!projectStoreHttpAuthorized(req)) {
-          sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
-          return;
-        }
-        try {
-          await handleProjectStoreRequest(req, res, HTTP_OPERATIONS);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          server.config.logger.error(`[project-store] ${message}`);
-          if (!res.headersSent) sendProjectStoreJson(res, 400, { error: message });
-        }
-      });
-    },
-  };
-}
+export const rotateAgentSession = createAgentSessionStoreOperation(withProjectStoreLock);
