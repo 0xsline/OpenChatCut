@@ -12,6 +12,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { runtimeProfile } from '../runtime-profile.ts';
+import { ensureJsonImported, type ImportSummary } from './sqlite-migration.ts';
 
 export interface StoredEntryValue {
   found: boolean;
@@ -48,8 +49,15 @@ function openDatabase(): DatabaseSync {
       v TEXT NOT NULL
     );
   `);
+  // Phase 1: one-time JSON→SQLite import (idempotent, receipt-gated).
+  ensureJsonImported(db);
   database = db;
   return db;
+}
+
+/** Trigger/force the JSON→SQLite import path (verify + diagnostics). */
+export function sqliteImportJson(): ImportSummary {
+  return ensureJsonImported(openDatabase());
 }
 
 /** Close the connection (verify isolation / profile switches). */

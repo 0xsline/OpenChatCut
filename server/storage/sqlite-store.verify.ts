@@ -25,7 +25,7 @@ async function main(): Promise<void> {
 
     // Import AFTER HOME is set: runtimeProfile() freezes the profile at load.
     const store = await import('../plugins/project-store.ts');
-    const { sqliteStoreEnabled, resetSqliteStoreForTests } = await import('./sqlite-store.ts');
+    const { sqliteStoreEnabled, sqliteImportJson, resetSqliteStoreForTests } = await import('./sqlite-store.ts');
 
     const storeDir = join(root, '.openchatcut', 'project-store-v1');
     const sqlitePath = join(root, '.openchatcut', 'project-store-v1.sqlite3');
@@ -89,7 +89,50 @@ async function main(): Promise<void> {
     assert.equal(existsSync(join(storeDir, 'chat%3Aafter-off.json')), true,
       'turning the switch off must restore the JSON-file path immediately');
 
-    console.log('✓ sqlite-store verify: default-off / opt-in / lifecycle / purge / reopen persistence / switch-back all passed');
+    // ── Scenario C: JSON→SQLite import (phase 1) ──
+    // Seed legacy JSON data in file mode first.
+    await store.setStoredEntry('project:import-p', { doc: { v: 1 }, updatedAt: 1 });
+    await store.setStoredEntry('chat:import-1', { m: 'one' });
+    await store.setStoredEntry('chat:import-2', { m: 'two' });
+    await store.setStoredEntry('versions:import-p', [{ v: 1 }]);
+    await store.setStoredEntry('thumb:import-p', { thumb: true });
+    const jsonFilesBefore = readdirSync(storeDir).filter((f) => f.endsWith('.json')).sort();
+
+    process.env[SQLITE_STORE_ENV] = '1';
+    const first = sqliteImportJson();
+    assert.equal(first.imported, 6, 'all six legacy keys (5 import + after-off) must be imported');
+    assert.equal(first.quarantined, 0);
+    assert.equal(first.receiptWritten, true, 'a completion receipt must be written');
+    assert.deepEqual(await store.getStoredEntry('chat:import-1'),
+      { found: true, value: { m: 'one' } },
+      'imported keys must be readable through the SQLite store');
+    assert.equal((await store.getStoredEntry('thumb:import-p')).value?.thumb, true);
+
+    // The JSON directory must not be touched (no move, no delete, no rewrite).
+    const jsonFilesAfter = readdirSync(storeDir).filter((f) => f.endsWith('.json')).sort();
+    assert.deepEqual(jsonFilesAfter, jsonFilesBefore,
+      'the JSON source directory must remain byte-untouched after import');
+    assert.equal(existsSync(join(root, '.openchatcut', 'project-store-v1.sqlite3.receipt.json')), true,
+      'the receipt must live next to the SQLite database');
+
+    // Idempotent re-run: receipt present → no-op; forced re-scan → all skipped.
+    const noop = sqliteImportJson();
+    assert.equal(noop.imported, 0, 'a receipt must gate further imports');
+    const receiptPath = join(root, '.openchatcut', 'project-store-v1.sqlite3.receipt.json');
+    rmSync(receiptPath, { force: true }); // simulate crash-without-receipt
+    const resume = sqliteImportJson();
+    assert.equal(resume.imported, 0, 'resume must skip keys whose hash still matches');
+    assert.equal(resume.skipped, 6);
+
+    // Resume must refill a missing row (crash between batches).
+    rmSync(receiptPath, { force: true });
+    await store.deleteStoredEntry('chat:import-2');
+    const refill = sqliteImportJson();
+    assert.equal(refill.imported, 1, 'the deleted row must be refilled from the JSON source');
+    assert.deepEqual(await store.getStoredEntry('chat:import-2'),
+      { found: true, value: { m: 'two' } });
+
+    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill all passed');
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
