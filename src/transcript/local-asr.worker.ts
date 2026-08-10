@@ -54,10 +54,13 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
     env.remoteHost = localAsrModelHosts(workerScope.location.origin)[0];
     try {
       // transformers.js forwards this revision to model, tokenizer, and processor loaders.
+      // WebGPU needs per-module mixed dtypes (encoder fp32 + decoder fp16); the plain
+      // q8 contract is used for wasm (int8 models are unsupported on WebGPU).
+      const dtype = request.device === 'webgpu' ? ASR_INFERENCE_CONTRACT.webgpuDtype : ASR_INFERENCE_CONTRACT.dtype;
       const attemptPromise = (pipeline('automatic-speech-recognition', request.modelId, {
         revision: request.revision,
         device: request.device,
-        dtype: ASR_INFERENCE_CONTRACT.dtype,
+        dtype,
         progress_callback: progress,
       }) as Promise<unknown>);
       const next = await Promise.race([

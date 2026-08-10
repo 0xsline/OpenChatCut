@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { warmUpLocalAsr } from '../../transcript/local-asr';
+import { asrBackendPreference } from '../../transcript/deviceProfile';
 import { VendorIcon } from './vendorIcons';
 import type { AsrDownloadStatus } from '../../../shared/asr-models';
 import { FieldRow, type FieldCtx } from './settingsVendorPane';
@@ -51,6 +52,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
   const hasDesktopInference = Boolean(window.openChatCutDesktop?.inference);
   const [nativeInference, setNativeInference] = useState(desktopNativeInferenceEnabled);
   const [desktopInferenceSupported, setDesktopInferenceSupported] = useState(false);
+  const [webgpuAccel, setWebgpuAccel] = useState(() => asrBackendPreference() === 'webgpu');
   useEffect(() => {
     let active = true;
     const inference = window.openChatCutDesktop?.inference;
@@ -73,6 +75,20 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
       .catch((error: unknown) => {
         setLoadError(error instanceof Error ? error.message : String(error));
       });
+  }, []);
+  const toggleWebgpuAccel = useCallback((enabled: boolean) => {
+    try {
+      if (enabled) {
+        localStorage.setItem('cc.asrBackend', 'webgpu');
+        // Re-allow WebGPU attempts when the user re-enables the toggle.
+        localStorage.removeItem('cc.asrWebgpuBroken');
+      } else {
+        localStorage.removeItem('cc.asrBackend');
+      }
+    } catch {
+      // Best-effort preference persistence.
+    }
+    setWebgpuAccel(enabled);
   }, []);
 
   const downloadingRef = useRef<ReadonlySet<string>>(new Set());
@@ -169,6 +185,23 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
           </span>
         </label>
       )}
+      <label style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
+        border: `0.5px solid ${theme.border}`, borderRadius: 8, background: theme.panel,
+      }}>
+        <input
+          type="checkbox"
+          checked={webgpuAccel}
+          onChange={(event) => toggleWebgpuAccel(event.target.checked)}
+          style={{ marginTop: 2 }}
+        />
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>{t('WebGPU 转写加速（实验）')}</span>
+          <span style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.45 }}>
+            {t('启用后，本地转写尝试用 WebGPU 运行（编码器 fp32 + 解码器 fp16 混合精度，规避 WebGPU 幻觉输出）；首次产生空结果会自动回退 WASM 并记住。需要 WebGPU 浏览器与已下载的模型。')}
+          </span>
+        </span>
+      </label>
       <div style={{ fontSize: 11.5, color: theme.textDim }}>
         {t('模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。')}
       </div>

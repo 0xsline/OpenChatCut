@@ -35,6 +35,10 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'tokenizer_config.json', sizeBytes: 282683, sha256: '2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce' },
       { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 10124990, sha256: '2af4a414ca47aa30f61246017e5fe82b0a8d229281d1255ba666a2a7f6b84d19' },
       { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 30719241, sha256: '25e807a962b6349356d0ea5d0dfe530b7e5bf0e2a484aeca0359d03143faddd3' },
+      // fp16 variants feed the WebGPU path (encoder fp32 + decoder fp16 mixed dtype,
+      // measured: encoder fp16 on WebGPU produces empty output).
+      { path: 'onnx/encoder_model_fp16.onnx', sizeBytes: 16519192, sha256: 'fc4bf9f3fadc450b128c3ef0711a4e61a55797447b6a700abe7fb97d9f549518' },
+      { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 59593896, sha256: 'a1aac8aa5f4e9e835e343025edf5e4d1644ab6f629c0f8c21e121868e60b3f6c' },
     ],
     label: 'Whisper Tiny', sizeLabel: '约 40MB', language: '中 / 英', note: '最快最省，适合低配置设备；识别精度一般。',
   },
@@ -48,6 +52,10 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'tokenizer_config.json', sizeBytes: 282682, sha256: '2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573' },
       { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 23201314, sha256: '5862993336bf33acd23736071aae2b32261d3b1b2f37780194460d4ef974dd46' },
       { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 53693315, sha256: 'fa3ef9902734ce5ae6f9ef2bdb2ba9a6c4b5785b09f4f420ce036573dc9d090b' },
+      // fp16 variants feed the WebGPU path (encoder fp32 + decoder fp16 mixed dtype,
+      // measured: encoder fp16 on WebGPU produces empty output).
+      { path: 'onnx/encoder_model_fp16.onnx', sizeBytes: 41332612, sha256: 'ffba51b20185377c1b89362b1128148d0132de936a32b200af973da2a11a5369' },
+      { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 104727818, sha256: '2078fb08b753e3a74120e6a52446eef1b98f6152d1da43658731367a93fd71a4' },
     ],
     label: 'Whisper Base', sizeLabel: '约 80MB', language: '中 / 英', note: '轻量均衡，日常口播可用。',
   },
@@ -61,6 +69,10 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'tokenizer_config.json', sizeBytes: 282683, sha256: '2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce' },
       { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 92326160, sha256: 'a43a83f3c5361cd591cfa7c36f14b43cf7cb22f47a415cc14a8d557be800fa92' },
       { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 156750845, sha256: 'ec07c3cbb64172c39791e26ee870a65ac22b458c36722bfe2776b3dbf741e0c9' },
+      // fp16 variants feed the WebGPU path (encoder fp32 + decoder fp16 mixed dtype,
+      // measured: encoder fp16 on WebGPU produces empty output).
+      { path: 'onnx/encoder_model_fp16.onnx', sizeBytes: 176607756, sha256: '5549cd8666ff4b694ceb128bfa48b95bdcceec29075cf2c2212f90002cc058de' },
+      { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 308583076, sha256: '22aba6c7f5193701cbe1519051b6ef097eb530ad6887b7093065ec59b830f61d' },
     ],
     label: 'Whisper Small', sizeLabel: '约 250MB', language: '中 / 英', note: '推荐：中英文识别均衡，简体输出，词级时间戳稳定。',
   },

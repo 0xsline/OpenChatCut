@@ -4,7 +4,7 @@
 // Metal/D3D12/Vulkan, wasm fallback). No uploads, no API key, offline-capable.
 import type { TranscriptResult } from './types';
 import type { AsrConfig, AsrResult, AsrDevice, LocalAsrWorkerResponse } from './local-asr-types';
-import { chooseAsrConfig, detectDeviceProfile } from './deviceProfile';
+import { chooseAsrConfig, detectDeviceProfile, markAsrWebgpuBroken } from './deviceProfile';
 import {
   TranscriptionError, transcriptionSourceForPath,
   type AssemblyAiCheckpointWriter, type AssemblyAiResumeCheckpoint, type TranscribeOptions,
@@ -142,7 +142,18 @@ export class LocalAsrClient {
   }
 
   async transcribe(samples: Float32Array, language: string): Promise<AsrResult> {
-    return this.request({ type: 'transcribe', samples, language });
+    const result = await this.request({ type: 'transcribe', samples, language });
+    // A WebGPU session that yields an empty transcript is silently broken
+    // (measured: encoder fp16 on Metal/WebGPU); remember it and retry on wasm
+    // once so the user still gets their transcript this run.
+    if (this.config?.device === 'webgpu' && !result.text && result.chunks.length === 0) {
+      markAsrWebgpuBroken();
+      const fallback: AsrConfig = { ...this.config, device: 'wasm' };
+      this.dispose();
+      await this.ensureLoaded(fallback);
+      return this.request({ type: 'transcribe', samples, language });
+    }
+    return result;
   }
 
   dispose(): void {
