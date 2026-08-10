@@ -301,6 +301,13 @@ function InspectorContent({ sidecar, loading, failed, t }: {
   const checkpoint = sidecar.checkpoints.find((item) => item.runId === run.runId);
   const approvals = sidecar.approvals.filter((item) => item.runId === run.runId);
   const artifacts = sidecar.artifacts.filter((item) => item.runId === run.runId);
+  // Cumulative totals across every run in this project: the inspector shows the
+  // latest run's details, but "几步对话/多少次模型请求" is a project-wide figure.
+  const runCount = sidecar.runs.length;
+  const totalModelRequests = sidecar.runs.reduce((sum, item) => {
+    const value = contextMetric(item.context, 'modelRequestCount');
+    return sum + (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  }, 0);
   return <>
     <div style={runSummary}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -309,6 +316,7 @@ function InspectorContent({ sidecar, loading, failed, t }: {
         <span style={{ marginLeft: 'auto', color: theme.textDim, fontSize: 10.5 }}>{validTime(run.updatedAt)}</span>
       </div>
       <div style={backend}>{textValue(run.backend) ?? t('未知后端')} · {textValue(run.modelId) ?? t('未知模型')}</div>
+      <div style={subtle}>{t('全部对话：{runs} 轮 · 累计 {requests} 次模型请求', { runs: numberText(runCount) ?? '0', requests: numberText(totalModelRequests) ?? '0' })}</div>
       <div style={{ ...subtle, marginTop: 4 }}>{run.userInputPreview || t('未记录请求摘要')}</div>
     </div>
     {run.status === 'interrupted' && <div role="note" style={interrupted}>{t('这次运行被意外中断，系统不会自动继续或重放副作用。请先检查外部任务状态，再决定是否重试。')}</div>}

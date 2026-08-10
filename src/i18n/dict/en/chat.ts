@@ -96,6 +96,7 @@ export default {
   '发送消息后可在这里查看运行状态；中断的操作不会自动重放。': 'Run details appear here after you send a message. Interrupted operations are never replayed automatically.',
   '未知后端': 'Unknown backend',
   '未知模型': 'Unknown model',
+  '全部对话：{runs} 轮 · 累计 {requests} 次模型请求': '{runs} runs total · {requests} cumulative model requests',
   '未记录请求摘要': 'Request summary was not recorded.',
   '这次运行被意外中断，系统不会自动继续或重放副作用。请先检查外部任务状态，再决定是否重试。': 'This run was interrupted unexpectedly. Nothing will continue or replay automatically. Check external task status before retrying.',
   '只读诊断，不会执行或恢复任何操作。': 'Read-only diagnostics. No operation will be executed or resumed.',
