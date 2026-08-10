@@ -244,6 +244,6 @@ await registerTrackedJob({
 const rerunGuard = await runtimeGuardForTool('rerun_generation', { jobId: 'guard-original' }, context);
 assert.equal(rerunGuard?.tool, 'submit_video');
 assert.equal(rerunGuard?.operationId, 'guard-original-operation');
-assert.match(rerunGuard?.summary ?? '', /model=kling.*Original prompt/);
+assert.match(rerunGuard?.summary ?? '', /模型=kling.*Original prompt|model=kling.*Original prompt/);
 
 console.log('job registry checks passed');

@@ -39,11 +39,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Added a durable Agent harness shared by in-app, Codex, and external MCP runs: persisted run/event/approval/checkpoint/artifact records, safe reload and server-restart recovery, lease-fenced browser/offline editing, resumable proposals, portable project transfer, and a read-only run inspector.
   新增由应用内 Agent、Codex 与外部 MCP 共用的持久化运行框架：保存运行、事件、审批、上下文检查点与结果归档；支持页面刷新和服务重启后的安全恢复；用租约隔离浏览器与离线编辑；提案可继续处理，工程包可携带恢复状态，并提供只读运行检查器。
+- Added an opt-in SQLite project-store backend with a user-initiated migration flow: the dashboard banner invites migration, the dialog moves projects, chats, versions, exports, and settings into SQLite with an idempotent, resumable import and an HTTP-layer migration endpoint, then switches the runtime atomically. JSON-file paths stay untouched in SQLite mode.
+  新增可选的 SQLite 工程库后端与用户主动迁移流程：首页横幅邀请迁移，迁移对话框将工程、聊天、版本、导出与设置迁入 SQLite，导入幂等可续跑，并提供 HTTP 层迁移端点后原子切换运行时；SQLite 模式下 JSON 文件路径保持不变。
+- Added self-healing editor session credentials: after a reload the editor re-establishes a valid project-store session without manual sign-in, cross-port deletion stays consistent, and sessionless startups remain read-only.
+  新增编辑器会话凭据自愈：页面刷新后自动恢复有效的工程库会话，无需重新登录；跨端口删除保持一致；无会话启动保持只读。
+- Added platform-aware native inference routing on desktop: DirectML / CoreML / Apple-silicon workers are chosen per platform and transparently fall back to the browser engines.
+  新增桌面端平台感知的原生推理路由：按平台选择 DirectML / CoreML / Apple 芯片 worker，并透明回退到浏览器引擎。
+- Added desktop development state isolation and watchable media folders.
+  新增桌面开发状态隔离与可监控的媒体文件夹。
 
 ### Changed / 变更
 
 - Reduced Agent token use with request-scoped tool schemas, one-shot `ToolSearch` expansion, bounded tool-result/history compaction, provider prompt-cache hints, and an in-chat system/tool/history/cache usage breakdown.
   降低 Agent 令牌消耗：按请求暴露工具 schema、每轮最多一次 `ToolSearch` 扩展、对模型可见的工具结果与旧历史做有界压缩、启用供应商提示词缓存提示，并在聊天框展示系统/工具/历史/缓存用量拆分。
+- Self-hosted Geist + Geist Mono as the UI typeface, removing the network font dependency.
+  UI 字体改为自托管 Geist + Geist Mono，不再依赖网络字体。
+- Made semantic-index sampling configurable per media import.
+  语义索引采样率改为可按素材导入配置。
+
+### Fixed / 修复
+
+- Preserved follow-up message order in agent chats and reduced generation/persistence latency by cutting agent-chat hydration network round-trips.
+  修复 Agent 聊天中跟进消息的顺序问题，并通过削减聊天水合的网络往返降低生成与持久化延迟。
 
 ## [0.1.9] - 2026-08-06
 
@@ -460,7 +477,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added Electron desktop packaging for macOS, Windows, and Linux.  
   提供 macOS、Windows 与 Linux 的 Electron 桌面端打包能力。
 
-[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/0xsline/OpenChatCut/compare/v0.1.8...v0.1.9
+[0.1.8]: https://github.com/0xsline/OpenChatCut/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/0xsline/OpenChatCut/compare/v0.1.6...v0.1.7
+[0.1.6]: https://github.com/0xsline/OpenChatCut/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/0xsline/OpenChatCut/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/0xsline/OpenChatCut/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/0xsline/OpenChatCut/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/0xsline/OpenChatCut/compare/v0.1.1...v0.1.2

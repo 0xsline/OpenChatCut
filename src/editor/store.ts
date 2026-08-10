@@ -149,8 +149,9 @@ export interface EditorCommands {
   setGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   /** Speech-block drag: playback order of source word indices (null = chronological). */
   setTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
-  /** Clip drag in transcript: pack items on track in this id order.*/
-  reorderTrackItems: (track: string, orderedIds: string[]) => void;
+  /** Clip drag in transcript: pack items on track in this id order.
+   * `starts` optionally pins explicit absolute frames (apply_script gap-aware repack).*/
+  reorderTrackItems: (track: string, orderedIds: string[], starts?: Record<string, number>) => void;
   clearEdits: (id: string) => void;
   /** Correction of typos: Only the text of the wordIndex-th transliterated word is corrected, and the timing/number of words/segment duration remains unchanged.*/
   fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
@@ -600,7 +601,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       }),
       setGapCap: (id, afterWordIndex, maxMs) => dispatch({ type: 'setGapCap', id, afterWordIndex, maxMs }),
       setTranscriptPlayOrder: (id, playOrder) => dispatch({ type: 'setTranscriptPlayOrder', id, playOrder }),
-      reorderTrackItems: (track, orderedIds) => dispatch({ type: 'reorderTrackItems', track, orderedIds }),
+      reorderTrackItems: (track, orderedIds, starts) => dispatch({ type: 'reorderTrackItems', track, orderedIds, starts }),
       clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
       fixTranscriptWord: (id, wordIndex, text) => dispatch({ type: 'fixTranscriptWord', id, wordIndex, text }),
       renameSpeaker: (id, from, to) => dispatch({ type: 'renameSpeaker', id, from, to }),

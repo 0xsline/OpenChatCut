@@ -175,4 +175,8 @@ export default {
   '导出失败': 'Export failed',
   '请先开启字幕': 'Turn on captions first',
   '当前字幕轨没有可导出的内容': 'The current caption track has nothing to export',
+  '后台导出': 'Background export',
+  '后台导出任务': 'Background export tasks',
+  '导出素材未就绪：{n} 个素材仍是未完成的上传占位（可能因磁盘满或断网上传失败），请删除或重新导入这些素材：{list}': 'Export media not ready: {n} assets are still unfinished upload placeholders (upload may have failed due to disk full or network loss). Delete or re-import them: {list}',
+  '正在恢复导出…': 'Resuming export…',
 } as Record<string, string>;

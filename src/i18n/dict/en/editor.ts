@@ -27,4 +27,7 @@ export default {
   '柔化擦除转场': 'Soft Wipe',
   '甩镜转场': 'Whip Pan',
   '圆形擦除转场': 'Circle Wipe',
+  '人声分离失败，未修改任何片段。': 'Voice isolation failed; no clips were modified.',
+  '响度分析失败，未修改任何片段。': 'Loudness analysis failed; no clips were modified.',
+  '所选片段的源素材已变化，旧的人声分离结果已丢弃。请重试。': 'Source media changed; the previous voice separation result was discarded. Retry.',
 } as Record<string, string>;

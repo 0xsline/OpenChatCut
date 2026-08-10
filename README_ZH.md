@@ -304,7 +304,7 @@ npx skills add 0xsline/OpenChatCut
 ```
 
 然后对 Agent 说“设置 OpenChatCut”。安装的路由 Skill 会注册本地 MCP
-连接，并按需加载编辑器内置的 24 个专项 Skill，避免技能列表出现大量入口。
+连接，并按需加载编辑器内置的 26 个专项 Skill，避免技能列表出现大量入口。
 
 自定义技能存放在用户可见目录，与 `~/.codex/skills` / `~/.claude/skills` 布局一致：
 

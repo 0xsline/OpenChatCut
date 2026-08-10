@@ -1,14 +1,14 @@
 import { theme } from '../../theme';
 import type { SelectedPreviewStatus } from '../../gl/previewAdapter';
-import { useT } from '../../i18n/locale';
+import { t, useT } from '../../i18n/locale';
 
 function fallbackReasonText(status: SelectedPreviewStatus): string {
-  if (status.fallbackReason === 'webgl-unavailable') return 'WebGL2 不可用';
-  if (status.fallbackReason === 'unsupported-media') return '素材类型不支持纹理预览';
-  if (status.fallbackReason === 'missing-shader') return '着色器资源缺失';
-  if (status.fallbackReason === 'shader-error') return '着色器编译或运行失败';
-  if (status.fallbackReason === 'unsupported-transition') return '转场不支持 GL';
-  return '资源尚未就绪';
+  if (status.fallbackReason === 'webgl-unavailable') return t('WebGL2 不可用');
+  if (status.fallbackReason === 'unsupported-media') return t('素材类型不支持纹理预览');
+  if (status.fallbackReason === 'missing-shader') return t('着色器资源缺失');
+  if (status.fallbackReason === 'shader-error') return t('着色器编译或运行失败');
+  if (status.fallbackReason === 'unsupported-transition') return t('转场不支持 GL');
+  return t('资源尚未就绪');
 }
 
 export function PreviewFidelityStatus({ status }: { status?: SelectedPreviewStatus }) {

@@ -144,7 +144,7 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...READ_PROJECT_TOOL_SCHEMAS,
   // Inline JSX → MG asset
   ...MG_CODE_TOOL_SCHEMAS,
-  // Load 24 built-in SKILL.md on demand (load_skill · progressive disclosure)
+  // Load 26 built-in SKILL.md on demand (load_skill · progressive disclosure)
   ...PLUGIN_SKILL_TOOL_SCHEMAS,
   // Install a GitHub skill repo into the user skill directory.
   ...INSTALL_SKILL_TOOL_SCHEMAS,

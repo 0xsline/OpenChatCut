@@ -4,6 +4,9 @@ export function stableOverrideKeys(
   overrides: Record<number, CaptionWordOverride>,
   wordRef: string,
 ): number[] {
+  // A legacy override (empty wordRef, keyed by plain index) must never match a
+  // stable lookup: `'' === ''` would merge distinct legacy entries together.
+  if (!wordRef) return [];
   return Object.entries(overrides)
     .filter(([, override]) => override.wordRef === wordRef)
     .map(([key]) => Number(key));

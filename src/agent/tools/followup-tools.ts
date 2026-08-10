@@ -96,6 +96,7 @@ export function buildFollowupWidget(fields: RawField[], prompt: string, options:
   messagePrefix?: string;
 } = {}): string {
   const tags: string[] = [];
+  const promptLines: string[] = [];
   let auto = 0;
   for (const field of fields) {
     const label = stringValue(field?.label);
@@ -119,7 +120,12 @@ export function buildFollowupWidget(fields: RawField[], prompt: string, options:
       continue;
     }
     const normalized = normalizeOptions(field.options);
-    if (!normalized.length) continue;
+    if (!normalized.length) {
+      // Choice field without options → degrade to a prompt line instead of
+      // silently dropping the question (kept in the message as plain text).
+      promptLines.push(`- ${label}`);
+      continue;
+    }
     if (variant === 'default') {
       const encoded = normalized.map((option) => option.display !== option.value
         ? `${option.value}|${option.display}`
@@ -130,14 +136,15 @@ export function buildFollowupWidget(fields: RawField[], prompt: string, options:
     const inner = serializeChoiceOptions(variant, normalized);
     tags.push(`<form-${variant}${common}${type === 'multi' ? ' multiple="true"' : ''}>\n${inner}\n</form-${variant}>`);
   }
-  if (!tags.length) return prompt.trim();
+  const lead = prompt.trim() ? `${prompt.trim()}\n\n` : '';
+  const degraded = promptLines.length ? promptLines.join('\n') : '';
+  if (!tags.length) return `${lead}${degraded}`.trim();
   const widgetAttrs = attrs({
     title: stringValue(options.title),
     submit_label: stringValue(options.submitLabel),
     message_prefix: stringValue(options.messagePrefix),
   });
-  const lead = prompt.trim() ? `${prompt.trim()}\n\n` : '';
-  return `${lead}<widget${widgetAttrs}>\n${tags.join('\n')}\n</widget>`;
+  return `${lead}${degraded ? degraded + '\n\n' : ''}<widget${widgetAttrs}>\n${tags.join('\n')}\n</widget>`;
 }
 
 export function execFollowupTool(name: string, args: Args, _ctx: AgentContext): unknown {

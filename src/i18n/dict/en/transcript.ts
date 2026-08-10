@@ -76,4 +76,6 @@ export default {
   '({i}/{total}) 上传 {label}…': '({i}/{total}) Uploading {label}…',
   '({i}/{total}) 转写 {label}…': '({i}/{total}) Transcribing {label}…',
   '已完成 {ok}/{total} 段；失败：{fails}': 'Completed {ok}/{total} clips; failed: {fails}',
+  ' · 已失效': ' · expired',
+  ' · 转写已失效，仅供查看': ' · transcription expired, view only',
 } as Record<string, string>;

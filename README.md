@@ -305,7 +305,7 @@ npx skills add 0xsline/OpenChatCut
 ```
 
 Then tell the agent `Set up OpenChatCut`. The installed router registers the
-local MCP connection and loads the editor's 24 specialized skills on demand,
+local MCP connection and loads the editor's 26 specialized skills on demand,
 so the agent's skill list stays compact.
 
 Custom skills live in a user-visible directory with the same layout as

@@ -19,6 +19,8 @@ import { listVisionModels } from '../../../shared/model-capabilities';
 import type { LlmProvider } from '../../../shared/llm-providers';
 import { VendorIcon } from './vendorIcons';
 
+// Data constants: keep Chinese originals and translate at render time via
+// t(mode.label) / t(mode.hint) so a language switch re-renders correctly.
 const MODES: readonly { value: VisionModelMode; label: string; hint: string }[] = [
   { value: 'follow', label: '跟随主模型', hint: '主模型不支持图片时维持现状（图片剥离为文本）。' },
   { value: 'custom', label: '指定视觉模型', hint: '图片与时间线帧由所选视觉模型理解后以文本注入。' },

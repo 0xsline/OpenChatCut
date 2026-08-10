@@ -12,7 +12,7 @@ import { itemById, serializeTimeline, type Row, type SegRow, type SilenceRow } f
 import { parseScript, type ParsedRun, type ParsedSegRow, type ParsedSilenceRow } from './parse';
 import { hasOperationalTranscript } from '../transcript/types';
 
-type Cmds = Pick<EditorCommands, 'deleteWords' | 'toggleWord' | 'removeItem' | 'moveItem' | 'setGapCap'>;
+type Cmds = Pick<EditorCommands, 'deleteWords' | 'toggleWord' | 'removeItem' | 'moveItem' | 'setGapCap' | 'reorderTrackItems'>;
 
 export interface ApplyScriptOptions { trackId?: TrackId }
 
@@ -234,8 +234,12 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
     changes.push(`${items.get(plan.row.itemId)?.name ?? plan.row.itemId}: 调整停顿`);
   }
   for (const id of removeIds) commands.removeItem(id);
-  // repack: body order = playback order; frames re-derived from live durations
-  for (const { tokens } of repack) {
+  // repack: body order = playback order; frames re-derived from live durations.
+  // One atomic reorderTrackItems per track (with explicit starts) so adjacent
+  // swaps never hit the same-track overlap guard's intermediate state.
+  for (const { track, tokens } of repack) {
+    const orderedIds: string[] = [];
+    const starts: Record<string, number> = {};
     let cursor = 0;
     for (const tok of tokens) {
       if (tok.kind === 'gap') {
@@ -244,11 +248,19 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
       }
       const live = getState().items.find((it) => it.id === tok.id);
       if (!live) continue;
+      orderedIds.push(tok.id);
       if (live.startFrame !== cursor) {
-        commands.moveItem(tok.id, { startFrame: cursor });
+        starts[tok.id] = cursor;
         changes.push(`${live.name}: 移到 ${cursor}f`);
       }
       cursor += live.durationInFrames;
+    }
+    if (orderedIds.length >= 2 && Object.keys(starts).length) {
+      commands.reorderTrackItems(track, orderedIds, starts);
+    } else if (orderedIds.length === 1 && starts[orderedIds[0]!] !== undefined) {
+      // Single surviving item: the track is empty otherwise (removals above),
+      // so a plain move cannot overlap anything.
+      commands.moveItem(orderedIds[0]!, { startFrame: starts[orderedIds[0]!]! });
     }
   }
   return { ok: true, removed, changes };

@@ -349,4 +349,8 @@ export default {
   '选择引用': 'Select reference',
   '工程后来已有其他修改，回滚前会再次确认': 'The project has newer edits. You will be asked to confirm before rollback.',
   '工程后来已有其他修改，继续回滚会覆盖后续修改。确定继续吗？': 'The project has newer edits. Rolling back will overwrite them. Continue?',
+  '取消创作模式': 'Exit creative mode',
+  '回滚此会话': 'Roll back this session',
+  '当前创作工作流，随消息发送': 'Current creative workflow, sent with the message',
+  '确认': 'Confirm',
 } as Record<string, string>;

@@ -109,8 +109,13 @@ export type Action =
   | { type: 'setGapCap'; id: string; afterWordIndex: number; maxMs: number | null }
   /** Speech-block drag: playback order of source word indices (null clears → chronological). */
   | { type: 'setTranscriptPlayOrder'; id: string; playOrder: number[] | null }
-  /** Pack items on a track in the given id order (clip drag in script). */
-  | { type: 'reorderTrackItems'; track: string; orderedIds: string[] }
+  /** Pack items on a track in the given id order (clip drag in script).
+   * `starts` (optional) pins explicit absolute start frames — used by
+   * apply_script repack for gap-aware, atomic reordering that must not be
+   * rejected by the same-track overlap guard (single dispatch, no intermediate
+   * overlapping state). Without `starts`, items pack tightly from the earliest
+   * start of the reordered set (existing behavior). */
+  | { type: 'reorderTrackItems'; track: string; orderedIds: string[]; starts?: Record<string, number> }
   | { type: 'clearEdits'; id: string }
   | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
   | { type: 'renameSpeaker'; id: string; from: string; to: string }
@@ -1049,12 +1054,22 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       const byId = new Map(onTrack.map((it) => [it.id, it]));
       const ordered = a.orderedIds.map((id) => byId.get(id)).filter((x): x is TimelineItem => !!x);
       if (ordered.length < 2) return s;
-      // Pack from the earliest of the reordered set so the block stays in place.
-      let t = Math.min(...ordered.map((it) => it.startFrame));
       const starts = new Map<string, number>();
-      for (const it of ordered) {
-        starts.set(it.id, t);
-        t += Math.max(1, it.durationInFrames);
+      if (a.starts) {
+        // Explicit gap-aware repack (apply_script): absolute frames, atomic
+        // dispatch so the same-track overlap guard never sees an intermediate
+        // overlapping state. Items without a pinned start keep their position.
+        for (const it of ordered) {
+          const pinned = a.starts[it.id];
+          if (pinned !== undefined) starts.set(it.id, pinned);
+        }
+      } else {
+        // Pack from the earliest of the reordered set so the block stays in place.
+        let t = Math.min(...ordered.map((it) => it.startFrame));
+        for (const it of ordered) {
+          starts.set(it.id, t);
+          t += Math.max(1, it.durationInFrames);
+        }
       }
       return {
         ...s,

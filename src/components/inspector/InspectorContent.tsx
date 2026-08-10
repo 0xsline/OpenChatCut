@@ -285,7 +285,7 @@ function InspectorHint({ item, count }: { item: TimelineItem; count: number }) {
     solid: '纯色',
     text: '文字',
     'motion-graphic': '动效图形',
-    sequence: '嵌套序列',
+    sequence: t('嵌套序列'),
   };
   const sourceBacked = ['audio', 'video', 'image', 'gif', 'svg'].includes(item.kind);
   return (
