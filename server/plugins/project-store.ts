@@ -214,6 +214,11 @@ async function readDirectoryEntries(): Promise<Record<string, unknown>> {
 }
 
 async function acquireLock(): Promise<() => Promise<void>> {
+  // SQLite backend: WAL + busy_timeout(5000) provide multi-read concurrency and
+  // serialized writes itself, so the JSON-dir owner-safe lease is unnecessary
+  // and would otherwise stall every other browser/tab (project store busy).
+  // JSON-file backend keeps the exclusive lease that protects the directory.
+  if (sqliteStoreEnabled()) return async () => {};
   return (await STORE_LOCK.acquire()).release;
 }
 
