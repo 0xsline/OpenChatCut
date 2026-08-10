@@ -225,3 +225,45 @@ function state(items: TimelineItem[], tracks: TimelineState['tracks'] = {}): Tim
     'sync must not split the video clip used as BGM even when explicitly targeted',
   );
 }
+// ── missing model packs → bilingual install guidance in the error ──
+{
+  const music = item('music', 'video', 'V1', 0, 120, {
+    src: '/media/uploads/music.wav',
+    sourceAssetId: 'asset_music_missing',
+  });
+  const timeline = state([music]);
+  const ctx = {
+    getState: () => timeline,
+    getDoc: () => ({
+      schemaVersion: 7,
+      assets: [{
+        id: 'asset_music_missing', name: 'Music', kind: 'video',
+        src: '/media/uploads/music.wav', durationInFrames: 5_400,
+        sourceRevision: 'sha256:music',
+      }],
+    }),
+    commands: { batch: () => { throw new Error('must not mutate'); } },
+  } as unknown as AgentContext;
+  const previousFetch = globalThis.fetch;
+  const catalogResponse = new Response(JSON.stringify({
+    packs: [
+      { id: 'rhythm-lite', status: 'absent' },
+      { id: 'music-semantics-lite', status: 'absent' },
+    ],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  globalThis.fetch = (async () => catalogResponse) as typeof fetch;
+  try {
+    const analysis = analysisWith([1_000], [1_000]);
+    await saveMusicAnalysis(analysis);
+    const result = await execMusicIntelligenceTool('sync_cuts_to_music', {
+      itemId: 'music', timing: 'beat', density: 'dense',
+      analysisRef: musicAnalysisRef(analysis),
+    }, ctx) as { error?: string; modelPacks?: Array<{ id: string }> };
+    assert.ok(result.error, 'missing packs must reject');
+    assert.ok(result.error!.includes('设置 → 转写 → 本地模型'), 'error must carry the settings guidance (zh)');
+    assert.ok(result.error!.includes('Settings → Transcription → Local models'), 'error must carry the settings guidance (en)');
+    assert.equal(result.modelPacks?.length, 2, 'the missing pack ids must be reported');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+}

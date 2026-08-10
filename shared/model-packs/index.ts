@@ -1,6 +1,7 @@
 export {
   MODEL_PACKS,
   modelPackDefinition,
+  modelPackInstallGuidance,
   type ModelPackCapability,
   type ModelPackCatalogEntry,
   type ModelPackDefinition,

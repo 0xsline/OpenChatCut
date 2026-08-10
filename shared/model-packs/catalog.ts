@@ -161,3 +161,15 @@ export const MODEL_PACKS = [
 export function modelPackDefinition(id: string): ModelPackDefinition | undefined {
   return MODEL_PACKS.find((pack) => pack.id === id);
 }
+
+/**
+ * User-facing install guidance for missing model packs (used by agent tools).
+ * Bilingual because the assistant relays it in the user's language.
+ */
+export function modelPackInstallGuidance(packs: readonly { id: string }[]): string {
+  const names = packs.map((pack) => {
+    const def = MODEL_PACKS.find((entry) => entry.id === pack.id);
+    return def ? `${def.label}（${def.id}）` : pack.id;
+  }).join('、');
+  return `请到 设置 → 转写 → 本地模型 下载：${names}（Settings → Transcription → Local models: ${packs.map((pack) => pack.id).join(', ')}）`;
+}
