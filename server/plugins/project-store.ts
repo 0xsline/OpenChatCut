@@ -288,8 +288,12 @@ export async function setStoredEntry(key: string, value: unknown): Promise<void>
       for (const item of merged) {
         if (!isProjectStoreRecord(item) || typeof item.id !== 'string') continue;
         try {
-          await access(entryPath(`project:${item.id}`));
-          existing.push(item);
+          // SQLite mode: documents live in the kv table, not the JSON dir.
+          const projectKey = `project:${item.id}`;
+          const present = sqliteStoreEnabled()
+            ? (await sqliteReadEntry(projectKey)).found
+            : await access(entryPath(projectKey)).then(() => true);
+          if (present) existing.push(item);
         } catch {
           // purgeProject deletes its document before updating the index.
         }
@@ -464,7 +468,8 @@ function createLockedProjectStore(deletedIds: ReadonlySet<string>): LockedProjec
     writeEntryExact: (key, value) => writeEntryExactLocked(key, value, deletedIds),
     removeEntry: async (key) => {
       validateLockedEntryKey(key);
-      await durableRemove(entryPath(key));
+      if (sqliteStoreEnabled()) await sqliteDeleteEntry(key);
+      else await durableRemove(entryPath(key));
     },
   };
 }

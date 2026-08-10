@@ -54,6 +54,15 @@ async function main(): Promise<void> {
     await store.setStoredEntry('chat:sqlite-b', { message: 'hello' });
     await store.setStoredEntry('versions:sqlite-b', [{ v: 1 }]);
     await sleep(50);
+
+    // Bug regression: writing the projects index in SQLite mode must keep
+    // existing projects (the file-based existence probe must not run).
+    // updatedAt:1 keeps the later merge (updatedAt:2) able to overwrite.
+    await store.setStoredEntry('projects', [{ id: 'sqlite-b', updatedAt: 1 }]);
+    const indexCheck = await store.getStoredEntry('projects');
+    assert.equal(Array.isArray(indexCheck.value) && indexCheck.value.length === 1,
+      true, 'SQLite mode must keep the project in the index');
+    assert.equal(indexCheck.value?.[0]?.id, 'sqlite-b');
     assert.equal(existsSync(sqlitePath), true, 'the SQLite db file must be created');
     assert.equal(
       readdirSync(storeDir).some((f) => f.includes('sqlite-b')),
@@ -74,6 +83,12 @@ async function main(): Promise<void> {
       'chat:sqlite-b': { message: 'merged' },
     });
     assert.equal((await store.getStoredEntry('project:sqlite-b')).value?.doc.merged, true);
+
+    // Bug regression: removeEntry (compareAndSwap/agent-session paths) must
+    // delete SQLite rows, not just the (absent) JSON file.
+    await store.withProjectStoreLock((locked) => locked.removeEntry('versions:sqlite-b'));
+    assert.deepEqual(await store.getStoredEntry('versions:sqlite-b'), { found: false },
+      'removeEntry must delete the SQLite row');
 
     // purge a project: document + chat + versions all removed, tombstone kept
     await store.deleteStoredEntry('project:sqlite-b');
