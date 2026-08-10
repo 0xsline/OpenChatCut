@@ -8,10 +8,10 @@ import { isSemanticMedia } from './mediaFrames';
 import { indexSemanticAssets, isAbortError, loadWithFallback } from './semanticOperations';
 import { SemanticClient } from './semanticClient';
 import { rankSemanticMatches } from './vectorSearch';
-import { clearSemanticVectors, pruneSemanticVectors, readSemanticVectors, searchSemanticVectorsRemote } from './vectorStore';
+import { clearSemanticVectors, hybridSearchRemote, pruneSemanticVectors, readSemanticVectors, searchSemanticVectorsRemote } from './vectorStore';
 import {
   MAX_SEMANTIC_QUERY_LENGTH,
-  type DuplicateMatch, type SemanticDevice, type SemanticMatch, type SemanticVectorRecord,
+  type DuplicateMatch, type HybridTextHit, type SemanticDevice, type SemanticMatch, type SemanticVectorRecord,
 } from './types';
 
 export type SemanticStatus = 'idle' | 'loading' | 'ready' | 'indexing' | 'searching' | 'error';
@@ -24,13 +24,14 @@ export interface SemanticSearchState {
   totalAssets: number;
   skippedAssets: number;
   matches: SemanticMatch[];
+  textHits: HybridTextHit[];
   duplicates: DuplicateMatch[];
   error: string | null;
 }
 
 const initialState: SemanticSearchState = {
   status: 'idle', device: null, modelProgress: 0, indexedAssets: 0, totalAssets: 0, skippedAssets: 0,
-  matches: [], duplicates: [], error: null,
+  matches: [], textHits: [], duplicates: [], error: null,
 };
 
 const preferredDevice = (): SemanticDevice => ('gpu' in navigator ? 'webgpu' : 'wasm');
@@ -281,16 +282,27 @@ function useSemanticQueries(
       setFailure(setState, new Error('Semantic query exceeds the local limit'));
       return;
     }
-    setState((current) => ({ ...current, status: 'searching', matches: [], error: null }));
+    setState((current) => ({ ...current, status: 'searching', matches: [], textHits: [], error: null }));
     try {
       const vector = await client.current.embedText(query);
       if (snapshotRef.current !== snapshot || searchRequest.current !== request) return;
-      // Phase C: server-side TopK (sqlite-vec) when available; otherwise the
-      // local full-scope ranking over the cached records.
-      const remote = await searchSemanticVectorsRemote(snapshot.scopeId, vector);
+      // Phase C: server-side hybrid search (text FTS5 + visual sqlite-vec,
+      // RRF-fused) when available; otherwise local visual ranking only.
+      const hybrid = await hybridSearchRemote(snapshot.scopeId, query, vector);
       if (snapshotRef.current !== snapshot || searchRequest.current !== request) return;
-      const matches = remote ?? rankSemanticMatches(records.current, vector);
-      setState((current) => ({ ...current, status: 'ready', matches }));
+      if (hybrid) {
+        setState((current) => ({
+          ...current,
+          status: 'ready',
+          matches: hybrid.visual,
+          textHits: hybrid.text,
+        }));
+      } else {
+        const matches = await searchSemanticVectorsRemote(snapshot.scopeId, vector)
+          ?? rankSemanticMatches(records.current, vector);
+        if (snapshotRef.current !== snapshot || searchRequest.current !== request) return;
+        setState((current) => ({ ...current, status: 'ready', matches, textHits: [] }));
+      }
     } catch (reason) {
       if (snapshotRef.current === snapshot && searchRequest.current === request && !isAbortError(reason)) {
         setFailure(setState, reason);

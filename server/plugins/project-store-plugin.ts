@@ -1,4 +1,23 @@
 import type { Plugin } from 'vite';
+import type { IncomingMessage } from 'node:http';
+
+const MAX_BODY_BYTES = 64 * 1024 * 1024;
+
+async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > MAX_BODY_BYTES) throw new Error('request body too large');
+    chunks.push(buffer);
+  }
+  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('body must be a JSON object');
+  }
+  return parsed as Record<string, unknown>;
+}
 import {
   exchangeProjectStoreLaunchToken,
   projectStoreHttpAuthorized,
@@ -12,6 +31,7 @@ import {
   upsertSemanticVectors,
 } from '../storage/semantic-vectors.ts';
 import { searchContent } from '../storage/fulltext-search.ts';
+import { hybridSearch } from '../storage/hybrid-search.ts';
 import { sqliteMigrationStatus, sqliteImportJson, sqliteStoreEnabled } from '../storage/sqlite-store.ts';
 import {
   compareAndSwapAgentRuntime,
@@ -109,6 +129,33 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
               return;
             }
             sendProjectStoreJson(res, 200, { hits: searchContent(query, { projectId: project, limit }) });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            sendProjectStoreJson(res, 400, { error: message });
+          }
+          return;
+        }
+        // Hybrid search: text (FTS5) + visual (sqlite-vec) fused by RRF.
+        if (req.method === 'POST' && req.url === '/hybrid-search') {
+          if (!projectStoreReadAuthorized(req) && !projectStoreHttpAuthorized(req)) {
+            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
+            return;
+          }
+          try {
+            const body = await readBody(req);
+            const query = typeof body.query === 'string' ? body.query.trim() : '';
+            const queryVector = Array.isArray(body.queryVector)
+              ? (body.queryVector as unknown[]).filter((v): v is number => typeof v === 'number')
+              : undefined;
+            const projectId = typeof body.projectId === 'string' ? body.projectId : undefined;
+            const limit = typeof body.limit === 'number' ? body.limit : 20;
+            if (!query) {
+              sendProjectStoreJson(res, 400, { error: 'query is required' });
+              return;
+            }
+            sendProjectStoreJson(res, 200, {
+              hits: hybridSearch(query, queryVector, { projectId, limit }),
+            });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             sendProjectStoreJson(res, 400, { error: message });

@@ -27,6 +27,13 @@ export interface SemanticMatch {
   sceneEnd?: number;
 }
 
+export interface HybridTextHit {
+  kind: 'chat' | 'caption' | 'transcript';
+  projectId: string;
+  ref: string;
+  score: number;
+}
+
 export interface DuplicateMatch {
   leftAssetId: string;
   rightAssetId: string;

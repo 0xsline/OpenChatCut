@@ -1,4 +1,4 @@
-import { SEMANTIC_MODEL_VERSION, type SemanticVectorRecord, type SemanticMatch } from './types';
+import { SEMANTIC_MODEL_VERSION, type HybridTextHit, type SemanticVectorRecord, type SemanticMatch } from './types';
 import {
   projectStoreRemoteAvailable,
   projectStoreWriteCredential,
@@ -89,6 +89,62 @@ function remoteSemanticAvailable(): boolean {
 
 function toWireVector(vector: ArrayLike<number>): number[] {
   return Array.from(vector);
+}
+
+/** Hybrid search: text (FTS5) + visual (sqlite-vec) fused server-side (RRF). */
+export async function hybridSearchRemote(
+  scopeId: string,
+  query: string,
+  queryVector: ArrayLike<number>,
+): Promise<{ visual: SemanticMatch[]; text: HybridTextHit[] } | null> {
+  if (remoteSemanticFailed) return null;
+  if (!projectStoreRemoteAvailable()) return null;
+  try {
+    const response = await fetch('/api/project-store/hybrid-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'sec-fetch-site': 'same-origin' },
+      body: JSON.stringify({
+        query,
+        queryVector: toWireVector(queryVector),
+        projectId: scopeId,
+        limit: 24,
+      }),
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`hybrid search failed: ${response.status}`);
+    const body = await response.json() as {
+      hits: Array<{
+        kind: string;
+        projectId: string;
+        ref?: string;
+        assetId?: string;
+        sampleTime?: number;
+        score: number;
+      }>;
+    };
+    const visual: SemanticMatch[] = [];
+    const text: HybridTextHit[] = [];
+    for (const hit of body.hits) {
+      if (hit.kind === 'visual' && hit.assetId) {
+        visual.push({
+          assetId: hit.assetId,
+          sampleTime: hit.sampleTime ?? 0,
+          score: hit.score,
+        });
+      } else if (hit.ref && (hit.kind === 'chat' || hit.kind === 'caption' || hit.kind === 'transcript')) {
+        text.push({
+          kind: hit.kind,
+          projectId: hit.projectId,
+          ref: hit.ref,
+          score: hit.score,
+        });
+      }
+    }
+    return { visual, text };
+  } catch {
+    remoteSemanticFailed = true;
+    return null;
+  }
 }
 
 /** Server-side TopK search (sqlite-vec); falls back to local ranking on failure. */

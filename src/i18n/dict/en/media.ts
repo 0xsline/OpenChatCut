@@ -206,4 +206,5 @@ export default {
   '素材请求失败（{status}）': 'Media request failed ({status})',
   '网络连接失败，请检查网络后重试': 'Network connection failed; check your network and retry',
   '视频兼容性处理失败，请重试': 'Video compatibility processing failed; retry',
+  '相关文本 {n} 处': 'Related text ({n})',
 } as Record<string, string>;

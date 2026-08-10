@@ -195,6 +195,7 @@ function ReadyView(props: ReadyViewProps) {
     <IndexStatus {...props} />
     <SamplingSettings t={t} />
     <SearchResults state={state} names={props.names} t={t} />
+    <TextResults state={state} names={props.names} t={t} />
     <DuplicateResults state={state} names={props.names} t={t} />
   </div>;
 }
@@ -232,6 +233,28 @@ function SearchResults({ state, names, t }: ViewProps & { names: Map<string, str
     {state.matches.slice(0, 5).map((match) => <span key={`${match.assetId}:${match.sampleTime}`}>
       <b>{names.get(match.assetId) ?? match.assetId}</b>
       <em>{match.sampleTime > 0 ? formatTime(match.sampleTime) : `${Math.round(match.score * 100)}%`}</em>
+    </span>)}
+  </div>;
+}
+
+function describeTextHit(ref: string): string {
+  const separator = ref.lastIndexOf(':');
+  if (separator <= 0) return ref;
+  const prefix = ref.slice(0, separator);
+  const tail = ref.slice(separator + 1);
+  if (prefix.startsWith('chat:')) return `聊天第 ${Number(tail) + 1} 条`;
+  if (tail === 'captions') return '字幕';
+  if (tail === 'transcript') return '转写';
+  return ref;
+}
+
+function TextResults({ state, t }: ViewProps & { names: Map<string, string> }) {
+  if (state.textHits.length === 0) return null;
+  return <div className="cc-semantic-results">
+    <strong>{t('相关文本 {n} 处', { n: state.textHits.length })}</strong>
+    {state.textHits.slice(0, 5).map((hit) => <span key={`${hit.kind}:${hit.ref}`}>
+      <b>{describeTextHit(hit.ref)}</b>
+      <em>{hit.kind}</em>
     </span>)}
   </div>;
 }
