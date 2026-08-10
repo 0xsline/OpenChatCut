@@ -87,6 +87,25 @@ function sessionError(error: unknown): string {
   return 'Codex app-server stopped before the turn completed.';
 }
 
+/**
+ * Surface a user-facing message from a codex `error` notification. The codex
+ * app-server sends `{ error: { message, codexErrorInfo, ... }, willRetry }`;
+ * the previous code dropped that detail behind a generic "Try again.", which
+ * left users unable to act (e.g. an OpenAI usage-limit). Translate the common
+ * fatal reasons into actionable Chinese copy and keep the original detail.
+ */
+function codexErrorNotificationSummary(params: Record<string, unknown>): string {
+  const err = object(params.error);
+  const detail = typeof err?.message === 'string' ? err.message.trim().slice(0, ERROR_SUMMARY_LIMIT) : '';
+  const reason = typeof err?.codexErrorInfo === 'string' ? err.codexErrorInfo : '';
+  if (reason === 'usageLimitExceeded' || /usage limit|quota|credits|billing/i.test(detail)) {
+    const base = 'Codex 调用失败：当前 OpenAI Codex 的使用额度已用尽。请前往 chatgpt.com/codex/settings/usage 查看并充值，或等待配额重置后再试；也可以切换到其他模型（如 DeepSeek）。';
+    return detail ? `${base}\n（${detail}）` : base;
+  }
+  if (detail) return `Codex 调用失败：${detail}`;
+  return 'Codex 调用失败。请稍后重试，或在模型下拉里切换到其他模型（如 DeepSeek）。';
+}
+
 function browserFailureSummary(result: unknown): string {
   if (typeof result === 'string') return result.replace(/\s+/g, ' ').slice(0, ERROR_SUMMARY_LIMIT);
   const shaped = object(result);
@@ -307,7 +326,7 @@ export class CodexTurnManager {
       return;
     }
     if (notification.method === 'error' && params.willRetry !== true) {
-      session.finish({ type: 'error', message: 'Codex turn failed. Try again.' });
+      session.finish({ type: 'error', message: codexErrorNotificationSummary(params) });
       return;
     }
     if (notification.method === 'turn/completed') this.completeTurn(session, turn);
