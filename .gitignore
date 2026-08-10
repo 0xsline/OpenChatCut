@@ -65,6 +65,10 @@ AGENTS.md
 .impeccable/
 # Private working documents such as TODOs and design notes; publishable docs belong elsewhere
 docs/
+# Local model-optimization plan / notes (was mistakenly committed; keep out of the public repo)
+MODEL-OPT-PLAN.md
+/MODEL-OPT-PLAN*/
+*.opt-plan.md
 
 # Keep local and temporary check scripts out of the repository; stable regressions use *.verify.* via npm test.
 *.check.ts
