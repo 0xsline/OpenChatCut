@@ -8,11 +8,11 @@
 // Phase 0 scope: interface-parity skeleton only. The JSON→SQLite import
 // (receipt + idempotent re-import + crash recovery) is phase 1
 // (see docs/storage-sqlite-rfc.md §5).
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { runtimeProfile } from '../runtime-profile.ts';
-import { ensureJsonImported, type ImportSummary } from './sqlite-migration.ts';
+import { ensureJsonImported, readImportReceipt, type ImportSummary } from './sqlite-migration.ts';
 
 export interface StoredEntryValue {
   found: boolean;
@@ -21,9 +21,16 @@ export interface StoredEntryValue {
 
 export const SQLITE_STORE_ENV = 'OPENCHATCUT_SQLITE_STORE';
 
-/** Opt-in switch. Every caller keeps the JSON-file path when this is off. */
+/**
+ * Opt-in switch. Enabled when: the env var is set, OR the user has explicitly
+ * run the migration (receipt present + database file exists). Without either,
+ * every code path behaves exactly as before (zero regression).
+ */
 export function sqliteStoreEnabled(): boolean {
-  return process.env[SQLITE_STORE_ENV] === '1';
+  if (process.env[SQLITE_STORE_ENV] === '1') return true;
+  // User-initiated migration: receipt marks completion, the database file
+  // guards against a receipt left behind after the file was removed.
+  return readImportReceipt() !== null && existsSync(storePath());
 }
 
 function storePath(): string {
@@ -49,15 +56,48 @@ function openDatabase(): DatabaseSync {
       v TEXT NOT NULL
     );
   `);
-  // Phase 1: one-time JSON→SQLite import (idempotent, receipt-gated).
-  ensureJsonImported(db);
   database = db;
   return db;
 }
 
-/** Trigger/force the JSON→SQLite import path (verify + diagnostics). */
+/**
+ * Run the JSON→SQLite import (user-initiated migration; see
+ * StorageMigrationDialog). Idempotent and receipt-gated.
+ */
 export function sqliteImportJson(): ImportSummary {
   return ensureJsonImported(openDatabase());
+}
+
+/** Migration status for the UI (never opens or mutates the store). */
+export function sqliteMigrationStatus(): {
+  enabled: boolean;
+  receipt: { count: number; importedAt: string } | null;
+  jsonKeyCount: number;
+  sqliteKeyCount: number;
+} {
+  const receipt = readImportReceipt();
+  const dir = runtimeProfile().projectStore.directory;
+  let jsonKeyCount = 0;
+  try {
+    jsonKeyCount = readdirSync(dir).filter((name) => name.endsWith('.json')).length;
+  } catch {
+    // No JSON directory yet.
+  }
+  let sqliteKeyCount = 0;
+  if (existsSync(storePath())) {
+    try {
+      const row = openDatabase().prepare('SELECT count(*) AS n FROM kv').get() as { n: number };
+      sqliteKeyCount = row.n;
+    } catch {
+      // Read-only diagnostics; never throw for the UI.
+    }
+  }
+  return {
+    enabled: sqliteStoreEnabled(),
+    receipt: receipt ? { count: receipt.count, importedAt: receipt.importedAt } : null,
+    jsonKeyCount,
+    sqliteKeyCount,
+  };
 }
 
 /** Close the connection (verify isolation / profile switches). */

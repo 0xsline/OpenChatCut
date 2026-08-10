@@ -25,7 +25,12 @@ async function main(): Promise<void> {
 
     // Import AFTER HOME is set: runtimeProfile() freezes the profile at load.
     const store = await import('../plugins/project-store.ts');
-    const { sqliteStoreEnabled, sqliteImportJson, resetSqliteStoreForTests } = await import('./sqlite-store.ts');
+    const {
+      sqliteMigrationStatus,
+      sqliteStoreEnabled,
+      sqliteImportJson,
+      resetSqliteStoreForTests,
+    } = await import('./sqlite-store.ts');
 
     const storeDir = join(root, '.openchatcut', 'project-store-v1');
     const sqlitePath = join(root, '.openchatcut', 'project-store-v1.sqlite3');
@@ -98,6 +103,13 @@ async function main(): Promise<void> {
     await store.setStoredEntry('thumb:import-p', { thumb: true });
     const jsonFilesBefore = readdirSync(storeDir).filter((f) => f.endsWith('.json')).sort();
 
+    // Before migration: status reports JSON mode, no receipt, no SQLite file.
+    const statusBefore = sqliteMigrationStatus();
+    assert.equal(statusBefore.enabled, false, 'status must report JSON mode before migration');
+    assert.equal(statusBefore.receipt, null);
+    assert.equal(statusBefore.jsonKeyCount, 6);
+    assert.equal(statusBefore.sqliteKeyCount, 2); // projects index + persist-c from scenario B
+
     process.env[SQLITE_STORE_ENV] = '1';
     const first = sqliteImportJson();
     assert.equal(first.imported, 6, 'all six legacy keys (5 import + after-off) must be imported');
@@ -132,7 +144,16 @@ async function main(): Promise<void> {
     assert.deepEqual(await store.getStoredEntry('chat:import-2'),
       { found: true, value: { m: 'two' } });
 
-    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill all passed');
+    // ── User-initiated switch: after migration, no env var is needed ──
+    delete process.env[SQLITE_STORE_ENV];
+    assert.equal(sqliteStoreEnabled(), true,
+      'a completed migration must enable the SQLite backend without the env var');
+    const after = sqliteMigrationStatus();
+    assert.equal(after.enabled, true);
+    assert.equal(after.receipt?.count, 6, 'the status must report the migrated key count');
+    assert.equal(after.sqliteKeyCount, 8, 'the status must report SQLite row count (2 prior + 6 imported)');
+
+    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill / user-switch all passed');
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;

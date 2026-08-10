@@ -7,6 +7,7 @@ import { DashboardHeaderLinks } from '../DashboardHeaderLinks';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
 import { McpGuideDialog } from '../settings/McpGuide';
 import { SettingsDialog } from '../settings/SettingsDialog';
+import { StorageMigrationDialog } from '../settings/StorageMigrationDialog';
 import { SkinPicker } from '../settings/SkinPicker';
 import { LocaleToggle } from '../TopBar';
 import {
@@ -66,6 +67,7 @@ export function DashboardTitlebarContent({ model }: { model: DashboardModel }) {
         <button onClick={() => model.setDialog('shortcuts', true)} data-tip={t('编辑快捷键')} aria-label={t('编辑快捷键')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}><Icon name="keyboard" size={16} /></button>
         <LocaleToggle />
         <SkinPicker />
+        <button onClick={() => model.setDialog('storage', true)} data-tip={t('数据存储')} aria-label={t('数据存储')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}><Icon name="database" size={16} /></button>
         <button onClick={() => model.setDialog('settings', true)} data-tip={t('设置 · API 密钥')} aria-label={t('设置 · API 密钥')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}><Icon name="sliders" size={16} /></button>
       </span>
     </>
@@ -191,6 +193,7 @@ export function DashboardDialogs({ model }: { model: DashboardModel }) {
       {model.dialogs.shortcuts && <ShortcutsDialog onClose={() => model.setDialog('shortcuts', false)} />}
       {model.dialogs.mcp && <McpGuideDialog onClose={() => model.setDialog('mcp', false)} />}
       {model.dialogs.cleanup && <MediaCleanupDialog onClose={() => model.setDialog('cleanup', false)} />}
+      {model.dialogs.storage && <StorageMigrationDialog onClose={() => model.setDialog('storage', false)} />}
     </>
   );
 }
