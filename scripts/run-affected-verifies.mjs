@@ -12,7 +12,7 @@ import { cpus } from 'node:os';
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
-const CONCURRENCY = Math.max(2, Math.min(8, cpus().length));
+const CONCURRENCY = Math.max(2, Math.min(8, Number(process.env.TEST_CONCURRENCY) || 4));
 
 const gitChanged = () => new Promise((resolve) => {
   exec('git diff --name-only HEAD', (error, stdout) => {

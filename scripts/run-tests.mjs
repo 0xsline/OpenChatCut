@@ -8,9 +8,15 @@ import { exec } from 'node:child_process';
 import { cpus } from 'node:os';
 import { readFileSync } from 'node:fs';
 
+// Concurrency budget: many verifies are heavyweight (model loads, vite
+// builds, ffmpeg, rendering) and a full parallel suite can exhaust RAM on
+// smaller machines (measured: 8 workers × heavy suites filled swap on a
+// 32 GB Mac and froze the system). Default 4 is safe; raise explicitly with
+// TEST_CONCURRENCY=8 on machines with headroom (and a page file).
+
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const segments = pkg.scripts.test.split('&&').map((s) => s.trim()).filter(Boolean);
-const CONCURRENCY = Math.max(2, Math.min(8, cpus().length));
+const CONCURRENCY = Math.max(2, Math.min(8, Number(process.env.TEST_CONCURRENCY) || 4));
 
 const run = (command) => new Promise((resolve) => {
   exec(command, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
