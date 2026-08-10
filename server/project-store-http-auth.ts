@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
+  chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
@@ -24,10 +24,35 @@ export function projectStoreAuthDir(profile: RuntimeProfile = runtimeProfile()):
   return profile.authDir;
 }
 
+const SESSION_FILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
+const SESSION_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1_000;
+let lastSessionPruneAt = 0;
+
+/** Remove long-dead persisted sessions (one per host/port binding) so the
+ *  auth directory cannot grow unbounded across dev port changes. */
+function pruneStaleSessionFiles(): void {
+  const now = Date.now();
+  if (now - lastSessionPruneAt < SESSION_PRUNE_INTERVAL_MS) return;
+  lastSessionPruneAt = now;
+  try {
+    const directory = projectStoreAuthDir();
+    for (const name of readdirSync(directory)) {
+      if (!name.startsWith('session-')) continue;
+      const path = join(directory, name);
+      if (now - statSync(path).mtimeMs > SESSION_FILE_MAX_AGE_MS) {
+        rmSync(path, { force: true });
+      }
+    }
+  } catch {
+    // Best-effort cleanup; never block auth on it.
+  }
+}
+
 function ensureAuthDir(): string {
   const directory = projectStoreAuthDir();
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   try { chmodSync(directory, 0o700); } catch { /* best-effort on non-POSIX filesystems */ }
+  pruneStaleSessionFiles();
   return directory;
 }
 

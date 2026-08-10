@@ -63,11 +63,20 @@ const originalHistory = globals.history;
 const originalLocalStorage = globals.localStorage;
 const originalSessionStorage = globals.sessionStorage;
 const stored = new Map<string, string>();
-const localStored = new Map<string, string>();
 const initialLaunch = 'initial-launch-'.padEnd(48, 'x');
-let localStorageAccesses = 0;
 let scrubCount = 0;
 let resetImportedTransport: (() => void) | undefined;
+// Independent persistent store: sessionStorage and localStorage must be able
+// to diverge so tab-scoped loss can be recovered from the persistent copy.
+const persistent = new Map<string, string>();
+const persistentStorage: Storage = {
+  get length() { return persistent.size; },
+  clear: () => persistent.clear(),
+  getItem: (key) => persistent.get(key) ?? null,
+  key: (index) => [...persistent.keys()][index] ?? null,
+  removeItem: (key) => { persistent.delete(key); },
+  setItem: (key, value) => { persistent.set(key, value); },
+};
 
 globals.window = {};
 globals.location = {
@@ -87,13 +96,10 @@ globals.history = {
 };
 stored.set('openchatcut.projectStoreLaunchToken', 'cached-launch-'.padEnd(48, 'c'));
 globals.sessionStorage = mapStorage(stored);
-globals.localStorage = mapStorage(localStored, () => {
-  localStorageAccesses += 1;
-});
+globals.localStorage = persistentStorage;
 globalThis.fetch = async () => {
   throw new Error('fetch was not configured for this verification step');
 };
-
 try {
   // This verifier runs in its own process. Browser globals and the launch hash
   // must exist before this first import so module-initialization capture is real.
@@ -115,14 +121,15 @@ try {
   assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
     'an explicit fragment must replace an already-cached tab launch token');
   assert.equal(projectStoreWriteCredential(), true);
-  assert.equal(localStorageAccesses, 0, 'root launch authority must never read or write localStorage');
+  assert.equal(persistent.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
+    'module-level fragment consumption must persist the launch credential to localStorage');
 
   const session = 'session-'.padEnd(48, 'y');
   const renewedSession = 'renewed-session-'.padEnd(48, 'z');
   let rejectSessionOnce = false;
   let exchangeCount = 0;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
-  globalThis.fetch = async (input, init) => {
+  const httpFetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
     if (url.endsWith('/session')) {
@@ -143,6 +150,7 @@ try {
     return Response.json({ found: true, value: 'http' });
   };
 
+  globalThis.fetch = httpFetchMock;
   assert.equal(projectStoreRemoteAvailable(), true);
   assert.deepEqual(await requestProjectStore({ operation: 'entry', key: 'projects' }), {
     found: true,
@@ -169,7 +177,11 @@ try {
     operation: 'purge-project',
     projectId: 'project-to-purge',
   });
-
+  assert.equal(globals.location.hash, '', 'launch credential must be removed from the visible URL');
+  assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
+    'the launch credential must remain tab-scoped for server restart recovery');
+  assert.equal(persistent.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
+    'the launch credential must also persist across tabs in localStorage');
   rejectSessionOnce = true;
   const staleCallStart = calls.length;
   const recovered = await fetchWithEditorSession('/api/external-agent/bootstrap', { method: 'POST' });
@@ -182,6 +194,8 @@ try {
   ), renewedSession, 'project-store requests must reuse the renewed session');
 
   resetProjectStoreTransport();
+  stored.clear();
+  persistent.clear();
   globals.location.hash = '';
   assert.equal(projectStoreRemoteAvailable(), true,
     'loopback HTTP pages may read the shared library without a credential');
@@ -196,6 +210,7 @@ try {
   assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), lateLaunch);
 
   resetProjectStoreTransport();
+  persistent.clear();
   const rejectedLaunch = 'rejected-launch-'.padEnd(48, 'r');
   const rejectedSession = 'rejected-session-'.padEnd(48, 's');
   const replacementLaunch = 'replacement-launch-'.padEnd(48, 'n');
@@ -247,6 +262,7 @@ try {
   assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), replacementLaunch);
 
   resetProjectStoreTransport();
+  persistent.clear();
   const concurrentRejectedLaunch = 'concurrent-rejected-'.padEnd(48, 'q');
   const concurrentReplacementLaunch = 'concurrent-replacement-'.padEnd(48, 'w');
   const concurrentSession = 'concurrent-session-'.padEnd(48, 'e');
@@ -355,7 +371,35 @@ try {
   assert.equal(browserProjectOwnership('project-race'), undefined);
   assert.equal(stored.has('openchatcut.projectStoreLaunchToken'), false);
   assert.equal(stored.has('openchatcut.projectStoreSession'), false);
-  assert.equal(localStorageAccesses, 0, 'transport lifecycle must never access localStorage');
+
+  // Tab-scoped loss must recover from the persistent copy: wipe sessionStorage
+  // only (the persistent copy survives), then a fresh transport state must
+  // still exchange using the localStorage credential.
+  globals.window = {};
+  globalThis.fetch = httpFetchMock;
+  stored.clear();
+  persistent.set('openchatcut.projectStoreLaunchToken', initialLaunch);
+  const beforeRecoveryCalls = calls.length;
+  resetProjectStoreTransport();
+  const recoveredEntry = await requestProjectStore({ operation: 'entry', key: 'projects' });
+  assert.deepEqual(recoveredEntry, { found: true, value: 'http' });
+  assert.equal(calls.length, beforeRecoveryCalls + 2,
+    'a wiped tab storage still exchanges once using the localStorage credential');
+
+  // Failed lookups must not poison later attempts: a token that appears
+  // after a failed exchange is picked up without a page reload.
+  stored.clear();
+  persistent.clear();
+  resetProjectStoreTransport();
+  await assert.rejects(
+    () => fetchWithEditorSession('/api/project-store/entry?key=probe', { method: 'GET' }),
+    /editor launch credential missing/,
+    'without any credential the transport stays unavailable',
+  );
+  persistent.set('openchatcut.projectStoreLaunchToken', initialLaunch);
+  const afterSeed = await requestProjectStore({ operation: 'entry', key: 'projects' });
+  assert.deepEqual(afterSeed, { found: true, value: 'http' },
+    'a credential stored after a failed lookup is picked up without reload');
 } finally {
   resetImportedTransport?.();
   globalThis.fetch = originalFetch;
