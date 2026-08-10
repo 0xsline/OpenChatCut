@@ -207,4 +207,9 @@ export default {
   '网络连接失败，请检查网络后重试': 'Network connection failed; check your network and retry',
   '视频兼容性处理失败，请重试': 'Video compatibility processing failed; retry',
   '相关文本 {n} 处': 'Related text ({n})',
+  '索引和搜索都在本机完成，素材不会上传，不影响未启用时的编辑器。': 'Indexing and search run entirely on this machine — assets never upload, and the editor is unaffected until you enable it.',
+  '首次使用需要下载可选模型包（约 178MB）。模型在本机运行，素材不会上传。': 'First use requires downloading an optional model pack (~178 MB). The model runs locally; assets never leave this machine.',
+  '下载并启用': 'Download and enable',
+  '正在下载画面语义轻量包… {n}%': 'Downloading the visual-semantics pack… {n}%',
+  '模型包下载失败，请到 设置 → 本地模型 重试。': 'Model pack download failed — retry in Settings → Local models.',
 } as Record<string, string>;

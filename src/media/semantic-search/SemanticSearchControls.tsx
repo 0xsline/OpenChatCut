@@ -143,7 +143,8 @@ function SemanticPanel(props: SemanticPanelProps & {
   return <section ref={props.panelRef} style={props.style} className="cc-semantic-panel" role="dialog" aria-label={t('本地语义搜索')}>
     <PanelHeader onClose={props.onClose} t={t} />
     {semantic.state.status === 'idle' || semantic.state.status === 'error'
-      ? <EnableView state={semantic.state} onEnable={() => void semantic.enable()} t={t} />
+      ? <EnableView state={semantic.state} onEnable={() => void semantic.enable()}
+          onInstall={() => void semantic.installAndEnable()} t={t} />
       : <ReadyView {...props} state={semantic.state} runSearch={runSearch} clearSearch={clearSearch}
           index={() => void semantic.index()} rebuild={() => void rebuild()} cancel={semantic.cancel} disable={disable} />}
   </section>;
@@ -161,14 +162,36 @@ interface ViewProps {
   t: Translate;
 }
 
-function EnableView({ state, onEnable, t }: ViewProps & { onEnable: () => void }) {
+function EnableView({ state, onEnable, onInstall, t }: ViewProps & {
+  onEnable: () => void;
+  onInstall: () => void;
+}) {
+  const packAbsent = state.pack === 'absent' || state.pack === 'error';
+  const packDownloading = state.pack === 'downloading';
   return <div className="cc-semantic-empty">
     <span className="cc-semantic-empty-icon"><Icon name="sparkles" size={18} /></span>
     <div><strong>{t('按画面内容搜索素材')}</strong>
-      <p>{t('首次启用会下载可选模型。索引和搜索都在本机完成，不影响未启用时的编辑器。')}</p>
+      <p>{t('索引和搜索都在本机完成，素材不会上传，不影响未启用时的编辑器。')}</p>
     </div>
-    {state.error && <span className="cc-semantic-error">{t('语义搜索暂不可用，请重试。')}</span>}
-    <button type="button" className="primary" onClick={onEnable}><Icon name="sparkles" size={13} />{t('启用本地模型')}</button>
+    {packAbsent && (
+      <div className="cc-semantic-pack-missing">
+        <p>{state.pack === 'error'
+          ? t('模型包下载失败，请到 设置 → 本地模型 重试。')
+          : t('首次使用需要下载可选模型包（约 178MB）。模型在本机运行，素材不会上传。')}</p>
+        <button type="button" className="primary" onClick={onInstall}>
+          <Icon name="download" size={13} />{t('下载并启用')}
+        </button>
+      </div>
+    )}
+    {packDownloading && (
+      <div className="cc-semantic-pack-missing">
+        <p>{t('正在下载画面语义轻量包… {n}%', { n: state.packProgress })}</p>
+      </div>
+    )}
+    {!packAbsent && !packDownloading && <>
+      {state.error && <span className="cc-semantic-error">{t('语义搜索暂不可用，请重试。')}</span>}
+      <button type="button" className="primary" onClick={onEnable}><Icon name="sparkles" size={13} />{t('启用本地模型')}</button>
+    </>}
   </div>;
 }
 

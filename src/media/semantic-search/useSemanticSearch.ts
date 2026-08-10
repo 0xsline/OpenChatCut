@@ -9,6 +9,9 @@ import { indexSemanticAssets, isAbortError, loadWithFallback } from './semanticO
 import { SemanticClient } from './semanticClient';
 import { rankSemanticMatches } from './vectorSearch';
 import { clearSemanticVectors, hybridSearchRemote, pruneSemanticVectors, readSemanticVectors, searchSemanticVectorsRemote } from './vectorStore';
+import { fetchModelPackCatalog, fetchModelPackTask, installModelPack } from '../../../shared/model-packs/client';
+import type { ModelPackId } from '../../../shared/model-packs/catalog';
+import { editorCredentialHeaders } from '../../agent/editor-credential';
 import {
   MAX_SEMANTIC_QUERY_LENGTH,
   type DuplicateMatch, type HybridTextHit, type SemanticDevice, type SemanticMatch, type SemanticVectorRecord,
@@ -27,12 +30,33 @@ export interface SemanticSearchState {
   textHits: HybridTextHit[];
   duplicates: DuplicateMatch[];
   error: string | null;
+  /** Visual-semantics model pack state ('skipped' = never probed / not needed). */
+  pack: 'checking' | 'absent' | 'downloading' | 'installed' | 'error' | 'skipped';
+  packProgress: number;
 }
 
 const initialState: SemanticSearchState = {
   status: 'idle', device: null, modelProgress: 0, indexedAssets: 0, totalAssets: 0, skippedAssets: 0,
-  matches: [], textHits: [], duplicates: [], error: null,
+  matches: [], textHits: [], duplicates: [], error: null, pack: 'skipped', packProgress: 0,
 };
+
+const SEMANTIC_PACK_ID: ModelPackId = 'visual-semantics-lite';
+const PACK_POLL_MS = 1500;
+const PACK_POLL_MAX_ROUNDS = 400; // ~10 minutes
+
+async function probeSemanticPack(): Promise<SemanticSearchState['pack']> {
+  try {
+    const packs = await fetchModelPackCatalog();
+    const pack = packs.find((entry) => entry.id === SEMANTIC_PACK_ID);
+    if (!pack) return 'skipped';
+    if (pack.status === 'absent') return 'absent';
+    if (pack.status === 'downloading') return 'downloading';
+    if (pack.status === 'installed') return 'installed';
+    return 'error';
+  } catch {
+    return 'skipped'; // probe is best-effort; never disturb the default path
+  }
+}
 
 const preferredDevice = (): SemanticDevice => ('gpu' in navigator ? 'webgpu' : 'wasm');
 type StateSetter = Dispatch<SetStateAction<SemanticSearchState>>;
@@ -53,13 +77,56 @@ export function useSemanticSearch(scopeId: string, assets: MediaAsset[]) {
       await index();
     }
   }, [index, lifecycle.modelChanged, startEnable]);
+
+  // Probe the model-pack status once when the panel is idle (never forces a
+  // download; the guidance UI only appears when the pack is absent).
+  const packStatus = lifecycle.state.status;
+  const packSetState = lifecycle.setState;
+  useEffect(() => {
+    if (packStatus !== 'idle' && packStatus !== 'error') return;
+    let alive = true;
+    void probeSemanticPack().then((pack) => {
+      if (alive) packSetState((current) => ({ ...current, pack }));
+    });
+    return () => { alive = false; };
+  }, [packSetState, packStatus]);
+
+  /** Download the visual-semantics pack, then enable the model. */
+  const setState = lifecycle.setState;
+  const installAndEnable = useCallback(async () => {
+    setState((current) => ({
+      ...current, pack: 'downloading', packProgress: 0, error: null,
+    }));
+    try {
+      await installModelPack(SEMANTIC_PACK_ID, await editorCredentialHeaders());
+      for (let round = 0; round < PACK_POLL_MAX_ROUNDS; round += 1) {
+        await new Promise((resolve) => setTimeout(resolve, PACK_POLL_MS));
+        const task = await fetchModelPackTask(SEMANTIC_PACK_ID);
+        if (task && task.status === 'downloading') {
+          const progress = task.bytesTotal > 0
+            ? Math.min(100, Math.round(task.bytesDone / task.bytesTotal * 100))
+            : 0;
+          setState((current) => ({ ...current, packProgress: progress }));
+          continue;
+        }
+        break;
+      }
+      setState((current) => ({ ...current, pack: 'installed', packProgress: 100 }));
+      await enable();
+    } catch {
+      setState((current) => ({
+        ...current, pack: 'error', packProgress: 0,
+        error: '模型包下载失败，请到 设置 → 本地模型 重试',
+      }));
+    }
+  }, [enable, setState]);
   const queries = useSemanticQueries(
     lifecycle.client, lifecycle.records, lifecycle.snapshot, lifecycle.snapshotRef, lifecycle.setState,
   );
   const cancel = useCancelSemantic(
     lifecycle.client, lifecycle.operation, lifecycle.duplicateOperation, lifecycle.setState,
   );
-  return { state: lifecycle.state, enable, index, cancel, ...queries };
+  return { state: lifecycle.state, enable, installAndEnable, index, cancel, ...queries };
 }
 
 interface SemanticRuntime {

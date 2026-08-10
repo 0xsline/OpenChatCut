@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TimelineState } from '../editor/types';
 
-function makeState(mediaDir: string): TimelineState {
+function makeState(): TimelineState {
   return {
     fps: 30,
     width: 1920,
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     const { timelineToFcpxml, resolveAssetSrc } = await import('./fcpxml');
     const mediaDir = uploads;
 
-    const xml = timelineToFcpxml(makeState(mediaDir), {
+    const xml = timelineToFcpxml(makeState(), {
       title: 'Reachability Test',
       mediaDir,
     });
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     assert.ok(!/undefined|NaN/.test(xml), 'no undefined/NaN in output');
 
     // ── 3b. DaVinci Resolve variant: same reachability + colorSpace hint ──
-    const resolveXml = timelineToFcpxml(makeState(mediaDir), {
+    const resolveXml = timelineToFcpxml(makeState(), {
       title: 'Resolve Test',
       mediaDir,
       nleFormat: 'fcp_xml_resolve',
