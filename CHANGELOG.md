@@ -6,7 +6,7 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.2.0] - 2026-08-11
 
 ### Added / 新增
 
@@ -477,7 +477,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added Electron desktop packaging for macOS, Windows, and Linux.  
   提供 macOS、Windows 与 Linux 的 Electron 桌面端打包能力。
 
-[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.1.9...HEAD
+[0.2.0]: https://github.com/0xsline/OpenChatCut/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/0xsline/OpenChatCut/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/0xsline/OpenChatCut/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/0xsline/OpenChatCut/compare/v0.1.6...v0.1.7
