@@ -9,7 +9,7 @@ export type IconName =
   | 'home' | 'sparkles' | 'sliders' | 'bookOpen' | 'thumbUp' | 'thumbDown' | 'arrowUp'
   | 'paperclip' | 'cornerDownLeft' | 'filePlay' | 'fileHeadphone' | 'clock'
   | 'undo' | 'redo' | 'history' | 'layoutPanel' | 'keyboard' | 'users'
-  | 'download' | 'film' | 'clipboard' | 'plug' | 'github' | 'mail'
+  | 'download' | 'film' | 'clipboard' | 'plug' | 'github' | 'mail' | 'database'
   | 'music' | 'video' | 'image' | 'swap' | 'star' | 'pencil' | 'x' | 'diamond'
   | 'search' | 'upload' | 'folder' | 'folderPlus' | 'grid' | 'list' | 'sort' | 'filter' | 'more' | 'bug'
   | 'palette' | 'wand' | 'tracking' | 'qrCode';
@@ -33,6 +33,8 @@ const P: Record<IconName, string> = {
   chevronDown: 'M6 9l6 6 6-6',
   check: 'M20 6L9 17l-5-5',
   cloud: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z',
+  // lucide database (storage migration entry)
+  database: 'M12 4c4.2 0 7.5 1.2 7.5 2.8S16.2 9.5 12 9.5 4.5 8.4 4.5 6.8 7.8 4 12 4z M4.5 6.8v9.5c0 1.6 3.3 2.8 7.5 2.8s7.5-1.2 7.5-2.8V6.8 M4.5 11.5c0 1.6 3.3 2.8 7.5 2.8s7.5-1.2 7.5-2.8',
   brush: 'M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08 M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-.5 2.52-2 3.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z',
   play: 'M7 4l13 8-13 8z',
   pause: 'M7 4h4v16H7z M15 4h4v16h-4z',

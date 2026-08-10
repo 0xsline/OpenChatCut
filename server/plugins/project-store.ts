@@ -22,6 +22,15 @@ import {
 } from './project-store-agent-session.ts';
 import { createProjectDocumentStoreOperation } from './project-store-project-document.ts';
 import {
+  sqliteDeleteEntry,
+  sqliteDeleteProjectEntries,
+  sqliteReadAll,
+  sqliteReadEntry,
+  sqliteStoreEnabled,
+  sqliteWriteAll,
+  sqliteWriteEntry,
+} from '../storage/sqlite-store.ts';
+import {
   atomicWriteFile,
   atomicWriteJson,
   createOwnerSafeLeaseLock,
@@ -90,6 +99,10 @@ const entryPath = (key: string) => key === 'projects'
   : join(STORE_DIR, `${encodeURIComponent(key)}.json`);
 
 async function writeStoredEntry(key: string, value: unknown): Promise<void> {
+  if (sqliteStoreEnabled()) {
+    await sqliteWriteEntry(key, value);
+    return;
+  }
   await atomicWriteJson(entryPath(key), value);
 }
 interface QuarantinedEntry {
@@ -143,6 +156,10 @@ async function writeDeletedProjects(projects: Record<string, number>): Promise<v
 }
 
 async function writeEntries(entries: Record<string, unknown>): Promise<void> {
+  if (sqliteStoreEnabled()) {
+    await sqliteWriteAll(entries);
+    return;
+  }
   await durableMkdir(STORE_DIR, true);
   const ordered = Object.entries(entries).sort(([left], [right]) => {
     if (left === 'projects') return 1;
@@ -153,6 +170,7 @@ async function writeEntries(entries: Record<string, unknown>): Promise<void> {
 }
 
 async function readDirectoryEntries(): Promise<Record<string, unknown>> {
+  if (sqliteStoreEnabled()) return sqliteReadAll();
   const entries: Record<string, unknown> = {};
   for (const file of await readdir(STORE_DIR)) {
     if (!file.endsWith('.json')) continue;
@@ -201,6 +219,9 @@ async function migrateLegacyLocked(): Promise<void> {
 }
 
 async function ensureStoreReady(): Promise<void> {
+  // SQLite backend: no JSON dir / .ready / legacy-file migration needed; the
+  // database self-creates its directory and schema (phase 1 adds import).
+  if (sqliteStoreEnabled()) return;
   if (await readyExists()) return;
   const release = await acquireLock();
   try {
@@ -290,6 +311,10 @@ export async function setStoredEntry(key: string, value: unknown): Promise<void>
 }
 
 async function purgeProjectEntryFilesDurably(projectId: string): Promise<void> {
+  if (sqliteStoreEnabled()) {
+    await sqliteDeleteProjectEntries(projectId);
+    return;
+  }
   for (const file of await readdir(STORE_DIR)) {
     if (!file.endsWith('.json')) continue;
     let key: string;
@@ -333,6 +358,8 @@ export async function deleteStoredEntry(key: string): Promise<void> {
     if (projectId) {
       if (!VALID_PROJECT_ID.test(projectId)) throw new Error('invalid project id');
       await purgeProjectLocked(projectId);
+    } else if (sqliteStoreEnabled()) {
+      await sqliteDeleteEntry(key);
     } else {
       await durableRemove(entryPath(key));
     }
@@ -342,6 +369,7 @@ export async function deleteStoredEntry(key: string): Promise<void> {
 }
 
 async function readEntryFile(key: string): Promise<StoredEntryValue> {
+  if (sqliteStoreEnabled()) return sqliteReadEntry(key);
   const file = `${encodeURIComponent(key)}.json`;
   try {
     const raw = await readFile(entryPath(key), 'utf8');

@@ -15,7 +15,7 @@ export interface DashboardProps {
   onImport: (file: File) => Promise<string>;
 }
 
-export type DashboardDialog = 'settings' | 'shortcuts' | 'mcp' | 'cleanup';
+export type DashboardDialog = 'settings' | 'shortcuts' | 'mcp' | 'cleanup' | 'storage';
 
 interface RenameModel {
   editingId: string | null;
@@ -164,7 +164,7 @@ function useProjectTransfer(onImport: DashboardProps['onImport']): TransferModel
 }
 
 function useDashboardDialogs() {
-  const [dialogs, setDialogs] = useState<Record<DashboardDialog, boolean>>({ settings: false, shortcuts: false, mcp: false, cleanup: false });
+  const [dialogs, setDialogs] = useState<Record<DashboardDialog, boolean>>({ settings: false, shortcuts: false, mcp: false, cleanup: false, storage: false });
   const setDialog = (dialog: DashboardDialog, open: boolean) => {
     setDialogs((current) => ({ ...current, [dialog]: open }));
   };
