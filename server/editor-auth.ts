@@ -2,12 +2,9 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { TLSSocket } from 'node:tls';
 import type { EditorBootstrapInfo } from '../shared/editor-auth-transport.ts';
-import { projectStoreHttpAuthorized } from './project-store-http-auth.ts';
 
-export const EDITOR_CREDENTIAL_HEADER = 'x-openchatcut-editor-credential';
 export const EDITOR_BOOTSTRAP_HEADER = 'x-openchatcut-editor-bootstrap';
 
-const editorCredential = randomBytes(32).toString('base64url');
 const generatedMcpToken = randomBytes(32).toString('base64url');
 const LOCAL_EDITOR_HOSTS: Readonly<Record<string, true>> = {
   localhost: true,
@@ -77,12 +74,13 @@ export function trustedEditorRequest(req: IncomingMessage, requireOrigin: boolea
   }
 }
 
+/** Editor-capable endpoints (uploads, model packs, external-agent bridge) are
+ *  authorized purely by the loopback + Origin request shape: any page served
+ *  from the local editor may call them. No credential handshake is needed. */
 export function editorCredentialAuthorized(req: IncomingMessage, requireOrigin: boolean): boolean {
-  if (!trustedEditorRequest(req, requireOrigin)) return false;
-  const credential = headerValue(req, EDITOR_CREDENTIAL_HEADER) ?? undefined;
-  return secretMatches(credential, editorCredential) || projectStoreHttpAuthorized(req);
+  return trustedEditorRequest(req, requireOrigin);
 }
 
 export function editorBootstrapPayload(): EditorBootstrapInfo {
-  return { credential: editorCredential, mcpToken: externalMcpToken() };
+  return { mcpToken: externalMcpToken() };
 }

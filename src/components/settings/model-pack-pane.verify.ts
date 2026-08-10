@@ -1,20 +1,6 @@
 import assert from 'node:assert/strict';
 import { executeModelPackMutation } from './model-pack-actions';
 
-const originalWindow = globalThis.window;
-Object.defineProperty(globalThis, 'window', {
-  configurable: true,
-  writable: true,
-  value: {
-    openChatCutDesktop: {
-      editorCredentials: async () => ({
-        credential: 'pane-editor-secret',
-        mcpToken: 'unused-mcp-secret',
-      }),
-    },
-  },
-});
-
 try {
   let receivedId: string | null = null;
   const receivedHeaders: Headers[] = [];
@@ -25,17 +11,14 @@ try {
 
   assert.equal(receivedId, 'music-semantics-lite');
   assert.equal(receivedHeaders.length, 1);
-  assert.equal(receivedHeaders[0]?.get('x-openchatcut-editor-credential'), 'pane-editor-secret');
-} finally {
-  if (originalWindow === undefined) {
-    Reflect.deleteProperty(globalThis, 'window');
-  } else {
-    Object.defineProperty(globalThis, 'window', {
-      configurable: true,
-      writable: true,
-      value: originalWindow,
-    });
+  for (const name of receivedHeaders[0]?.keys() ?? []) {
+    assert.ok(!/x-openchatcut/i.test(name),
+      `model-pack mutations must not carry credential headers (found ${name})`);
   }
+  assert.equal(receivedHeaders[0]?.get('x-openchatcut-editor-credential'), null,
+    'no editor credential header may be attached');
+} finally {
+  // Nothing else to restore: the mutation helper is pure now.
 }
 
-console.log('model-pack-pane.verify: editor credential forwarded');
+console.log('model-pack-pane.verify: loopback trust forwarded');

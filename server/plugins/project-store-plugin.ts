@@ -19,7 +19,6 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   return parsed as Record<string, unknown>;
 }
 import {
-  exchangeProjectStoreLaunchToken,
   projectStoreHttpAuthorized,
   projectStoreReadAuthorized,
 } from '../project-store-http-auth.ts';
@@ -79,15 +78,6 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
     configureServer(server) {
       if (options.http === false) return;
       server.middlewares.use('/api/project-store', async (req, res) => {
-        if (req.method === 'POST' && req.url === '/session') {
-          const session = exchangeProjectStoreLaunchToken(req);
-          sendProjectStoreJson(
-            res,
-            session ? 200 : 403,
-            session ?? { error: 'invalid or expired editor launch credential' },
-          );
-          return;
-        }
         // Storage migration: status is read-only (loopback reads allowed),
         // the migration itself is a write and requires a real session.
         if (req.method === 'GET' && req.url === '/migrate-status') {

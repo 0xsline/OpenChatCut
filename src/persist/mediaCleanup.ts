@@ -9,7 +9,6 @@ import { deleteMediaBlob } from './mediaBlobStore';
 import { listPacks } from '../plugins/store';
 import { listProjectDocIds, listProjects, loadProject, loadRawProject, purgeProject } from './projectStore';
 import { collectUploadSrcs, rawUploadSrcs } from './projectTransfer';
-import { editorCredentialHeaders } from '../agent/editor-credential';
 
 const MEDIA_PREFIX = '/media/uploads/';
 
@@ -64,7 +63,6 @@ export function unreferencedOf(files: UploadFileInfo[], refs: Set<string>): Uplo
 export async function deleteUploadFile(name: string): Promise<boolean> {
   const res = await fetch(`/upload?name=${encodeURIComponent(name)}`, {
     method: 'DELETE',
-    headers: await editorCredentialHeaders(),
   });
   await deleteMediaBlob(MEDIA_PREFIX + name).catch(() => {});
   return res.ok;

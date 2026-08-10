@@ -1,5 +1,3 @@
-import { editorCredentialHeaders } from '../editor-credential';
-
 const METHOD = 'POST' as const;
 
 type UploadAssetType = 'audio' | 'gif' | 'image' | 'svg' | 'video';
@@ -70,7 +68,7 @@ export async function mintUploadHandoff(
   };
   const response = await fetch('/api/external-agent/import-token', {
     method: 'POST',
-    headers: await editorCredentialHeaders({ 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error(`upload handoff mint failed: HTTP ${response.status}`);

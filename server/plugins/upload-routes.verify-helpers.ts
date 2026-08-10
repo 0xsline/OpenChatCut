@@ -1,18 +1,14 @@
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { EDITOR_CREDENTIAL_HEADER, editorBootstrapPayload } from '../editor-auth.ts';
 
 interface HttpResult {
   status: number;
   body: string;
 }
 
-const editorCredential = editorBootstrapPayload().credential;
-
 export function editorFetch(input: string | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const url = new URL(input);
-  headers.set(EDITOR_CREDENTIAL_HEADER, editorCredential);
   headers.set('Origin', url.origin);
   return globalThis.fetch(input, { ...init, headers });
 }
@@ -30,7 +26,6 @@ export function chunkedPut(origin: string, path: string, chunks: readonly Buffer
     headers: {
       'content-type': 'application/octet-stream',
       'transfer-encoding': 'chunked',
-      [EDITOR_CREDENTIAL_HEADER]: editorCredential,
       origin,
     },
   }, (res) => {

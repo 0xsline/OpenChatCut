@@ -4,15 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  EDITOR_CREDENTIAL_HEADER,
-  editorBootstrapPayload,
-  externalMcpToken,
-} from '../editor-auth';
-import {
-  PROJECT_STORE_LAUNCH_TOKEN_HEADER,
-  projectStoreLaunchToken,
-} from '../project-store-http-auth';
+import { externalMcpToken } from '../editor-auth';
 import { handleModelPackRequest, modelPackMutationRequestError } from './model-packs';
 import { recoverDirectorySwap, replaceDirectoryAtomically } from './model-pack-install';
 
@@ -62,17 +54,16 @@ async function postMutation(path: string, headers?: HeadersInit): Promise<Respon
 
 try {
   for (const path of mutationPaths) {
-    assert.equal((await postMutation(path)).status, 401, `${path} must reject a request without credentials`);
-    assert.equal((await postMutation(path, { Origin: origin })).status, 401,
-      `${path} must not treat a same-origin header as authorization`);
+    assert.equal((await postMutation(path)).status, 401, `${path} must reject a request without Origin`);
     assert.equal((await postMutation(path, {
       Origin: origin,
       Authorization: `Bearer ${externalMcpToken()}`,
-    })).status, 401, `${path} must not accept the MCP bearer as an editor credential`);
+    })).status, path.endsWith('/download') ? 202 : 200,
+    `${path} must authorize the loopback editor regardless of the MCP bearer`);
     assert.equal((await postMutation(path, {
-      Origin: origin,
-      [PROJECT_STORE_LAUNCH_TOKEN_HEADER]: projectStoreLaunchToken(),
-    })).status, 401, `${path} must not accept a project-store launch credential`);
+      Origin: 'http://evil.example',
+      Host: '127.0.0.1:5199',
+    })).status, 401, `${path} must reject a cross-origin page`);
   }
   assert.equal((await fetch(`${origin}/api/model-packs/download`, {
     method: 'POST',
@@ -80,8 +71,7 @@ try {
   })).status, 401, 'authorization must run before content-type and body parsing');
   assert.equal((await postMutation('/api/model-packs/cancel', {
     Origin: origin,
-    [EDITOR_CREDENTIAL_HEADER]: editorBootstrapPayload().credential,
-  })).status, 200, 'same-origin editor credentials must authorize model-pack mutations');
+  })).status, 200, 'same-origin loopback requests must authorize model-pack mutations');
 } finally {
   server.close();
   await once(server, 'close');

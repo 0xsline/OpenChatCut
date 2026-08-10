@@ -2,17 +2,7 @@ import assert from 'node:assert/strict';
 import { mutateLocalAsrModel } from './local-asr-model-mutation';
 
 const originalFetch = globalThis.fetch;
-const originalWindow = globalThis.window;
 const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
-Object.defineProperty(globalThis, 'window', {
-  configurable: true,
-  writable: true,
-  value: {
-    openChatCutDesktop: {
-      editorCredentials: async () => ({ credential: 'asr-editor-secret', mcpToken: 'unused' }),
-    },
-  },
-});
 globalThis.fetch = async (input, init) => {
   calls.push({ input, init });
   return new Response(JSON.stringify({ ok: true }), {
@@ -33,16 +23,11 @@ try {
     assert.equal(call.init?.method, 'POST');
     assert.equal(call.init?.body, JSON.stringify({ id: 'whisper-tiny' }));
     assert.equal(headers.get('content-type'), 'application/json');
-    assert.equal(headers.get('x-openchatcut-editor-credential'), 'asr-editor-secret');
+    assert.equal(headers.get('x-openchatcut-editor-credential'), null,
+      'no editor credential header may be attached');
   }
 } finally {
   globalThis.fetch = originalFetch;
-  if (originalWindow === undefined) Reflect.deleteProperty(globalThis, 'window');
-  else Object.defineProperty(globalThis, 'window', {
-    configurable: true,
-    writable: true,
-    value: originalWindow,
-  });
 }
 
-console.log('local-asr-model-mutation.verify: renderer credential forwarded');
+console.log('local-asr-model-mutation.verify: loopback trust request');

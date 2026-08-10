@@ -1,4 +1,3 @@
-import { editorCredentialHeaders } from '../editor-credential';
 import { createMediaSourceRevision } from '../../editor/mediaSourceRevision';
 import type { MediaAsset } from '../../editor/types';
 import { safeSourceFilename } from '../../media/sourceFilename';
@@ -52,7 +51,7 @@ async function resolveFinalizeInput(args: Args, ctx: AgentContext): Promise<Fina
   if (!projectId) return { error: 'a persisted project is required to finalize an upload receipt' };
   const response = await fetch('/api/external-agent/upload-receipt', {
     method: 'POST',
-    headers: await editorCredentialHeaders({ 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ receipt, projectId }),
   });
   const value: unknown = await response.json().catch(() => null);

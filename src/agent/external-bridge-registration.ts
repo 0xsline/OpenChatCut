@@ -2,7 +2,6 @@ import { externalToolSchemas } from './external-tool-schemas';
 import type { ExternalEditSessionTerminalStatus } from './external-edit-session';
 import type { BrowserProjectOwnership } from '../persist/projectStoreTransport';
 
-const EDITOR_BRIDGE_CREDENTIAL_HEADER = 'X-OpenChatCut-Editor-Credential';
 const EDITOR_REGISTRATION_CAPABILITY_HEADER = 'X-OpenChatCut-Editor-Registration';
 
 export class EditorBridgeRequestError extends Error {
@@ -18,13 +17,10 @@ export class EditorBridgeRequestError extends Error {
 }
 
 export function editorBridgeHeaders(
-  credential: string,
   json = false,
   registrationCapability?: string,
 ): Record<string, string> {
-  const headers: Record<string, string> = {
-    [EDITOR_BRIDGE_CREDENTIAL_HEADER]: credential,
-  };
+  const headers: Record<string, string> = {};
   if (registrationCapability) {
     headers[EDITOR_REGISTRATION_CAPABILITY_HEADER] = registrationCapability;
   }
@@ -37,12 +33,11 @@ export async function sendEditorBridgeResult(
   outcome: ExternalEditSessionTerminalStatus,
   value: unknown,
   signal: AbortSignal,
-  credential: string,
   registrationCapability: string,
 ): Promise<void> {
   const response = await fetch('/api/external-agent/result', {
     method: 'POST',
-    headers: editorBridgeHeaders(credential, true, registrationCapability),
+    headers: editorBridgeHeaders(true, registrationCapability),
     body: JSON.stringify({ id, outcome, value }),
     signal,
   });
@@ -54,13 +49,12 @@ export async function sendEditorBridgeResult(
 export async function unregisterEditorBridge(
   projectId: string,
   editorInstanceId: string,
-  credential: string | null,
   registrationCapability?: string,
 ): Promise<void> {
-  if (!credential || !registrationCapability) return;
+  if (!registrationCapability) return;
   await fetch('/api/external-agent/unregister', {
     method: 'POST',
-    headers: editorBridgeHeaders(credential, true, registrationCapability),
+    headers: editorBridgeHeaders(true, registrationCapability),
     body: JSON.stringify({ projectId, editorId: editorInstanceId }),
     keepalive: true,
   }).catch(() => undefined);
@@ -70,13 +64,12 @@ export async function registerEditorBridge(
   projectId: string,
   editorInstanceId: string,
   baseRevision: string,
-  credential: string,
   signal: AbortSignal,
   registrationCapability?: string,
 ): Promise<BrowserProjectOwnership> {
   const response = await fetch('/api/external-agent/register', {
     method: 'POST',
-    headers: editorBridgeHeaders(credential, true, registrationCapability),
+    headers: editorBridgeHeaders(true, registrationCapability),
     body: JSON.stringify({
       projectId,
       editorId: editorInstanceId,

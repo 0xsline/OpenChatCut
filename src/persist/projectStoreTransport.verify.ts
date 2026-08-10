@@ -11,35 +11,29 @@ interface TestGlobals {
   window: {
     openChatCutDesktop?: {
       projectStore(request: unknown): Promise<unknown>;
-      editorCredentials?(): Promise<{ credential: string; mcpToken: string }>;
+      editorCredentials?(): Promise<{ mcpToken: string }>;
     };
   };
 }
 
-function mapStorage(values: Map<string, string>, accessed = () => undefined): Storage {
+function mapStorage(values: Map<string, string>): Storage {
   return {
     get length() {
-      accessed();
       return values.size;
     },
     clear: () => {
-      accessed();
       values.clear();
     },
     getItem: (key) => {
-      accessed();
       return values.get(key) ?? null;
     },
     key: (index) => {
-      accessed();
       return [...values.keys()][index] ?? null;
     },
     removeItem: (key) => {
-      accessed();
       values.delete(key);
     },
     setItem: (key, value) => {
-      accessed();
       values.set(key, value);
     },
   };
@@ -63,24 +57,11 @@ const originalHistory = globals.history;
 const originalLocalStorage = globals.localStorage;
 const originalSessionStorage = globals.sessionStorage;
 const stored = new Map<string, string>();
-const initialLaunch = 'initial-launch-'.padEnd(48, 'x');
-let scrubCount = 0;
 let resetImportedTransport: (() => void) | undefined;
-// Independent persistent store: sessionStorage and localStorage must be able
-// to diverge so tab-scoped loss can be recovered from the persistent copy.
-const persistent = new Map<string, string>();
-const persistentStorage: Storage = {
-  get length() { return persistent.size; },
-  clear: () => persistent.clear(),
-  getItem: (key) => persistent.get(key) ?? null,
-  key: (index) => [...persistent.keys()][index] ?? null,
-  removeItem: (key) => { persistent.delete(key); },
-  setItem: (key, value) => { persistent.set(key, value); },
-};
 
 globals.window = {};
 globals.location = {
-  hash: `#openchatcut-editor-token=${initialLaunch}`,
+  hash: '',
   pathname: '/',
   protocol: 'http:',
   search: '',
@@ -88,24 +69,24 @@ globals.location = {
 globals.history = {
   state: null,
   replaceState: (_state, _title, url) => {
-    scrubCount += 1;
     const next = String(url ?? '');
     const hashIndex = next.indexOf('#');
     globals.location.hash = hashIndex >= 0 ? next.slice(hashIndex) : '';
   },
 };
-stored.set('openchatcut.projectStoreLaunchToken', 'cached-launch-'.padEnd(48, 'c'));
 globals.sessionStorage = mapStorage(stored);
-globals.localStorage = persistentStorage;
+globals.localStorage = mapStorage(new Map<string, string>());
 globalThis.fetch = async () => {
   throw new Error('fetch was not configured for this verification step');
 };
 try {
-  // This verifier runs in its own process. Browser globals and the launch hash
-  // must exist before this first import so module-initialization capture is real.
+  // This verifier runs in its own process. Browser globals must exist before
+  // this first import so module-initialization is real.
   const transport = await loadProjectStoreTransport();
   const {
+    advanceBrowserProjectOwnership,
     browserProjectOwnership,
+    clearBrowserProjectOwnership,
     fetchWithEditorSession,
     installBrowserProjectOwnership,
     projectStoreRemoteAvailable,
@@ -116,204 +97,66 @@ try {
   } = transport;
   resetImportedTransport = resetProjectStoreTransport;
 
-  assert.equal(globals.location.hash, '', 'module initialization must scrub the launch fragment');
-  assert.equal(scrubCount, 1, 'the launch fragment must be scrubbed immediately');
-  assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
-    'an explicit fragment must replace an already-cached tab launch token');
-  assert.equal(projectStoreWriteCredential(), true);
-  assert.equal(persistent.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
-    'module-level fragment consumption must persist the launch credential to localStorage');
+  // A loopback editor tab is fully trusted: no token, no session handshake.
+  assert.equal(projectStoreWriteCredential(), true,
+    'any loopback editor tab holds a write credential');
+  assert.equal(projectStoreRemoteAvailable(), true,
+    'any loopback editor tab can reach the shared library');
 
-  const session = 'session-'.padEnd(48, 'y');
-  const renewedSession = 'renewed-session-'.padEnd(48, 'z');
-  let rejectSessionOnce = false;
-  let exchangeCount = 0;
-  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  // HTTP requests must carry no credential headers whatsoever.
+  const calls: Array<{ url: string; headers: Headers; init?: RequestInit }> = [];
   const httpFetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    calls.push({ url, init });
-    if (url.endsWith('/session')) {
-      const headers = new Headers(init?.headers);
-      const presentedToken = headers.get('X-OpenChatCut-Editor-Launch-Token');
-      // The transport now always attempts the exchange and lets the server
-      // decide: no token -> 401 (secured server), which surfaces the
-      // "launch credential missing" guidance.
-      if (!presentedToken) {
-        return Response.json({ error: 'launch credential missing' }, { status: 401 });
-      }
-      assert.equal(presentedToken, initialLaunch);
-      exchangeCount += 1;
-      assert.equal(headers.get('X-OpenChatCut-Project-Store-Session'), null);
-      return Response.json({
-        sessionToken: exchangeCount === 1 ? session : renewedSession,
-      });
+    calls.push({ url, headers: new Headers(init?.headers), init });
+    if (url.endsWith('/entry?key=projects')) {
+      return Response.json({ found: true, value: 'http' });
     }
-    const presented = new Headers(init?.headers).get('X-OpenChatCut-Project-Store-Session');
-    if (rejectSessionOnce && presented === session) {
-      rejectSessionOnce = false;
-      return Response.json({ error: 'invalid project store session' }, { status: 403 });
+    if (url.endsWith('/entry?key=other')) {
+      return Response.json({ found: false });
     }
-    assert.equal(presented, exchangeCount > 1 ? renewedSession : session);
-    return Response.json({ found: true, value: 'http' });
+    return Response.json({ ok: true });
   };
-
   globalThis.fetch = httpFetchMock;
-  assert.equal(projectStoreRemoteAvailable(), true);
+
   assert.deepEqual(await requestProjectStore({ operation: 'entry', key: 'projects' }), {
     found: true,
     value: 'http',
   });
-  assert.equal(calls.length, 2, 'first HTTP request should exchange once then access the store');
-  await requestProjectStore({ operation: 'entry', key: 'projects' });
-  assert.equal(calls.length, 3, 'subsequent requests must reuse the editor session');
+  const writeCall = calls[0];
+  for (const name of writeCall.headers.keys()) {
+    assert.ok(!/x-openchatcut/i.test(name),
+      `requests must not carry credential headers (found ${name})`);
+  }
+  assert.equal(writeCall.url, '/api/project-store/entry?key=projects');
 
-  await requestProjectStore({ operation: 'agent-session-rotate', projectId: 'project-to-rotate' });
-  const rotationCall = calls.at(-1);
-  assert.equal(rotationCall?.url, '/api/project-store/agent-session/rotate');
-  assert.equal(rotationCall?.init?.method, 'POST');
-  assert.deepEqual(JSON.parse(String(rotationCall?.init?.body)), {
-    operation: 'agent-session-rotate',
-    projectId: 'project-to-rotate',
-  });
-
+  // Other operations keep their paths and payloads.
+  calls.length = 0;
+  await requestProjectStore({ operation: 'merge', entries: { a: '1' } });
+  assert.equal(calls[0].url, '/api/project-store/merge');
+  assert.equal(calls[0].init?.method, 'POST');
+  calls.length = 0;
   await requestProjectStore({ operation: 'purge-project', projectId: 'project-to-purge' });
-  const purgeCall = calls.at(-1);
-  assert.equal(purgeCall?.url, '/api/project-store/project/purge');
-  assert.equal(purgeCall?.init?.method, 'POST');
-  assert.deepEqual(JSON.parse(String(purgeCall?.init?.body)), {
-    operation: 'purge-project',
-    projectId: 'project-to-purge',
-  });
-  assert.equal(globals.location.hash, '', 'launch credential must be removed from the visible URL');
-  assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
-    'the launch credential must remain tab-scoped for server restart recovery');
-  assert.equal(persistent.get('openchatcut.projectStoreLaunchToken'), initialLaunch,
-    'the launch credential must also persist across tabs in localStorage');
-  rejectSessionOnce = true;
-  const staleCallStart = calls.length;
+  assert.equal(calls[0].url, '/api/project-store/project/purge');
+
+  // fetchWithEditorSession is a plain fetch without any session machinery.
   const recovered = await fetchWithEditorSession('/api/external-agent/bootstrap', { method: 'POST' });
   assert.equal(recovered.status, 200);
-  assert.equal(calls.length - staleCallStart, 3,
-    'a rejected stale session must exchange once and retry the original request once');
-  await requestProjectStore({ operation: 'entry', key: 'projects' });
-  assert.equal(new Headers(calls.at(-1)?.init?.headers).get(
-    'X-OpenChatCut-Project-Store-Session',
-  ), renewedSession, 'project-store requests must reuse the renewed session');
+  assert.equal(calls[calls.length - 1].url, '/api/external-agent/bootstrap');
+  for (const name of calls[calls.length - 1].headers.keys()) {
+    assert.ok(!/x-openchatcut/i.test(name),
+      `editor fetches must not carry credential headers (found ${name})`);
+  }
 
+  // Outside a loopback http(s) page nothing claims a write credential.
+  globals.location = { hash: '', pathname: '/', protocol: 'file:', search: '' };
   resetProjectStoreTransport();
-  stored.clear();
-  persistent.clear();
-  globals.location.hash = '';
-  assert.equal(projectStoreRemoteAvailable(), true,
-    'loopback HTTP pages may read the shared library without a credential');
   assert.equal(projectStoreWriteCredential(), false,
-    'a bare tab must not gain a project-store write credential');
+    'non-loopback pages must not claim a write credential');
+  assert.equal(projectStoreRemoteAvailable(), false,
+    'non-loopback pages have no remote store');
+  globals.location = { hash: '', pathname: '/', protocol: 'http:', search: '' };
 
-  const lateLaunch = 'late-launch-'.padEnd(48, 'l');
-  globals.location.hash = `#openchatcut-editor-token=${lateLaunch}`;
-  assert.equal(projectStoreWriteCredential(), true,
-    'an earlier empty lookup must not hide a later explicit launch token');
-  assert.equal(globals.location.hash, '', 'late launch fragments must also be scrubbed immediately');
-  assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), lateLaunch);
-
-  resetProjectStoreTransport();
-  persistent.clear();
-  const rejectedLaunch = 'rejected-launch-'.padEnd(48, 'r');
-  const rejectedSession = 'rejected-session-'.padEnd(48, 's');
-  const replacementLaunch = 'replacement-launch-'.padEnd(48, 'n');
-  const replacementSession = 'replacement-session-'.padEnd(48, 'p');
-  stored.set('openchatcut.projectStoreSession', JSON.stringify({ token: rejectedSession }));
-  globals.location.hash = `#openchatcut-editor-token=${rejectedLaunch}`;
-  const recoveryCalls: Array<{ url: string; init?: RequestInit }> = [];
-  globalThis.fetch = async (input, init) => {
-    const url = String(input);
-    recoveryCalls.push({ url, init });
-    const headers = new Headers(init?.headers);
-    if (url.endsWith('/session')) {
-      const presentedLaunch = headers.get('X-OpenChatCut-Editor-Launch-Token');
-      if (presentedLaunch === rejectedLaunch) {
-        return Response.json({ error: 'rejected launch token' }, { status: 403 });
-      }
-      assert.equal(presentedLaunch, replacementLaunch);
-      return Response.json({ sessionToken: replacementSession });
-    }
-    const presentedSession = headers.get('X-OpenChatCut-Project-Store-Session');
-    if (presentedSession === rejectedSession) {
-      return Response.json({ error: 'original authorization response' }, { status: 403 });
-    }
-    assert.equal(presentedSession, replacementSession);
-    return Response.json({ ok: true });
-  };
-
-  const rejectedStart = recoveryCalls.length;
-  const originalAuthorization = await fetchWithEditorSession('/api/protected');
-  assert.equal(originalAuthorization.status, 403);
-  assert.deepEqual(await originalAuthorization.json(), { error: 'original authorization response' },
-    'failed renewal must preserve the original authorization response');
-  assert.equal(recoveryCalls.length - rejectedStart, 2,
-    'unavailable renewal must not retry the protected request');
-  assert.equal(stored.has('openchatcut.projectStoreLaunchToken'), false,
-    'a rejected launch token must be evicted from tab storage');
-  assert.equal(stored.has('openchatcut.projectStoreSession'), false,
-    'the rejected stale session must be evicted from tab storage');
-  assert.equal(projectStoreWriteCredential(), false,
-    'rejected credentials must not continue granting apparent write authority');
-
-  globals.location.hash = `#openchatcut-editor-token=${replacementLaunch}`;
-  const replacementStart = recoveryCalls.length;
-  const replacementResponse = await fetchWithEditorSession('/api/protected');
-  assert.equal(replacementResponse.status, 200);
-  assert.equal(recoveryCalls.length - replacementStart, 2,
-    'a newer explicit token should exchange once and issue the protected request once');
-  assert.equal(globals.location.hash, '');
-  assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), replacementLaunch);
-
-  resetProjectStoreTransport();
-  persistent.clear();
-  const concurrentRejectedLaunch = 'concurrent-rejected-'.padEnd(48, 'q');
-  const concurrentReplacementLaunch = 'concurrent-replacement-'.padEnd(48, 'w');
-  const concurrentSession = 'concurrent-session-'.padEnd(48, 'e');
-  let markRejectedExchangeStarted!: () => void;
-  let resolveRejectedExchange!: (response: Response) => void;
-  const rejectedExchangeStarted = new Promise<void>((resolve) => {
-    markRejectedExchangeStarted = resolve;
-  });
-  const rejectedExchangeResponse = new Promise<Response>((resolve) => {
-    resolveRejectedExchange = resolve;
-  });
-  globals.location.hash = `#openchatcut-editor-token=${concurrentRejectedLaunch}`;
-  globalThis.fetch = async (input, init) => {
-    const url = String(input);
-    const headers = new Headers(init?.headers);
-    if (url.endsWith('/session')) {
-      const presentedLaunch = headers.get('X-OpenChatCut-Editor-Launch-Token');
-      if (presentedLaunch === concurrentRejectedLaunch) {
-        markRejectedExchangeStarted();
-        return rejectedExchangeResponse;
-      }
-      assert.equal(presentedLaunch, concurrentReplacementLaunch);
-      return Response.json({ sessionToken: concurrentSession });
-    }
-    assert.equal(headers.get('X-OpenChatCut-Project-Store-Session'), concurrentSession);
-    return Response.json({ ok: true });
-  };
-
-  const rejectedConcurrentRequest = fetchWithEditorSession('/api/concurrent-protected');
-  await rejectedExchangeStarted;
-  globals.location.hash = `#openchatcut-editor-token=${concurrentReplacementLaunch}`;
-  assert.equal(projectStoreWriteCredential(), true,
-    'a newer explicit token must be captured while an older exchange is pending');
-  assert.equal(globals.location.hash, '');
-  resolveRejectedExchange(Response.json({ error: 'rejected launch token' }, { status: 403 }));
-  await assert.rejects(
-    rejectedConcurrentRequest,
-    /project store session exchange failed: 403/,
-  );
-  assert.equal(stored.get('openchatcut.projectStoreLaunchToken'), concurrentReplacementLaunch,
-    'an older rejected exchange must not evict a concurrently captured newer token');
-  const concurrentRecovery = await fetchWithEditorSession('/api/concurrent-protected');
-  assert.equal(concurrentRecovery.status, 200);
-
+  // Desktop IPC takes precedence over HTTP when present.
   resetProjectStoreTransport();
   let ipcRequest: unknown;
   globals.window = {
@@ -333,14 +176,12 @@ try {
   });
   assert.deepEqual(ipcRequest, { operation: 'entry', key: 'projects' });
 
-  const {
-    editorBootstrapInfo,
-    invalidateEditorBootstrapInfo,
-  } = await loadEditorCredential();
+  // Editor bootstrap only returns the MCP token (no editor credential).
+  const { editorBootstrapInfo, invalidateEditorBootstrapInfo } = await loadEditorCredential();
   let credentialCalls = 0;
   const credentials = [
-    { credential: 'editor-credential-one', mcpToken: 'mcp-token-one' },
-    { credential: 'editor-credential-two', mcpToken: 'mcp-token-two' },
+    { mcpToken: 'mcp-token-one' },
+    { mcpToken: 'mcp-token-two' },
   ];
   globals.window = {
     openChatCutDesktop: {
@@ -348,16 +189,14 @@ try {
       editorCredentials: async () => credentials[Math.min(credentialCalls++, 1)],
     },
   };
-  const firstCredential = await editorBootstrapInfo();
-  assert.deepEqual(await editorBootstrapInfo(), firstCredential);
-  assert.equal(credentialCalls, 1, 'editor bootstrap credentials should remain cached normally');
-  invalidateEditorBootstrapInfo('different-credential');
-  assert.deepEqual(await editorBootstrapInfo(), firstCredential);
-  assert.equal(credentialCalls, 1, 'an unrelated failure must not evict a newer credential');
-  invalidateEditorBootstrapInfo(firstCredential.credential);
+  const firstBootstrap = await editorBootstrapInfo();
+  assert.deepEqual(await editorBootstrapInfo(), firstBootstrap);
+  assert.equal(credentialCalls, 1, 'bootstrap info should remain cached normally');
+  invalidateEditorBootstrapInfo();
   assert.deepEqual(await editorBootstrapInfo(), credentials[1]);
-  assert.equal(credentialCalls, 2, 'a rejected bridge credential must bootstrap again');
+  assert.equal(credentialCalls, 2, 'invalidation must refetch the MCP token');
 
+  // Browser project ownership: install / wait / advance / clear / reset.
   resetProjectStoreTransport();
   const pendingOwnership = waitForBrowserProjectOwnership('project-race', 1_000);
   const installedOwnership = {
@@ -372,41 +211,23 @@ try {
     'a save started during editor registration must resume with installed ownership');
   assert.deepEqual(await waitForBrowserProjectOwnership('project-race', 1), installedOwnership,
     'an existing ownership must be returned without waiting');
+  const advanced = advanceBrowserProjectOwnership(installedOwnership, 'v7-next');
+  assert.equal(advanced?.baseRevision, 'v7-next',
+    'ownership advances with the authoritative base revision');
+  assert.equal(advanceBrowserProjectOwnership({ ...installedOwnership, epoch: 2 }, 'v7-stale'), undefined,
+    'a stale epoch must not advance ownership');
+  assert.equal(browserProjectOwnership('project-race')?.baseRevision, 'v7-next');
+  clearBrowserProjectOwnership(installedOwnership);
+  assert.equal(browserProjectOwnership('project-race'), undefined,
+    'clear removes ownership for the matching owner');
   const resetWait = waitForBrowserProjectOwnership('project-reset', 1_000);
   resetProjectStoreTransport();
   assert.equal(await resetWait, undefined, 'transport reset must settle pending ownership waits');
-  assert.equal(browserProjectOwnership('project-race'), undefined);
-  assert.equal(stored.has('openchatcut.projectStoreLaunchToken'), false);
-  assert.equal(stored.has('openchatcut.projectStoreSession'), false);
+  assert.equal(browserProjectOwnership('project-reset'), undefined);
 
-  // Tab-scoped loss must recover from the persistent copy: wipe sessionStorage
-  // only (the persistent copy survives), then a fresh transport state must
-  // still exchange using the localStorage credential.
-  globals.window = {};
-  globalThis.fetch = httpFetchMock;
-  stored.clear();
-  persistent.set('openchatcut.projectStoreLaunchToken', initialLaunch);
-  const beforeRecoveryCalls = calls.length;
-  resetProjectStoreTransport();
-  const recoveredEntry = await requestProjectStore({ operation: 'entry', key: 'projects' });
-  assert.deepEqual(recoveredEntry, { found: true, value: 'http' });
-  assert.equal(calls.length, beforeRecoveryCalls + 2,
-    'a wiped tab storage still exchanges once using the localStorage credential');
-
-  // Failed lookups must not poison later attempts: a token that appears
-  // after a failed exchange is picked up without a page reload.
-  stored.clear();
-  persistent.clear();
-  resetProjectStoreTransport();
-  await assert.rejects(
-    () => fetchWithEditorSession('/api/project-store/entry?key=probe', { method: 'GET' }),
-    /editor launch credential missing/,
-    'without any credential the transport stays unavailable',
-  );
-  persistent.set('openchatcut.projectStoreLaunchToken', initialLaunch);
-  const afterSeed = await requestProjectStore({ operation: 'entry', key: 'projects' });
-  assert.deepEqual(afterSeed, { found: true, value: 'http' },
-    'a credential stored after a failed lookup is picked up without reload');
+  // Reset must not leave any session-like storage behind (nothing is stored).
+  assert.equal(stored.size, 0,
+    'the transport must never write session or token keys to storage');
 } finally {
   resetImportedTransport?.();
   globalThis.fetch = originalFetch;

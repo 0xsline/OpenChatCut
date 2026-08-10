@@ -3,7 +3,6 @@ import {
   uploadedMediaLocation,
   type UploadedMediaLocation,
 } from './uploadResponse';
-import { editorCredentialHeaders } from '../agent/editor-credential';
 
 export type UploadProgress = (ratio: number) => void;
 
@@ -37,7 +36,7 @@ async function requestUploadPlan(
   try {
     const response = await fetch('/upload/presign', {
       method: 'POST',
-      headers: await editorCredentialHeaders({ 'content-type': 'application/json' }),
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: file.name,
         contentType: file.type || 'application/octet-stream',
@@ -73,7 +72,7 @@ async function requestUploadPlan(
 async function hydratePresignedUpload(path: string): Promise<UploadedMediaLocation> {
   const response = await fetch('/upload/hydrate', {
     method: 'POST',
-    headers: await editorCredentialHeaders({ 'content-type': 'application/json' }),
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ path }),
   });
   const value = await response.json().catch(() => null);
@@ -95,10 +94,6 @@ async function uploadFileSimple(
   const xhr = new XMLHttpRequest();
   const isPresigned = /^https?:\/\//i.test(plan.url) && !plan.url.includes('/upload');
   xhr.open(isPresigned ? 'PUT' : 'POST', plan.url);
-  if (!isPresigned) {
-    const headers = await editorCredentialHeaders();
-    headers.forEach((value, name) => xhr.setRequestHeader(name, value));
-  }
   xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
   xhr.upload.onprogress = (event) => {
     if (!onProgress || !event.lengthComputable || event.total <= 0) return;
@@ -179,7 +174,7 @@ async function putPart(uploadId: string, part: number, blob: Blob): Promise<void
     try {
       const response = await fetch(
         `/upload/multipart/part?uploadId=${encodeURIComponent(uploadId)}&part=${part}`,
-        { method: 'PUT', headers: await editorCredentialHeaders(), body: blob },
+        { method: 'PUT', body: blob },
       );
       if (response.ok) return;
       const info = await response.json().catch(() => null);
@@ -203,7 +198,7 @@ interface MultipartSession {
 async function startMultipart(file: File): Promise<MultipartSession> {
   const response = await fetch('/upload/multipart/init', {
     method: 'POST',
-    headers: await editorCredentialHeaders({ 'content-type': 'application/json' }),
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       name: file.name,
       size: file.size,
@@ -243,7 +238,6 @@ async function uploadMultipartParts(
       } catch (error) {
         void fetch(`/upload/multipart?uploadId=${encodeURIComponent(session.uploadId)}`, {
           method: 'DELETE',
-          headers: await editorCredentialHeaders(),
         });
         throw error;
       }
@@ -260,7 +254,7 @@ async function uploadMultipartParts(
 async function completeMultipart(session: MultipartSession): Promise<UploadedMediaLocation> {
   const response = await fetch('/upload/multipart/complete', {
     method: 'POST',
-    headers: await editorCredentialHeaders({ 'content-type': 'application/json' }),
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uploadId: session.uploadId }),
   });
   const value = await response.json().catch(() => null);

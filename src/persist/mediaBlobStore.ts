@@ -1,4 +1,3 @@
-import { editorCredentialHeaders } from '../agent/editor-credential';
 // Browser fallback durability for /media/uploads/* blobs. A local server can
 // explicitly advertise that its filesystem path is authoritative; otherwise a
 // bounded IndexedDB copy preserves pure-web/offline restore behavior. Paths stay
@@ -467,7 +466,6 @@ async function deleteImportedServerMedia(created: CreatedServerMediaPublication)
   const query = new URLSearchParams({ name, rollbackToken: created.rollbackToken });
   const response = await fetch(`/upload?${query.toString()}`, {
     method: 'DELETE',
-    headers: await editorCredentialHeaders(),
   });
   if (response.ok) return;
   const info = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -683,7 +681,7 @@ async function uploadMediaBlob(
   if (options?.rollbackToken) q.set('rollbackToken', options.rollbackToken);
   const res = await fetch(`/upload?${q.toString()}`, {
     method: 'POST',
-    headers: await editorCredentialHeaders({ 'Content-Type': rec.mime || 'application/octet-stream' }),
+    headers: { 'Content-Type': rec.mime || 'application/octet-stream' },
     body: rec.blob,
   });
   if (!res.ok) {

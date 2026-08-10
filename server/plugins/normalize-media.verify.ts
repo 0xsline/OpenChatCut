@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
-import { EDITOR_CREDENTIAL_HEADER, editorBootstrapPayload } from '../editor-auth.ts';
 import { DEFAULT_UPLOAD_MAX_BYTES } from '../r2.ts';
 import { seedKeystore } from '../keystore.ts';
 import { maxUploadBytes } from './upload-routes.ts';
@@ -332,12 +331,10 @@ try {
   assert.ok(Math.abs(vfr.durationSeconds - outputVfrProbe.duration) < 0.1);
 
 
-  const editorCredential = editorBootstrapPayload().credential;
   const multipartResponse = await fetch(`${origin}/upload/multipart/init`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      [EDITOR_CREDENTIAL_HEADER]: editorCredential,
       origin,
     },
     body: JSON.stringify({
@@ -352,7 +349,7 @@ try {
   assert.equal(multipart.maxBytes, DEFAULT_UPLOAD_MAX_BYTES);
   const abortResponse = await fetch(`${origin}/upload/multipart?uploadId=${multipart.uploadId}`, {
     method: 'DELETE',
-    headers: { [EDITOR_CREDENTIAL_HEADER]: editorCredential, origin },
+    headers: { origin },
   });
   assert.equal(abortResponse.status, 200, await abortResponse.text());
 

@@ -112,12 +112,18 @@ try {
     search: '',
   });
   Reflect.deleteProperty(globals, 'window');
-  let unauthorizedWrites = 0;
   let remoteProjects: unknown = { found: false };
+  const mergeBodies: Array<Record<string, unknown>> = [];
   installGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.endsWith('/session')) return new Response(null, { status: 401 });
-    if (init?.method && init.method !== 'GET') unauthorizedWrites += 1;
+    if (url.endsWith('/merge')) {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { entries?: Record<string, unknown> };
+      mergeBodies.push(body.entries ?? {});
+      return jsonResponse({ version: 1, entries: body.entries ?? {} });
+    }
+    if (url.endsWith('/entry') && init?.method === 'PUT') {
+      return jsonResponse({ ok: true });
+    }
     if (url.includes('/entry?key=projects')) return jsonResponse(remoteProjects);
     if (url.endsWith('/api/project-store')) return jsonResponse({ version: 1, entries: {} });
     throw new Error(`unexpected request: ${url}`);
@@ -132,17 +138,19 @@ try {
     local.set('setting', 'before');
     remoteProjects = scenario.response;
     resetSharedKvMemory();
-    assert.deepEqual(await kvGet('projects'), scenario.view, `read-only browser sees the ${scenario.label} remote index`);
-    assert.deepEqual(local.get('projects'), localProjects, `${scenario.label} remote migration preserves the local index`);
-    assert.equal(local.has(MIGRATION_KEY), false, `${scenario.label} remote migration remains pending`);
+    assert.deepEqual(await kvGet('projects'), scenario.view,
+      `a loopback editor sees the ${scenario.label} remote index after migrating`);
+    assert.equal(mergeBodies.length, 1,
+      `${scenario.label} bootstrap merges the local index into the shared store`);
+    assert.ok('projects' in (mergeBodies[0] ?? {}),
+      `${scenario.label} merge pushes the local project index`);
+    assert.equal(local.has(MIGRATION_KEY), true,
+      `${scenario.label} loopback migration completes immediately`);
+    await kvSet('setting', 'after');
+    assert.equal(local.get('setting'), 'after',
+      'loopback writes flow through to the shared store');
+    mergeBodies.length = 0;
   }
-  await assert.rejects(
-    kvSet('setting', 'after'),
-    /只读模式/,
-    'sessionless remote writes reject before touching IndexedDB',
-  );
-  assert.equal(local.get('setting'), 'before', 'rejected remote write leaves the local value unchanged');
-  assert.equal(unauthorizedWrites, 0, 'sessionless startup sends no remote mutations');
 
   installGlobal('location', { hash: '', pathname: '/', protocol: 'file:', search: '' });
   resetSharedKvMemory();

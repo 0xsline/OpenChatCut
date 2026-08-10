@@ -6,7 +6,6 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ASR_MODELS, asrModelEntry, asrModelFile, type AsrModelEntry } from '../../shared/asr-models';
-import { EDITOR_CREDENTIAL_HEADER, editorBootstrapPayload } from '../editor-auth';
 import { __resetAsrTasks, handleAsrModelsRequest, inspectAsrModel } from './asr-models';
 
 const server = createServer((req, res) => {
@@ -21,7 +20,6 @@ await once(server, 'listening');
 const address = server.address();
 assert(address && typeof address === 'object');
 const origin = `http://127.0.0.1:${address.port}`;
-const credential = editorBootstrapPayload().credential;
 const mutationPaths = ['/api/asr-models/download', '/api/asr-models/delete'] as const;
 
 async function post(path: string, headers: HeadersInit, id = 'not-in-fixed-catalog'): Promise<Response> {
@@ -35,22 +33,19 @@ async function post(path: string, headers: HeadersInit, id = 'not-in-fixed-catal
 try {
   for (const path of mutationPaths) {
     assert.equal((await post(path, {
-      Origin: origin,
       'Content-Type': 'application/json',
-    })).status, 401, `${path} must reject missing editor credentials`);
+    })).status, 401, `${path} must reject a request without Origin`);
     assert.equal((await post(path, {
+      Origin: 'http://evil.example',
       'Content-Type': 'application/json',
-      [EDITOR_CREDENTIAL_HEADER]: credential,
     })).status, 401, `${path} must require a trusted same-origin request`);
     assert.equal((await post(path, {
       Origin: origin,
       'Content-Type': 'text/plain',
-      [EDITOR_CREDENTIAL_HEADER]: credential,
     })).status, 415, `${path} must reject non-JSON content`);
     assert.equal((await post(path, {
       Origin: origin,
       'Content-Type': 'application/json',
-      [EDITOR_CREDENTIAL_HEADER]: credential,
     })).status, 400, `${path} must pass authorization and reject IDs outside the fixed catalog`);
   }
 } finally {

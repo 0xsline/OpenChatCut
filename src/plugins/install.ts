@@ -7,7 +7,6 @@ import { listPacks, savePack, registerPack, unregisterPack, type InstalledPack }
 import type { PluginPack } from './types';
 import { createGlRuntime } from '../gl/runtime';
 import { prepareTemplate } from '../template-host';
-import { editorCredentialHeaders } from '../agent/editor-credential';
 
 export type InstallResult =
   | { ok: true; pack: InstalledPack }
@@ -79,7 +78,6 @@ async function uploadCubes(pack: PluginPack): Promise<{ cubeUrls: Record<string,
     try {
       const res = await fetch(`/upload?name=${assetId}.cube&assetId=${assetId}`, {
         method: 'POST',
-        headers: await editorCredentialHeaders(),
         body: item.cube,
       });
       const body = (await res.json().catch(() => null)) as { path?: string; error?: string } | null;

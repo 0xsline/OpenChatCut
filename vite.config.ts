@@ -4,7 +4,6 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { serverPlugins } from './server/plugins/index.ts';
 import { seedKeystore, getKey } from './server/keystore.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
-import { projectStoreLaunchToken } from './server/project-store-http-auth.ts';
 import { runtimeProfile } from './server/runtime-profile.ts';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
@@ -79,7 +78,7 @@ export default defineConfig(({ mode }) => {
         // imported runtime assets (for example ONNX Runtime WASM) readable.
         allow: [searchForWorkspaceRoot(process.cwd()), realpathSync('node_modules')],
       },
-      open: `/#openchatcut-editor-token=${projectStoreLaunchToken()}`,
+      open: '/',
       proxy: {
         // AssemblyAI transcription — key injected server-side (never in browser).
         '/assemblyai': {

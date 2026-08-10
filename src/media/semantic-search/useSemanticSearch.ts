@@ -11,7 +11,6 @@ import { rankSemanticMatches } from './vectorSearch';
 import { clearSemanticVectors, hybridSearchRemote, pruneSemanticVectors, readSemanticVectors, searchSemanticVectorsRemote } from './vectorStore';
 import { fetchModelPackCatalog, fetchModelPackTask, installModelPack } from '../../../shared/model-packs/client';
 import type { ModelPackId } from '../../../shared/model-packs/catalog';
-import { editorCredentialHeaders } from '../../agent/editor-credential';
 import {
   MAX_SEMANTIC_QUERY_LENGTH,
   type DuplicateMatch, type HybridTextHit, type SemanticDevice, type SemanticMatch, type SemanticVectorRecord,
@@ -98,7 +97,7 @@ export function useSemanticSearch(scopeId: string, assets: MediaAsset[]) {
       ...current, pack: 'downloading', packProgress: 0, error: null,
     }));
     try {
-      await installModelPack(SEMANTIC_PACK_ID, await editorCredentialHeaders());
+      await installModelPack(SEMANTIC_PACK_ID, {});
       for (let round = 0; round < PACK_POLL_MAX_ROUNDS; round += 1) {
         await new Promise((resolve) => setTimeout(resolve, PACK_POLL_MS));
         const task = await fetchModelPackTask(SEMANTIC_PACK_ID);

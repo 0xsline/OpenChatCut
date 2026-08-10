@@ -60,7 +60,8 @@ const receipts = new Map<string, ReceiptValue>();
 globalThis.fetch = async (input, init) => {
   const url = String(input);
   const headers = new Headers(init?.headers);
-  assert.equal(headers.get('X-OpenChatCut-Editor-Credential'), 'editor-test-credential');
+  assert.equal(headers.get('X-OpenChatCut-Editor-Credential'), null,
+    'no editor credential header may be attached');
   if (url === '/api/external-agent/import-token') {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     mintedBodies.push(body);
