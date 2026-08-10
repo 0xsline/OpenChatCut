@@ -31,6 +31,18 @@ import type { AgentHookState } from './useAgentState';
 import { requestRuntimeGuard } from './useAgentRun';
 
 const projectId = `hydrate-recovery-${crypto.randomUUID()}`;
+
+// Ask-mode for the guard flow below: YOLO/auto-apply is on by default
+// (loadChatAutoApply returns true unless the pref is explicitly '0'), which
+// would short-circuit requestRuntimeGuard into allow-once. Pin it off so the
+// pending-guard lifecycle stays testable.
+const prefStorage = new Map<string, string>();
+(globalThis as { localStorage?: unknown }).localStorage = {
+  getItem: (key: string) => prefStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => { prefStorage.set(key, value); },
+  removeItem: (key: string) => { prefStorage.delete(key); },
+};
+prefStorage.set(`cc.chatAutoApply.${projectId}`, '0');
 resetAgentRuntimeStoreMemory();
 const capProjectId = `approval-cap-${crypto.randomUUID()}`;
 for (let index = 0; index < MAX_APPROVALS; index += 1) {
