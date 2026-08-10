@@ -10,6 +10,9 @@ export interface MigrationStatus {
 
 export const STORAGE_BANNER_DISMISS_KEY = 'cc.storageMigrationBannerDismissed';
 
+/** Dispatched after a successful migration so the banner can re-check. */
+export const STORAGE_MIGRATED_EVENT = 'cc:storage-migrated';
+
 export async function loadMigrationStatus(): Promise<MigrationStatus> {
   const response = await fetchWithEditorSession('/api/project-store/migrate-status', { method: 'GET' });
   return await response.json() as MigrationStatus;
