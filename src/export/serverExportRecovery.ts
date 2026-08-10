@@ -1,8 +1,15 @@
 import type { TimelineState } from '../editor/types';
 import type { ExportDestination } from './exportDestination';
+import {
+  projectStoreRemoteAvailable,
+  projectStoreWriteCredential,
+  requestProjectStore,
+} from '../persist/projectStoreTransport';
 
 const DATABASE_NAME = 'openchatcut-server-export-recovery';
 const STORE_NAME = 'jobs';
+/** Server-side kv prefix (phase B: recovery state survives cache wipes). */
+const REMOTE_PREFIX = 'export-recovery:';
 const memoryJobs = new Map<string, PersistedServerExportJob>();
 
 export type ServerExportRecoveryStage = 'polling' | 'target-committed';
@@ -64,6 +71,14 @@ function validRecord(value: unknown): value is PersistedServerExportJob {
 }
 
 export async function persistServerExportJob(record: PersistedServerExportJob): Promise<void> {
+  if (projectStoreWriteCredential()) {
+    try {
+      await requestProjectStore({ operation: 'set', key: `${REMOTE_PREFIX}${record.renderId}`, value: record });
+      return; // server is authoritative once reachable
+    } catch {
+      // fall through to the local store
+    }
+  }
   if (!hasIndexedDb()) {
     memoryJobs.set(record.renderId, record);
     return;
@@ -83,6 +98,22 @@ export async function persistServerExportJob(record: PersistedServerExportJob): 
 }
 
 export async function markServerExportTargetCommitted(renderId: string): Promise<void> {
+  if (projectStoreWriteCredential()) {
+    try {
+      const response = await requestProjectStore({ operation: 'entry', key: `${REMOTE_PREFIX}${renderId}` });
+      const row = response as { found: boolean; value?: unknown };
+      if (row.found && validRecord(row.value)) {
+        await requestProjectStore({
+          operation: 'set',
+          key: `${REMOTE_PREFIX}${renderId}`,
+          value: { ...row.value, stage: 'target-committed', updatedAt: Date.now() },
+        });
+        return;
+      }
+    } catch {
+      // fall through to the local store
+    }
+  }
   if (!hasIndexedDb()) {
     const current = memoryJobs.get(renderId);
     if (current) memoryJobs.set(renderId, { ...current, stage: 'target-committed', updatedAt: Date.now() });
@@ -109,6 +140,14 @@ export async function markServerExportTargetCommitted(renderId: string): Promise
 }
 
 export async function deleteServerExportJob(renderId: string): Promise<void> {
+  if (projectStoreWriteCredential()) {
+    try {
+      await requestProjectStore({ operation: 'delete', key: `${REMOTE_PREFIX}${renderId}` });
+      return;
+    } catch {
+      // fall through to the local store
+    }
+  }
   if (!hasIndexedDb()) {
     memoryJobs.delete(renderId);
     return;
@@ -128,7 +167,27 @@ export async function deleteServerExportJob(renderId: string): Promise<void> {
 }
 
 export async function listServerExportJobs(projectId: string): Promise<PersistedServerExportJob[]> {
-  const values: unknown[] = hasIndexedDb()
+  // Phase B: the server snapshot is authoritative; legacy IndexedDB rows are
+  // merged in and lazily promoted to the server so old jobs survive wipes.
+  const remoteValues: unknown[] = [];
+  const remoteRenderIds = new Set<string>();
+  let serverReachable = false;
+  if (projectStoreRemoteAvailable()) {
+    try {
+      const snapshotResponse = await requestProjectStore({ operation: 'snapshot' });
+      const snapshot = snapshotResponse as { version: 1; entries: Record<string, unknown> };
+      for (const [key, value] of Object.entries(snapshot.entries)) {
+        if (!key.startsWith(REMOTE_PREFIX)) continue;
+        remoteValues.push(value);
+        const renderId = key.slice(REMOTE_PREFIX.length);
+        if (renderId) remoteRenderIds.add(renderId);
+      }
+      serverReachable = true;
+    } catch {
+      // fall through to the local store
+    }
+  }
+  const localValues: unknown[] = hasIndexedDb()
     ? await (async () => {
       const database = await openDatabase();
       try {
@@ -142,6 +201,16 @@ export async function listServerExportJobs(projectId: string): Promise<Persisted
       }
     })()
     : [...memoryJobs.values()];
+  const values = [...remoteValues];
+  for (const local of localValues) {
+    if (!validRecord(local) || remoteRenderIds.has(local.renderId)) continue;
+    values.push(local);
+    if (serverReachable && projectStoreWriteCredential()) {
+      // Lazy promotion: legacy local rows join the server store once.
+      void requestProjectStore({ operation: 'set', key: `${REMOTE_PREFIX}${local.renderId}`, value: local })
+        .catch(() => undefined);
+    }
+  }
   return values
     .filter(validRecord)
     .filter((record) => record.projectId === projectId)

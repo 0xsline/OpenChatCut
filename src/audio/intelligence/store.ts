@@ -1,5 +1,11 @@
 import type { MediaAsset } from '../../editor/types';
 import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
+import { sha256Text } from '../../persist/agentRuntimeStore';
+import {
+  projectStoreRemoteAvailable,
+  projectStoreWriteCredential,
+  requestProjectStore,
+} from '../../persist/projectStoreTransport';
 import {
   MUSIC_ANALYSIS_SCHEMA_VERSION,
   MUSIC_ANALYZER_FINGERPRINT,
@@ -10,6 +16,8 @@ import type { MusicAnalysis, MusicSection, MusicTag } from './types';
 const DATABASE_NAME = 'openchatcut-music-intelligence';
 const DATABASE_VERSION = 1;
 const STORE_NAME = 'analysis-v1';
+/** Server-side kv prefix (phase B: analysis survives cache wipes). */
+const REMOTE_PREFIX = 'music-analysis:';
 const memory = new Map<string, unknown>();
 const TAG_KINDS: Record<MusicTag['kind'], true> = {
   genre: true,
@@ -47,6 +55,11 @@ const inRange = (value: unknown, low: number, high: number): value is number => 
 
 function cacheKey(assetId: string, sourceRevision: string): string {
   return JSON.stringify([assetId, sourceRevision, MUSIC_ANALYZER_FINGERPRINT]);
+}
+
+/** URL-safe server key: cacheKey contains JSON punctuation, hash it. */
+async function remoteKey(cacheKeyValue: string): Promise<string> {
+  return `${REMOTE_PREFIX}${await sha256Text(cacheKeyValue)}`;
 }
 
 function validTimes(value: unknown, durationMs: number): value is number[] {
@@ -210,12 +223,27 @@ export async function loadMusicAnalysisForAsset(asset: MediaAsset): Promise<Musi
   const sourceRevision = sourceRevisionOf(asset);
   const key = cacheKey(asset.id, sourceRevision);
   let stored = memory.get(key);
-  if (typeof indexedDB !== 'undefined' && stored === undefined) {
+  // Phase B: the server (SQLite after migration) is the primary cache once
+  // reachable; IndexedDB remains the offline/static-deploy fallback.
+  if (stored === undefined && projectStoreRemoteAvailable()) {
+    try {
+      const response = await requestProjectStore({ operation: 'entry', key: await remoteKey(key) });
+      const row = response as { found: boolean; value?: unknown };
+      if (row.found) stored = row.value;
+    } catch {
+      stored = undefined;
+    }
+  }
+  if (stored === undefined && typeof indexedDB !== 'undefined') {
     try { stored = await idbRead(key); } catch { stored = undefined; }
   }
   if (!validStored(stored, key, asset.id, sourceRevision)) {
     memory.delete(key);
     if (stored !== undefined && typeof indexedDB !== 'undefined') void idbDelete(key).catch(() => undefined);
+    if (stored !== undefined && projectStoreWriteCredential()) {
+      // Drop the invalid remote copy too, so it does not shadow fresh results.
+      void requestProjectStore({ operation: 'delete', key: await remoteKey(key) }).catch(() => undefined);
+    }
     return null;
   }
   memory.set(key, stored);
@@ -227,6 +255,14 @@ export async function saveMusicAnalysis(analysis: MusicAnalysis): Promise<void> 
   const key = cacheKey(analysis.assetId, analysis.sourceRevision);
   const stored: StoredAnalysis = { key, analyzerFingerprint: MUSIC_ANALYZER_FINGERPRINT, analysis };
   memory.set(key, stored);
+  if (projectStoreWriteCredential()) {
+    try {
+      await requestProjectStore({ operation: 'set', key: await remoteKey(key), value: stored });
+      return; // server is authoritative once reachable
+    } catch {
+      // fall through to the local cache
+    }
+  }
   if (typeof indexedDB !== 'undefined') {
     try { await idbWrite(stored); } catch { /* derived cache remains best-effort */ }
   }
