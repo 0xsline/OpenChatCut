@@ -73,23 +73,26 @@ function usePackActions(refresh: () => Promise<void>) {
   };
 }
 
-export function LocalModelPackPane() {
+interface LocalModelPackPaneProps {
+  packIds: readonly ModelPackId[];
+  title?: string;
+  description?: string;
+}
+
+export function LocalModelPackPane({ packIds, title = '本地智能模型', description = '模型不会自动安装。安装后，节拍与音乐语义分析只在本机运行。' }: LocalModelPackPaneProps) {
   const t = useT();
   const { packs, loadError, refresh } = usePackCatalog();
   const actions = usePackActions(refresh);
+  const visiblePacks = packs?.filter((pack) => packIds.includes(pack.id)) ?? [];
   return (
     <section style={sectionStyle} aria-labelledby="local-model-packs-heading">
       <div>
-        <div id="local-model-packs-heading" style={{ fontSize: 12.5, fontWeight: 650 }}>
-          {t('本地智能模型')}
-        </div>
-        <div style={{ marginTop: 3, fontSize: 11.5, color: theme.textDim }}>
-          {t('模型不会自动安装。安装后，节拍与音乐语义分析只在本机运行。')}
-        </div>
+        <div id="local-model-packs-heading" style={{ fontSize: 12.5, fontWeight: 650 }}>{t(title)}</div>
+        <div style={{ marginTop: 3, fontSize: 11.5, color: theme.textDim }}>{t(description)}</div>
       </div>
       {loadError && <div role="alert" style={errorStyle}>{t('无法读取模型包列表：{err}', { err: loadError })}</div>}
       {!loadError && !packs && <div style={hintStyle}>{t('读取中…')}</div>}
-      {(packs ?? []).map((pack) => (
+      {visiblePacks.map((pack) => (
         <PackCard key={pack.id} pack={pack} busy={actions.busyId === pack.id}
           error={actions.errors[pack.id]} install={actions.install} remove={actions.remove}
           cancel={actions.cancel} />
@@ -127,6 +130,7 @@ function PackCard({ pack, busy, error: actionError, install, remove, cancel }: P
     </div>
   );
 }
+
 
 function PackMetadata({ pack }: { pack: ModelPackCatalogEntry }) {
   const t = useT();

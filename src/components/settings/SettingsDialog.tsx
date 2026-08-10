@@ -164,8 +164,9 @@ function useTreeSelection(): {
   const group = findGroup(groupKey);
   const page = group.vendors.find((v) => v.key === vendorKey) ?? group.vendors[0];
   const selectGroup = (key: string): void => {
+    const nextGroup = findGroup(key);
     setGroupKey(key);
-    setVendorKey(findGroup(key).vendors[0].key);
+    setVendorKey(nextGroup.vendors[0].key);
   };
   return { group, page, selectGroup, selectVendor: setVendorKey };
 }
@@ -381,7 +382,7 @@ function VendorRow({ page, on, active, onSelect }: {
   const [hovered, hoverProps] = useHover();
   return (
     <button type="button" onClick={onSelect} {...hoverProps} style={navRowStyle(active, hovered)}>
-      <VendorIcon vendor={page.vendor} size={15} />
+      {page.icon ? <Icon name={page.icon} size={15} /> : <VendorIcon vendor={page.vendor} size={15} />}
       <span style={navLabel}>{t(page.title)}</span>
       <span style={dot(on)} />
     </button>
@@ -465,7 +466,7 @@ const sidebarNote: React.CSSProperties = {
   margin: 0, padding: '10px 12px', fontSize: 10.5, lineHeight: 1.6, color: theme.textDim, borderTop: `0.5px solid ${theme.border}`,
 };
 const vendorCol: React.CSSProperties = {
-  width: VENDOR_COL_WIDTH, flex: '0 0 auto', minHeight: 0, overflowY: 'auto',
+  width: VENDOR_COL_WIDTH, flex: '0 0 auto', minWidth: 0, minHeight: 0, overflowY: 'auto',
   display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 8px', borderRight: `0.5px solid ${theme.border}`,
 };
 const routeBox: React.CSSProperties = { padding: '0 2px 10px', marginBottom: 6, borderBottom: `0.5px solid ${theme.border}` };

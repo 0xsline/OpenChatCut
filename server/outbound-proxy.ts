@@ -14,15 +14,18 @@ import { ProxyAgent } from 'undici';
 import type { Agent as HttpAgent } from 'node:http';
 import { getKey } from './keystore.ts';
 
-/** Resolved proxy URL: keystore first, then HTTPS_PROXY/HTTP_PROXY env. */
-export function outboundProxyUrl(): string {
-  const fromKey = getKey('PROXY_URL').trim();
-  if (fromKey) return fromKey;
+/** Resolved proxy URL: keystore PROXY_URL first, then standard proxy environment variables. */
+export function environmentProxyUrl(): string {
   return process.env.HTTPS_PROXY
     ?? process.env.https_proxy
     ?? process.env.HTTP_PROXY
     ?? process.env.http_proxy
     ?? '';
+}
+
+export function outboundProxyUrl(): string {
+  const fromKey = getKey('PROXY_URL').trim();
+  return fromKey || environmentProxyUrl();
 }
 
 let cachedDispatcherUrl = '';

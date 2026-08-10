@@ -210,9 +210,9 @@ button, input, select { font: inherit; }
   .cc-topbar-title { display:none !important; }
 }
 
-/* vendored official brand SVGs (lobe-icons / simple-icons). simple-icons without width, height and fill,
-   Normalized to 1em + currentColor; lobe color version path comes with its own brand fill and is not affected */
-.cc-vendor-icon svg { width: 1em; height: 1em; fill: currentColor; }
+/* Vendor marks have mixed source viewBoxes; normalize both the host and its inline SVG. */
+.cc-vendor-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; line-height:0; overflow:hidden; }
+.cc-vendor-icon svg { display:block; width:100%; height:100%; fill:currentColor; }
 
 .cc-chat-panel { container:chat-panel / inline-size; }
 .cc-chat-messages-shell { position:relative; flex:1; min-height:0; }

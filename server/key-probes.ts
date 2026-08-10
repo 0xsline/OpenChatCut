@@ -4,7 +4,8 @@
 // Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
 // The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each vite-plugin-* one by one
 // Real call writing method (beanbao three header / MiniMax base_resp / Gemini x-goog-api-key...).
-import { proxyDispatcher } from './outbound-proxy.ts';
+import { ProxyAgent } from 'undici';
+import { environmentProxyUrl, proxyDispatcher } from './outbound-proxy.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
@@ -35,6 +36,7 @@ export interface ProbeResult {
   models?: string[];
 }
 
+
 type Get = (name: KeyName) => string;
 
 interface ProbeDef {
@@ -51,6 +53,40 @@ interface ProbeDef {
 
 const TIMEOUT_MS = 12_000;
 const t = (): AbortSignal => AbortSignal.timeout(TIMEOUT_MS);
+const PROXY_PROBE_URL = 'https://www.gstatic.com/generate_204';
+
+function proxyProbeUrl(overrides: Record<string, unknown>): string {
+  if (Object.hasOwn(overrides, 'PROXY_URL')) return String(overrides.PROXY_URL ?? '').trim();
+  return getKey('PROXY_URL').trim() || environmentProxyUrl();
+}
+
+/** Test the saved proxy or the unsaved value currently shown in the settings field. */
+export async function runProxyProbe(overrides: Record<string, unknown>): Promise<ProbeResult> {
+  const proxyUrl = proxyProbeUrl(overrides);
+  if (!proxyUrl) return { ok: false, message: '尚未填写代理地址，且未检测到系统代理环境变量' };
+  let dispatcher: ProxyAgent;
+  try {
+    dispatcher = new ProxyAgent(proxyUrl);
+  } catch {
+    return { ok: false, message: '代理地址格式无效，请填写 http://host:port 或 https://host:port' };
+  }
+  const started = Date.now();
+  try {
+    const response = await fetch(PROXY_PROBE_URL, { signal: t(), dispatcher } as RequestInit);
+    const latencyMs = Date.now() - started;
+    if (!response.ok) return { ok: false, status: response.status, latencyMs, message: `代理已连接，但外网探测返回 HTTP ${response.status}` };
+    return { ok: true, status: response.status, latencyMs, message: `代理连接成功 · 外网可达 · ${latencyMs}ms` };
+  } catch (error) {
+    return { ok: false, latencyMs: Date.now() - started, message: proxyNetworkMessage(error) };
+  } finally {
+    await dispatcher.close();
+  }
+}
+
+function proxyNetworkMessage(error: unknown): string {
+  const message = networkMessage(error).replace(/，不代表 Key 错误$/, '');
+  return `代理连接失败 · ${message}`;
+}
 const base = (get: Get, name: KeyName, def: string): string => (get(name) || def).replace(/\/+$/, '');
 const bearer = (key: string): Record<string, string> => ({ Authorization: `Bearer ${key}` });
 function llmProbe(provider: LlmProvider): ProbeDef {
@@ -386,6 +422,7 @@ export function makeGetter(overrides: Record<string, unknown>): Get {
 
 /** Run a connectivity probe of the provider's page. Unconfigured/unknown pages are returned before sending a request and do not hit the network.*/
 export async function runProbe(page: string, overrides: Record<string, unknown>): Promise<ProbeResult> {
+  if (page === 'agent/proxy') return runProxyProbe(overrides);
   const probe = PROBES[page];
   if (!probe) return { ok: false, message: '该厂商暂不支持连接测试' };
   const get = makeGetter(overrides);

@@ -53,7 +53,7 @@ const transcriptionPage = (
   fields: [...fields, ...COMMON_TRANSCRIPTION_FIELDS],
 });
 
-const localAsrPage = transcriptionPage('local', 'localasr', '本地模型（whisper）', [
+export const localAsrPage = transcriptionPage('local', 'localasr', '本地模型（whisper）', [
   {
     name: 'LOCAL_ASR_MODEL',
     label: '默认模型',

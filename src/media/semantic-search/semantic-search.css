@@ -1,50 +1,114 @@
+/* Local semantic search panel — matches DESIGN.md: Geist 11.5px base,
+   28px controls, 4px grid, accent reserved for primary actions. */
+
 .cc-semantic-anchor { position:relative; display:flex; }
+
 .cc-semantic-trigger.active { color:var(--cc-accent); background:rgba(var(--cc-accent-rgb),.1); }
-.cc-semantic-panel { position:fixed; z-index:90; max-height:min(560px, 70vh); overflow:auto; border:0.5px solid var(--cc-border-light); border-radius:6px; background:var(--cc-panel); color:var(--cc-text); box-shadow:0 8px 12px rgba(var(--cc-shadow-rgb),.52); }
-.cc-semantic-panel > header { min-height:46px; display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-bottom:0.5px solid var(--cc-border); }
-.cc-semantic-panel > header div { display:flex; flex-direction:column; gap:2px; }
-.cc-semantic-panel > header strong { font-size:13px; }
-.cc-semantic-panel > header span { color:var(--cc-text-dim); font-size:10px; }
-.cc-semantic-panel button { min-height:28px; display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:0 9px; border:0.5px solid var(--cc-border); border-radius:4px; background:var(--cc-bg); color:var(--cc-text-muted); cursor:pointer; transition:border-color 120ms ease, background 120ms ease, color 120ms ease; }
+
+.cc-semantic-panel {
+  position:fixed; z-index:90; width:min(420px, calc(100vw - 16px)); max-height:min(560px, 70vh); overflow:auto;
+  border:0.5px solid var(--cc-border-light); border-radius:6px;
+  background:var(--cc-panel); color:var(--cc-text);
+  box-shadow:0 8px 12px rgba(var(--cc-shadow-rgb),.52);
+}
+
+/* Header */
+.cc-semantic-panel > header {
+  min-height:44px; display:flex; align-items:center; justify-content:space-between;
+  gap:12px; padding:8px 10px; border-bottom:0.5px solid var(--cc-border);
+}
+.cc-semantic-panel > header div { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.cc-semantic-panel > header strong { font-size:12px; font-weight:600; line-height:1.35; }
+.cc-semantic-panel > header span { color:var(--cc-text-dim); font-size:10px; line-height:1.35; }
+
+/* Buttons — one vocabulary: 28px, 4px radius, 11px Geist, subtle border */
+.cc-semantic-panel button {
+  min-height:28px; display:inline-flex; align-items:center; justify-content:center;
+  gap:5px; padding:0 10px; border:0.5px solid var(--cc-border); border-radius:4px;
+  background:var(--cc-bg); color:var(--cc-text); font-size:11px; line-height:1;
+  cursor:pointer; transition:border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
 .cc-semantic-panel button:hover:not(:disabled) { border-color:var(--cc-border-light); background:var(--cc-hover); color:var(--cc-text); }
+.cc-semantic-panel button:focus-visible { outline:1.5px solid var(--cc-accent); outline-offset:1px; }
 .cc-semantic-panel button:disabled { cursor:not-allowed; opacity:.45; }
-.cc-semantic-panel button.primary { background:var(--cc-accent); color:var(--cc-on-accent); border-color:transparent; font-weight:650; }
+
+/* Primary action — flat accent fill only here */
+.cc-semantic-panel button.primary {
+  background:var(--cc-accent); color:var(--cc-on-accent); border-color:transparent; font-weight:600;
+}
 .cc-semantic-panel button.primary:hover:not(:disabled) { background:var(--cc-accent-deep); color:var(--cc-on-accent); }
-.cc-semantic-panel > header button { display:grid; place-items:center; width:24px; height:24px; padding:0; border:0; background:transparent; }
-.cc-semantic-empty { display:grid; grid-template-columns:32px minmax(0,1fr); gap:6px 10px; align-items:start; padding:16px; }
+
+/* Header close — bare icon button */
+.cc-semantic-panel > header button {
+  display:grid; place-items:center; width:24px; height:24px; padding:0; border:0; background:transparent;
+}
+
+/* Empty / enable state */
+.cc-semantic-empty { display:grid; grid-template-columns:32px minmax(0,1fr); gap:8px 10px; align-items:start; padding:16px; }
 .cc-semantic-empty-icon { width:32px; height:32px; display:grid; place-items:center; border-radius:4px; background:rgba(var(--cc-accent-rgb),.1); color:var(--cc-accent); }
 .cc-semantic-empty > div { min-width:0; }
-.cc-semantic-empty strong { font-size:12px; line-height:1.35; }
-.cc-semantic-empty p { max-width:42ch; margin:4px 0 0; color:var(--cc-text-muted); font-size:10.5px; line-height:1.5; }
-.cc-semantic-empty button { grid-column:2; justify-self:start; margin-top:3px; }
-.cc-semantic-error { grid-column:2; max-width:100%; color:var(--cc-danger); font-size:10.5px; overflow-wrap:anywhere; }
+.cc-semantic-empty strong { font-size:12px; line-height:1.35; font-weight:600; }
+.cc-semantic-empty p { max-width:none; margin:4px 0 0; color:var(--cc-text-muted); font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+.cc-semantic-pack-missing { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; margin-top:4px; padding-top:12px; border-top:0.5px solid var(--cc-border); }
+.cc-semantic-pack-missing p { margin:0; }
+.cc-semantic-pack-missing button { justify-self:end; white-space:nowrap; }
+.cc-semantic-empty > button { grid-column:2; justify-self:start; margin-top:3px; }
+.cc-semantic-error { grid-column:1 / -1; max-width:100%; color:var(--cc-danger); font-size:11px; overflow-wrap:anywhere; }
+
+/* Loading */
 .cc-semantic-loading { display:flex; flex-direction:column; align-items:stretch; gap:8px; padding:16px; }
 .cc-semantic-loading progress { width:100%; height:5px; accent-color:var(--cc-accent); }
 .cc-semantic-loading span { color:var(--cc-text-muted); font-size:11px; }
 .cc-semantic-loading button { align-self:flex-start; }
+
+/* Ready: search form */
 .cc-semantic-ready { display:flex; flex-direction:column; gap:10px; padding:10px; }
-.cc-semantic-ready form { display:flex; align-items:center; gap:6px; height:30px; padding-left:8px; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-bg); }
+.cc-semantic-ready form {
+  display:flex; align-items:center; gap:6px; height:28px; padding-left:8px;
+  border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-bg);
+}
+.cc-semantic-ready form:focus-within { border-color:var(--cc-accent); }
 .cc-semantic-ready form input { min-width:0; flex:1; border:0; outline:0; background:transparent; color:var(--cc-text); font-size:11px; }
-.cc-semantic-ready form button { min-height:24px; height:24px; padding:0 8px; }
+.cc-semantic-ready form button { min-height:26px; height:26px; padding:0 10px; }
 .cc-semantic-ready form button:not(.primary) { display:grid; place-items:center; width:24px; padding:0; border:0; background:transparent; }
+
+/* Index status */
 .cc-semantic-index-status { display:grid; grid-template-columns:1fr auto; gap:5px 8px; padding:9px 0; border-top:0.5px solid var(--cc-border); border-bottom:0.5px solid var(--cc-border); }
 .cc-semantic-index-status > div:first-child { display:flex; flex-direction:column; gap:2px; }
-.cc-semantic-index-status strong { font-size:11px; }
-.cc-semantic-index-status span, .cc-semantic-index-status small { color:var(--cc-text-dim); font-size:10px; }
+.cc-semantic-index-status strong { font-size:11px; font-weight:600; }
+.cc-semantic-index-status span, .cc-semantic-index-status small { color:var(--cc-text-dim); font-size:10.5px; }
 .cc-semantic-index-status > div:last-of-type { display:flex; align-items:center; gap:4px; }
-.cc-semantic-index-status button { padding:4px 7px; font-size:10px; }
 .cc-semantic-index-status small { grid-column:1 / -1; color:var(--cc-gold); }
+
+/* Results */
 .cc-semantic-results { display:flex; flex-direction:column; gap:2px; }
-.cc-semantic-results > strong { padding:2px 1px 4px; font-size:11px; }
-.cc-semantic-results > span { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 7px; border-radius:4px; background:var(--cc-panel-alt); font-size:10px; }
+.cc-semantic-results > strong { padding:2px 1px 4px; font-size:11px; font-weight:600; }
+.cc-semantic-results > span {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:5px 7px; border-radius:4px; background:var(--cc-panel-alt); font-size:11px;
+}
 .cc-semantic-results b { min-width:0; overflow:hidden; color:var(--cc-text-muted); font-weight:500; text-overflow:ellipsis; white-space:nowrap; }
 .cc-semantic-results em { flex:none; color:var(--cc-text-dim); font-style:normal; font-variant-numeric:tabular-nums; }
 
+/* Sampling settings */
 .cc-semantic-sampling { border-top:0.5px solid var(--cc-border); padding-top:8px; }
-.cc-semantic-sampling summary { color:var(--cc-text-dim); font-size:10px; cursor:pointer; user-select:none; }
-.cc-semantic-sampling-note { margin:6px 0 8px; color:var(--cc-text-dim); font-size:10px; line-height:1.5; }
+.cc-semantic-sampling summary { color:var(--cc-text-dim); font-size:11px; cursor:pointer; user-select:none; }
+.cc-semantic-sampling-note { margin:6px 0 8px; color:var(--cc-text-dim); font-size:10.5px; line-height:1.5; }
 .cc-semantic-sampling label { display:grid; grid-template-columns:minmax(0,1fr) 72px; gap:8px; align-items:center; margin-top:6px; }
-.cc-semantic-sampling label span { color:var(--cc-text-muted); font-size:10.5px; }
-.cc-semantic-sampling input { width:100%; height:26px; padding:0 6px; border:0.5px solid var(--cc-border); border-radius:4px; background:var(--cc-bg); color:var(--cc-text); font-size:11px; font-variant-numeric:tabular-nums; }
+.cc-semantic-sampling label span { color:var(--cc-text-muted); font-size:11px; }
+.cc-semantic-sampling input {
+  width:100%; height:28px; padding:0 6px; border:0.5px solid var(--cc-border); border-radius:4px;
+  background:var(--cc-bg); color:var(--cc-text); font-size:11px; font-variant-numeric:tabular-nums;
+}
+.cc-semantic-sampling input:focus-visible { outline:1.5px solid var(--cc-accent); outline-offset:1px; }
 .cc-semantic-sampling-actions { display:flex; gap:6px; margin-top:10px; }
-.cc-semantic-sampling-actions button { font-size:10.5px; }
+
+@media (max-width: 520px) {
+  .cc-semantic-panel { max-height:calc(100vh - 16px); }
+  .cc-semantic-pack-missing { grid-template-columns:1fr; align-items:stretch; }
+  .cc-semantic-pack-missing button { justify-self:start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-semantic-panel button { transition:none; }
+}

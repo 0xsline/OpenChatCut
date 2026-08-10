@@ -4,8 +4,9 @@
 // Send to the server for detection (only effective this time, not dropped), the key value will never appear in the response.
 import { useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
-import { useT } from '../../i18n/locale';
+import { t, useT } from '../../i18n/locale';
 import { VendorIcon } from './vendorIcons';
+import { Icon } from '../icons';
 import { CodexAccountCard } from './CodexAccountCard';
 import type { CodexAgentModel } from '../../../shared/codex-agent';
 import type { CodexSettingsController } from './useCodexSettings';
@@ -15,6 +16,8 @@ import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabiliti
 import { ModelCapabilityEditor } from './ModelCapabilityEditor';
 import { VisionModelPane } from './VisionModelPane';
 import { LocalAsrPane } from './LocalAsrPane';
+import { LocalModelPackPane } from './LocalModelPackPane';
+import { SemanticModelPackPane } from './SemanticModelPackPane';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
   type KeyStatusResponse, type SelectOption, type SettingsField, type SettingsVendorPage,
@@ -61,7 +64,7 @@ export function VendorPane({ page, hint, ctx }: {
   const t = useT();
   if (page.connection === 'codex') return <CodexVendorPane page={page} hint={hint} ctx={ctx} />;
   if (page.key === 'llm/vision') return <VisionModelPane />;
-  if (page.key === 'transcription/local') return <LocalAsrPane fields={page.fields} ctx={ctx} />;
+  if (page.kind === 'local-models') return <LocalModelsPane page={page} fields={page.fields} ctx={ctx} />;
   const on = vendorConfigured(ctx.status, page, ctx.codex.status);
   return (
     <div style={pane}>
@@ -131,8 +134,36 @@ function CodexVendorPane({ page, hint, ctx }: {
   );
 }
 
+function LocalModelsPane({ page, fields, ctx }: {
+  page: SettingsVendorPage; fields: readonly SettingsField[]; ctx: FieldCtx;
+}) {
+  const t = useT();
+  const title = page.key === 'local/asr' ? '本地转写' : page.key === 'local/music/packs' ? '节拍与音乐分析' : '画面语义搜索';
+  return (
+    <div style={pane}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {page.icon ? <Icon name={page.icon} size={18} /> : <VendorIcon vendor={page.vendor} size={18} />}
+          <b style={{ fontSize: 13 }}>{t(title)}</b>
+        </div>
+        <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 3, paddingLeft: 26 }}>
+          {t('本地模型按需安装，索引、转写和分析都在本机完成。')}
+        </div>
+      </div>
+      {page.key === 'local/asr' && <LocalAsrPane fields={fields} ctx={ctx} />}
+      {page.key === 'local/music/packs' && <LocalModelPackPane
+        packIds={['rhythm-lite', 'music-semantics-lite']}
+        title="节拍与音乐分析模型"
+        description="模型不会自动安装。安装后，节拍与音乐语义分析只在本机运行。" />}
+      {page.key === 'local/semantic/setup' && <SemanticModelPackPane />}
+    </div>
+  );
+}
+
+
 // ── Test connection ───────────────────────────────────────────────────────
 
+interface ProbeRequestResult { body: ProbeResponse; staged: boolean; }
 interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; models?: string[]; }
 interface ProbeShown { page: string; ok: boolean; message: string; }
 
@@ -146,6 +177,24 @@ function stagedOverrides(page: SettingsVendorPage, values: Values): Record<strin
   return overrides;
 }
 
+async function requestProbe(page: SettingsVendorPage, ctx: FieldCtx, translate: typeof t): Promise<ProbeRequestResult> {
+  const overrides = stagedOverrides(page, ctx.values);
+  if (page.kind === 'settings' && page.fields[0]) {
+    const field = page.fields[0];
+    const effectiveValue = ctx.values[field.name] ?? modelValue(ctx.status, field.name);
+    if (effectiveValue?.trim()) overrides[field.name] = effectiveValue.trim();
+    else delete overrides[field.name];
+  }
+  const staged = Object.keys(ctx.values).some((name) => page.fields.some((field) => field.name === name));
+  const res = await fetch('/api/keys/test', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: page.key, overrides }),
+  });
+  const body = await res.json().catch(() => null) as ProbeResponse | null;
+  if (!body || typeof body.message !== 'string') throw new Error(translate('测试请求失败 ({n})', { n: res.status }));
+  return { body, staged };
+}
+
 function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: FieldCtx }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
@@ -154,15 +203,8 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
 
   const test = async (): Promise<void> => {
     setBusy(true); setResult(null);
-    const overrides = stagedOverrides(page, ctx.values);
-    const staged = Object.keys(overrides).length > 0;
     try {
-      const res = await fetch('/api/keys/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page: page.key, overrides }),
-      });
-      const body = await res.json().catch(() => null) as ProbeResponse | null;
-      if (!body || typeof body.message !== 'string') throw new Error(t('测试请求失败 ({n})', { n: res.status }));
+      const { body, staged } = await requestProbe(page, ctx, t);
       const suffix = staged && body.ok ? t('（按当前输入测试，记得保存）') : '';
       setResult({ page: page.key, ok: body.ok, message: body.message + suffix });
       const modelField = page.fields.find((field) => field.discoverableModel);
@@ -177,11 +219,12 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
   };
 
   const discoversModels = page.fields.some((field) => field.discoverableModel);
+  const isProxy = page.key === 'agent/proxy';
   return (
     <div style={testRow}>
       <button type="button" onClick={() => { void test(); }} disabled={busy}
         style={{ ...testBtn, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
-        {busy ? t('测试中…') : discoversModels ? t('测试并读取模型') : t('测试连接')}
+        {busy ? t('测试中…') : discoversModels ? t('测试并读取模型') : isProxy ? t('测试代理连接') : t('测试连接')}
       </button>
       {shown && (
         <span style={{ ...testMsg, color: shown.ok ? ON : WARN }} title={shown.message}>
@@ -192,7 +235,7 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
         <span style={{ ...testMsg, color: theme.textDim }}>
           {discoversModels
             ? t('验证地址与密钥，并读取该接口可用的模型')
-            : t('发一条最小请求验证 Key 与地址可用')}
+            : isProxy ? t('使用当前代理地址访问外网探测端点') : t('发一条最小请求验证 Key 与地址可用')}
         </span>
       )}
     </div>
@@ -348,12 +391,13 @@ interface TextInputProps {
 
 function TextInput({ field, shown, reveal, configured, stagedClear, onStage }: TextInputProps) {
   const listId = field.kind === 'text' && field.options ? `cc-dl-${field.name}` : undefined;
+  const displayValue = stagedClear ? shown : shown || field.defaultValue || '';
   return (
     <>
       <input
         type={field.kind === 'secret' && !reveal ? 'password' : 'text'}
         autoComplete="off" spellCheck={false} list={listId}
-        value={shown}
+        value={displayValue}
         onChange={(e) => onStage(field, e.target.value)}
         placeholder={fieldPlaceholder(field, configured, stagedClear)}
         style={stagedClear ? { ...input, border: `0.5px solid ${WARN}` } : input}

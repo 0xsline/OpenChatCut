@@ -1,7 +1,7 @@
 // checks:key-probes pure logic - detection table coverage, override whitelist, status classification,
 // MiniMax base_resp post-check, runProbe does not hit the network early exit. There are no real network requests in the whole process.
 import assert from 'node:assert/strict';
-import { PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, runProbe } from './key-probes.ts';
+import { PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, runProbe, runProxyProbe } from './key-probes.ts';
 import { LLM_PROVIDER_PRESETS } from '../shared/llm-providers.ts';
 
 // 1. One-to-one correspondence with the provider page of settingsSchema (the page key has the same name); the llm page is derived from the preset,
@@ -66,6 +66,16 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   // Doubao requires both keys: only the App ID is still unconfigured
   const half = await runProbe('voice/doubao', { DOUBAO_TTS_APP_ID: 'a' });
   assert.match(half.message, /尚未填写 API Key/);
+}
+
+// 7. Proxy page uses its own connectivity semantics rather than provider/API-key language.
+{
+  const missing = await runProxyProbe({ PROXY_URL: '' });
+  assert.equal(missing.ok, false);
+  assert.match(missing.message, /尚未填写代理地址/);
+  const malformed = await runProxyProbe({ PROXY_URL: 'not a proxy url' });
+  assert.equal(malformed.ok, false);
+  assert.match(malformed.message, /代理地址格式无效/);
 }
 
 // 7. Media probes normalize Base URLs exactly like the runtime: keep an existing version suffix and add a missing one.

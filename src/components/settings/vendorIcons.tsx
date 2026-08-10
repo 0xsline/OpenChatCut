@@ -51,6 +51,8 @@ interface SvgIcon {
   readonly tint?: string;
 }
 
+const PROXY_ICON = '<svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zm-9-9h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg>';
+
 const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   anthropic: { svg: claudeSvg },                    // Agent brain uses Claude starburst (official orange)
   openai: { svg: openaiSvg, tint: theme.text },     // The official ring is a single color, which will match the skin color (dark skin is nearly white/light skin is nearly black)
@@ -83,8 +85,8 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   openrouter: { svg: openrouterSvg, tint: '#7624F4' }, // Official OpenRouter mark + primary purple
   ollama: { svg: ollamaSvg, tint: theme.text },        // Official llama mark, adapted for skin contrast
   lmstudio: { svg: lmstudioSvg },                      // Official LM Studio color app icon
+  proxy: { svg: PROXY_ICON }, // network proxy
   vision: { svg: visionSvg },                          // Vision bypass feature mark (generated)
-  proxy: { svg: '<svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zm-9-9h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg>' }, // network proxy
 };
 
 // Official SVG not included / Non-provider brand → monogram

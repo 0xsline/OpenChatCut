@@ -13,6 +13,7 @@ export interface SettingsField {
   readonly note?: string;
   readonly options?: readonly SelectOption[];
   readonly defaultLabel?: string;
+  readonly defaultValue?: string;
   readonly discoverableModel?: boolean;
 }
 
@@ -21,7 +22,9 @@ export interface SettingsVendorPage {
   readonly vendor: VendorId;
   readonly title: string;
   readonly note?: string;
+  readonly icon?: IconName;
   readonly connection?: 'codex';
+  readonly kind?: 'provider' | 'settings' | 'local-models';
   readonly fields: readonly SettingsField[];
 }
 
@@ -46,10 +49,14 @@ export interface KeyStatusResponse {
   caps: Record<string, boolean>;
   models: Record<string, string>;
 }
-
 export const secret = (name: string, label: string): SettingsField => ({ name, label, kind: 'secret' });
-export const text = (name: string, label: string, placeholder?: string, note?: string): SettingsField =>
-  ({ name, label, kind: 'text', placeholder, note });
+export const text = (
+  name: string,
+  label: string,
+  placeholder?: string,
+  note?: string,
+  defaultValue?: string,
+): SettingsField => ({ name, label, kind: 'text', placeholder, note, defaultValue });
 export const modelText = (
   name: string,
   label: string,

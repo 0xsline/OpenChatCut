@@ -11,7 +11,6 @@ import { VendorIcon } from './vendorIcons';
 import type { AsrDownloadStatus } from '../../../shared/asr-models';
 import { FieldRow, type FieldCtx } from './settingsVendorPane';
 import type { SettingsField } from './settingsSchema';
-import { LocalModelPackPane } from './LocalModelPackPane';
 import { mutateLocalAsrModel } from './local-asr-model-mutation';
 import {
   desktopNativeInferenceEnabled,
@@ -239,7 +238,6 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
           );
         })}
       </div>
-      <LocalModelPackPane />
     </div>
   );
 }

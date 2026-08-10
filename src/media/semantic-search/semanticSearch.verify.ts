@@ -179,8 +179,8 @@ assert.deepEqual(
     { width: 1280, height: 800 },
     280,
   ),
-  { top: 114, left: 330, width: 340 },
-  'the floating panel stays inside the media library instead of being clipped by it',
+  { top: 114, left: 330, width: 420 },
+  'the floating panel keeps its readable width without inheriting a narrow library column',
 );
 assert.equal(
   resolveSemanticPanelRect(

@@ -30,6 +30,7 @@ import {
   ROUTE_NEEDS,
   TRANSCRIPTION_SETTINGS_GROUP,
   VOICE_SETTINGS_GROUP,
+  localAsrPage,
 } from './settingsMediaProviders';
 
 export type {
@@ -122,7 +123,7 @@ const VISION_PAGE: SettingsVendorPage = {
 // (Agent models, AI generation, model-pack downloads, R2). Empty = use the
 // HTTPS_PROXY/HTTP_PROXY environment variables (Clash etc.).
 const PROXY_PAGE: SettingsVendorPage = {
-  key: 'agent/proxy', vendor: 'proxy', title: '网络代理',
+  key: 'agent/proxy', vendor: 'proxy', title: '网络代理', kind: 'settings',
   note: '国内网络访问海外模型（Gemini / OpenAI / Anthropic / Mistral 等）失败时，'
     + '可在此填写本地代理地址（如 http://127.0.0.1:7890）。'
     + '留空则使用系统环境变量（HTTPS_PROXY / HTTP_PROXY）。'
@@ -135,7 +136,6 @@ const PROXY_PAGE: SettingsVendorPage = {
 const AGENT_VENDOR_PAGES_WITH_VISION: readonly SettingsVendorPage[] = [
   ...AGENT_VENDOR_PAGES,
   VISION_PAGE,
-  PROXY_PAGE,
 ];
 
 // MiniMax serves 4 capabilities for the same Key/Base URL pair, and only the model fields of that capability are linked to the capability on the page.
@@ -168,6 +168,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       { key: 'llm', title: 'Agent 大脑',
         hint: '对话与工具调用的核心，未配置无法对话。',
         vendors: AGENT_VENDOR_PAGES_WITH_VISION },
+    ],
+  },
+  {
+    key: 'proxy', title: '网络代理', icon: 'plug',
+    groups: [
+      { key: 'proxy', title: '网络代理', hint: '统一配置服务端访问海外 API 使用的代理地址。', vendors: [PROXY_PAGE] },
     ],
   },
   {
@@ -303,6 +309,17 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
         ] },
     ],
   },
+  {
+    key: 'local', title: '本地模型', icon: 'database',
+    groups: [
+      { key: 'local', title: '本地模型', hint: '本地转写、节拍与音乐分析、画面语义搜索。模型按需安装，数据不出本机。',
+        vendors: [
+          { key: 'local/asr', vendor: 'localasr', title: '本地转写', icon: 'mic', kind: 'local-models', fields: localAsrPage.fields },
+          { key: 'local/music/packs', vendor: 'localasr', title: '节拍与音乐分析', icon: 'music', kind: 'local-models', fields: [] },
+          { key: 'local/semantic/setup', vendor: 'localasr', title: '画面语义搜索', icon: 'search', kind: 'local-models', fields: [] },
+        ] },
+    ],
+  },
 ];
 
 /** Temporary changes: field name in map = temporary storage; '' = clear explicitly (model fields will return to default).*/
@@ -355,14 +372,13 @@ export function vendorConfigured(
   if (secrets.length === 0) return page.fields.some((f) => Boolean(status.keys[f.name]?.configured));
   return secrets.every((f) => Boolean(status.keys[f.name]?.configured));
 }
-
-/** Determination of "configured" capability group: llm depends on whether any provider page is fully configured, and the rest depends on the server capability Boolean (caps).*/
+/** Determination of configured capability group: LLM and proxy are page-backed; others use server capability flags. */
 export function groupConfigured(
   status: KeyStatusResponse | null,
   group: SettingsGroup,
   codexStatus?: CodexAgentStatus | null,
 ): boolean {
-  if (group.key === 'llm') {
+  if (group.key === 'llm' || group.key === 'proxy') {
     return group.vendors.some((page) => vendorConfigured(status, page, codexStatus));
   }
   return status ? Boolean(status.caps[group.key]) : false;
