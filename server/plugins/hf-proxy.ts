@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { asrModelFile, type AsrModelFile } from '../../shared/asr-models.ts';
+import { ASR_MODELS, asrModelFile, type AsrModelFile } from '../../shared/asr-models.ts';
 import { MODEL_PACKS, type ModelPackFile } from '../../shared/model-packs/catalog.ts';
 import {
   fileMatchesIntegrity,
@@ -88,7 +88,19 @@ export function parseTarget(rawPath: string): ProxyTarget | null {
   if (!MODEL_ID.test(modelId) || !REV.test(revision)) return null;
   if (fileParts.some((segment) => !SEGMENT.test(segment))) return null;
   const target = { modelId, revision, filePath: fileParts.join('/') };
-  return fixedModelFile(target) ? target : null;
+  if (fixedModelFile(target)) return target;
+  // transformers.js v4 probes config/tokenizer files with revision "main"
+  // (its get_files path drops the pinned revision). Resolve "main" to the
+  // catalog-pinned revision so the whitelist keeps serving the exact locked
+  // file tuple (same sha-verified bytes, just a different URL segment).
+  if (revision === 'main') {
+    const entry = ASR_MODELS.find((model) => model.modelId === modelId);
+    if (entry) {
+      const pinned: ProxyTarget = { modelId, revision: entry.revision, filePath: target.filePath };
+      if (fixedModelFile(pinned)) return pinned;
+    }
+  }
+  return null;
 }
 
 export interface DownloadModelFileOptions {

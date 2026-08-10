@@ -44,6 +44,14 @@ assert.deepEqual(parseTarget(asrPath), {
   filePath: asrFile.path,
 });
 
+// transformers.js v4 probes config files with revision "main"; it must resolve
+// to the catalog-pinned revision (same sha-verified file tuple).
+assert.deepEqual(parseTarget(`/${asrModel.modelId}/resolve/main/${asrFile.path}`), {
+  modelId: asrModel.modelId,
+  revision: asrModel.revision,
+  filePath: asrFile.path,
+});
+
 const rejectedPaths = [
   `/musetric/beat-this-onnx/resolve/${RHYTHM_REVISION}/%`,
   `/musetric/beat-this-onnx/resolve/${RHYTHM_REVISION}/.`,
@@ -55,7 +63,6 @@ const rejectedPaths = [
   `/musetric/beat-this-onnx/resolve/main/beat_this.onnx`,
   `/musetric/beat-this-onnx/resolve/${RHYTHM_REVISION}/not-in-catalog.onnx`,
   `/unlisted/repository/resolve/${RHYTHM_REVISION}/beat_this.onnx`,
-  `/${asrModel.modelId}/resolve/main/${asrFile.path}`,
   `/${asrModel.modelId}/resolve/${'0'.repeat(40)}/${asrFile.path}`,
   `/${asrModel.modelId}/resolve/${asrModel.revision}/not-in-catalog.json`,
 ];

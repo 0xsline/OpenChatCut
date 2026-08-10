@@ -68,9 +68,9 @@ export function chooseAsrConfig(profile: DeviceProfile): AsrConfig {
   const model = asrModelEntry(tier);
   if (!model) throw new Error(`Unsupported local ASR model tier: ${tier}`);
   // WebGPU is an explicit opt-in (settings → 本地模型 → WebGPU 加速) and only
-  // applies to onnx-community tiers with fp16 files (medium stays on Xenova and
-  // has no fp16 catalog entry). Once a WebGPU run produced an empty transcript
-  // we remember it and stay on wasm from then on.
+  // applies to tiers with fp16/fp32 catalog files (medium has none registered:
+  // its fp32 encoder alone is 1.2GB). Once a WebGPU run produced an empty
+  // transcript we remember it and stay on wasm from then on.
   const device: AsrDevice = asrBackendPreference() === 'webgpu'
     && !asrWebgpuBroken()
     && profile.webgpu.available
