@@ -16,15 +16,9 @@ const BOOT_TOOL_NAMES: Record<string, true> = {
 };
 
 const READ_ONLY_TERMS = ['不要修改', '不要编辑', '只读', 'read only', 'read-only', 'do not edit', "don't edit", 'without editing'];
-const CAPABILITY_TERMS = ['tool', 'tools', 'capability', 'capabilities', 'ability', 'abilities', '工具', '能力'];
-const DISCOVERY_TERMS = ['what', 'which', 'available', 'list', 'find', 'show', 'discover', '哪些', '什么', '可用', '列出', '查看', '看看', '查一下', '找一下'];
 
 function isReadOnlyRequest(request: string): boolean {
   return READ_ONLY_TERMS.some((term) => request.includes(term));
-}
-function isDomainToolDiscoveryRequest(request: string): boolean {
-  return CAPABILITY_TERMS.some((term) => request.includes(term))
-    && DISCOVERY_TERMS.some((term) => request.includes(term));
 }
 function isReadOnlyTool(name: string): boolean {
   return BOOT_TOOL_NAMES[name] === true
@@ -48,16 +42,8 @@ function latestUserText(messages: readonly ModelMessage[]): string {
   }
   return '';
 }
-function bootNames(
-  messages: readonly ModelMessage[],
-  routed: readonly string[],
-  routingOverflow: boolean,
-): string[] {
-  const retainSearch = routingOverflow || routed.length === 0
-    || isDomainToolDiscoveryRequest(latestUserText(messages));
-  return Object.keys(BOOT_TOOL_NAMES).filter((name) => (
-    name !== 'ToolSearch' || retainSearch
-  ));
+function bootNames(): string[] {
+  return Object.keys(BOOT_TOOL_NAMES);
 }
 
 function collectActivatedNames(value: unknown, names: string[]): void {
@@ -175,7 +161,7 @@ export class ToolActivation {
     const searchAllowed = allowSearch && !toolSearchConsumed(messages);
     this.readOnly = readOnly;
     const requested = [
-      ...bootNames(messages, routed.names, routed.overflow),
+      ...bootNames(),
       ...activatedToolNamesFromMessages(messages),
       ...routed.names,
       ...activeNames,

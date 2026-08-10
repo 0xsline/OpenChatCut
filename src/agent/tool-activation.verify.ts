@@ -73,6 +73,7 @@ assert.deepEqual(
 const routed = new ToolActivation(catalog, [{ role: 'user', content: '把 V1 轨道片段移动并剪辑一下' }]);
 assert.ok(routed.names().includes('edit_item'));
 assert.ok(routed.names().includes('edit_track'));
+assert.ok(routed.names().includes('ToolSearch'), 'routed requests keep ToolSearch available for deferred tools');
 assert.ok(!routed.names().includes('submit_export'));
 const backgroundFillRouted = new ToolActivation(catalog, [
   { role: 'user', content: '把 V1 画面的模糊背景填充强度调到 70%' },
@@ -101,6 +102,17 @@ assert.deepEqual(
   routedContinuation.names(),
   neutral.names(),
   'a neutral continuation returns to the boot tool set',
+);
+const activePlanCrossesDomains = new ToolActivation(catalog, [
+  { role: 'user', content: '你联网搜索啊' },
+]);
+assert.ok(activePlanCrossesDomains.names().includes('ToolSearch'));
+const discoveredTimelineTools = activePlanCrossesDomains.withSearchResult({
+  results: [{ name: 'edit_item', description: 'place a pool asset on the timeline' }],
+});
+assert.ok(
+  discoveredTimelineTools.activation.names().includes('edit_item'),
+  'a web-routed request can discover a timeline tool after import completes',
 );
 const audioRouted = new ToolActivation(catalog, [
   { role: 'user', content: '看看当前可用音频条目有多少，只报数量' },
@@ -339,6 +351,6 @@ assert.equal(
   'ToolSearch schemas expire after the assistant completes that request',
 );
 assert.equal(expiredSearch.names().includes('ToolSearch'), true,
-  'the next completed request restores ToolSearch fallback');
+  'the next completed request keeps ToolSearch fallback');
 
 console.log('tool activation checks passed');
