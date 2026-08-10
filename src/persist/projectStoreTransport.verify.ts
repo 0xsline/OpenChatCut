@@ -134,7 +134,14 @@ try {
     calls.push({ url, init });
     if (url.endsWith('/session')) {
       const headers = new Headers(init?.headers);
-      assert.equal(headers.get('X-OpenChatCut-Editor-Launch-Token'), initialLaunch);
+      const presentedToken = headers.get('X-OpenChatCut-Editor-Launch-Token');
+      // The transport now always attempts the exchange and lets the server
+      // decide: no token -> 401 (secured server), which surfaces the
+      // "launch credential missing" guidance.
+      if (!presentedToken) {
+        return Response.json({ error: 'launch credential missing' }, { status: 401 });
+      }
+      assert.equal(presentedToken, initialLaunch);
       exchangeCount += 1;
       assert.equal(headers.get('X-OpenChatCut-Project-Store-Session'), null);
       return Response.json({

@@ -241,18 +241,26 @@ function clearStoredSession(expected?: string): void {
 
 async function exchangeLaunchToken(): Promise<string> {
   const token = consumeLaunchToken();
-  if (!token) {
-    throw new Error(
-      'project store HTTP transport is unavailable (editor launch credential missing; reopen the editor from its launcher link)',
-    );
-  }
+  // No pre-check: without a token the request still goes out so a server
+  // started with OPENCHATCUT_DISABLE_LAUNCH_AUTH=1 can mint a session for a
+  // bare-URL editor. In the normal (secured) mode the server answers 401/403
+  // and we surface the original guidance below.
+  const headers: Record<string, string> = {};
+  if (token) headers[LAUNCH_TOKEN_HEADER] = token;
   const response = await fetch(`${API_PATH}/session`, {
     method: 'POST',
     cache: 'no-store',
-    headers: { [LAUNCH_TOKEN_HEADER]: token },
+    headers,
   });
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) clearStoredLaunchToken(token);
+    if (response.status === 401 || response.status === 403) {
+      clearStoredLaunchToken(token ?? '');
+      if (!token) {
+        throw new Error(
+          'project store HTTP transport is unavailable (editor launch credential missing; reopen the editor from its launcher link)',
+        );
+      }
+    }
     throw new Error(`project store session exchange failed: ${response.status}`);
   }
   const value: unknown = await response.json();
