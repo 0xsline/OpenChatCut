@@ -26,8 +26,17 @@ const CURL_ROUNDS = 6; // each round also retries internally (--retry 8)
 const PARALLEL_CHUNKS = 4; // per-connection throttling → parallel byte ranges
 const PARALLEL_MIN_BYTES = 8 * 1024 * 1024;
 
-/** Official source uses parallel ranges; the mirror is the same-content fallback. */
+/**
+ * Download sources in priority order. ModelScope is first: measured 22.9MB/s
+ * direct (no proxy) vs ~90KB/s for huggingface.co via proxy on this machine;
+ * its mirrored files byte-match HF (sha-verified against the pinned catalog).
+ * The official source uses parallel ranges; mirrors fall back to single-stream.
+ */
 const SOURCES: ReadonlyArray<{ name: string; url: (target: ProxyTarget) => string }> = [
+  {
+    name: 'modelscope',
+    url: (target) => `https://modelscope.cn/api/v1/models/${target.modelId}/repo?Revision=master&FilePath=${target.filePath}`,
+  },
   {
     name: 'huggingface',
     url: (target) => `https://huggingface.co/${target.modelId}/resolve/${target.revision}/${target.filePath}`,
@@ -130,6 +139,7 @@ async function reportFileProgress(context: CurlContext, path: string): Promise<v
 
 function runCurl(
   url: string, out: string, range: string | undefined, maxBytes: number, context: CurlContext,
+  noProxy = false,
 ): Promise<void> {
   throwIfDownloadAborted(context.signal);
   const transferLimit = Math.min(MAX_CACHE_FILE_BYTES, maxBytes + 64 * 1024);
@@ -138,7 +148,9 @@ function runCurl(
     '--max-filesize', String(transferLimit),
     '--speed-limit', '1024', '--speed-time', '30',
     '--retry', '8', '--retry-delay', '3', '--retry-all-errors',
-    ...proxyCurlArgs(),
+    // ModelScope is a domestic CDN: force direct connection (no proxy);
+    // other sources keep the configured outbound proxy.
+    ...(noProxy ? ['--noproxy', '*'] : proxyCurlArgs()),
   ];
   if (range) args.push('-r', range);
   else args.push('-C', '-');
@@ -177,12 +189,14 @@ function runCurl(
   });
 }
 
-async function downloadSingle(url: string, tmpPath: string, context: CurlContext): Promise<void> {
+async function downloadSingle(
+  url: string, tmpPath: string, context: CurlContext, noProxy = false,
+): Promise<void> {
   let lastError: unknown;
   for (let round = 0; round < CURL_ROUNDS; round += 1) {
     throwIfDownloadAborted(context.signal);
     try {
-      await runCurl(url, tmpPath, undefined, context.expectedBytes ?? MAX_CACHE_FILE_BYTES, context);
+      await runCurl(url, tmpPath, undefined, context.expectedBytes ?? MAX_CACHE_FILE_BYTES, context, noProxy);
       return;
     } catch (error) {
       lastError = error;
@@ -300,6 +314,11 @@ async function downloadFromSource(
   context: CurlContext,
 ): Promise<void> {
   const url = source.url(target);
+  if (source.name === 'modelscope') {
+    // Domestic CDN, single-stream, direct connection.
+    await downloadSingle(url, tmpPath, context, true);
+    return;
+  }
   if (source.name !== 'huggingface') {
     await downloadSingle(url, tmpPath, context);
     return;
@@ -367,21 +386,25 @@ export async function downloadModelFile(
         await unlink(tmpPath).catch(() => undefined);
         context.progress.clear();
         await downloadFromSource(source, target, tmpPath, context);
+        // Verify inside the loop so a mirror drift (sha mismatch) falls
+        // through to the next source instead of failing the whole download.
+        const size = (await stat(tmpPath)).size;
+        if (expectedBytes !== undefined ? size !== expectedBytes : size <= 0 || size > MAX_CACHE_FILE_BYTES) {
+          throw new Error(`model download produced an invalid file (${size} bytes)`);
+        }
+        if (expectedSha256 && expectedBytes
+          && !await fileMatchesIntegrity(tmpPath, { sizeBytes: expectedBytes, sha256: expectedSha256 })) {
+          throw new Error('model download failed integrity verification');
+        }
         lastError = undefined;
         break;
       } catch (error) {
         lastError = error;
+        await unlink(tmpPath).catch(() => undefined);
       }
     }
     if (lastError) throw lastError;
     const size = (await stat(tmpPath)).size;
-    if (expectedBytes !== undefined ? size !== expectedBytes : size <= 0 || size > MAX_CACHE_FILE_BYTES) {
-      throw new Error(`model download produced an invalid file (${size} bytes)`);
-    }
-    if (expectedSha256 && expectedBytes
-      && !await fileMatchesIntegrity(tmpPath, { sizeBytes: expectedBytes, sha256: expectedSha256 })) {
-      throw new Error('model download failed integrity verification');
-    }
     await rename(tmpPath, finalPath);
     completed = true;
     options.onProgress?.(size);
