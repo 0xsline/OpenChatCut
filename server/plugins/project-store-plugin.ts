@@ -22,6 +22,7 @@ import {
   exchangeProjectStoreLaunchToken,
   projectStoreHttpAuthorized,
   projectStoreReadAuthorized,
+  setProjectStoreSessionCookie,
 } from '../project-store-http-auth.ts';
 import { handleProjectStoreRequest, sendProjectStoreJson } from '../project-store-http.ts';
 import {
@@ -81,6 +82,11 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
       server.middlewares.use('/api/project-store', async (req, res) => {
         if (req.method === 'POST' && req.url === '/session') {
           const session = exchangeProjectStoreLaunchToken(req);
+          if (session) {
+            // Persist the signed session as an HttpOnly cookie so a refresh,
+            // tab relaunch, or server restart keeps the editor authorized.
+            setProjectStoreSessionCookie(res, req.headers.host?.toLowerCase() ?? 'localhost');
+          }
           sendProjectStoreJson(
             res,
             session ? 200 : 403,
