@@ -4,32 +4,18 @@
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { Agent as HttpAgent } from 'node:http';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import { outboundHttpAgent } from './outbound-proxy.ts';
 
 type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
 
 // Optional outbound proxy (Clash etc.) for providers blocked by the network.
 // node:https does not read HTTPS_PROXY by itself, so we attach a CONNECT
-// tunnel agent when the environment asks for one. Lazily cached; disabled
-// for plain-http targets and when no proxy env is set.
-let proxyAgent: HttpAgent | null | undefined;
-
+// tunnel agent. The unified resolver (server/outbound-proxy.ts) prefers the
+// user-configured PROXY_URL keystore entry and falls back to the standard
+// HTTPS_PROXY/HTTP_PROXY environment variables; disabled for plain-http
+// targets and when no proxy is configured.
 function outboundProxyAgent(): HttpAgent | null {
-  if (proxyAgent !== undefined) return proxyAgent;
-  const proxyUrl = process.env.HTTPS_PROXY
-    ?? process.env.https_proxy
-    ?? process.env.HTTP_PROXY
-    ?? process.env.http_proxy;
-  if (!proxyUrl) {
-    proxyAgent = null;
-    return null;
-  }
-  try {
-    proxyAgent = new HttpsProxyAgent(proxyUrl);
-  } catch {
-    proxyAgent = null;
-  }
-  return proxyAgent;
+  return outboundHttpAgent() ?? null;
 }
 
 const HOP_BY_HOP = new Set(['host', 'connection', 'keep-alive', 'proxy-authorization', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'trailer']);

@@ -118,9 +118,24 @@ const VISION_PAGE: SettingsVendorPage = {
   key: 'llm/vision', vendor: 'vision', title: '视觉理解', fields: [],
 };
 
+// Outbound network proxy: applies to every overseas API the server talks to
+// (Agent models, AI generation, model-pack downloads, R2). Empty = use the
+// HTTPS_PROXY/HTTP_PROXY environment variables (Clash etc.).
+const PROXY_PAGE: SettingsVendorPage = {
+  key: 'agent/proxy', vendor: 'proxy', title: '网络代理',
+  note: '国内网络访问海外模型（Gemini / OpenAI / Anthropic / Mistral 等）失败时，'
+    + '可在此填写本地代理地址（如 http://127.0.0.1:7890）。'
+    + '留空则使用系统环境变量（HTTPS_PROXY / HTTP_PROXY）。'
+    + '生效范围：Agent 模型、AI 生成、模型下载、R2 云同步。',
+  fields: [
+    text('PROXY_URL', '代理地址', '例如 http://127.0.0.1:7890'),
+  ],
+};
+
 const AGENT_VENDOR_PAGES_WITH_VISION: readonly SettingsVendorPage[] = [
   ...AGENT_VENDOR_PAGES,
   VISION_PAGE,
+  PROXY_PAGE,
 ];
 
 // MiniMax serves 4 capabilities for the same Key/Base URL pair, and only the model fields of that capability are linked to the capability on the page.

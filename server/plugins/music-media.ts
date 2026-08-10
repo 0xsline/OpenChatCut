@@ -1,3 +1,4 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import { createWriteStream } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +10,12 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import type { MusicAudioFormat } from './music-types.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 export async function musicProviderError(response: Response): Promise<string> {
   const text = await response.text();
@@ -106,7 +113,7 @@ export async function uploadMurekaFile(
   const form = new FormData();
   form.append('purpose', purpose);
   form.append('file', new Blob([bytes], { type: mimeFor(file) }), name);
-  const response = await fetch(`${baseUrl}/v1/files/upload`, {
+  const response = await fetchWithProxy(`${baseUrl}/v1/files/upload`, {
     method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: form,
   });
   if (!response.ok) throw new Error(await musicProviderError(response));

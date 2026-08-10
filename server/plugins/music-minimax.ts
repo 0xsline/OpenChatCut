@@ -1,5 +1,12 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import { musicProviderError, referenceAudioBase64 } from './music-media.ts';
 import type { MusicOptions, ValidMusicRequest } from './music-types.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 interface MinimaxMusicResponse {
   data?: { audio?: string };
@@ -29,7 +36,7 @@ export async function minimaxMusicUrl(options: MusicOptions, input: ValidMusicRe
     if (input.lyrics) body.lyrics = input.lyrics;
     if (input.lyricsOptimizer) body.lyrics_optimizer = true;
   }
-  const response = await fetch(`${options.minimaxBaseUrl.replace(/\/$/, '')}/v1/music_generation`, {
+  const response = await fetchWithProxy(`${options.minimaxBaseUrl.replace(/\/$/, '')}/v1/music_generation`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${options.minimaxApiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

@@ -4,6 +4,7 @@
 // Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
 // The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each vite-plugin-* one by one
 // Real call writing method (beanbao three header / MiniMax base_resp / Gemini x-goog-api-key...).
+import { proxyDispatcher } from './outbound-proxy.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
@@ -19,6 +20,12 @@ import {
   type LlmProvider,
 } from '../shared/llm-providers.ts';
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 export interface ProbeResult {
   ok: boolean;
@@ -62,7 +69,7 @@ function llmProbe(provider: LlmProvider): ProbeDef {
           ? { 'x-goog-api-key': key }
           : key ? bearer(key) : {};
       const root = resolveLlmBaseUrl(provider, get(baseUrlName), AI_SDK_BASE_URL_FORMAT);
-      return fetch(`${root}/models`, { signal: t(), headers });
+      return fetchWithProxy(`${root}/models`, { signal: t(), headers });
     },
     models: parseModelCatalog,
   };
@@ -279,7 +286,7 @@ export const PROBES: Record<string, ProbeDef> = {
     needs: [['PIXABAY_API_KEY']],
     run: (get) => {
       const params = new URLSearchParams({ key: get('PIXABAY_API_KEY'), q: 'sky', per_page: '3' });
-      return fetch(`https://pixabay.com/api/?${params.toString()}`, { signal: t() });
+      return fetchWithProxy(`https://pixabay.com/api/?${params.toString()}`, { signal: t() });
     },
   },
   // Unsplash: The search endpoint requires Client-ID, fake key 401.
@@ -294,7 +301,7 @@ export const PROBES: Record<string, ProbeDef> = {
     needs: [['FREESOUND_API_KEY']],
     run: (get) => {
       const params = new URLSearchParams({ query: 'wind', page_size: '1', fields: 'id', token: get('FREESOUND_API_KEY') });
-      return fetch('https://freesound.org/apiv2/search/text/?' + params.toString(), { signal: t() });
+      return fetchWithProxy('https://freesound.org/apiv2/search/text/?' + params.toString(), { signal: t() });
     },
   },
   'transcription/assemblyai': {

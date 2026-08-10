@@ -10,6 +10,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { ASR_MODELS, asrModelFile, type AsrModelFile } from '../../shared/asr-models.ts';
+import { proxyCurlArgs } from '../outbound-proxy.ts';
 import { MODEL_PACKS, type ModelPackFile } from '../../shared/model-packs/catalog.ts';
 import {
   fileMatchesIntegrity,
@@ -137,6 +138,7 @@ function runCurl(
     '--max-filesize', String(transferLimit),
     '--speed-limit', '1024', '--speed-time', '30',
     '--retry', '8', '--retry-delay', '3', '--retry-all-errors',
+    ...proxyCurlArgs(),
   ];
   if (range) args.push('-r', range);
   else args.push('-C', '-');

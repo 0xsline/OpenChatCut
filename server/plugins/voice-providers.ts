@@ -1,6 +1,13 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import { randomUUID } from 'node:crypto';
 
 import type { ValidVoiceRequest, VoiceOptions } from './voice-types.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 const DOUBAO_VOICES: Record<string, string> = {
   vivi: 'zh_female_vv_uranus_bigtts', xiaohe: 'zh_female_xiaohe_uranus_bigtts', yunzhou: 'zh_male_m191_uranus_bigtts',
@@ -26,7 +33,7 @@ async function providerError(response: Response): Promise<string> {
 
 async function resolveElevenVoice(baseUrl: string, apiKey: string, voiceId: string): Promise<string> {
   if (/^[A-Za-z0-9]{15,}$/.test(voiceId)) return voiceId;
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v2/voices?search=${encodeURIComponent(voiceId)}&page_size=100`, {
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, '')}/v2/voices?search=${encodeURIComponent(voiceId)}&page_size=100`, {
     headers: { 'xi-api-key': apiKey },
   });
   if (!response.ok) throw new Error(await providerError(response));
@@ -54,7 +61,7 @@ export async function elevenLabsVoice(options: VoiceOptions, input: ValidVoiceRe
     voice_settings: { stability: input.stability ?? 0.5, similarity_boost: input.similarityBoost,
       style: input.style, use_speaker_boost: input.useSpeakerBoost, speed: input.speed ?? 1 },
   };
-  const response = await fetch(`${options.elevenBaseUrl.replace(/\/$/, '')}/v1/text-to-speech/${voiceId}?${query}`, {
+  const response = await fetchWithProxy(`${options.elevenBaseUrl.replace(/\/$/, '')}/v1/text-to-speech/${voiceId}?${query}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'xi-api-key': options.elevenApiKey }, body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error(await providerError(response));
@@ -82,7 +89,7 @@ export async function doubaoVoice(options: VoiceOptions, input: ValidVoiceReques
   if (input.emotionScale != null) reqParams.emotion_scale = input.emotionScale;
   if (input.performancePrompt) reqParams.voice_instruction = input.performancePrompt;
   if (input.explicitDialect) reqParams.explicit_dialect = input.explicitDialect;
-  const response = await fetch(`${options.doubaoBaseUrl.replace(/\/$/, '')}/api/v3/tts/unidirectional`, {
+  const response = await fetchWithProxy(`${options.doubaoBaseUrl.replace(/\/$/, '')}/api/v3/tts/unidirectional`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-App-Id': options.doubaoAppId,
       'X-Api-Access-Key': options.doubaoAccessKey, 'X-Api-Resource-Id': options.doubaoResourceId },
     body: JSON.stringify({ user: { uid: `openchatcut-${randomUUID()}` }, req_params: reqParams }),
@@ -159,7 +166,7 @@ export function minimaxVoiceBody(model: string, input: ValidVoiceRequest): Recor
 
 export async function inworldVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
   if (!options.inworldApiKey) throw new Error('Inworld is not configured. Set INWORLD_TTS_API_KEY in .env.local.');
-  const response = await fetch(`${options.inworldBaseUrl.replace(/\/$/, '')}/tts/v1/voice`, {
+  const response = await fetchWithProxy(`${options.inworldBaseUrl.replace(/\/$/, '')}/tts/v1/voice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Basic ${options.inworldApiKey}` },
     body: JSON.stringify({
@@ -175,7 +182,7 @@ export async function inworldVoice(options: VoiceOptions, input: ValidVoiceReque
 
 export async function fishAudioVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
   if (!options.fishAudioApiKey) throw new Error('Fish Audio is not configured. Set FISHAUDIO_TTS_API_KEY in .env.local.');
-  const response = await fetch(`${options.fishAudioBaseUrl.replace(/\/$/, '')}/v1/tts`, {
+  const response = await fetchWithProxy(`${options.fishAudioBaseUrl.replace(/\/$/, '')}/v1/tts`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -190,7 +197,7 @@ export async function fishAudioVoice(options: VoiceOptions, input: ValidVoiceReq
 
 export async function speechifyVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
   if (!options.speechifyApiKey) throw new Error('Speechify is not configured. Set SPEECHIFY_TTS_API_KEY in .env.local.');
-  const response = await fetch(`${options.speechifyBaseUrl.replace(/\/$/, '')}/v1/audio/speech`, {
+  const response = await fetchWithProxy(`${options.speechifyBaseUrl.replace(/\/$/, '')}/v1/audio/speech`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.speechifyApiKey}` },
     body: JSON.stringify({
@@ -207,7 +214,7 @@ export async function speechifyVoice(options: VoiceOptions, input: ValidVoiceReq
 export async function minimaxVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<MinimaxVoiceResult> {
   if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
   const body = minimaxVoiceBody(options.minimaxModel, input);
-  const response = await fetch(`${options.minimaxBaseUrl.replace(/\/$/, '')}/v1/t2a_v2`, {
+  const response = await fetchWithProxy(`${options.minimaxBaseUrl.replace(/\/$/, '')}/v1/t2a_v2`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.minimaxApiKey}` }, body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error(await providerError(response));

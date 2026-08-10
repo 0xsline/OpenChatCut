@@ -4,6 +4,7 @@
 // running skill-shipped scripts (ffmpeg / node / python) — the portable stand-in for the
 // native Agent Skills code-execution container, which our relay can't reach. The sandbox
 // cannot touch the editor; results come back and the agent applies them via local tools.
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -12,6 +13,12 @@ import { Sandbox } from '@e2b/code-interpreter';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { PRODUCT_ASSETS_DIR, resolveProductAsset } from '../product-assets.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 const MAX_FETCH = 200_000_000; // cap bytes pulled into the sandbox
 let alphaSeq = 0; // filename disambiguator for transcoded outputs
@@ -43,7 +50,7 @@ async function resolveBytes(file: E2bFile): Promise<string | ArrayBuffer> {
     throw new Error(`local path not found: ${url} (looked in uploads + ${PRODUCT_ASSETS_DIR})`);
   }
   if (!/^https?:\/\//.test(url)) throw new Error(`unsupported url ${url}`);
-  const response = await fetch(url);
+  const response = await fetchWithProxy(url);
   if (!response.ok) throw new Error(`fetch ${url} failed (${response.status})`);
   const buf = await response.arrayBuffer();
   if (buf.byteLength > MAX_FETCH) throw new Error(`fetched file too large (${buf.byteLength} bytes)`);

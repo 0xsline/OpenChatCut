@@ -1,9 +1,16 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { uploadDir } from '../media-dir.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 /**
  * Firecrawl proxy (official API + web_browser scrape).
@@ -80,7 +87,7 @@ async function fcFetch(
   init?: RequestInit,
   base: string = FC_V1,
 ): Promise<{ ok: boolean; status: number; json: Record<string, unknown> }> {
-  const r = await fetch(`${base}${path}`, {
+  const r = await fetchWithProxy(`${base}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -177,7 +184,7 @@ async function saveScreenshot(data: unknown): Promise<string | null> {
       if (!b64) return null;
       buf = Buffer.from(b64, 'base64');
     } else if (data.startsWith('http://') || data.startsWith('https://')) {
-      const r = await fetch(data, { signal: AbortSignal.timeout(30_000) });
+      const r = await fetchWithProxy(data, { signal: AbortSignal.timeout(30_000) });
       if (!r.ok) return null;
       buf = Buffer.from(await r.arrayBuffer());
     } else {

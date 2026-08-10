@@ -1,3 +1,4 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -6,6 +7,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
 import { uploadDir } from '../media-dir.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 const OUTPUT_FORMATS = new Set([
   'mp3_22050_32', 'mp3_24000_48', 'mp3_44100_32', 'mp3_44100_64',
@@ -153,7 +160,7 @@ export function soundGenerationPlugin(options: SoundOptions): Plugin {
           if (input.loop && options.model !== 'eleven_text_to_sound_v2') {
             throw new Error('loop requires ELEVENLABS_SOUND_MODEL eleven_text_to_sound_v2');
           }
-          const response = await fetch(`${options.baseUrl.replace(/\/$/, '')}/v1/sound-generation?output_format=${encodeURIComponent(input.outputFormat)}`, {
+          const response = await fetchWithProxy(`${options.baseUrl.replace(/\/$/, '')}/v1/sound-generation?output_format=${encodeURIComponent(input.outputFormat)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'xi-api-key': options.apiKey },
             body: JSON.stringify({

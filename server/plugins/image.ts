@@ -1,3 +1,4 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -9,6 +10,12 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
 import { fetchGeneratedResult } from './result-download.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 const ASPECTS = new Set(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4', '21:9']);
 const SIZES = new Set(['512px', '1K', '2K', '4K']);
 const QUALITIES = new Set(['low', 'medium', 'high', 'auto']);
@@ -314,7 +321,7 @@ async function callProvider(baseUrl: string, apiKey: string, body: GptImageInput
     requestBody = JSON.stringify(json);
   }
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}${endpoint}`, { method: 'POST', headers, body: requestBody });
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, '')}${endpoint}`, { method: 'POST', headers, body: requestBody });
   if (!response.ok) throw new Error(await providerError(response));
   const result = await response.json() as { data?: ProviderImage[] };
   if (!result.data?.length) throw new Error('image provider returned no images');
@@ -338,7 +345,7 @@ async function callGeminiProvider(baseUrl: string, apiKey: string, model: string
   }
 
   return Promise.all(Array.from({ length: body.count }, async () => {
-    const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v1beta/interactions`, {
+    const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, '')}/v1beta/interactions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
@@ -393,7 +400,7 @@ async function callMinimaxProvider(baseUrl: string, apiKey: string, model: strin
       image_file: await minimaxSubjectUrl(path),
     })));
   }
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/image_generation`, {
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, '')}/v1/image_generation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(requestBody),
@@ -426,7 +433,7 @@ async function waveSpeedPollResult(baseUrl: string, apiKey: string, taskId: stri
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     await new Promise((resolvePoll) => setTimeout(resolvePoll, 2_000));
-    const response = await fetch(`${baseUrl}/api/v3/predictions/${encodeURIComponent(taskId)}/result`, {
+    const response = await fetchWithProxy(`${baseUrl}/api/v3/predictions/${encodeURIComponent(taskId)}/result`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (!response.ok) throw new Error(await waveSpeedError(response));
@@ -450,7 +457,7 @@ async function callWaveSpeedProvider(baseUrl: string, apiKey: string, model: str
 }): Promise<ProviderImage[]> {
   const root = baseUrl.replace(/\/$/, '');
   return Promise.all(Array.from({ length: body.count }, async () => {
-    const response = await fetch(`${root}/api/v3/${model}`, {
+    const response = await fetchWithProxy(`${root}/api/v3/${model}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ prompt: body.prompt, size: `${body.width}*${body.height}` }),
@@ -471,7 +478,7 @@ async function callByteplusImageProvider(baseUrl: string, apiKey: string, model:
   width: number;
   height: number;
 }): Promise<ProviderImage[]> {
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/images/generations`, {
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, '')}/images/generations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({

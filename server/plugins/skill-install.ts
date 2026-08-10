@@ -4,6 +4,7 @@
 // discovers the installed directory automatically (skills-files discovery).
 // GitHub API is the primary path (GITHUB_TOKEN env raises the rate limit);
 // on 403 rate limits it falls back to a shallow git clone.
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { execFile } from 'node:child_process';
@@ -13,6 +14,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { skillDirFor, skillFilesRoot } from '../skills-files.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
@@ -90,7 +97,7 @@ class RateLimitedError extends Error {
 }
 
 async function fetchTree(owner: string, repo: string): Promise<Array<{ path: string; url: string; size?: number }>> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`, {
+  const res = await fetchWithProxy(`https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`, {
     headers: apiHeaders(),
     signal: AbortSignal.timeout(30_000),
   });
@@ -106,7 +113,7 @@ async function fetchTree(owner: string, repo: string): Promise<Array<{ path: str
 }
 
 async function fetchFrontmatterName(owner: string, repo: string): Promise<string> {
-  const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/SKILL.md`, {
+  const res = await fetchWithProxy(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/SKILL.md`, {
     headers: githubToken() ? { Authorization: `Bearer ${githubToken()}` } : {},
     signal: AbortSignal.timeout(15_000),
   });
@@ -141,7 +148,7 @@ async function installViaApi(owner: string, repo: string, slug: string): Promise
   if (!files.some((f) => f.path === 'SKILL.md')) throw new Error(`repo ${owner}/${repo} has no SKILL.md at its root`);
   const entries: Array<{ path: string; bytes: Buffer }> = [];
   for (const file of files) {
-    const res = await fetch(file.url, { headers: apiHeaders(), signal: AbortSignal.timeout(30_000) });
+    const res = await fetchWithProxy(file.url, { headers: apiHeaders(), signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`GitHub blob ${res.status}: ${file.path}`);
     const raw = (await res.json()) as { content?: string };
     if (raw.content) entries.push({ path: file.path, bytes: Buffer.from(raw.content, 'base64') });

@@ -1,5 +1,12 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import { musicProviderError, uploadMurekaFile } from './music-media.ts';
 import type { MurekaChoice, MurekaTask, MusicAudioFormat, MusicOptions, ValidMusicRequest } from './music-types.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 
 const TERMINAL_FAILURES = new Set(['failed', 'timeouted', 'cancelled']);
 const wait = (milliseconds: number) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
@@ -19,7 +26,7 @@ export function pickMurekaAudioUrls(task: MurekaTask, format: MusicAudioFormat):
 }
 
 async function fetchTask(url: string, apiKey: string): Promise<MurekaTask> {
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+  const response = await fetchWithProxy(url, { headers: { Authorization: `Bearer ${apiKey}` } });
   if (!response.ok) throw new Error(await musicProviderError(response));
   return response.json() as Promise<MurekaTask>;
 }
@@ -105,7 +112,7 @@ export async function generateMureka(
     initial.id ??= existingTaskId;
   } else {
     const request = await requestFor(input, options);
-    const response = await fetch(`${baseUrl}${request.endpoint}`, {
+    const response = await fetchWithProxy(`${baseUrl}${request.endpoint}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(request.body),

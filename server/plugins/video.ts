@@ -1,3 +1,4 @@
+import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import {
@@ -24,6 +25,12 @@ import {
   type KlingVideoReferType, type ValidVideoRequest, type VideoRequest,
 } from './video-validation.ts';
 export { hailuoApiResolution, seedanceApiResolution, validateVideoRequest } from './video-validation.ts';
+// Proxy-aware fetch: attaches the configured outbound proxy (keystore
+// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
+const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
+  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+
 const VIDEO_FAILURES = new Set(['failed', 'expired', 'cancelled']);
 
 interface VideoOptions {
@@ -72,7 +79,7 @@ async function providerError(response: Response): Promise<string> {
 const validate = validateVideoRequest;
 
 async function requestJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
-  const response = await fetch(url, init);
+  const response = await fetchWithProxy(url, init);
   if (!response.ok) throw new Error(await providerError(response));
   const data = await response.json() as Record<string, unknown>;
   if (typeof data.code === 'number' && data.code !== 0) throw new Error(String(data.message ?? `video provider failed (${data.code})`));
@@ -255,7 +262,7 @@ interface MinimaxBaseResp { status_code?: number; status_msg?: string }
 /** MiniMax request: HTTP errors AND in-band base_resp errors both throw; the raw body
  * text is kept alongside the parsed JSON so int64 fields can be re-read as strings. */
 async function minimaxJson(url: string, init: RequestInit): Promise<{ raw: string; data: Record<string, unknown> }> {
-  const response = await fetch(url, init);
+  const response = await fetchWithProxy(url, init);
   if (!response.ok) throw new Error(await providerError(response));
   const raw = await response.text();
   let data: Record<string, unknown>;

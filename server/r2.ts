@@ -16,8 +16,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getKey, type KeyName } from './keystore.ts';
+import { outboundHttpAgent } from './outbound-proxy.ts';
 import { isIsolatedDevProfile } from './runtime-profile.ts';
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
@@ -74,9 +74,8 @@ export function r2Config(get: Get = fromKeystore, opts?: { ignoreEnabled?: boole
 }
 
 function proxyHandler(): NodeHttpHandler | undefined {
-  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || '';
-  if (!proxy) return undefined;
-  const agent = new HttpsProxyAgent(proxy);
+  const agent = outboundHttpAgent();
+  if (!agent) return undefined;
   return new NodeHttpHandler({ httpsAgent: agent });
 }
 
