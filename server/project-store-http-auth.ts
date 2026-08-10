@@ -189,9 +189,9 @@ export function exchangeProjectStoreLaunchToken(
   req: IncomingMessage,
 ): { sessionToken: string } | null {
   if (launchAuthDisabled() && trustedLoopback(req) && sameOrigin(req)) {
-    // No-auth mode: mint a throwaway session so the browser's normal
-    // exchange-then-session flow keeps working untouched.
-    return { sessionToken: `no-auth-${randomBytes(16).toString('base64url')}` };
+    // No-auth mode: mint a throwaway session (>=32 chars, the browser's
+    // transport validates length) so the normal exchange flow keeps working.
+    return { sessionToken: `no-auth-${randomBytes(24).toString('base64url')}` };
   }
   if (!trustedLoopback(req) || !sameOrigin(req)) return null;
   const actualLaunch = header(req, PROJECT_STORE_LAUNCH_TOKEN_HEADER);
