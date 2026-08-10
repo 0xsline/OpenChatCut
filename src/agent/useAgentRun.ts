@@ -53,7 +53,7 @@ export interface AgentTurn {
   abortController: AbortController;
 }
 
-function draftContext(ctx: AgentContext, draft: DraftEngine): AgentContext {
+export function draftContext(ctx: AgentContext, draft: DraftEngine): AgentContext {
   return {
     commands: draft.commands,
     getState: draft.getState,
