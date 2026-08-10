@@ -18,7 +18,6 @@ import {
 } from './proposal';
 import { appendAgentChange, createAgentChangeSession } from './changeLog';
 import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
-import { loadChatAutoApply } from '../persist/sessionPrefs';
 import type { RuntimeGuardRequest } from './runtime-guard';
 import type { AgentEvent } from './runtime';
 import { startAgentRun, type AgentRunRecorder } from './runtime-ledger';
@@ -219,12 +218,6 @@ export function requestRuntimeGuard(
 ): Promise<GuardDecision> {
   const rememberable = guard.approval === 'project' && guard.permissionKind === 'paid_external';
   if (rememberable && isCostAllowed(guard.skill, projectId)) return Promise.resolve('allow-once');
-  // YOLO/auto mode: skip ALL confirmations — same semantics as the external
-  // agent path (codex/runtime.ts getApprovalMode()==='auto'): the user opted
-  // into unapproved execution when enabling auto apply. This was previously
-  // only wired for external agents, so the in-app agent still showed
-  // confirmation cards for persistent_local (e.g. download_media).
-  if (loadChatAutoApply(projectId)) return Promise.resolve('allow-once');
   const { promise, resolve } = Promise.withResolvers<GuardDecision>();
   let pending: PendingGuard;
   pending = {
