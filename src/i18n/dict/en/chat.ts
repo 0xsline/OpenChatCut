@@ -66,7 +66,6 @@ export default {
   '未确认原因': 'Unconfirmed reason',
   '上下文检查点': 'Context checkpoint',
   '上下文接近上限，发送后可能自动压缩较早对话。': 'Context is near its limit; sending may compact earlier conversation.',
-  '本次运行没有检查点': 'No checkpoint for this run',
   '无摘要': 'No summary',
   '源消息 {count} 条': '{count} source messages',
   '成功': 'Success',

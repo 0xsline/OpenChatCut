@@ -202,7 +202,10 @@ function ContextSection({ run, t }: { run: AgentRunRecord; t: Translate }) {
 }
 
 function CheckpointSection({ checkpoint, t }: { checkpoint?: AgentCheckpointRecord; t: Translate }) {
-  if (!checkpoint) return <Section title={t('上下文检查点')} hint={t('长对话被压缩后的摘要检查点，用于追溯上下文如何被裁剪')}><div style={emptyLine}>{t('本次运行没有检查点')}</div></Section>;
+  // Same treatment as the archived-results block: hide the section entirely when
+  // this run made no context checkpoint, since "no checkpoint on this run" is the
+  // normal state and an always-visible empty block is not helpful.
+  if (!checkpoint) return null;
   return <Section title={t('上下文检查点')} hint={t('长对话被压缩后的摘要检查点，用于追溯上下文如何被裁剪')}>
     <div style={detailLine}>{checkpoint.summary || t('无摘要')}</div>
     <div style={subtle}>{t('源消息 {count} 条', { count: numberText(checkpoint.sourceMessageCount) ?? '—' })}</div>
