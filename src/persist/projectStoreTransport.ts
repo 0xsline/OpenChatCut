@@ -394,6 +394,22 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
       path = '/project/purge';
       init = postJson(init, headers, request);
       break;
+    case 'semantic-vectors-upsert':
+      path = '/semantic-vectors/upsert';
+      init = postJson(init, headers, request);
+      break;
+    case 'semantic-vectors-search':
+      path = '/semantic-vectors/search';
+      init = postJson(init, headers, request);
+      break;
+    case 'semantic-vectors-prune':
+      path = '/semantic-vectors/prune';
+      init = postJson(init, headers, request);
+      break;
+    case 'semantic-vectors-clear':
+      path = '/semantic-vectors/clear';
+      init = postJson(init, headers, request);
+      break;
   }
   const response = await fetchWithSession(`${API_PATH}${path}`, init, false);
   if (!response.ok) {
