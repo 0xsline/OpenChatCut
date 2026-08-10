@@ -22,8 +22,10 @@ export default {
   '项操作': 'operations',
   '恢复到这次 Agent 修改前': 'Restore the project to before this Agent session',
   '工程后来已有其他修改': 'The project has newer changes',
-  '回滚此会话': 'Roll back this session',
-
+  '重新发送请求': 'Resend this request',
+  '重新发送': 'Resend',
+  '重试请求': 'Retry this request',
+  '重试': 'Retry',
   // ── Agent run inspector / durable guard ──
   'Agent 运行检查器': 'Agent Run Inspector',
   '运行中': 'Running',

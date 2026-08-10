@@ -12,6 +12,7 @@ import { ProposalCard } from './ProposalCard';
 import { ToolGroupRow } from './ToolGroupRow';
 import { groupMessages } from './message-groups';
 import { EMPTY_PROJECT_STARTERS, QUICK_ACTIONS } from './chatPanelPresets';
+import type { DisplayMessage } from '../../agent/agent-session';
 import type { ChatPanelController } from './chatPanelController';
 
 const MESSAGE_WINDOW_SIZE = 40;
@@ -102,12 +103,20 @@ function EarlierMessagesButton({ controller }: { controller: ChatPanelController
 
 function MessageEntries({ controller }: { controller: ChatPanelController }) {
   const { agent, composer, visibleMessages, visibleFrom } = controller;
+  const onRetry = (retry: NonNullable<DisplayMessage['retry']>) => {
+    if (!agent.running) void agent.send(retry.text, {
+      askOnly: retry.askOnly,
+      references: retry.references,
+    });
+  };
   return <>
     {groupMessages(visibleMessages, visibleFrom).map((item) => item.kind === 'toolgroup' ? (
       <ToolGroupRow key={item.index} name={item.name} items={item.items} />
     ) : (
       <ChatMessage key={item.index} msg={item.msg}
+        retry={item.msg.role === 'user' ? item.msg.retry : undefined}
         streaming={agent.running && item.index === agent.messages.length - 1 && item.msg.role === 'assistant'}
+        onRetry={onRetry}
         onContinue={item.msg.role === 'continue' && item.index === agent.messages.length - 1 && !agent.running
           ? () => { void agent.send('继续'); } : null}
         onWidgetSubmit={(answer) => {

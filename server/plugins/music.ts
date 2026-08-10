@@ -5,7 +5,6 @@ import {
   createGenerationJob,
   generationResultCheckpoint,
   registerGenerationJobResumer,
-  waitForGenerationAcceptance,
   requireGenerationResultUrls,
   type GenerationJobSnapshot,
   type GenerationResult,
@@ -144,8 +143,7 @@ export function musicGenerationPlugin(options: MusicOptions): Plugin {
               expectedResultCount: expectedMusicResultCount(input),
             },
           );
-          const accepted = await waitForGenerationAcceptance(submission.operationId);
-          sendJson(res, 202, { ...submission, ...accepted });
+          sendJson(res, 202, submission);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[generate:music] ${message}`);

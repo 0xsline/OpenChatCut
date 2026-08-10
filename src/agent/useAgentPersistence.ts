@@ -19,7 +19,7 @@ import {
 } from '../persist/agentSessionGeneration';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
 import { normalizeLlmProvider, PROVIDER } from './providerConfig';
-import { initialAgentMessages, type DisplayMessage } from './agent-session';
+import { ensureAgentRetryMetadata, initialAgentMessages, type DisplayMessage } from './agent-session';
 import { isProposalStale, type Proposal } from './proposal';
 import { parseAgentChangeLog } from './changeLog';
 import { projectToolResultForPersistence } from './runtime-artifact';
@@ -196,7 +196,7 @@ export async function hydrateAgentSession(
   );
   if (!loaded || !alive()) return;
   const { saved, pending } = loaded;
-  state.setMessages(saved ? (saved.messages as DisplayMessage[]) : []);
+  state.setMessages(saved ? ensureAgentRetryMetadata(saved.messages as DisplayMessage[]) : []);
   state.setChangeLog(parseAgentChangeLog(saved?.changeLog));
   if (saved) {
     const source = normalizeLlmProvider(saved.llmProvider ?? 'anthropic');

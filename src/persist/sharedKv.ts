@@ -291,18 +291,22 @@ const freshCache = new Map<string, { value: unknown; at: number }>();
 
 export async function kvGetFresh<T>(key: string): Promise<T | undefined> {
   await ready();
-  const cached = freshCache.get(key);
+  // Session generation is the cross-port cutover fence. It must observe an
+  // external clear before a new run writes, so never serve it from the TTL
+  // cache. Other fresh reads retain the hydration round-trip optimization.
+  const cacheGeneration = !key.startsWith('agent-session-generation:');
+  const cached = cacheGeneration ? freshCache.get(key) : undefined;
   if (cached && Date.now() - cached.at < FRESH_CACHE_TTL_MS) {
     return cached.value as T | undefined;
   }
   if (!injectedBackend && projectStoreRemoteAvailable()) {
     await fetchRemoteEntry(key);
     const value = remoteCache?.[key] as T | undefined;
-    freshCache.set(key, { value, at: Date.now() });
+    if (cacheGeneration) freshCache.set(key, { value, at: Date.now() });
     return value;
   }
   const value = await localGet<T>(key);
-  freshCache.set(key, { value, at: Date.now() });
+  if (cacheGeneration) freshCache.set(key, { value, at: Date.now() });
   return value;
 }
 

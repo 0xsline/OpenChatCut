@@ -5,7 +5,6 @@ import {
   IncompleteGenerationResultError,
   generationResultCheckpoint,
   registerGenerationJobResumer,
-  waitForGenerationAcceptance,
   requireGenerationResultUrls,
   type GenerationJobSnapshot,
   type GenerationResult,
@@ -480,8 +479,7 @@ export function videoGenerationPlugin(options: VideoOptions): Plugin {
               expectedResultCount: expectedVideoResultCount(input),
             },
           );
-          const accepted = await waitForGenerationAcceptance(submission.operationId);
-          sendJson(res, 202, { ...submission, ...accepted });
+          sendJson(res, 202, submission);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[generate:video] ${message}`);

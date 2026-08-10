@@ -4,11 +4,11 @@ import { makeDraft, replayActions, type DraftEngine } from '../editor/store';
 import { saveAutomaticVersion } from '../persist/versionStore';
 import { saveProject } from '../persist/projectStore';
 import { clearProposal, saveProposal, settleProposal } from '../persist/proposalStore';
-import { resolveAgentReferences, type AgentContext, type AgentReference } from './context';
+import { resolveAgentReferences, type AgentContext } from './context';
 import { prepareMessagesForProvider } from './messages';
 import { PROVIDER } from './providerConfig';
 import { getAgentModelSnapshot, isAgentModelReady } from './model-selection';
-import { preloadAgentRuntime, enhanceAgentPrompt, type PendingGuard } from './agent-session';
+import { createAgentRetry, preloadAgentRuntime, enhanceAgentPrompt, type AgentRetryOptions, type PendingGuard } from './agent-session';
 import {
   buildOperation,
   buildProposal,
@@ -25,16 +25,14 @@ import type { AgentRunStatus } from '../persist/agentRuntimeStore';
 import { isFailedToolResult } from './toolFailure';
 import type { AgentHookState } from './useAgentState';
 
-export interface AgentSendOptions {
-  readonly askOnly?: boolean;
-  readonly references?: AgentReference[];
-}
+export type AgentSendOptions = AgentRetryOptions;
 export type AgentSend = (text: string, opts?: AgentSendOptions) => Promise<void>;
 
 export interface AgentTurn {
   state: AgentHookState;
   projectId: string;
   trimmed: string;
+  retryOptions: AgentRetryOptions;
   askOnly: boolean;
   baseDoc: ProjectDoc;
   proposalBaseDoc: ProjectDoc;
@@ -49,6 +47,7 @@ export interface AgentTurn {
   assistantText: string;
   completionStatus: AgentRunStatus;
   runtimeErrorShown: boolean;
+  toolCallCount: number;
   recorder: AgentRunRecorder | null;
   abortController: AbortController;
 }
@@ -96,7 +95,7 @@ function beginTurn(
   const trimmed = text.trim();
   if (!trimmed || state.runningRef.current || state.proposalRef.current) return null;
   if (!isAgentModelReady(getAgentModelSnapshot())) return null;
-  state.setMessages((messages) => [...messages, { role: 'user', text: trimmed }]);
+  state.setMessages((messages) => [...messages, { role: 'user', text: trimmed, retry: createAgentRetry(trimmed, { askOnly: options?.askOnly, references: options?.references }) }]);
   preparePrompt(state, trimmed, options);
   state.setRunning(true);
   state.runningRef.current = true;
@@ -105,12 +104,14 @@ function beginTurn(
   const abortController = new AbortController();
   state.abortRef.current = abortController;
   return {
-    state, projectId, trimmed, askOnly: options?.askOnly === true, baseDoc,
+    state, projectId, trimmed,
+    retryOptions: { askOnly: options?.askOnly, references: options?.references },
+    askOnly: options?.askOnly === true, baseDoc,
     proposalBaseDoc: baseDoc, draft, draftCtx: draftContext(state.ctxRef.current, draft),
     ops: [], persistentOps: [], persistentBeforeDoc: null,
     persistentSnapshot: Promise.resolve(), persistentSaveError: undefined,
     draftInvalidated: false, assistantText: '', completionStatus: 'completed',
-    runtimeErrorShown: false, recorder: null, abortController,
+    runtimeErrorShown: false, toolCallCount: 0, recorder: null, abortController,
   };
 }
 
@@ -191,8 +192,10 @@ function handleAgentEvent(turn: AgentTurn, event: AgentEvent): void {
     handleTextEvent(turn, event);
     return;
   }
-  if (event.type === 'tool-input-start') turn.state.setLiveTool({ name: event.name, partial: '' });
-  else if (event.type === 'tool-input-delta') {
+  if (event.type === 'tool-input-start') {
+    turn.toolCallCount += 1;
+    turn.state.setLiveTool({ name: event.name, partial: '' });
+  } else if (event.type === 'tool-input-delta') {
     turn.state.setLiveTool((tool) => tool ? { ...tool, partial: tool.partial + event.delta } : tool);
   } else if (event.type === 'tool') handleToolEvent(turn, event);
   else if (event.type === 'max-turns') {
@@ -202,7 +205,9 @@ function handleAgentEvent(turn: AgentTurn, event: AgentEvent): void {
   else {
     turn.completionStatus = 'failed';
     turn.runtimeErrorShown = true;
-    turn.state.setMessages((messages) => [...messages, { role: 'error', text: event.message }]);
+    turn.state.setMessages((messages) => [...messages, {
+      role: 'error', text: event.message,
+    }]);
   }
 }
 
@@ -354,7 +359,8 @@ function handleRuntimeFailure(turn: AgentTurn, error: unknown): void {
   turn.completionStatus = turn.abortController.signal.aborted ? 'aborted' : 'failed';
   if (turn.abortController.signal.aborted || turn.runtimeErrorShown) return;
   turn.state.setMessages((messages) => [...messages, {
-    role: 'error', text: error instanceof Error ? error.message : String(error),
+    role: 'error',
+    text: error instanceof Error ? error.message : String(error),
   }]);
 }
 

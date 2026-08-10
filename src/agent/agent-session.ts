@@ -1,12 +1,43 @@
 import type { AgentRuntimeModule, LLMMessage, RuntimeGuardRequest } from './runtime';
+import type { AgentReference } from './context';
 import type { GuardDecision } from './skills/costGuard';
 import { getLocale } from '../i18n/locale';
+
+export interface AgentRetryOptions {
+  readonly askOnly?: boolean;
+  readonly references?: AgentReference[];
+}
+
+export interface AgentRetry extends AgentRetryOptions {
+  readonly text: string;
+}
 
 export interface DisplayMessage {
   role: 'user' | 'assistant' | 'tool' | 'error' | 'continue';
   text: string;
   thinking?: string;
+  retry?: AgentRetry;
   tool?: { name: string; args: unknown; result: unknown };
+}
+
+export function createAgentRetry(
+  text: string,
+  options: AgentRetryOptions = {},
+): AgentRetry | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  return {
+    text: trimmed,
+    ...(options.askOnly ? { askOnly: true } : {}),
+    ...(options.references?.length ? { references: [...options.references] } : {}),
+  };
+}
+
+/** Backfill retry metadata for chats persisted before retry support existed. */
+export function ensureAgentRetryMetadata(messages: readonly DisplayMessage[]): DisplayMessage[] {
+  return messages.map((message) => message.role !== 'user' || message.retry
+    ? message
+    : { ...message, retry: createAgentRetry(message.text) });
 }
 
 export interface PendingGuard extends RuntimeGuardRequest {
