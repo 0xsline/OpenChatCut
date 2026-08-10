@@ -14,7 +14,7 @@ import {
   type ModelPackTask,
 } from '../../shared/model-packs/catalog.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
-import { downloadModelFile, modelCacheDir } from './hf-proxy.ts';
+import { downloadModelFile, modelCacheDir, __resetModelMissingState } from './hf-proxy.ts';
 import { recoverDirectorySwap, replaceDirectoryAtomically } from './model-pack-install.ts';
 
 const MAX_JSON_BYTES = 8 * 1024;
@@ -460,4 +460,5 @@ export function __resetModelPackState(): void {
   tasks.clear();
   inspections.clear();
   recoveryFlight = null;
+  __resetModelMissingState();
 }

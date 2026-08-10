@@ -47,6 +47,53 @@ const SOURCES: ReadonlyArray<{ name: string; url: (target: ProxyTarget) => strin
   },
 ];
 
+/**
+ * Session-scoped "source does not visibly host this model" cache. Populated only
+ * after a deterministic not-found failure (HTTP 404 or a mirror's own missing-repo
+ * payload) on a source for a given modelId. Once recorded, later files of the same
+ * model skip that source entirely instead of burning the doomed source's retry
+ * rounds again. Keyed by modelId so a mirror that later gains the model is not
+ * masked globally — a fresh session re-probes it. Transient failures (timeouts,
+ * 5xx) never land here.
+ */
+const absentSourcesByModel = new Map<string, Set<string>>();
+
+function sourceMissingOnError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message;
+  // curl `--fail` exits 22 on any HTTP error; a genuine mirror absence surfaces
+  // as an HTTP 404 in the stderr tail. Transient failures give other exit codes.
+  if (/curl exit 22\b[\s\S]{0,200}\b404\b/i.test(message)) return true;
+  // ModelScope reports a missing repo as JSON `{"Code":10990101007,...}`.
+  if (/"Code"\s*:\s*10990101007/i.test(message)) return true;
+  return false;
+}
+/** Pure classifier exposed for verifies: does this failure mean the source lacks the model? */
+export { sourceMissingOnError };
+
+function isSourceAbsent(modelId: string, sourceName: string): boolean {
+  return absentSourcesByModel.get(modelId)?.has(sourceName) ?? false;
+}
+
+function markSourceAbsent(modelId: string, sourceName: string): void {
+  let absent = absentSourcesByModel.get(modelId);
+  if (!absent) {
+    absent = new Set();
+    absentSourcesByModel.set(modelId, absent);
+  }
+  absent.add(sourceName);
+}
+
+/** Test hook: clear the session-scoped absent-source cache. */
+export function __resetModelMissingState(): void {
+  absentSourcesByModel.clear();
+}
+
+/** Test hook: frozen snapshot of which (modelId, source) are marked absent. */
+export function __getAbsentSourcesForVerify(): ReadonlyMap<string, readonly string[]> {
+  return new Map([...absentSourcesByModel].map(([modelId, set]) => [modelId, [...set]]));
+}
+
 /** Shared user-data cache; never exposed through public/ or bundled into dist. */
 export function modelCacheDir(): string {
   return join(homedir(), '.openchatcut', 'asr-models');
@@ -147,7 +194,13 @@ function runCurl(
     '-sSL', '--fail', '--max-time', String(CURL_TIMEOUT_S),
     '--max-filesize', String(transferLimit),
     '--speed-limit', '1024', '--speed-time', '30',
-    '--retry', '8', '--retry-delay', '3', '--retry-all-errors',
+    // Deliberately WITHOUT `--retry-all-errors`: that flag makes curl retry
+    // deterministic 4xx failures (e.g. a 404 "file not found" on a source that
+    // does not mirror the repo), which just burns ~27s of retry delays per
+    // round on a doomed source before the outer source loop can fall through.
+    // `--retry 8` still handles transient errors (408/429/5xx, timeouts,
+    // resets), and the outer CURL_ROUNDS loop retries the whole transfer.
+    '--retry', '8', '--retry-delay', '3',
     // ModelScope is a domestic CDN: force direct connection (no proxy);
     // other sources keep the configured outbound proxy.
     ...(noProxy ? ['--noproxy', '*'] : proxyCurlArgs()),
@@ -382,6 +435,7 @@ export async function downloadModelFile(
     let lastError: unknown;
     for (const source of SOURCES) {
       throwIfDownloadAborted(options.signal);
+      if (isSourceAbsent(target.modelId, source.name)) continue;
       try {
         await unlink(tmpPath).catch(() => undefined);
         context.progress.clear();
@@ -399,6 +453,7 @@ export async function downloadModelFile(
         lastError = undefined;
         break;
       } catch (error) {
+        if (sourceMissingOnError(error)) markSourceAbsent(target.modelId, source.name);
         lastError = error;
         await unlink(tmpPath).catch(() => undefined);
       }

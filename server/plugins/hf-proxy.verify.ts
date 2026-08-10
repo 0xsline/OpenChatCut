@@ -12,6 +12,9 @@ import {
   modelCacheDir,
   parseTarget,
   settlePartDownloadRound,
+  sourceMissingOnError,
+  __getAbsentSourcesForVerify,
+  __resetModelMissingState,
   type PartStreamFactory,
   type ProxyTarget,
 } from './hf-proxy';
@@ -150,6 +153,45 @@ await assert.rejects(
 );
 await assert.rejects(stat(cachedDownload), { code: 'ENOENT' });
 await assert.rejects(stat(`${cachedDownload}.part`), { code: 'ENOENT' });
+
+// A deterministic mirror-absence failure must be classified "source missing"
+// so the next file of the same model can skip that source wholesale.
+assert.equal(sourceMissingOnError(new Error('model download failed (curl exit 22): ... returned error: 404')), true);
+assert.equal(sourceMissingOnError(new Error('invalid content-range: {"Code":10990101007,"Message":"获取模型文件失败，文件内容为空"}')), true);
+// Transient failures and unrelated HTTP errors must NOT be treated as absence
+// (a 502 makes curl exit 22 too, but it is not a 404; a timeout is exit 28).
+assert.equal(sourceMissingOnError(new Error('model download failed (curl exit 28): Operation timed out')), false);
+assert.equal(sourceMissingOnError(new Error('model download failed (curl exit 22): The requested URL returned error: 502')), false);
+assert.equal(sourceMissingOnError(null), false);
+assert.equal(sourceMissingOnError('not an error'), false);
+// The session-scoped cache must be empty until a source is marked absent, and
+// a reset clears it (mirrors __resetModelPackState driving a fresh session).
+__resetModelMissingState();
+
+// Integration: the real download loop must record a mirror that deterministically
+// 404s for a model as "absent" for that modelId, so later files of the same model
+// skip it. rhythm-lite (musetric/beat-this-onnx) is NOT on ModelScope but IS on
+// HuggingFace; config.json is tiny (~1KB) so this completes quickly. The download
+// 404s on ModelScope first (marking it absent), then falls through to HF.
+if (!process.env.HF_PROXY_SKIP_INTEGRATION) {
+  const integrationDir = await mkdtemp(join(tmpdir(), 'openchatcut-hf-proxy-integration-'));
+  try {
+    __resetModelMissingState();
+    const tinyDestination = join(integrationDir, 'config.json');
+    await downloadModelFile(
+      { modelId: 'musetric/beat-this-onnx', revision: RHYTHM_REVISION, filePath: 'config.json' },
+      tinyDestination,
+    );
+    const absent = __getAbsentSourcesForVerify().get('musetric/beat-this-onnx') ?? [];
+    assert.equal(
+      absent.includes('modelscope'),
+      true,
+      `ModelScope must be recorded absent for a mirrored-but-404 model; got: ${[...absent]}`,
+    );
+  } finally {
+    await rm(integrationDir, { recursive: true, force: true });
+  }
+}
 
 const originalHome = process.env.HOME;
 process.env.HOME = directory;
