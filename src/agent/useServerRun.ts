@@ -13,7 +13,7 @@ import type { AgentEvent } from './runtime';
 
 export interface ServerRunController {
   send: (text: string) => void;
-  messages: readonly DisplayMessage[];
+  messages: DisplayMessage[];
   running: boolean;
   pendingGuard: PendingGuard | null;
   confirmGuard: (allow: boolean) => void;

@@ -94,6 +94,15 @@ export function AgentComposerSettings(props: AgentComposerSettingsProps) {
       <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
         {t('先出编号计划，确认后再动手。')}
       </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
+        <input type="checkbox" checked={settings.serverRun}
+          onChange={(event) => onSettingsChange({ serverRun: event.target.checked })}
+          style={{ accentColor: theme.accent }} />
+        {t('服务端运行（实验）')}
+      </label>
+      <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
+        {t('Agent 在本地服务端执行，刷新页面不会中断正在进行的任务。')}
+      </div>
     </>
   );
 }

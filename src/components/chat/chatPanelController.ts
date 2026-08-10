@@ -18,6 +18,9 @@ import { getAgentModelSnapshot, isAgentModelReady } from '../../agent/model-sele
 import { refPromptToken, onSelectionRef, setSelectionRefMode } from '../../agent/selection-refs';
 import { shouldBlockAutoApply } from '../../agent/skills/costGuard';
 import { setAgentAutoApply } from '../../agent/approval-mode';
+import type { AgentSettings } from '../../agent/settings/agentSettings';
+import { loadAgentSettings, saveAgentSettings } from '../../agent/settings/agentSettings';
+import { useServerRun, type ServerRunController } from '../../agent/useServerRun';
 import { useT } from '../../i18n/locale';
 import {
   clearComposerDraft,
@@ -72,6 +75,8 @@ export interface ChatComposerController {
   setMode: StateSetter<ChatMode>;
   autoApply: boolean;
   setAutoApply: StateSetter<boolean>;
+  agentSettings: AgentSettings;
+  patchAgent: (patch: Partial<AgentSettings>) => void;
   enhancing: boolean;
   setEnhancing: StateSetter<boolean>;
   selectedRefs: RefItem[];
@@ -140,6 +145,14 @@ function useComposerState(projectId: string): ChatComposerController {
   // loop reads the mode through the approval-mode registry (sessionPrefs
   // documents the intent; this is the wiring).
   useEffect(() => { setAgentAutoApply(autoApply); }, [autoApply]);
+  const [agentSettings, setAgentSettingsState] = useState<AgentSettings>(() => loadAgentSettings());
+  const patchAgent = useCallback((patch: Partial<AgentSettings>) => {
+    setAgentSettingsState((prev) => {
+      const next = { ...prev, ...patch };
+      saveAgentSettings(next);
+      return next;
+    });
+  }, []);
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
   const selectedRefsRef = useRef<RefItem[]>([]);
@@ -162,7 +175,8 @@ function useComposerState(projectId: string): ChatComposerController {
     commitAttachmentLifecycle(resetChatAttachmentLifecycle(attachmentLifecycleRef.current));
   }, [commitAttachmentLifecycle]);
   return {
-    input, setInput, mode, setMode, autoApply, setAutoApply, enhancing, setEnhancing,
+    input, setInput, mode, setMode, autoApply, setAutoApply, agentSettings, patchAgent,
+    enhancing, setEnhancing,
     selectedRefs, selectedRefsRef, commitSelectedRefs, attachmentLifecycle,
     attachmentLifecycleRef, commitAttachmentLifecycle, invalidateAttachmentDraft,
     pendingAttachmentCount: pendingChatAttachmentCount(attachmentLifecycle), selecting,
@@ -468,14 +482,47 @@ function useChangeLogSlot(): HTMLElement | null {
   return slot;
 }
 
+function serverRunAdapter(run: ServerRunController): AgentController {
+  return {
+    messages: run.messages,
+    running: run.running,
+    hydrated: true,
+    contextUsage: null,
+    proposal: null,
+    proposalStale: false,
+    pendingGuard: run.pendingGuard
+      ? {
+        ...run.pendingGuard,
+        resolve: (requested) => run.confirmGuard(requested !== 'deny'),
+      }
+      : null,
+    liveTool: null,
+    changeLog: [],
+    send: (text) => { run.send(text); return Promise.resolve(); },
+    stop: run.stop,
+    enhance: async (text: string) => text,
+    clearHistory: () => undefined,
+    applyProposal: () => undefined,
+    forceApplyProposal: () => undefined,
+    rejectProposal: () => undefined,
+    reProposeStale: () => undefined,
+    rollbackChangeSession: () => false,
+    canRollbackChangeSession: () => false,
+  };
+}
+
 export function useChatPanelController(props: ChatPanelProps): ChatPanelController {
   const t = useT();
-  const agent = useAgent(props.ctx, props.projectId);
+  const serverRun = useServerRun(props.ctx, props.projectId);
+  const builtInAgent = useAgent(props.ctx, props.projectId);
   const externalProposal = useExternalAgentBridge(props.ctx, props.projectId);
   const composer = useComposerState(props.projectId);
   const scroll = useChatScrollController();
   useComposerProject(composer, props.projectId);
   useComposerSeed(composer, props.seed, props.collapsed);
+  const agent: AgentController = composer.agentSettings.serverRun
+    ? serverRunAdapter(serverRun)
+    : builtInAgent;
   useChatAutoScroll(scroll, agent.messages, agent.running, agent.proposal);
   usePanelEffects(props, agent, composer);
   const actions = useChatActions(props, t, agent, composer);

@@ -198,6 +198,7 @@ function ComposerInput({ controller }: { controller: ChatPanelController }) {
     onEnhance={actions.runEnhance} enhancing={composer.enhancing} running={agent.running}
     mode={composer.mode} onModeChange={composer.setMode}
     autoApply={composer.autoApply} onAutoApplyChange={composer.setAutoApply}
+    agentSettings={composer.agentSettings} patchAgent={composer.patchAgent}
     contextUsage={agent.contextUsage}
     selecting={composer.selecting} onToggleSelecting={() => composer.setSelecting((value) => !value)}
     creativeMode={props.creativeMode} onCreativeModeChange={props.onCreativeModeChange}
