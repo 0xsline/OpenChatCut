@@ -84,7 +84,7 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   ollama: { svg: ollamaSvg, tint: theme.text },        // Official llama mark, adapted for skin contrast
   lmstudio: { svg: lmstudioSvg },                      // Official LM Studio color app icon
   vision: { svg: visionSvg },                          // Vision bypass feature mark (generated)
-  proxy: { svg: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zm-9-9h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z' }, // network proxy
+  proxy: { svg: '<svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zm-9-9h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg>' }, // network proxy
 };
 
 // Official SVG not included / Non-provider brand → monogram

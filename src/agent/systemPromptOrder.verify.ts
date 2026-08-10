@@ -11,6 +11,7 @@ import {
   agentLanguagePrompt,
   assembleSystemPrompt,
   buildAgentSystemPrompt,
+  confirmationModePrompt,
   designStylePrompt,
   editorStatePrompt,
 } from './systemPrompt';
@@ -140,6 +141,26 @@ const commonPrefixLength = (a: string, b: string): number => {
   assert.match(prompt, /Follow it for every edit/);
   assert.match(SYSTEM_PROMPT, /creative direction and asset plan/);
   assert.match(SYSTEM_PROMPT, /Never claim or imply success after an unresolved tool failure/);
+}
+
+// ── Auto-apply mode appends a late override; manual mode stays byte-identical ──
+{
+  assert.equal(confirmationModePrompt('manual'), '', 'manual (ask) mode must not change the static prompt');
+  const auto = confirmationModePrompt('auto');
+  assert.match(auto, /# Auto-apply mode \(YOLO\)/);
+  assert.match(auto, /overrides the '# Planning and confirmation' rules above/);
+  assert.match(auto, /do NOT stop between major stages for confirmation/i);
+  assert.match(auto, /do NOT confirm the creative direction or asset plan/i);
+  const autoCtx = {
+    getState: () => ({ fps: 30, width: 1920, height: 1080, selectedId: null, tracks: { V1: { kind: 'video' } }, trackOrder: ['V1'], items: [] }),
+    getDoc: () => ({ version: 3, assets: [], mediaFolders: [], activeTimelineId: 'tl1', timelines: [] }),
+    getCreativeMode: () => null,
+    getApprovalMode: () => 'auto',
+  } as unknown as AgentContext;
+  assert.ok(
+    buildAgentSystemPrompt(autoCtx, DEFAULT_AGENT_SETTINGS).includes('# Auto-apply mode (YOLO)'),
+    'auto-apply mode must inject the YOLO override into the built prompt',
+  );
 }
 
 console.log('systemPromptOrder.verify: ok (易变段收尾/真 editorStatePrompt 不污染前缀/失效点最小化)');
