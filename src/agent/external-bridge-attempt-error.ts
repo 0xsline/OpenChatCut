@@ -2,15 +2,9 @@ import { EditorBridgeRequestError } from './external-bridge-registration';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-/** How many consecutive stale-409 reloads a page may attempt before giving up
- *  and falling back to a plain message. Guards against an infinite reload loop
- *  when the server keeps holding a stale editor registration for this project
- *  (e.g. an earlier page closed without unregistering) — reloading cannot
- *  clear that state, so it must not loop forever. */
-const STALE_RELOAD_BUDGET = 3;
-let staleReloadCount = 0;
-
-/** Report a bridge-attempt failure and return whether its credential must refresh. */
+/** Report bridge conflicts without navigating away from the editor. A page reload can trigger
+ * the browser's beforeunload guard while autosave is pending, and reloading cannot clear a
+ * persisted editor-registration conflict. */
 export function handleExternalBridgeAttemptError(
   error: unknown,
   signal: AbortSignal,
@@ -20,12 +14,8 @@ export function handleExternalBridgeAttemptError(
     && error.operation === 'registration'
     && error.status === 409;
   if (staleRegistration) {
-    if (staleReloadCount < STALE_RELOAD_BUDGET) {
-      staleReloadCount += 1;
-      onError('The project changed after this browser loaded it. Reloading the authoritative revision.');
-      window.location.reload();
-    } else if (!signal.aborted) {
-      onError('This project is already open in another editor session; reload is suppressed to avoid a reload loop.');
+    if (!signal.aborted) {
+      onError('工程已在其他窗口编辑或版本已变化，请关闭其他窗口后手动刷新页面。');
     }
     return false;
   }
@@ -33,6 +23,3 @@ export function handleExternalBridgeAttemptError(
   return error instanceof EditorBridgeRequestError && error.status === 401;
 }
 
-export function resetExternalBridgeAttemptStateForTests(): void {
-  staleReloadCount = 0;
-}

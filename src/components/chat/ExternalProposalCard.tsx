@@ -12,9 +12,18 @@ type ConfirmGuard = ExternalProposalController['confirmGuard'];
 
 function ExternalErrorAlert({ message }: { message: string }) {
   const t = useT();
+  // Bridge errors surface as machine-readable strings; map the common
+  // ownership-conflict cases to user-facing copy, then translate via i18n.
+  const BRIDGE_ERROR_KEYS: Record<string, string> = {
+    'registration failed: HTTP 409': '工程正在其他窗口编辑，无法注册。请关闭其他窗口后重试。',
+    'poll failed: HTTP 409': '工程正在其他窗口编辑，连接已中断。请关闭其他窗口后重试。',
+    'cancellation poll failed: HTTP 409': '工程正在其他窗口编辑，连接已中断。请关闭其他窗口后重试。',
+    'result failed: HTTP 409': '工程正在其他窗口编辑，结果未能送达。请关闭其他窗口后重试。',
+  };
+  const text = t(BRIDGE_ERROR_KEYS[message] ?? message);
   return (
     <div role="alert" style={{ margin: '10px 0', color: theme.danger, fontSize: 12 }}>
-      {t('外部 Agent：{message}', { message })}
+      {text}
     </div>
   );
 }

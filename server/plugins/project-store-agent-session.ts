@@ -10,16 +10,41 @@ import {
   requireAgentSessionProjectId,
   type AgentSessionGenerationRecord,
 } from '../../shared/agent-session-generation.ts';
-import type { ProjectStoreMutationResponse } from '../../shared/project-store-transport.ts';
 import { isProjectStoreRecord } from '../../shared/project-store-validation.ts';
+import type { ProjectStoreMutationResponse } from '../../shared/project-store-transport.ts';
 import { normalizeAgentRuntimeSidecar } from '../../src/persist/agentRuntimeCodec.ts';
+import type { AgentRunStatus } from '../../src/persist/agentRuntimeTypes.ts';
 import type { LockedProjectStore } from './project-store.ts';
+
+export interface AgentSessionBlockedRun {
+  runId: string;
+  status: 'running' | 'waiting_approval' | 'awaiting_user';
+  updatedAt: number;
+  ownerInstanceId?: string;
+  leaseExpiresAt?: number;
+}
+
+export class AgentSessionClearBlockedError extends Error {
+  readonly code = 'agent_session_clear_blocked';
+  readonly run: AgentSessionBlockedRun;
+
+  constructor(run: AgentSessionBlockedRun) {
+    super(`agent_session_clear_blocked: runId=${run.runId}; status=${run.status}; updatedAt=${run.updatedAt}`);
+    this.name = 'AgentSessionClearBlockedError';
+    this.run = run;
+  }
+}
 
 const ACTIVE_RUN_STATUS: Record<string, true> = {
   running: true,
   waiting_approval: true,
   awaiting_user: true,
 };
+
+function activeRunStatus(status: AgentRunStatus): AgentSessionBlockedRun['status'] | undefined {
+  if (status === 'running' || status === 'waiting_approval' || status === 'awaiting_user') return status;
+  return undefined;
+}
 
 type WithStoreLock = <T>(
   work: (store: LockedProjectStore) => Promise<T>,
@@ -58,7 +83,15 @@ async function sessionState(
   const blocked = sidecar.runs.find((run) =>
     ACTIVE_RUN_STATUS[run.status] === true && run.runId !== permittedRunId);
   if (blocked) {
-    throw new Error('Agent session cannot be cleared while an unrelated run is active.');
+    const status = activeRunStatus(blocked.status);
+    if (!status) return sidecar;
+    throw new AgentSessionClearBlockedError({
+      runId: blocked.runId,
+      status,
+      updatedAt: blocked.updatedAt,
+      ...(blocked.ownerInstanceId ? { ownerInstanceId: blocked.ownerInstanceId } : {}),
+      ...(blocked.leaseExpiresAt ? { leaseExpiresAt: blocked.leaseExpiresAt } : {}),
+    });
   }
   return sidecar;
 }

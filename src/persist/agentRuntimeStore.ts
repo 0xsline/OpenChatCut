@@ -340,9 +340,21 @@ export function clearAgentSessionContext(
     const generation = await currentAgentSessionGeneration(projectId);
     if (!projectStoreRemoteAvailable()) {
       const current = await loadAgentRuntimeSidecar(projectId);
-      if (current.runs.some((run) =>
-        !terminal(run.status) && !allowedActiveRunIds.has(run.runId))) {
-        throw new Error('Agent session cannot be cleared while another run is active.');
+      const blocked = current.runs.find((run) =>
+        !terminal(run.status) && !allowedActiveRunIds.has(run.runId));
+      if (blocked) {
+        throw Object.assign(new Error(
+          `Agent session cannot be cleared while another run is active: ${blocked.runId}`,
+        ), {
+          code: 'agent_session_clear_blocked',
+          run: {
+            runId: blocked.runId,
+            status: blocked.status,
+            updatedAt: blocked.updatedAt,
+            ...(blocked.ownerInstanceId ? { ownerInstanceId: blocked.ownerInstanceId } : {}),
+            ...(blocked.leaseExpiresAt ? { leaseExpiresAt: blocked.leaseExpiresAt } : {}),
+          },
+        });
       }
     }
     const prefix = artifactPrefix(projectId, generation);

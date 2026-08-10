@@ -188,7 +188,7 @@ await clearAgentHistory(blocked.state, projectId);
 assert.notEqual(await loadChat(projectId), null, 'active run blocks chat deletion');
 assert.equal((await loadAgentRuntimeSidecar(projectId)).runs.length, 1, 'active run ledger survives');
 assert.deepEqual(blocked.state.llmRef.current, [{ role: 'user', content: 'must survive active run' }]);
-assert.match(blocked.messages.at(-1)?.text ?? '', /无法清空/);
+assert.match(blocked.messages.at(-1)?.text ?? '', /仍在进行/);
 await purgeAgentRuntime(projectId);
 await clearChat(projectId);
 

@@ -7,11 +7,11 @@ import {
 } from '../../shared/agent-session-generation.ts';
 import type { AgentRuntimeSidecar } from '../../src/persist/agentRuntimeTypes.ts';
 import {
+  AgentSessionClearBlockedError,
   assertAgentSessionMigrationSafe,
   createAgentSessionStoreOperation,
 } from './project-store-agent-session.ts';
 import type { LockedProjectStore } from './project-store.ts';
-
 const projectId = 'atomic-clear-project';
 const entries = new Map<string, unknown>();
 const removed: string[] = [];
@@ -95,8 +95,11 @@ entries.set(agentSessionRuntimeKey(projectId, firstRecord.generation), runtime({
 }));
 await assert.rejects(
   () => rotate(projectId),
-  /unrelated run is active/,
-  'an unrelated active run blocks the authoritative cutover',
+  (error: unknown) => error instanceof AgentSessionClearBlockedError
+    && error.code === 'agent_session_clear_blocked'
+    && error.run.runId === 'unrelated-run'
+    && error.run.status === 'running',
+  'an unrelated active run exposes structured clear-block details',
 );
 assert.equal(
   parseAgentSessionGenerationRecord(entries.get(agentSessionGenerationKey(projectId)))?.generation,
@@ -110,7 +113,9 @@ entries.set(agentSessionProposalKey(projectId, firstRecord.generation), {
 });
 await assert.rejects(
   () => rotate(projectId),
-  /unrelated run is active/,
+  (error: unknown) => error instanceof AgentSessionClearBlockedError
+    && error.run.runId === 'unrelated-run'
+    && error.run.status === 'running',
   'an applying proposal cannot authorize clearing an active mutation',
 );
 

@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { t } from '../i18n/locale';
 import { flushChatWrites } from '../persist/projectStore';
 import { clearAgentSessionContext } from '../persist/agentRuntimeStore';
 import { loadProposalRecord } from '../persist/proposalStore';
@@ -6,6 +7,11 @@ import { initialAgentMessages } from './agent-session';
 import { PROVIDER } from './providerConfig';
 import { canRollbackAgentChange, rollbackAgentChange } from './changeLog';
 import type { AgentHookState } from './useAgentState';
+
+type ClearBlockedError = Error & {
+  code?: string;
+  run?: { runId?: string; status?: string };
+};
 
 export async function clearAgentHistory(state: AgentHookState, projectId: string): Promise<void> {
   if (state.runningRef.current) return;
@@ -22,21 +28,27 @@ export async function clearAgentHistory(state: AgentHookState, projectId: string
       projectId,
       durableRunId ? new Set([durableRunId]) : new Set(),
     );
-  } catch {
+  } catch (error) {
     if (state.hydrationEpochRef.current !== hydrationEpoch) return;
     state.hydratedRef.current = true;
     state.setHydrated(true);
+    const blocked = error as ClearBlockedError;
+    const runId = blocked.run?.runId;
+    const status = blocked.run?.status;
+    const detail = blocked.code === 'agent_session_clear_blocked' && runId
+      ? t('运行 {runId}（{status}）仍在进行。请先停止该运行，确认检查器中没有活动任务后再重试。', {
+        runId,
+        status: status ?? 'unknown',
+      })
+      : t('请确认没有其他 Agent 正在运行，并重试。');
     state.setMessages((current) => [...current, {
       role: 'error',
-      text: '无法清空上下文与运行记录。请确认没有其他 Agent 正在运行，并重试。',
+      text: `${t('无法清空上下文与运行记录。')}${detail}`,
     }]);
     return;
   }
-  if (state.hydrationEpochRef.current !== hydrationEpoch) return;
   state.llmRef.current = initialAgentMessages();
-  state.toolFailuresRef.current.clear();
   state.llmProviderRef.current = PROVIDER;
-  state.setProposal(null);
   state.setProposalStale(false);
   state.setChangeLog([]);
   state.setMessages([]);

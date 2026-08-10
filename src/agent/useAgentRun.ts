@@ -18,6 +18,7 @@ import {
 } from './proposal';
 import { appendAgentChange, createAgentChangeSession } from './changeLog';
 import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
+import { agentAutoApply } from './approval-mode';
 import type { RuntimeGuardRequest } from './runtime-guard';
 import type { AgentEvent } from './runtime';
 import { startAgentRun, type AgentRunRecorder } from './runtime-ledger';
@@ -216,6 +217,10 @@ export function requestRuntimeGuard(
   projectId: string,
   guard: RuntimeGuardRequest,
 ): Promise<GuardDecision> {
+  // YOLO (auto-apply) mode releases every confirmation card: the user opted
+  // into unapproved execution (sessionPrefs documents the intent). Paid,
+  // persistent-local and irreversible operations all run without a prompt.
+  if (agentAutoApply()) return Promise.resolve('allow-once');
   const rememberable = guard.approval === 'project' && guard.permissionKind === 'paid_external';
   if (rememberable && isCostAllowed(guard.skill, projectId)) return Promise.resolve('allow-once');
   const { promise, resolve } = Promise.withResolvers<GuardDecision>();

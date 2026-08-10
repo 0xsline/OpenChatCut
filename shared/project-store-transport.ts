@@ -13,6 +13,16 @@ export interface ProjectStoreMutationResponse {
   found: boolean;
   value?: unknown;
   lease?: AgentRunLeaseState;
+  error?: {
+    code: string;
+    run?: {
+      runId: string;
+      status: 'running' | 'waiting_approval' | 'awaiting_user';
+      updatedAt: number;
+      ownerInstanceId?: string;
+      leaseExpiresAt?: number;
+    };
+  };
 }
 
 export interface ProjectDocumentMutationResponse extends ProjectStoreMutationResponse {

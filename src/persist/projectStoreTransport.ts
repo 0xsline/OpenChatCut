@@ -181,7 +181,21 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
   }
   const response = await fetch(`${API_PATH}${path}`, init);
   if (!response.ok) {
-    throw Object.assign(new Error(`project store request failed: ${response.status}`), { status: response.status });
+    let details: { error?: string; code?: string; run?: unknown } = {};
+    try {
+      const value: unknown = await response.json();
+      if (value && typeof value === 'object') details = value as typeof details;
+    } catch {
+      // Non-JSON responses retain the status-only fallback below.
+    }
+    const message = typeof details.error === 'string'
+      ? details.error
+      : `project store request failed: ${response.status}`;
+    throw Object.assign(new Error(message), {
+      status: response.status,
+      code: details.code,
+      run: details.run,
+    });
   }
   return response.json() as Promise<ProjectStoreResponse>;
 }

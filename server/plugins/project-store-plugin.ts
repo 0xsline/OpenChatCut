@@ -32,6 +32,7 @@ import {
 import { searchContent } from '../storage/fulltext-search.ts';
 import { hybridSearch } from '../storage/hybrid-search.ts';
 import { cleanupLegacyJson, sqliteMigrationStatus, sqliteImportJson, sqliteStoreEnabled } from '../storage/sqlite-store.ts';
+import { AgentSessionClearBlockedError } from './project-store-agent-session.ts';
 import {
   compareAndSwapAgentRuntime,
   compareAndSwapProjectDocument,
@@ -179,7 +180,12 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[project-store] ${message}`);
-          if (!res.headersSent) sendProjectStoreJson(res, 400, { error: message });
+          if (!res.headersSent) {
+            const body = error instanceof AgentSessionClearBlockedError
+              ? { error: message, code: error.code, run: error.run }
+              : { error: message };
+            sendProjectStoreJson(res, 400, body);
+          }
         }
       });
     },

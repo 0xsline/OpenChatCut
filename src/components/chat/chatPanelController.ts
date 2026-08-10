@@ -17,6 +17,7 @@ import { useExternalAgentBridge, type ExternalProposalController } from '../../a
 import { getAgentModelSnapshot, isAgentModelReady } from '../../agent/model-selection';
 import { refPromptToken, onSelectionRef, setSelectionRefMode } from '../../agent/selection-refs';
 import { shouldBlockAutoApply } from '../../agent/skills/costGuard';
+import { setAgentAutoApply } from '../../agent/approval-mode';
 import { useT } from '../../i18n/locale';
 import {
   clearComposerDraft,
@@ -129,6 +130,10 @@ function useComposerState(projectId: string): ChatComposerController {
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
   const [autoApply, setAutoApply] = useState(() => loadChatAutoApply(projectId));
+  // YOLO mode also releases the runtime confirmation cards: the agent run
+  // loop reads the mode through the approval-mode registry (sessionPrefs
+  // documents the intent; this is the wiring).
+  useEffect(() => { setAgentAutoApply(autoApply); }, [autoApply]);
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
   const selectedRefsRef = useRef<RefItem[]>([]);

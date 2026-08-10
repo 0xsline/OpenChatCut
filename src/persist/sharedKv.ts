@@ -392,8 +392,7 @@ async function setProjectDocument(key: string, value: unknown): Promise<void> {
   }
   if (!result.accepted) {
     await cacheMutation(key, result);
-    if (typeof window !== 'undefined') window.location.reload();
-    throw new Error('工程已被其他编辑器更新，请重新加载');
+    throw new Error('工程已被其他编辑器更新，请手动刷新页面后重试');
   }
   if (!result.found || typeof result.currentRevision !== 'string') {
     throw new Error('invalid successful project document CAS response');
