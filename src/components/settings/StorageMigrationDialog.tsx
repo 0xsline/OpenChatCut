@@ -4,13 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../../i18n/locale';
 import { fetchWithEditorSession } from '../../persist/projectStoreTransport';
-
-interface MigrationStatus {
-  enabled: boolean;
-  receipt: { count: number; importedAt: string } | null;
-  jsonKeyCount: number;
-  sqliteKeyCount: number;
-}
+import { loadMigrationStatus, type MigrationStatus } from './storageMigration';
 
 interface MigrateResponse {
   summary?: { imported: number; skipped: number; quarantined: number };
@@ -19,9 +13,7 @@ interface MigrateResponse {
 }
 
 async function loadStatus(): Promise<MigrationStatus> {
-  const response = await fetchWithEditorSession('/api/project-store/migrate-status', { method: 'GET' });
-  const body = await response.json() as MigrationStatus;
-  return body;
+  return loadMigrationStatus();
 }
 
 const overlay: React.CSSProperties = {

@@ -8,6 +8,7 @@ import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
 import { McpGuideDialog } from '../settings/McpGuide';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { StorageMigrationDialog } from '../settings/StorageMigrationDialog';
+import { StorageMigrationBanner } from '../settings/StorageMigrationBanner';
 import { SkinPicker } from '../settings/SkinPicker';
 import { LocaleToggle } from '../TopBar';
 import {
@@ -178,6 +179,7 @@ export function DashboardContent({ props, model }: { props: DashboardProps; mode
   return (
     <main style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
       <div style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 24px 80px' }}>
+        <StorageMigrationBanner onOpenDialog={() => model.setDialog('storage', true)} />
         {model.modelSnapshot.loaded && model.modelSnapshot.choices.length === 0 && <ModelSetupCard onOpen={() => model.setDialog('settings', true)} />}
         <ProjectToolbar projects={props.projects} model={model} />
         <ProjectGrid props={props} model={model} />
