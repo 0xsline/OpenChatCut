@@ -1,23 +1,17 @@
-import {
-  createHmac, randomBytes, timingSafeEqual,
-} from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { IncomingMessage } from 'node:http';
 import { runtimeProfile, type RuntimeProfile } from './runtime-profile.ts';
 
 export const PROJECT_STORE_LAUNCH_TOKEN_HEADER = 'x-openchatcut-editor-launch-token';
 export const PROJECT_STORE_SESSION_HEADER = 'x-openchatcut-project-store-session';
-/** Browser cookie carrying the signed, stateless editor session. */
-export const PROJECT_STORE_SESSION_COOKIE = 'occ_ps';
 const TOKEN_ENV = 'OPENCHATCUT_EDITOR_LAUNCH_TOKEN';
 const NO_AUTH_ENV = 'OPENCHATCUT_DISABLE_LAUNCH_AUTH';
 const MIN_TOKEN_LENGTH = 32;
 const generatedLaunchToken = randomBytes(32).toString('base64url');
-/** How long a signed session stays valid before the browser must re-exchange. */
-export const SESSION_COOKIE_MAX_AGE_S = 30 * 24 * 60 * 60;
 
 /**
  * Personal-use escape hatch: with OPENCHATCUT_DISABLE_LAUNCH_AUTH=1 (or 'true')
@@ -30,16 +24,24 @@ export function launchAuthDisabled(): boolean {
   return value === '1' || value === 'true';
 }
 
+interface ProjectStoreSession {
+  readonly token: string;
+  readonly host: string;
+  readonly remoteAddress: string;
+}
+
+let activeSession: ProjectStoreSession | null = null;
+
 export function projectStoreAuthDir(profile: RuntimeProfile = runtimeProfile()): string {
   return profile.authDir;
 }
 
-const SESSION_KEY_FILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
+const SESSION_FILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 const SESSION_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1_000;
 let lastSessionPruneAt = 0;
 
-/** Remove long-dead persisted session key files so the auth directory cannot
- *  grow unbounded across dev port changes. */
+/** Remove long-dead persisted sessions (one per host/port binding) so the
+ *  auth directory cannot grow unbounded across dev port changes. */
 function pruneStaleSessionFiles(): void {
   const now = Date.now();
   if (now - lastSessionPruneAt < SESSION_PRUNE_INTERVAL_MS) return;
@@ -47,9 +49,9 @@ function pruneStaleSessionFiles(): void {
   try {
     const directory = projectStoreAuthDir();
     for (const name of readdirSync(directory)) {
-      if (!name.startsWith('session-key-')) continue;
+      if (!name.startsWith('session-')) continue;
       const path = join(directory, name);
-      if (now - statSync(path).mtimeMs > SESSION_KEY_FILE_MAX_AGE_MS) {
+      if (now - statSync(path).mtimeMs > SESSION_FILE_MAX_AGE_MS) {
         rmSync(path, { force: true });
       }
     }
@@ -123,50 +125,6 @@ export function projectStoreLaunchToken(): string {
   return configuredLaunchToken();
 }
 
-/** The persistent HMAC signer for editor sessions. Derived from the stable
- *  launch token so a server restart keeps validating previously-issued
- *  cookies (no process-local memory to lose). */
-function sessionSignerKey(): Buffer {
-  const launch = configuredLaunchToken();
-  return createHmac('sha256', launch).update('openchatcut:project-store-session:v1').digest();
-}
-
-/**
- * Build a signed, stateless session cookie value for the given host.
- * payload = host, signature = HMAC(signerKey, host). The browser sends it
- * back on every same-origin request; the server verifies the HMAC and host
- * with no shared memory, so it survives restart and tab relaunch.
- */
-export function signEditorSession(host: string): string {
-  const key = sessionSignerKey();
-  const sig = createHmac('sha256', key).update(host).digest('base64url');
-  return Buffer.from(host, 'utf8').toString('base64url') + '.' + sig;
-}
-
-function verifyEditorSession(host: string, cookie: string): boolean {
-  if (!cookie) return false;
-  const dot = cookie.indexOf('.');
-  if (dot < 0) return false;
-  const payload = cookie.slice(0, dot);
-  const providedSig = cookie.slice(dot + 1);
-  const expectedHost = Buffer.from(payload, 'base64url').toString('utf8');
-  if (expectedHost !== host) return false;
-  const key = sessionSignerKey();
-  const expectedSig = createHmac('sha256', key).update(expectedHost).digest('base64url');
-  const left = Buffer.from(providedSig);
-  const right = Buffer.from(expectedSig);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
-export function setProjectStoreSessionCookie(res: ServerResponse, host: string): void {
-  const value = signEditorSession(host);
-  res.setHeader('Set-Cookie', [
-    `${PROJECT_STORE_SESSION_COOKIE}=${value}`,
-    'HttpOnly', 'SameSite=Lax', 'Path=/',
-    `Max-Age=${SESSION_COOKIE_MAX_AGE_S}`,
-  ].join('; '));
-}
-
 function loopbackAddress(value: string | undefined): value is string {
   return value === '127.0.0.1' || value === '::1' || value === '::ffff:127.0.0.1';
 }
@@ -211,6 +169,9 @@ function sameOrigin(req: IncomingMessage): boolean {
   }
 }
 
+
+/** Origin is a loopback host (localhost / 127.0.0.1 / ::1) on ANY port. */
+
 /**
  * Read-only authorization without a session: same-origin pages (or direct
  * local navigation, e.g. curl) served from a loopback host may read the
@@ -224,51 +185,44 @@ export function projectStoreReadAuthorized(req: IncomingMessage): boolean {
   return trustedLoopback(req);
 }
 
-/**
- * Exchange a launch credential for a session. In no-auth mode any loopback
- * same-origin request is granted. In secured mode the launch token header must
- * match the configured/persisted launch token; the returned `sessionToken` is a
- * signed, stateless value that verifies via HMAC with no process memory.
- */
 export function exchangeProjectStoreLaunchToken(
   req: IncomingMessage,
 ): { sessionToken: string } | null {
   if (launchAuthDisabled() && trustedLoopback(req) && sameOrigin(req)) {
-    return { sessionToken: signEditorSession((header(req, 'host') ?? 'localhost:5199').toLowerCase()) };
+    // No-auth mode: mint a throwaway session (>=32 chars, the browser's
+    // transport validates length) so the normal exchange flow keeps working.
+    return { sessionToken: `no-auth-${randomBytes(24).toString('base64url')}` };
   }
   if (!trustedLoopback(req) || !sameOrigin(req)) return null;
   const actualLaunch = header(req, PROJECT_STORE_LAUNCH_TOKEN_HEADER);
   if (!actualLaunch || !equalSecret(actualLaunch, configuredLaunchToken())) return null;
-  return { sessionToken: signEditorSession((header(req, 'host') ?? 'localhost:5199').toLowerCase()) };
-}
 
-/** Read the signed editor session from a request cookie (or legacy header). */
-function sessionCredential(req: IncomingMessage): string | null {
-  const host = (header(req, 'host') ?? '').toLowerCase();
-  if (!host) return null;
-  const cookie = header(req, 'cookie');
-  if (cookie) {
-    const match = cookie.split(';').map((c) => c.trim())
-      .find((c) => c.startsWith(`${PROJECT_STORE_SESSION_COOKIE}=`));
-    if (match) {
-      const value = match.slice(PROJECT_STORE_SESSION_COOKIE.length + 1);
-      if (verifyEditorSession(host, value)) return value;
-    }
+  const current = activeSession;
+  if (current?.host === req.headers.host.toLowerCase()
+    && current.remoteAddress === req.socket.remoteAddress) {
+    return { sessionToken: current.token };
   }
-  // Back-compat: the legacy explicit session header, still signed/verifiable.
-  const legacy = header(req, PROJECT_STORE_SESSION_HEADER);
-  return legacy && verifyEditorSession(host, legacy) ? legacy : null;
+  const session: ProjectStoreSession = {
+    token: randomBytes(32).toString('base64url'),
+    host: req.headers.host.toLowerCase(),
+    remoteAddress: req.socket.remoteAddress,
+  };
+  activeSession = session;
+  return { sessionToken: session.token };
 }
 
 export function projectStoreHttpAuthorized(req: IncomingMessage): boolean {
   if (!trustedLoopback(req)) return false;
   if (launchAuthDisabled()) return true;
-  return sessionCredential(req) !== null;
+  const session = activeSession;
+  if (!session || session.host !== req.headers.host.toLowerCase()
+    || session.remoteAddress !== req.socket.remoteAddress) return false;
+  const actual = header(req, PROJECT_STORE_SESSION_HEADER);
+  return actual !== null && equalSecret(actual, session.token);
 }
 
 export function resetProjectStoreHttpAuthMemoryForTests(): void {
-  // Stateless signed sessions have no process memory to clear; kept as a no-op
-  // so existing tests that reset between scenarios still behave deterministically.
+  activeSession = null;
 }
 
 export function resetProjectStoreHttpAuthForTests(): void {
