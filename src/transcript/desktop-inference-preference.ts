@@ -1,3 +1,4 @@
+import type {} from '../desktop-api';
 export const DESKTOP_NATIVE_INFERENCE_KEY = 'cc.desktopNativeInference';
 export const DESKTOP_NATIVE_INFERENCE_CHANGE_EVENT = 'cc:desktop-native-inference-change';
 

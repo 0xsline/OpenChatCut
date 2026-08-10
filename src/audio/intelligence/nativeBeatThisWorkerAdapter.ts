@@ -1,3 +1,4 @@
+import type {} from '../../desktop-api';
 import type {
   DesktopInferenceCapabilities,
   DesktopRhythmResponse,

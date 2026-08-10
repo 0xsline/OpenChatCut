@@ -1,6 +1,7 @@
-import { streamText, type LanguageModel } from 'ai';
+import { jsonSchema, streamText, tool, type LanguageModel, type ModelMessage } from 'ai';
 import { normalizeLlmProvider, type LlmProvider } from '../../shared/llm-providers';
-import { pushRunEvent, setRunStatus, type ServerRun } from './store';
+import type { AgentToolSchema } from '../../src/agent/tool-schema';
+import { pushRunEvent, setRunStatus, waitForToolResult, type ServerRun } from './store';
 
 /**
  * Provider factory mirroring src/agent/client.ts, but resolved server-side and
@@ -58,6 +59,7 @@ export async function executeRun(
     messages: Array<{ role: 'user' | 'assistant'; content: string }>;
     provider: string;
     origin: string;
+    tools: readonly AgentToolSchema[];
   },
 ): Promise<void> {
   const abort = new AbortController();
@@ -68,19 +70,59 @@ export async function executeRun(
     const provider = normalizeLlmProvider(input.provider);
     const factory = await providerFactory(provider, input.origin);
     const model = factory(run.model);
-    const result = streamText({
-      model,
-      messages: input.messages,
-      maxOutputTokens: 4_096,
-      maxRetries: 0,
-      abortSignal: abort.signal,
-    });
+    const tools = Object.fromEntries(input.tools.map((schema) => [schema.name, tool({
+      description: schema.description,
+      inputSchema: jsonSchema<Record<string, unknown>>(
+        schema.input_schema as Parameters<typeof jsonSchema<Record<string, unknown>>>[0],
+      ),
+      execute: async (
+        args: Record<string, unknown>,
+        options: { toolCallId: string },
+      ): Promise<unknown> => {
+        pushRunEvent(run, 'tool-request', {
+          toolCallId: options.toolCallId,
+          name: schema.name,
+          args,
+        });
+        return waitForToolResult(run, options.toolCallId);
+      },
+    })]));
+    let messages: ModelMessage[] = [
+      ...input.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    ];
     let text = '';
-    for await (const delta of result.textStream) {
-      text += delta;
-      pushRunEvent(run, 'text-delta', { text: delta });
+    const MAX_TOOL_TURNS = 8;
+    for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
+      const result = streamText({
+        model,
+        messages,
+        tools,
+        maxOutputTokens: 4_096,
+        maxRetries: 0,
+        abortSignal: abort.signal,
+      });
+      for await (const delta of result.textStream) {
+        text += delta;
+        pushRunEvent(run, 'text-delta', { text: delta });
+      }
+      const stepMessages = await result.responseMessages;
+      if (stepMessages.some((m) => m.role === 'tool')) {
+        // Tool calls were made this turn; the execute callback already
+        // delivered tool-request events and awaited the browser results.
+        messages = [...messages, ...stepMessages];
+        continue;
+      }
+      // No tool calls: final assistant turn.
+      pushRunEvent(run, 'text-end', { text });
+      pushRunEvent(run, 'finish', { text: await result.text });
+      setRunStatus(run, 'completed');
+      return;
     }
     pushRunEvent(run, 'text-end', { text });
+    pushRunEvent(run, 'finish', { text });
     setRunStatus(run, 'completed');
   } catch (error) {
     if (abort.signal.aborted) {

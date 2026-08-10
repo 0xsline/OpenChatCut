@@ -30,6 +30,8 @@ export interface ServerRun {
   waiters: Set<() => void>;
   /** Incremented on every event batch so subscribers can dedupe. */
   eventCursor: number;
+  /** Tool calls awaiting a browser execution result (toolCallId → resolver). */
+  pendingTools: Map<string, { resolve: (result: unknown) => void; reject: (error: Error) => void }>;
 }
 
 const runs = new Map<string, ServerRun>();
@@ -50,6 +52,7 @@ export function createRun(input: {
     error: null,
     waiters: new Set(),
     eventCursor: 0,
+    pendingTools: new Map(),
   };
   runs.set(run.id, run);
   return run;
@@ -85,6 +88,38 @@ export function waitForRunEvents(run: ServerRun, afterId: number): Promise<void>
 export function cancelRun(run: ServerRun): void {
   run.abort?.abort();
   if (run.status === 'queued' || run.status === 'running') setRunStatus(run, 'cancelled');
+}
+
+/** Register a tool call the LLM loop is waiting on; the browser executes it
+ *  and resolves it via deliverToolResult. Refresh-safe: the run stays open
+ *  and the SSE replay re-delivers the tool-request after reconnect. */
+export function waitForToolResult(
+  run: ServerRun,
+  toolCallId: string,
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    run.pendingTools.set(toolCallId, { resolve, reject });
+  });
+}
+
+export function deliverToolResult(
+  run: ServerRun,
+  toolCallId: string,
+  result: unknown,
+): boolean {
+  const pending = run.pendingTools.get(toolCallId);
+  if (!pending) return false;
+  run.pendingTools.delete(toolCallId);
+  pending.resolve(result);
+  return true;
+}
+
+export function failToolResult(run: ServerRun, toolCallId: string, message: string): boolean {
+  const pending = run.pendingTools.get(toolCallId);
+  if (!pending) return false;
+  run.pendingTools.delete(toolCallId);
+  pending.reject(new Error(message));
+  return true;
 }
 
 /** Runs older than the retention window are dropped from memory. */

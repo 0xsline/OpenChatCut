@@ -1,3 +1,4 @@
+import type {} from '../desktop-api';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
 import type { DesktopAsrBackend } from '../../shared/desktop-inference';
 import type { AsrConfig, AsrResult } from './local-asr-types';

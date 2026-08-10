@@ -1,7 +1,16 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { executeRun } from './executor';
-import { cancelRun, createRun, getRun, pruneRuns, waitForRunEvents, type ServerRun } from './store';
+import {
+  cancelRun,
+  createRun,
+  deliverToolResult,
+  failToolResult,
+  getRun,
+  pruneRuns,
+  waitForRunEvents,
+  type ServerRun,
+} from './store';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -89,6 +98,7 @@ export function agentRunsPlugin(): Plugin {
             const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
             const model = typeof body.model === 'string' ? body.model.trim() : '';
             const messages = Array.isArray(body.messages) ? body.messages : [];
+            const tools = Array.isArray(body.tools) ? body.tools : [];
             if (!projectId || !provider || !model || messages.length === 0) {
               sendJson(res, 400, { error: 'projectId, provider, model and messages are required' });
               return;
@@ -106,6 +116,15 @@ export function agentRunsPlugin(): Plugin {
               }),
               provider,
               origin,
+              tools: tools.flatMap((t) => {
+                if (!t || typeof t !== 'object' || Array.isArray(t)) return [];
+                if (!('name' in t) || typeof t.name !== 'string' || !t.name) return [];
+                if (!('input_schema' in t) || !t.input_schema || typeof t.input_schema !== 'object') return [];
+                const description = 'description' in t && typeof t.description === 'string'
+                  ? t.description
+                  : '';
+                return [{ name: t.name, description, input_schema: t.input_schema }];
+              }),
             });
             sendJson(res, 201, { id: run.id });
             return;
@@ -118,6 +137,27 @@ export function agentRunsPlugin(): Plugin {
               return;
             }
             sseForRun(req, res, run);
+            return;
+          }
+          const resultMatch = /^\/([0-9a-f-]{36})\/tool-result$/.exec(pathname);
+          if (req.method === 'POST' && resultMatch) {
+            const run = getRun(resultMatch[1]!);
+            if (!run) {
+              sendJson(res, 404, { error: 'run not found' });
+              return;
+            }
+            const body = await readJson(req);
+            const toolCallId = typeof body.toolCallId === 'string' ? body.toolCallId : '';
+            if (!toolCallId) {
+              sendJson(res, 400, { error: 'toolCallId is required' });
+              return;
+            }
+            if (typeof body.error === 'string') {
+              failToolResult(run, toolCallId, body.error);
+            } else {
+              deliverToolResult(run, toolCallId, body.result);
+            }
+            sendJson(res, 200, { ok: true });
             return;
           }
           const cancelMatch = /^\/([0-9a-f-]{36})\/cancel$/.exec(pathname);
