@@ -7,7 +7,7 @@
 import type { CaptionAnchor, CaptionLayoutPolicy, CaptionPage, CaptionsData, CaptionSourceEntry } from './types';
 import { currentWordIndex } from './types';
 import type { TimelineItem } from '../editor/types';
-import { activeCaptionPages, buildCaptionPages } from './captionPages';
+import { activeCaptionPages, buildCaptionPages, type CaptionPageIdentity } from './captionPages';
 
 export interface LanePage {
   entry: CaptionSourceEntry;
@@ -127,10 +127,12 @@ export function resolveEffectiveCaptionLanes(
 }
 
 
-/** Lane rendering model of the current frame (ms). No sourceEntries → null (the caller takes the old single-stream path). */
-export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], fps: number, ms: number, _wordsPerPage: number | undefined): LaneGroup[] | null {
+/** Lane rendering model of the current frame (ms) over ALREADY-BUILT pages — the
+ * per-frame half of the multi-lane pipeline. No sourceEntries → null (the caller
+ * takes the old single-stream path). */
+export function laneGroupsFromPages(pages: CaptionPageIdentity[], captions: CaptionsData, ms: number): LaneGroup[] | null {
   if (!captions.sourceEntries?.length) return null;
-  const active = activeCaptionPages(buildCaptionPages(captions, items, fps), ms)
+  const active = activeCaptionPages(pages, ms)
     .flatMap((identity) => identity.entry
       ? [{ entry: identity.entry, lane: { entry: identity.entry, page: identity.page, pageId: identity.id, curIdx: currentWordIndex(identity.page, ms) } }]
       : []);
@@ -146,4 +148,10 @@ export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], f
       return lane ? [lane] : [];
     }),
   }));
+}
+
+/** Lane rendering model of the current frame (ms). No sourceEntries → null (the caller takes the old single-stream path). */
+export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], fps: number, ms: number, _wordsPerPage: number | undefined): LaneGroup[] | null {
+  if (!captions.sourceEntries?.length) return null;
+  return laneGroupsFromPages(buildCaptionPages(captions, items, fps), captions, ms);
 }

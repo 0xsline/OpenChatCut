@@ -180,13 +180,33 @@ function isPauseSuppressedPair(left: string, right: string): boolean {
   return normalizeLatin(right).length > 0;
 }
 
+/** All CJK characters of the word list in order, plus per-word prefix counts —
+ * computed once so isQuestionBreak never rebuilds a text prefix per pair (O(n²) → O(n)). */
+interface CjkIndex {
+  chars: string[];
+  /** prefix[i] = number of CJK characters in words[0..i-1] (length = words.length+1) */
+  prefix: number[];
+}
+
+function cjkIndex(words: SegmentWord[]): CjkIndex {
+  const chars: string[] = [];
+  const prefix: number[] = [0];
+  for (const word of words) {
+    for (const ch of word.text) if (charClass(ch) === 0) chars.push(ch);
+    prefix.push(chars.length);
+  }
+  return { chars, prefix };
+}
+
 /** CJK interrogative breakpoint:
- * "...is there something/is it who..." followed by personal/chronological words → Priority 58.*/
-function isQuestionBreak(words: SegmentWord[], idx: number): boolean {
-  const cjkOnly = (from: number, to: number): string =>
-    Array.from(words.slice(from, to).map((w) => w.text).join('')).filter((ch) => charClass(ch) === 0).join('');
-  const tail = cjkOnly(0, idx + 1).slice(-12);
-  const head = cjkOnly(idx + 1, Math.min(words.length, idx + 5)).slice(0, 6);
+ * "...is there something/is it who..." followed by personal/chronological words → Priority 58.
+ * tail = last 12 CJK chars of words[0..idx], head = first 6 CJK chars of words[idx+1..idx+4]. */
+function isQuestionBreak(words: SegmentWord[], idx: number, cjk: CjkIndex): boolean {
+  const tailStart = Math.max(0, cjk.prefix[idx + 1]! - 12);
+  const tail = cjk.chars.slice(tailStart, cjk.prefix[idx + 1]).join('');
+  const headStart = cjk.prefix[idx + 1]!;
+  const headEnd = cjk.prefix[Math.min(words.length, idx + 5)]!;
+  const head = cjk.chars.slice(headStart, Math.min(headEnd, headStart + 6)).join('');
   if (!tail || !head || QUESTION_TAIL_EXCLUDE.test(tail) || !QUESTION_TAIL.test(tail)) return false;
   return QUESTION_HEAD.test(head);
 }
@@ -244,20 +264,40 @@ function latinPairBreak(words: SegmentWord[], idx: number): BreakPoint {
   return { wordIndex: idx, priority: 40, orphanRisk: hasLatinOrphanRisk(words[idx].text, words[idx + 1].text) };
 }
 
+/** Index of the first breakpoint with wordIndex === r among the entries pushed
+ * for this pair. Breakpoints are only ever appended for the current r, so a
+ * full-array scan per pair would be quadratic (same result, O(1) scope). */
+function firstBreakAt(bps: BreakPoint[], from: number, r: number): number {
+  for (let b = from; b < bps.length; b++) if (bps[b]!.wordIndex === r) return b;
+  return -1;
+}
+
+/** Whether this pair already has a breakpoint with priority >= 40 (scoped to the
+ * entries pushed for the current r, same rationale as firstBreakAt). */
+function hasStrongBreak(bps: BreakPoint[], from: number, r: number): boolean {
+  for (let b = from; b < bps.length; b++) {
+    const bp = bps[b]!;
+    if (bp.wordIndex === r && bp.priority >= 40) return true;
+  }
+  return false;
+}
+
 /** Breakpoint candidate collection.*/
 function collectBreakPoints(words: SegmentWord[], scripts: WordScript[], cannotSplit: (i: number) => boolean): BreakPoint[] {
+  const cjk = cjkIndex(words);
   const bps: BreakPoint[] = [];
   for (let r = 0; r < words.length - 1; r++) {
     const left = words[r];
     const right = words[r + 1];
     if (isPunctOnly(right.text)) continue; // Punctuation words never start running
+    const firstNew = bps.length; // only entries pushed in this iteration can have wordIndex === r
     const blocked = cannotSplit(r + 1);
     const punct = cjkPunctPriority(left.text);
     if (punct !== null) {
       bps.push({ wordIndex: r, priority: punct, orphanRisk: isCjkOrphanPair(left.text, right.text) });
     } else if (isModalBreak(left.text, right.text)) {
       bps.push({ wordIndex: r, priority: 60, orphanRisk: false });
-    } else if (isQuestionBreak(words, r)) {
+    } else if (isQuestionBreak(words, r, cjk)) {
       bps.push({ wordIndex: r, priority: 58, orphanRisk: false });
     }
     const isBoundary = (scripts[r] === 'cjk' && scripts[r + 1] === 'latin') || (scripts[r] === 'latin' && scripts[r + 1] === 'cjk');
@@ -266,11 +306,11 @@ function collectBreakPoints(words: SegmentWord[], scripts: WordScript[], cannotS
     const gap = right.start !== undefined && left.end !== undefined ? right.start - left.end : 0;
     if (!blocked && gap >= PAUSE_MIN_MS && (!isPauseSuppressedPair(left.text, right.text) || gap >= PAUSE_SUPPRESSED_MIN_MS)) {
       const priority = pauseBreakPriority(gap);
-      const at = bps.findIndex((b) => b.wordIndex === r);
+      const at = firstBreakAt(bps, firstNew, r);
       if (at < 0) bps.push({ wordIndex: r, priority, orphanRisk: false });
-      else if (bps[at].priority < priority) bps[at] = { ...bps[at], priority };
+      else if (bps[at]!.priority < priority) bps[at] = { ...bps[at]!, priority };
     }
-    if (!blocked && !bps.some((b) => b.wordIndex === r && b.priority >= 40)) {
+    if (!blocked && !hasStrongBreak(bps, firstNew, r)) {
       const risk = isCjkOrphanPair(left.text, right.text) || hasLatinOrphanRisk(left.text, right.text);
       bps.push({ wordIndex: r, priority: 30, orphanRisk: risk });
     }

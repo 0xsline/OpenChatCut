@@ -4,7 +4,7 @@ import type { CaptionLayout, CaptionMotionPreset, CaptionPage, CaptionsData, Cap
 import type { CaptionStyle } from './styles';
 import { currentWordIndex, activeTranslation, joinCaptionWords } from './types';
 import type { TimelineItem } from '../editor/types';
-import { buildLaneGroups, type LanePage } from './lanes';
+import { laneGroupsFromPages, type LanePage } from './lanes';
 import { activeCaptionPages, buildCaptionPages } from './captionPages';
 import { captionFlowStyle, captionTextStyle, containerStyle, effectivePreset } from './renderStyles';
 import { buildCaptionWordRuns } from './captionWordRuns';
@@ -150,10 +150,11 @@ function translationStyle(template: CaptionTemplate): React.CSSProperties {
 function MultiLaneCaptions({ captions, items, ms, width, height }: { captions: CaptionsData; items: TimelineItem[]; ms: number; width: number; height: number }) {
   const { fps } = useVideoConfig();
   const basePreset = useMemo(() => effectivePreset(captions), [captions]);
-  const groups = useMemo(
-    () => buildLaneGroups(captions, items, fps, ms, basePreset.wordsPerPage),
-    [captions, items, fps, ms, basePreset.wordsPerPage],
-  );
+  // Pages depend only on captions/items/fps: computed once per change, NOT per
+  // animation frame. ms changes every tick and must not invalidate the whole
+  // merge + pagination pipeline (the freeze for large merged source sets).
+  const lanePages = useMemo(() => buildCaptionPages(captions, items, fps), [captions, items, fps]);
+  const groups = useMemo(() => laneGroupsFromPages(lanePages, captions, ms), [lanePages, captions, ms]);
   if (!groups?.length) return null;
   return (
     <AbsoluteFill style={CAPTION_OVERLAY_STYLE}>

@@ -168,7 +168,7 @@ export interface CaptionPage {
 }
 
 const MAX_PHRASE_WORDS = 6;
-const LINGER_MS = 1500;
+export const LINGER_MS = 1500;
 /** Shared preview/export contract: phrase pages fit at most two estimated visual lines. */
 export const CAPTION_MAX_VISUAL_LINES = 2;
 export const CAPTION_MAX_CHARS_PER_LINE = 24;
