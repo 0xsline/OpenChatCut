@@ -267,8 +267,12 @@ function ApprovalSection({ approvals, t }: { approvals: readonly AgentApprovalRe
 }
 
 function ArtifactSection({ artifacts, t }: { artifacts: readonly AgentArtifactIndexEntry[]; t: Translate }) {
+  // Hide the section entirely when there is nothing archived: the "归档结果"
+  // block is an internal token-optimization diagnostic that is empty for most
+  // runs and confusing as an always-visible empty block.
+  if (artifacts.length === 0) return null;
   return <Section title={t('归档结果')} hint={t('本次运行归档的产物记录（只列前 6 条）')}>
-    {artifacts.length === 0 ? <div style={emptyLine}>{t('没有归档结果')}</div> : artifacts.slice(0, 6).map((artifact) => (
+    {artifacts.slice(0, 6).map((artifact) => (
       <div key={artifact.artifactId} style={artifactRow}>
         <div style={rowTitle}><code title={artifact.artifactId} style={mono}>{artifact.artifactId}</code><span>{textValue(artifact.toolName) ?? artifact.kind}</span></div>
         <div style={subtle}>

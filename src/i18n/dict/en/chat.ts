@@ -90,7 +90,6 @@ export default {
   '已省略二进制': 'binary omitted',
   '没有审批记录': 'No approval records',
   '归档结果': 'Archived results',
-  '没有归档结果': 'No archived results',
   '字符': 'characters',
   '正在读取运行记录…': 'Loading run record…',
   '无法读取运行记录': 'Unable to load run record',
