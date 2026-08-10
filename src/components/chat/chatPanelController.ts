@@ -46,6 +46,9 @@ import {
 
 const MESSAGE_WINDOW_SIZE = 40;
 const CHAT_SCROLL_NAV_IDLE_MS = 900;
+/** Scrolling out of this many px from the bottom means the user left the latest
+ *  content, so streaming new replies should not yank the view back to bottom. */
+const CHAT_AUTO_FOLLOW_MARGIN = 48;
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 interface MutableValue<T> { current: T }
@@ -98,6 +101,9 @@ export interface ChatScrollController {
   sampleRef: MutableValue<{ top: number; time: number }>;
   suppressUntilRef: MutableValue<number>;
   timerRef: MutableValue<number | null>;
+  /** Whether the view should keep auto-following the newest reply. Disabled while
+   *  the user scrolls away from the bottom, re-enabled once they return to it. */
+  autoFollowRef: MutableValue<boolean>;
 }
 
 export interface ChatPanelActions {
@@ -222,6 +228,7 @@ function useChatScrollController(): ChatScrollController {
   const sampleRef = useRef({ top: 0, time: 0 });
   const timerRef = useRef<number | null>(null);
   const suppressUntilRef = useRef(0);
+  const autoFollowRef = useRef(true);
   const hide = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = null;
@@ -236,6 +243,15 @@ function useChatScrollController(): ChatScrollController {
       clientHeight: node.clientHeight, suppressUntil: suppressUntilRef.current,
     });
     sampleRef.current = current;
+    // Re-evaluate whether the user is still viewing the newest content: if they
+    // have scrolled up past the bottom margin (e.g. to read history while the
+    // agent streams), stop auto-following so new replies don't yank the view back.
+    const remainingBottom = node.scrollHeight - node.clientHeight - node.scrollTop;
+    if (autoFollowRef.current && remainingBottom > CHAT_AUTO_FOLLOW_MARGIN) {
+      autoFollowRef.current = false;
+    } else if (!autoFollowRef.current && remainingBottom <= CHAT_AUTO_FOLLOW_MARGIN) {
+      autoFollowRef.current = true;
+    }
     if (!next) return;
     setTarget(next);
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
@@ -245,6 +261,7 @@ function useChatScrollController(): ChatScrollController {
     const node = scrollRef.current;
     if (!node) return;
     suppressUntilRef.current = performance.now() + 1200;
+    if (next === 'bottom') autoFollowRef.current = true;
     hide();
     node.scrollTo({ top: next === 'top' ? 0 : node.scrollHeight, behavior: 'smooth' });
   }, [hide]);
@@ -255,7 +272,7 @@ function useChatScrollController(): ChatScrollController {
     event.stopPropagation();
     selectChatMessageContents(scrollRef.current);
   }, []);
-  return { scrollRef, target, onScroll, scrollTo, onKeyDown, hide, sampleRef, suppressUntilRef, timerRef };
+  return { scrollRef, target, onScroll, scrollTo, onKeyDown, hide, sampleRef, suppressUntilRef, timerRef, autoFollowRef };
 }
 
 function useChatAutoScroll(
@@ -270,10 +287,14 @@ function useChatAutoScroll(
     hide,
     sampleRef,
     timerRef,
+    autoFollowRef,
   } = scroll;
   useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
+    // Only keep following the newest reply if the user hasn't scrolled up to read
+    // history. If they have (autoFollowRef === false), leave the view where it is.
+    if (!autoFollowRef.current) return;
     suppressUntilRef.current = performance.now() + 120;
     hide();
     node.scrollTo({ top: node.scrollHeight });
@@ -281,7 +302,7 @@ function useChatAutoScroll(
       sampleRef.current = { top: node.scrollTop, time: performance.now() };
     });
     return () => cancelAnimationFrame(frame);
-  }, [hide, messages, proposal, running, sampleRef, scrollRef, suppressUntilRef]);
+  }, [hide, messages, proposal, running, sampleRef, scrollRef, suppressUntilRef, autoFollowRef]);
   useEffect(() => () => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
   }, [timerRef]);
