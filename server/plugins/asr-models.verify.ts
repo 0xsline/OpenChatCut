@@ -65,7 +65,10 @@ assert.deepEqual(ASR_MODELS.map((entry) => entry.revision), [
   '8c5b90880ab9f79487ab33613413431bf661d595',
 ]);
 for (const model of ASR_MODELS) {
-  assert.equal(model.files.length, 7);
+  // tiny/base/small carry WebGPU fp16/fp32 variants (7 q8 files + encoder
+  // fp16 + decoder fp16 + encoder fp32); medium stays at the plain q8 set.
+  const expectedFiles = model.id === 'medium' ? 7 : 10;
+  assert.equal(model.files.length, expectedFiles);
   for (const file of model.files) {
     assert(file.sizeBytes > 0);
     assert.match(file.sha256, /^[a-f0-9]{64}$/);
