@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../../i18n/locale';
 import { fetchWithEditorSession } from '../../persist/projectStoreTransport';
-import { loadMigrationStatus, type MigrationStatus } from './storageMigration';
+import { loadMigrationStatus, STORAGE_MIGRATED_EVENT, type MigrationStatus } from './storageMigration';
 
 interface MigrateResponse {
   summary?: { imported: number; skipped: number; quarantined: number };
@@ -68,6 +68,8 @@ export function StorageMigrationDialog({ onClose }: { onClose: () => void }) {
         imported: body.summary?.imported ?? 0,
         skipped: body.summary?.skipped ?? 0,
       }));
+      // Let the dashboard banner re-check and hide itself.
+      window.dispatchEvent(new Event(STORAGE_MIGRATED_EVENT));
       setStatus(await loadStatus());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));

@@ -3,7 +3,7 @@
 // dismissible (localStorage) — never blocks the dashboard.
 import { useEffect, useState } from 'react';
 import { useT } from '../../i18n/locale';
-import { loadMigrationStatus, STORAGE_BANNER_DISMISS_KEY } from './storageMigration';
+import { loadMigrationStatus, STORAGE_BANNER_DISMISS_KEY, STORAGE_MIGRATED_EVENT } from './storageMigration';
 
 const bannerStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 12,
@@ -33,10 +33,16 @@ export function StorageMigrationBanner({ onOpenDialog }: { onOpenDialog: () => v
     } catch {
       return;
     }
-    loadMigrationStatus()
-      .then((status) => { if (alive && !status.enabled) setVisible(true); })
+    const check = () => loadMigrationStatus()
+      .then((status) => { if (alive) setVisible(!status.enabled); })
       .catch(() => { /* banner is optional; never surface errors */ });
-    return () => { alive = false; };
+    void check();
+    // A completed migration must hide the banner without a page reload.
+    window.addEventListener(STORAGE_MIGRATED_EVENT, check);
+    return () => {
+      alive = false;
+      window.removeEventListener(STORAGE_MIGRATED_EVENT, check);
+    };
   }, []);
 
   if (!visible) return null;
