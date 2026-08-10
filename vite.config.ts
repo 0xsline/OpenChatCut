@@ -29,16 +29,6 @@ export default defineConfig(({ mode }) => {
       ?.split('=', 2)[1]?.trim();
     if (fileProvider) env.LLM_PROVIDER = fileProvider;
   }
-  // The default profile must honor an explicit checkout .env.local provider even
-  // when the parent shell exports a different LLM_PROVIDER. Isolated profiles
-  // remain authoritative through the wrapper-provided process environment.
-  if (profile.mode !== 'isolated-dev' && existsSync('.env.local')) {
-    const fileProvider = readFileSync('.env.local', 'utf8')
-      .split('\n')
-      .find((line) => /^LLM_PROVIDER=/.test(line))
-      ?.split('=', 2)[1]?.trim();
-    if (fileProvider) env.LLM_PROVIDER = fileProvider;
-  }
   if (profile.mode === 'isolated-dev') {
   }
   // Seed the runtime keystore so the settings UI (POST /api/keys) can override any key

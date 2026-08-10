@@ -1,5 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import { defaultModelForProvider, normalizeLlmProvider } from '../../shared/llm-providers';
+import { resolveLlmProviderConfig } from '../llm-config';
+import { getKey, type KeyName } from '../keystore';
 import { executeRun } from './executor';
 import {
   cancelRun,
@@ -99,12 +102,28 @@ export function agentRunsPlugin(): Plugin {
             const model = typeof body.model === 'string' ? body.model.trim() : '';
             const messages = Array.isArray(body.messages) ? body.messages : [];
             const tools = Array.isArray(body.tools) ? body.tools : [];
-            if (!projectId || !provider || !model || messages.length === 0) {
-              sendJson(res, 400, { error: 'projectId, provider, model and messages are required' });
+            if (!projectId || messages.length === 0) {
+              sendJson(res, 400, { error: 'projectId and messages are required' });
               return;
             }
+            // Provider/model default to the server keystore when the client
+            // does not pin them (the browser model picker is built-in-run
+            // state; server runs follow the configured LLM_PROVIDER).
+            // The resolver wants a string reader; getKey accepts the known
+            // key union, and unknown names read as '' (no crash).
+            const readKey = (name: string): string => getKey(name as KeyName);
+            const config = resolveLlmProviderConfig(
+              provider || getKey('LLM_PROVIDER'),
+              readKey,
+            );
+            const effectiveProvider = normalizeLlmProvider(config.provider);
+            const effectiveModel = model || config.model || defaultModelForProvider(effectiveProvider);
             pruneRuns();
-            const run = createRun({ projectId, provider, model });
+            const run = createRun({
+              projectId,
+              provider: effectiveProvider,
+              model: effectiveModel,
+            });
             const origin = req.headers.host
               ? `http://${req.headers.host}`
               : 'http://127.0.0.1:5199';
@@ -114,7 +133,8 @@ export function agentRunsPlugin(): Plugin {
                 const content = typeof m?.content === 'string' ? m.content : String(m?.content ?? '');
                 return { role: role === 'assistant' ? 'assistant' : 'user', content };
               }),
-              provider,
+              provider: effectiveProvider,
+              model: effectiveModel,
               origin,
               tools: tools.flatMap((t) => {
                 if (!t || typeof t !== 'object' || Array.isArray(t)) return [];
