@@ -145,9 +145,10 @@ export async function loadRecoveredAgentSession(
 ) {
   const generation = await currentAgentSessionGeneration(projectId);
   adoptAgentSessionWriteGeneration(projectId, generation);
-  const [record, external] = await Promise.all([
+  const [record, external, saved] = await Promise.all([
     loadProposalRecord(projectId),
     loadExternalProposal(projectId),
+    loadChat(projectId),
   ]);
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   const externalRunIds = externalProposalRunIds(external);
@@ -175,7 +176,6 @@ export async function loadRecoveredAgentSession(
     }
     await proposalRecorder.finalize('waiting_approval', 'proposal recovered awaiting approval');
   }
-  const saved = await loadChat(projectId);
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) {
     await proposalRecorder?.releaseLease().catch(() => undefined);
     return null;
