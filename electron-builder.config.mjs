@@ -42,6 +42,11 @@ const onnxRuntimeFilters = keepOnnxRuntime
       .filter((runtimeTarget) => runtimeTarget !== keepOnnxRuntime)
       .map((runtimeTarget) => `!node_modules/onnxruntime-node/bin/napi-v6/${runtimeTarget}/**`)
   : ['!node_modules/onnxruntime-node/**'];
+// sqlite-vec ships per-platform extension subpackages; keep only this artifact's.
+const SQLITE_VEC_PLATFORMS = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'];
+const sqliteVecFilters = SQLITE_VEC_PLATFORMS
+  .filter((platform) => platform !== keep)
+  .map((platform) => `!node_modules/sqlite-vec-${platform}/**`);
 const updateChannel = target.includes('arm64') ? 'latest-arm64' : 'latest-x64';
 const hasMacSigningCertificate = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
 
@@ -65,6 +70,8 @@ export default {
     ...COMPOSITORS.filter((c) => c !== keep).map((c) => `!node_modules/@remotion/compositor-${c}/**`),
     // onnxruntime-node publishes every platform in one package; ship only this artifact's binary.
     ...onnxRuntimeFilters,
+    // sqlite-vec (semantic vectors): ship only the target platform's vec0 extension.
+    ...sqliteVecFilters,
   ],
   asar: false,
   extraResources: [

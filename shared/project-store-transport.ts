@@ -59,10 +59,42 @@ export type ProjectStoreRequest =
     ownerInstanceId: string;
     leaseToken?: string;
     leaseMs?: number;
+  }
+  // Semantic vectors (phase C): server-side sqlite-vec index.
+  | {
+    operation: 'semantic-vectors-upsert';
+    scopeId: string;
+    assetId: string;
+    samples: Array<{
+      assetId: string;
+      sampleTime: number;
+      sourceRevision?: string;
+      sceneId?: string;
+      sceneStart?: number;
+      sceneEnd?: number;
+      vector: number[];
+    }>;
+  }
+  | {
+    operation: 'semantic-vectors-search';
+    scopeId: string;
+    queryVector: number[];
+    limit: number;
+  }
+  | {
+    operation: 'semantic-vectors-prune';
+    scopeId: string;
+    validAssetIds: string[];
+    validSourceRevisions?: Record<string, string>;
+  }
+  | {
+    operation: 'semantic-vectors-clear';
+    scopeId: string;
   };
 
 export type ProjectStoreResponse =
   | { version: 1; entries: Record<string, unknown> }
   | { found: boolean; value?: unknown }
   | { ok: true }
-  | ProjectStoreMutationResponse;
+  | ProjectStoreMutationResponse
+  | { semanticVectors: unknown };

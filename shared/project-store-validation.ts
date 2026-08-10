@@ -1,8 +1,8 @@
 import { parseAgentSessionGenerationRecord } from './agent-session-generation.ts';
 import type { ProjectStoreRequest } from './project-store-transport.ts';
 
-const VALID_KEY = /^(?!__proto__$)(?!prototype$)(?!constructor$)[a-zA-Z0-9:_-]{1,300}$/;
-const VALID_AGENT_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
+const VALID_KEY = /^(?!__proto__$)(?!prototype$)(?!constructor$)[a-zA-Z0-9:_-]{1,300}$/;const VALID_AGENT_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
+const SEMANTIC_EMBEDDING_DIMENSION = 512;
 const VALID_AGENT_ARTIFACT_ID = /^[a-zA-Z0-9_-]{1,20}$/;
 const VALID_SESSION_GENERATION = /^[a-zA-Z0-9_-]{1,80}$/;
 const STRICT_PROJECT_SCOPED_KEY = /^(?:agent-runtime|agent-session-generation|external-proposal|offline-edit-session|project-edit-ownership|review):([a-zA-Z0-9_-]{1,160})$/;
@@ -309,5 +309,43 @@ export function isProjectStoreRequest(value: unknown): value is ProjectStoreRequ
   if (value.operation === 'agent-runtime-cas') return isAgentRuntimeCasRequest(value);
   if (value.operation === 'project-document-cas') return isProjectDocumentCasRequest(value);
   if (value.operation === 'agent-run-lease') return isAgentRunLeaseRequest(value);
+  if (value.operation === 'semantic-vectors-upsert') {
+    return Object.keys(value).length === 3
+      && typeof value.scopeId === 'string' && VALID_AGENT_PROJECT_ID.test(value.scopeId)
+      && typeof value.assetId === 'string' && VALID_AGENT_PROJECT_ID.test(value.assetId)
+      && Array.isArray(value.samples)
+      && value.samples.length <= 512
+      && value.samples.every((sample) => (
+        sample !== null
+        && typeof sample === 'object'
+        && !Array.isArray(sample)
+        && typeof (sample as { assetId?: unknown }).assetId === 'string'
+        && VALID_AGENT_PROJECT_ID.test((sample as { assetId: string }).assetId)
+        && typeof (sample as { sampleTime?: unknown }).sampleTime === 'number'
+        && Array.isArray((sample as { vector?: unknown }).vector)
+        && ((sample as { vector: unknown[] }).vector.length === SEMANTIC_EMBEDDING_DIMENSION)
+      ));
+  }
+  if (value.operation === 'semantic-vectors-search') {
+    return Object.keys(value).length === 3
+      && typeof value.scopeId === 'string' && VALID_AGENT_PROJECT_ID.test(value.scopeId)
+      && Array.isArray(value.queryVector)
+      && value.queryVector.length === SEMANTIC_EMBEDDING_DIMENSION
+      && typeof value.limit === 'number';
+  }
+  if (value.operation === 'semantic-vectors-prune') {
+    return Object.keys(value).length >= 2
+      && typeof value.scopeId === 'string' && VALID_AGENT_PROJECT_ID.test(value.scopeId)
+      && Array.isArray(value.validAssetIds)
+      && value.validAssetIds.every((id) => typeof id === 'string' && VALID_AGENT_PROJECT_ID.test(id))
+      && (value.validSourceRevisions === undefined
+        || (value.validSourceRevisions !== null
+          && typeof value.validSourceRevisions === 'object'
+          && !Array.isArray(value.validSourceRevisions)));
+  }
+  if (value.operation === 'semantic-vectors-clear') {
+    return Object.keys(value).length === 2
+      && typeof value.scopeId === 'string' && VALID_AGENT_PROJECT_ID.test(value.scopeId);
+  }
   return false;
 }

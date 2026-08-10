@@ -112,7 +112,8 @@
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "remotion": "^4.0.489"
+    "remotion": "^4.0.489",
+    "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
     "@types/babel__standalone": "^7.1.9",

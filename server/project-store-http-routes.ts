@@ -30,6 +30,10 @@ export interface ProjectStoreHttpOperations {
   updateAgentRunLease(
     input: Extract<ProjectStoreRequest, { operation: 'agent-run-lease' }>,
   ): Promise<ProjectStoreMutationResponse>;
+  semanticVectorsUpsert(input: Extract<ProjectStoreRequest, { operation: 'semantic-vectors-upsert' }>): unknown;
+  semanticVectorsSearch(input: Extract<ProjectStoreRequest, { operation: 'semantic-vectors-search' }>): unknown;
+  semanticVectorsPrune(input: Extract<ProjectStoreRequest, { operation: 'semantic-vectors-prune' }>): unknown;
+  semanticVectorsClear(input: Extract<ProjectStoreRequest, { operation: 'semantic-vectors-clear' }>): unknown;
 }
 
 const isProjectDocumentKey = (key: unknown): key is string =>
@@ -170,6 +174,10 @@ async function handlePost(
   else if (req.url === '/agent-session/rotate') await handleAgentSessionRotate(req, res, operations);
   else if (req.url === '/merge') await handleMerge(req, res, operations);
   else if (req.url === '/project/purge') await handleProjectPurge(req, res, operations);
+  else if (req.url === '/semantic-vectors/upsert') await handleSemanticVectors(req, res, operations, 'semantic-vectors-upsert');
+  else if (req.url === '/semantic-vectors/search') await handleSemanticVectors(req, res, operations, 'semantic-vectors-search');
+  else if (req.url === '/semantic-vectors/prune') await handleSemanticVectors(req, res, operations, 'semantic-vectors-prune');
+  else if (req.url === '/semantic-vectors/clear') await handleSemanticVectors(req, res, operations, 'semantic-vectors-clear');
   else return false;
   return true;
 }
@@ -195,6 +203,22 @@ async function handleEntryMutation(
   await operations.deleteEntry(key);
   sendProjectStoreJson(res, 200, { ok: true });
   return true;
+}
+
+async function handleSemanticVectors(
+  req: IncomingMessage,
+  res: ServerResponse,
+  operations: ProjectStoreHttpOperations,
+  operation: 'semantic-vectors-upsert' | 'semantic-vectors-search' | 'semantic-vectors-prune' | 'semantic-vectors-clear',
+): Promise<void> {
+  const body = await readBody(req);
+  const dispatch: Record<string, (input: never) => unknown> = {
+    'semantic-vectors-upsert': (input) => operations.semanticVectorsUpsert(input as never),
+    'semantic-vectors-search': (input) => operations.semanticVectorsSearch(input as never),
+    'semantic-vectors-prune': (input) => operations.semanticVectorsPrune(input as never),
+    'semantic-vectors-clear': (input) => operations.semanticVectorsClear(input as never),
+  };
+  sendProjectStoreJson(res, 200, await dispatch[operation](body as never));
 }
 
 export async function routeProjectStoreRequest(

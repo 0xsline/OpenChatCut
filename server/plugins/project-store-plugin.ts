@@ -5,6 +5,12 @@ import {
   projectStoreReadAuthorized,
 } from '../project-store-http-auth.ts';
 import { handleProjectStoreRequest, sendProjectStoreJson } from '../project-store-http.ts';
+import {
+  clearSemanticVectors,
+  pruneSemanticVectors,
+  searchSemanticVectors,
+  upsertSemanticVectors,
+} from '../storage/semantic-vectors.ts';
 import { sqliteMigrationStatus, sqliteImportJson, sqliteStoreEnabled } from '../storage/sqlite-store.ts';
 import {
   compareAndSwapAgentRuntime,
@@ -29,6 +35,21 @@ const HTTP_OPERATIONS = {
   rotateAgentSession,
   setEntry: setStoredEntry,
   updateAgentRunLease: updateStoredAgentRunLease,
+  // Semantic vectors (phase C): sqlite-vec server-side index.
+  semanticVectorsUpsert: (request: {
+    scopeId: string;
+    assetId: string;
+    samples: Parameters<typeof upsertSemanticVectors>[2];
+  }) => upsertSemanticVectors(request.scopeId, request.assetId, request.samples),
+  semanticVectorsSearch: (request: { scopeId: string; queryVector: number[]; limit: number }) =>
+    searchSemanticVectors(request.scopeId, request.queryVector, request.limit),
+  semanticVectorsPrune: (request: {
+    scopeId: string;
+    validAssetIds: string[];
+    validSourceRevisions?: Record<string, string>;
+  }) => pruneSemanticVectors(request.scopeId, request.validAssetIds,
+    request.validSourceRevisions ? new Map(Object.entries(request.validSourceRevisions)) : undefined),
+  semanticVectorsClear: (request: { scopeId: string }) => clearSemanticVectors(request.scopeId),
 };
 
 export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {

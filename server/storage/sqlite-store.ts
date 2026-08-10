@@ -37,7 +37,7 @@ export function sqliteStoreEnabled(): boolean {
   return readImportReceipt() !== null && existsSync(storePath());
 }
 
-function storePath(): string {
+export function storePath(): string {
   const profile = runtimeProfile();
   // Sits next to project-store-v1/ (never inside it: the JSON store scans its
   // own directory and must not see foreign files).

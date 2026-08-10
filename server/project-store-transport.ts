@@ -4,6 +4,12 @@ import type {
 } from '../shared/project-store-transport.ts';
 import { isProjectStoreRequest } from '../shared/project-store-validation.ts';
 import {
+  clearSemanticVectors,
+  pruneSemanticVectors,
+  searchSemanticVectors,
+  upsertSemanticVectors,
+} from './storage/semantic-vectors.ts';
+import {
   compareAndSwapAgentRuntime,
   compareAndSwapProjectDocument,
   deleteStoredEntry,
@@ -53,5 +59,14 @@ export async function executeProjectStoreRequest(
     case 'purge-project':
       await deleteStoredEntry(`project:${request.projectId}`);
       return { ok: true };
+    case 'semantic-vectors-upsert':
+      return { semanticVectors: upsertSemanticVectors(request.scopeId, request.assetId, request.samples) };
+    case 'semantic-vectors-search':
+      return { semanticVectors: searchSemanticVectors(request.scopeId, request.queryVector, request.limit) };
+    case 'semantic-vectors-prune':
+      return { semanticVectors: pruneSemanticVectors(request.scopeId, request.validAssetIds,
+        request.validSourceRevisions ? new Map(Object.entries(request.validSourceRevisions)) : undefined) };
+    case 'semantic-vectors-clear':
+      return { semanticVectors: clearSemanticVectors(request.scopeId) };
   }
 }

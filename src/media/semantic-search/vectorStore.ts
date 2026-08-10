@@ -1,4 +1,10 @@
-import { SEMANTIC_MODEL_VERSION, type SemanticVectorRecord } from './types';
+import { SEMANTIC_MODEL_VERSION, type SemanticVectorRecord, type SemanticMatch } from './types';
+import {
+  projectStoreRemoteAvailable,
+  projectStoreWriteCredential,
+  requestProjectStore,
+} from '../../persist/projectStoreTransport';
+import { readSamplingConfig } from './samplingConfig';
 
 const DATABASE_NAME = 'openchatcut-semantic-index';
 const STORE_NAME = 'vectors';
@@ -6,6 +12,8 @@ const DATABASE_VERSION = 2;
 const SCOPE_MODEL_INDEX = 'by-scope-model';
 const SCOPE_ASSET_INDEX = 'by-scope-asset';
 const SAMPLE_TIME_KEY_PRECISION = 3;
+/** Session-level flag: once the server-side index proves unavailable, stay local. */
+let remoteSemanticFailed = false;
 type PromiseResolvers<T> = {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -75,6 +83,56 @@ async function withStore<T>(
   return promise;
 }
 
+function remoteSemanticAvailable(): boolean {
+  return !remoteSemanticFailed && projectStoreRemoteAvailable() && projectStoreWriteCredential();
+}
+
+function toWireVector(vector: ArrayLike<number>): number[] {
+  return Array.from(vector);
+}
+
+/** Server-side TopK search (sqlite-vec); falls back to local ranking on failure. */
+export async function searchSemanticVectorsRemote(
+  scopeId: string,
+  queryVector: ArrayLike<number>,
+  limit?: number,
+): Promise<SemanticMatch[] | null> {
+  if (remoteSemanticFailed) return null;
+  if (!projectStoreRemoteAvailable()) return null;
+  const config = readSamplingConfig();
+  try {
+    const response = await requestProjectStore({
+      operation: 'semantic-vectors-search',
+      scopeId,
+      queryVector: toWireVector(queryVector),
+      limit: limit ?? config.resultLimit,
+    });
+    const hits = (response as { semanticVectors?: Array<{
+      assetId: string;
+      sampleTime: number;
+      sourceRevision?: string | null;
+      sceneId?: string | null;
+      sceneStart?: number | null;
+      sceneEnd?: number | null;
+      distance: number;
+    }> }).semanticVectors;
+    if (!hits) return null;
+    // Normalized vectors: cosine = 1 - d²/2. Scene-less rows carry '' defaults.
+    return hits.map((hit) => ({
+      assetId: hit.assetId,
+      sampleTime: hit.sampleTime,
+      sourceRevision: hit.sourceRevision ?? undefined,
+      sceneId: hit.sceneId || undefined,
+      sceneStart: hit.sceneStart != null && hit.sceneStart >= 0 ? hit.sceneStart : undefined,
+      sceneEnd: hit.sceneEnd != null && hit.sceneEnd >= 0 ? hit.sceneEnd : undefined,
+      score: Math.max(0, 1 - hit.distance * hit.distance / 2),
+    }));
+  } catch {
+    remoteSemanticFailed = true; // e.g. server-side index unavailable (not migrated)
+    return null;
+  }
+}
+
 export async function readSemanticVectors(scopeId: string): Promise<SemanticVectorRecord[]> {
   return withStore('readonly', (store, resolve, reject) => {
     const request = store.index(SCOPE_MODEL_INDEX).getAll(IDBKeyRange.only([scopeId, SEMANTIC_MODEL_VERSION]));
@@ -98,15 +156,39 @@ export function replaceAssetVectors(
   assetId: string,
   records: SemanticVectorRecord[],
 ): Promise<void> {
-  return serializeScopeMutation(scopeId, () => withStore<void>('readwrite', (store, resolve, reject) => {
-    const request = store.index(SCOPE_ASSET_INDEX).getAllKeys(IDBKeyRange.only([scopeId, assetId]));
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      for (const key of request.result) store.delete(key);
-      for (const record of records) store.put(toStoredVector(record));
-      store.transaction.oncomplete = () => resolve();
-    };
-  }));
+  return serializeScopeMutation(scopeId, async () => {
+    if (remoteSemanticAvailable()) {
+      try {
+        await requestProjectStore({
+          operation: 'semantic-vectors-upsert',
+          scopeId,
+          assetId,
+          samples: records.map((record) => ({
+            assetId: record.assetId,
+            sampleTime: record.sampleTime,
+            sourceRevision: record.sourceRevision,
+            sceneId: record.sceneId,
+            sceneStart: record.sceneStart,
+            sceneEnd: record.sceneEnd,
+            vector: toWireVector(record.vector),
+          })),
+        });
+      } catch {
+        remoteSemanticFailed = true;
+      }
+    }
+    // Local cache stays in sync either way (offline fallback + IDB cache);
+    // a cache failure must never break indexing (server copy is authoritative).
+    await withStore<void>('readwrite', (store, resolve, reject) => {
+      const request = store.index(SCOPE_ASSET_INDEX).getAllKeys(IDBKeyRange.only([scopeId, assetId]));
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        for (const key of request.result) store.delete(key);
+        for (const record of records) store.put(toStoredVector(record));
+        store.transaction.oncomplete = () => resolve();
+      };
+    }).catch(() => undefined);
+  });
 }
 
 export interface PruneSemanticResult {
@@ -120,6 +202,18 @@ export async function pruneSemanticVectors(
   validSourceRevisions?: ReadonlyMap<string, string>,
 ): Promise<PruneSemanticResult> {
   return serializeScopeMutation(scopeId, async () => {
+    if (remoteSemanticAvailable()) {
+      try {
+        await requestProjectStore({
+          operation: 'semantic-vectors-prune',
+          scopeId,
+          validAssetIds: [...validAssetIds],
+          validSourceRevisions: validSourceRevisions ? Object.fromEntries(validSourceRevisions) : undefined,
+        });
+      } catch {
+        remoteSemanticFailed = true;
+      }
+    }
     const existing = await readStoredVectors();
     const staleModelRemoved = existing.some((item) => item.scopeId === scopeId
       && item.modelVersion !== SEMANTIC_MODEL_VERSION);
@@ -134,7 +228,7 @@ export async function pruneSemanticVectors(
         if (shouldPruneVector(item, scopeId, validAssetIds, validSourceRevisions)) store.delete(item.key);
       }
       store.transaction.oncomplete = () => resolve();
-    });
+    }).catch(() => undefined);
     return { staleModelRemoved, staleSourceRemoved };
   });
 }
@@ -155,20 +249,28 @@ export function shouldPruneVector(
 
 export async function clearSemanticVectors(scopeId: string): Promise<void> {
   return serializeScopeMutation(scopeId, async () => {
+    if (remoteSemanticAvailable()) {
+      try {
+        await requestProjectStore({ operation: 'semantic-vectors-clear', scopeId });
+      } catch {
+        remoteSemanticFailed = true;
+      }
+    }
     const existing = await readStoredVectors();
     await withStore<void>('readwrite', (store, resolve) => {
       for (const item of existing) if (item.scopeId === scopeId) store.delete(item.key);
       store.transaction.oncomplete = () => resolve();
-    });
+    }).catch(() => undefined);
   });
 }
 
 async function readStoredVectors(): Promise<StoredVector[]> {
-  return withStore('readonly', (store, resolve, reject) => {
+  if (typeof indexedDB === 'undefined') return [];
+  return withStore<StoredVector[]>('readonly', (store, resolve, reject) => {
     const request = store.getAll();
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result as StoredVector[]);
-  });
+  }).catch(() => [] as StoredVector[]);
 }
 
 function toStoredVector(record: SemanticVectorRecord): StoredVector {

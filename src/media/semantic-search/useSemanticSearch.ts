@@ -8,7 +8,7 @@ import { isSemanticMedia } from './mediaFrames';
 import { indexSemanticAssets, isAbortError, loadWithFallback } from './semanticOperations';
 import { SemanticClient } from './semanticClient';
 import { rankSemanticMatches } from './vectorSearch';
-import { clearSemanticVectors, pruneSemanticVectors, readSemanticVectors } from './vectorStore';
+import { clearSemanticVectors, pruneSemanticVectors, readSemanticVectors, searchSemanticVectorsRemote } from './vectorStore';
 import {
   MAX_SEMANTIC_QUERY_LENGTH,
   type DuplicateMatch, type SemanticDevice, type SemanticMatch, type SemanticVectorRecord,
@@ -285,7 +285,12 @@ function useSemanticQueries(
     try {
       const vector = await client.current.embedText(query);
       if (snapshotRef.current !== snapshot || searchRequest.current !== request) return;
-      setState((current) => ({ ...current, status: 'ready', matches: rankSemanticMatches(records.current, vector) }));
+      // Phase C: server-side TopK (sqlite-vec) when available; otherwise the
+      // local full-scope ranking over the cached records.
+      const remote = await searchSemanticVectorsRemote(snapshot.scopeId, vector);
+      if (snapshotRef.current !== snapshot || searchRequest.current !== request) return;
+      const matches = remote ?? rankSemanticMatches(records.current, vector);
+      setState((current) => ({ ...current, status: 'ready', matches }));
     } catch (reason) {
       if (snapshotRef.current === snapshot && searchRequest.current === request && !isAbortError(reason)) {
         setFailure(setState, reason);
