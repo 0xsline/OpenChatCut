@@ -6,6 +6,8 @@ import type { Plugin } from 'vite';
 import { ResultDownloadError } from './result-download.ts';
 import type { H264EncoderProfile } from '../media-acceleration.ts';
 import { runtimeProfile } from '../runtime-profile.ts';
+import { sqliteReadEntry, sqliteStoreEnabled, sqliteWriteEntry } from '../storage/sqlite-store.ts';
+import { GENERATION_JOBS_KV_KEY } from '../storage/sqlite-migration.ts';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export type GenerationRetryClass = 'none' | 'provider-retryable' | 'provider-terminal' | 'download-retryable' | 'restart-recoverable';
@@ -330,6 +332,11 @@ function persistedRows(): GenerationJobSnapshot[] {
 
 function persistJobs(): Promise<void> {
   const write = persistenceQueue.catch(() => undefined).then(async () => {
+    if (sqliteStoreEnabled()) {
+      // SQLite backend: the whole jobs snapshot lives under one kv key.
+      await sqliteWriteEntry(GENERATION_JOBS_KV_KEY, { version: 1, jobs: persistedRows() });
+      return;
+    }
     await mkdir(dirname(STORE_PATH), { recursive: true });
     const temporary = `${STORE_PATH}.${process.pid}.${randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify({ version: 1, jobs: persistedRows() }), 'utf8');
@@ -388,18 +395,26 @@ function normalizePersistedJob(value: unknown): GenerationJob | null {
 }
 
 async function loadPersistedJobs(): Promise<void> {
-  try {
-    const parsed = JSON.parse(await readFile(STORE_PATH, 'utf8')) as { version?: unknown; jobs?: unknown };
-    if (parsed.version !== 1 || !Array.isArray(parsed.jobs)) return;
-    for (const value of parsed.jobs) {
-      const job = normalizePersistedJob(value);
-      if (!job || jobs.has(job.id)) continue;
-      jobs.set(job.id, job);
-      if (job.timestamps.acceptedAt) job.acceptance?.resolve(acceptanceOf(job));
-      if (TERMINAL.has(job.status)) scheduleExpiry(job);
+  let parsed: { version?: unknown; jobs?: unknown } | null = null;
+  if (sqliteStoreEnabled()) {
+    const row = await sqliteReadEntry(GENERATION_JOBS_KV_KEY);
+    if (row.found && row.value && typeof row.value === 'object') {
+      parsed = row.value as { version?: unknown; jobs?: unknown };
     }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  } else {
+    try {
+      parsed = JSON.parse(await readFile(STORE_PATH, 'utf8')) as { version?: unknown; jobs?: unknown };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.jobs)) return;
+  for (const value of parsed.jobs) {
+    const job = normalizePersistedJob(value);
+    if (!job || jobs.has(job.id)) continue;
+    jobs.set(job.id, job);
+    if (job.timestamps.acceptedAt) job.acceptance?.resolve(acceptanceOf(job));
+    if (TERMINAL.has(job.status)) scheduleExpiry(job);
   }
 }
 

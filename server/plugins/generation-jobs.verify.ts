@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { TaskLimiter } from '../task-limiter.ts';
+// This verifier exercises the JSON-file persistence path and runs against the
+// real HOME; force the SQLite backend off so a migrated machine cannot change
+// its semantics (sqliteStoreEnabled: explicit env != '1' disables).
+process.env.OPENCHATCUT_SQLITE_STORE = '0';
 import { ResultDownloadError } from './result-download.ts';
 
 async function waitFor(check: () => boolean, message: string, timeoutMs = 2_000): Promise<void> {

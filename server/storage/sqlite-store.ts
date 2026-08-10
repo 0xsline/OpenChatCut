@@ -22,12 +22,16 @@ export interface StoredEntryValue {
 export const SQLITE_STORE_ENV = 'OPENCHATCUT_SQLITE_STORE';
 
 /**
- * Opt-in switch. Enabled when: the env var is set, OR the user has explicitly
- * run the migration (receipt present + database file exists). Without either,
- * every code path behaves exactly as before (zero regression).
+ * Opt-in switch. Enabled when: the env var is '1', OR the user has explicitly
+ * run the migration (receipt present + database file exists). An explicit
+ * env value other than '1' (e.g. '0') forces the backend off — tests and
+ * legacy verifiers rely on the JSON-file path. Without any env, every code
+ * path behaves exactly as before the migration feature.
  */
 export function sqliteStoreEnabled(): boolean {
-  if (process.env[SQLITE_STORE_ENV] === '1') return true;
+  const env = process.env[SQLITE_STORE_ENV];
+  if (env === '1') return true;
+  if (env !== undefined) return false; // explicit override (e.g. '0')
   // User-initiated migration: receipt marks completion, the database file
   // guards against a receipt left behind after the file was removed.
   return readImportReceipt() !== null && existsSync(storePath());

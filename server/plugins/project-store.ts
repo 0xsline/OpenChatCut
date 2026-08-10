@@ -30,6 +30,7 @@ import {
   sqliteWriteAll,
   sqliteWriteEntry,
 } from '../storage/sqlite-store.ts';
+import { DELETED_PROJECTS_KV_KEY } from '../storage/sqlite-migration.ts';
 import {
   atomicWriteFile,
   atomicWriteJson,
@@ -137,6 +138,17 @@ async function quarantineEntryFile(file: string, key: string): Promise<Quarantin
 }
 
 async function readDeletedProjects(): Promise<Record<string, number>> {
+  if (sqliteStoreEnabled()) {
+    const row = await sqliteReadEntry(DELETED_PROJECTS_KV_KEY);
+    if (!row.found) return {};
+    const parsed = row.value;
+    if (!isProjectStoreRecord(parsed)) throw new Error('invalid deleted project registry');
+    const entries = Object.entries(parsed);
+    if (!entries.every(([id, deletedAt]) => VALID_PROJECT_ID.test(id) && typeof deletedAt === 'number')) {
+      throw new Error('invalid deleted project registry');
+    }
+    return Object.fromEntries(entries) as Record<string, number>;
+  }
   try {
     const parsed: unknown = JSON.parse(await readFile(DELETED_PROJECTS_PATH, 'utf8'));
     if (!isProjectStoreRecord(parsed)) throw new Error('invalid deleted project registry');
@@ -152,6 +164,10 @@ async function readDeletedProjects(): Promise<Record<string, number>> {
 }
 
 async function writeDeletedProjects(projects: Record<string, number>): Promise<void> {
+  if (sqliteStoreEnabled()) {
+    await sqliteWriteEntry(DELETED_PROJECTS_KV_KEY, projects);
+    return;
+  }
   await atomicWriteJson(DELETED_PROJECTS_PATH, projects);
 }
 

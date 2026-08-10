@@ -8,7 +8,7 @@
 // temporary HOME is set — runtime-profile.ts caches activeProfile at module
 // load, and a static import would freeze the real user profile.
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     assert.equal(statusBefore.enabled, false, 'status must report JSON mode before migration');
     assert.equal(statusBefore.receipt, null);
     assert.equal(statusBefore.jsonKeyCount, 6);
-    assert.equal(statusBefore.sqliteKeyCount, 2); // projects index + persist-c from scenario B
+    assert.equal(statusBefore.sqliteKeyCount, 3); // projects index + persist-c + tombstone from scenario B
 
     process.env[SQLITE_STORE_ENV] = '1';
     const first = sqliteImportJson();
@@ -166,9 +166,45 @@ async function main(): Promise<void> {
     const after = sqliteMigrationStatus();
     assert.equal(after.enabled, true);
     assert.equal(after.receipt?.count, 6, 'the status must report the migrated key count');
-    assert.equal(after.sqliteKeyCount, 8, 'the status must report SQLite row count (2 prior + 6 imported)');
+    assert.equal(after.sqliteKeyCount, 9, 'the status must report SQLite row count (3 prior + 6 imported)');
 
-    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill / user-switch all passed');
+    // ── Scenario D: auxiliary files (generation-operations + tombstone) ──
+    // A user who migrated on an earlier build has a phase-1 receipt; the next
+    // start must import the two server-managed files and upgrade the receipt.
+    const auxGeneration = join(root, '.openchatcut', 'generation-operations-v1.json');
+    const auxTombstone = join(root, '.openchatcut', 'deleted-projects-v1.json');
+    writeFileSync(auxGeneration, JSON.stringify({
+      version: 1,
+      jobs: [{ id: 'gen-1', status: 'succeeded', progress: 1, params: {}, createdAt: 1, updatedAt: 1 }],
+    }));
+    writeFileSync(auxTombstone, JSON.stringify({ 'deleted-old-project': Date.now() }));
+    const receiptPath2 = join(root, '.openchatcut', 'project-store-v1.sqlite3.receipt.json');
+    const phase1Receipt = JSON.parse(readFileSync(receiptPath2, 'utf8'));
+    delete phase1Receipt.phase; // simulate a receipt written by the earlier build
+    writeFileSync(receiptPath2, JSON.stringify(phase1Receipt));
+
+    const upgrade = sqliteImportJson();
+    assert.equal(upgrade.imported, 1,
+      'only the missing generation snapshot is imported (kv tombstone is authoritative)');
+    assert.equal(upgrade.skipped, 1, 'the existing kv tombstone is skipped (dir keys are not rescanned)');
+    const genRow = await store.getStoredEntry('generation-jobs:snapshot');
+    assert.equal(genRow.found, true, 'generation operations must live in SQLite after the upgrade');
+    assert.equal(genRow.value?.jobs?.[0]?.id, 'gen-1');
+    const tombRow = await store.getStoredEntry('deleted-projects:v1');
+    assert.equal(tombRow.found, true, 'the tombstone must live in SQLite after the upgrade');
+    assert.equal(typeof tombRow.value?.['sqlite-b'], 'number',
+      'the runtime tombstone (scenario B purge) must stay authoritative over the archived file');
+    const upgradedReceipt = JSON.parse(readFileSync(receiptPath2, 'utf8'));
+    assert.equal(upgradedReceipt.phase, 2, 'the receipt must be upgraded to phase 2');
+
+    // Tombstone semantics over SQLite: a purged project stays deleted.
+    process.env[SQLITE_STORE_ENV] = '1';
+    await store.setStoredEntry('project:tomb-probe', { doc: {} });
+    await store.deleteStoredEntry('project:tomb-probe');
+    assert.deepEqual(await store.getStoredEntry('project:tomb-probe'), { found: false },
+      'a purged project must stay deleted via the SQLite tombstone');
+
+    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill / user-switch / aux-phase-upgrade all passed');
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
