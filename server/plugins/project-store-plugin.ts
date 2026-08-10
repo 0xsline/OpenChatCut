@@ -11,6 +11,7 @@ import {
   searchSemanticVectors,
   upsertSemanticVectors,
 } from '../storage/semantic-vectors.ts';
+import { searchContent } from '../storage/fulltext-search.ts';
 import { sqliteMigrationStatus, sqliteImportJson, sqliteStoreEnabled } from '../storage/sqlite-store.ts';
 import {
   compareAndSwapAgentRuntime,
@@ -88,6 +89,28 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             server.config.logger.error(`[project-store] migrate failed: ${message}`);
+            sendProjectStoreJson(res, 400, { error: message });
+          }
+          return;
+        }
+        // Full-text search: read-only, no session needed (loopback same-origin).
+        if (req.method === 'GET' && req.url?.startsWith('/search')) {
+          if (!projectStoreReadAuthorized(req) && !projectStoreHttpAuthorized(req)) {
+            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
+            return;
+          }
+          try {
+            const url = new URL(req.url ?? '', 'http://localhost');
+            const query = url.searchParams.get('q')?.trim() ?? '';
+            const project = url.searchParams.get('project')?.trim() || undefined;
+            const limit = Number(url.searchParams.get('limit') ?? 20);
+            if (!query) {
+              sendProjectStoreJson(res, 400, { error: 'q is required' });
+              return;
+            }
+            sendProjectStoreJson(res, 200, { hits: searchContent(query, { projectId: project, limit }) });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
             sendProjectStoreJson(res, 400, { error: message });
           }
           return;

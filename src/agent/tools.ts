@@ -37,6 +37,7 @@ import { MG_VIDEO_TOOL_NAMES, MG_VIDEO_TOOL_SCHEMAS } from './tools/schemas/mg-v
 import { EDIT_ASSET_TOOL_NAMES, EDIT_ASSET_TOOL_SCHEMAS } from './tools/schemas/edit-asset-tools';
 import { WEB_TOOL_NAMES, WEB_TOOL_SCHEMAS } from './tools/schemas/web-tools';
 import { FONT_TOOL_NAMES, FONT_TOOL_SCHEMAS } from './tools/schemas/font-tools';
+import { SEARCH_TOOL_NAMES, SEARCH_TOOL_SCHEMAS } from './tools/schemas/search-tools';
 import { FOLLOWUP_TOOL_NAMES, FOLLOWUP_TOOL_SCHEMAS } from './tools/schemas/followup-tools';
 import { PROJECT_TOOL_NAMES, PROJECT_TOOL_SCHEMAS } from './tools/schemas/project-tools';
 import { UPLOAD_TOOL_NAMES, UPLOAD_TOOL_SCHEMAS } from './tools/schemas/upload-tools';
@@ -132,6 +133,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...WEB_TOOL_SCHEMAS,
   // Font catalog search; generate-tools enforces confirmFontFallback during export.
   ...FONT_TOOL_SCHEMAS,
+  // Cross-project full-text search over chats/captions/transcripts (FTS5).
+  ...SEARCH_TOOL_SCHEMAS,
   // Follow-up questions: render an interactive form card and pause the runtime through __followup.
   ...FOLLOWUP_TOOL_SCHEMAS,
   // Project session: create/list/delete/duplicate/edit/restore/target_project + get_editor_url
@@ -239,6 +242,7 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
   [EDIT_ASSET_TOOL_NAMES, async () => (await import('./tools/edit-asset-tools')).execEditAssetTool],
   [WEB_TOOL_NAMES, async () => (await import('./tools/web-tools')).execWebTool],
   [FONT_TOOL_NAMES, async () => (await import('./tools/font-tools')).execFontTool],
+  [SEARCH_TOOL_NAMES, async () => (await import('./tools/search-tools')).execSearchTool],
   [FOLLOWUP_TOOL_NAMES, async () => (await import('./tools/followup-tools')).execFollowupTool],
   [PROJECT_TOOL_NAMES, async () => (await import('./tools/project-tools')).execProjectTool],
   [UPLOAD_TOOL_NAMES, async () => (await import('./tools/upload-tools')).execUploadTool],

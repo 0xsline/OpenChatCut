@@ -106,6 +106,7 @@
     "ffmpeg-static": "^5.3.0",
     "heic-to": "^1.5.2",
     "https-proxy-agent": "^9.1.0",
+    "jieba-wasm": "^2.4.0",
     "onnxruntime-node": "1.22.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",

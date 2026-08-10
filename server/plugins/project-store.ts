@@ -31,6 +31,7 @@ import {
   sqliteWriteEntry,
 } from '../storage/sqlite-store.ts';
 import { DELETED_PROJECTS_KV_KEY } from '../storage/sqlite-migration.ts';
+import { indexStoreKey, removeStoreKey } from '../storage/fulltext-search.ts';
 import {
   atomicWriteFile,
   atomicWriteJson,
@@ -102,6 +103,7 @@ const entryPath = (key: string) => key === 'projects'
 async function writeStoredEntry(key: string, value: unknown): Promise<void> {
   if (sqliteStoreEnabled()) {
     await sqliteWriteEntry(key, value);
+    indexStoreKey(key, value);
     return;
   }
   await atomicWriteJson(entryPath(key), value);
@@ -274,6 +276,9 @@ export async function mergeStoredEntries(incoming: Record<string, unknown>): Pro
       entries: mergeProjectEntries(current, prepared, deletedIds),
     };
     await writeEntries(next.entries);
+    for (const [key, value] of Object.entries(next.entries)) {
+      if (key.startsWith('chat:') || key.startsWith('project:')) indexStoreKey(key, value);
+    }
     return next;
   } finally {
     await release();
@@ -378,8 +383,11 @@ export async function deleteStoredEntry(key: string): Promise<void> {
     if (projectId) {
       if (!VALID_PROJECT_ID.test(projectId)) throw new Error('invalid project id');
       await purgeProjectLocked(projectId);
+      removeStoreKey(`chat:${projectId}`);
+      removeStoreKey(`project:${projectId}`);
     } else if (sqliteStoreEnabled()) {
       await sqliteDeleteEntry(key);
+      removeStoreKey(key);
     } else {
       await durableRemove(entryPath(key));
     }
