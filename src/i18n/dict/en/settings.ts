@@ -403,7 +403,7 @@ export default {
   'Whisper Small（约 250MB · 推荐）': 'Whisper Small (~250MB · recommended)',
   'Whisper Medium（约 1.1GB · 精度最高）': 'Whisper Medium (~1.1GB · highest accuracy)',
   // Downloadable music intelligence model packs
-  '本地音乐智能模型': 'Local music intelligence models',
+  '本地智能模型': 'Local intelligence models',
   '模型不会自动安装。安装后，节拍与音乐语义分析只在本机运行。':
     'Models are never installed automatically. Once installed, beat and music-semantic analysis runs locally.',
   '无法读取模型包列表：{err}': 'Cannot load model packs: {err}',

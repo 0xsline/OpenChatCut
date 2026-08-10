@@ -81,7 +81,7 @@ export function LocalModelPackPane() {
     <section style={sectionStyle} aria-labelledby="local-model-packs-heading">
       <div>
         <div id="local-model-packs-heading" style={{ fontSize: 12.5, fontWeight: 650 }}>
-          {t('本地音乐智能模型')}
+          {t('本地智能模型')}
         </div>
         <div style={{ marginTop: 3, fontSize: 11.5, color: theme.textDim }}>
           {t('模型不会自动安装。安装后，节拍与音乐语义分析只在本机运行。')}
