@@ -1,10 +1,9 @@
 import { SEMANTIC_INFERENCE_CONTRACT } from '../../../shared/vector-inference-contract';
+import { readSamplingConfig } from './samplingConfig';
 import type {
   DuplicateMatch, PackedSemanticVectors, SemanticMatch, SemanticVectorRecord,
 } from './types';
 
-export const SEMANTIC_RESULT_LIMIT = 24;
-export const DUPLICATE_SIMILARITY_THRESHOLD = 0.985;
 const MAX_PACKED_OFFSET = 0xffff_ffff;
 const DUPLICATE_PRUNE_SIZE = SEMANTIC_INFERENCE_CONTRACT.duplicateResultLimit * 2;
 
@@ -35,14 +34,13 @@ export function normalizeVector(vector: ArrayLike<number>): number[] {
   return Array.from(vector, (value) => Number(value) / scale);
 }
 
-/** Relative lower limit: Results lower than the maximum score are discarded. */
-export const SEMANTIC_RELATIVE_FLOOR = 0.85;
-
 export function rankSemanticMatches(
   records: readonly SemanticVectorRecord[],
   queryVector: ArrayLike<number>,
-  limit = SEMANTIC_RESULT_LIMIT,
+  limit?: number,
 ): SemanticMatch[] {
+  const config = readSamplingConfig();
+  const resultLimit = limit ?? config.resultLimit;
   const normalizedQuery = normalizeVector(queryVector);
   // Scene-aware records retain one best frame per shot. Legacy records without
   // a scene id preserve the historical one-best-frame-per-asset behavior.
@@ -67,21 +65,23 @@ export function rankSemanticMatches(
   // If it's obviously not as good as the best hit, don't sneak in to replenish the number. The highest score ≤0 indicates that the whole is irrelevant, and there is no lower limit at this time.
   // It is up to the caller to judge by looking at the scores, so as not to return any.
   const top = ranked[0]?.score ?? 0;
-  const floor = top > 0 ? top * SEMANTIC_RELATIVE_FLOOR : -Infinity;
-  return ranked.filter((match) => match.score >= floor).slice(0, limit);
+  const floor = top > 0 ? top * config.relativeFloor : -Infinity;
+  return ranked.filter((match) => match.score >= floor).slice(0, resultLimit);
 }
 
 export function findDuplicateAssets(
   records: readonly SemanticVectorRecord[],
-  threshold = DUPLICATE_SIMILARITY_THRESHOLD,
+  threshold?: number,
 ): DuplicateMatch[] {
+  const config = readSamplingConfig();
+  const similarityThreshold = threshold ?? config.duplicateThreshold;
   const vectorsByAsset = groupVectorsByAsset(records);
   const assets = Array.from(vectorsByAsset.entries());
   const matches: DuplicateMatch[] = [];
   for (let left = 0; left < assets.length; left += 1) {
     for (let right = left + 1; right < assets.length; right += 1) {
       const score = coverageSimilarity(assets[left]![1], assets[right]![1]);
-      if (score >= threshold) {
+      if (score >= similarityThreshold) {
         addDuplicateMatch(matches, {
           leftAssetId: assets[left]![0], rightAssetId: assets[right]![0], score,
         });
@@ -109,13 +109,14 @@ export function packSemanticVectors(records: readonly SemanticVectorRecord[]): P
 
 export function findDuplicateAssetsPacked(
   packed: PackedSemanticVectors,
-  threshold = DUPLICATE_SIMILARITY_THRESHOLD,
+  threshold?: number,
 ): DuplicateMatch[] {
+  const similarityThreshold = threshold ?? readSamplingConfig().duplicateThreshold;
   const matches: DuplicateMatch[] = [];
   for (let left = 0; left < packed.assetIds.length; left += 1) {
     for (let right = left + 1; right < packed.assetIds.length; right += 1) {
       const score = packedCoverageSimilarity(packed, left, right);
-      if (score >= threshold) {
+      if (score >= similarityThreshold) {
         addDuplicateMatch(matches, {
           leftAssetId: packed.assetIds[left]!, rightAssetId: packed.assetIds[right]!, score,
         });

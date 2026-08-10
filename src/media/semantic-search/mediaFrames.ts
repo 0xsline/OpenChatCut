@@ -6,7 +6,6 @@ import {
 } from './samplingConfig';
 
 const MAX_FRAME_EDGE = 448;
-const LONG_VIDEO_SECONDS = 60;
 const SHORT_SCENE_SECONDS = 4;
 const MAX_DETECTED_SCENES = 500;
 const SAME_SEEK_THRESHOLD_SECONDS = 0.01;
@@ -182,7 +181,7 @@ async function scenePlanForLongVideo(
   signal: AbortSignal,
   config: SemanticSamplingConfig,
 ): Promise<SceneSamplePlan[] | null> {
-  if (duration < LONG_VIDEO_SECONDS) return null;
+  if (duration < config.longVideoSeconds) return null;
   const boundaries = await detectSceneBoundaries(asset, signal);
   return boundaries ? sceneAwareSamplePlan(duration, boundaries, config.maxSceneFrames) : null;
 }

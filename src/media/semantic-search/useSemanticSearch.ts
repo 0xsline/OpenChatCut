@@ -7,7 +7,7 @@ import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
 import { isSemanticMedia } from './mediaFrames';
 import { indexSemanticAssets, isAbortError, loadWithFallback } from './semanticOperations';
 import { SemanticClient } from './semanticClient';
-import { DUPLICATE_SIMILARITY_THRESHOLD, rankSemanticMatches } from './vectorSearch';
+import { rankSemanticMatches } from './vectorSearch';
 import { clearSemanticVectors, pruneSemanticVectors, readSemanticVectors } from './vectorStore';
 import {
   MAX_SEMANTIC_QUERY_LENGTH,
@@ -142,7 +142,7 @@ function useSemanticRefresh(
         record.sourceRevision === revisions.get(record.assetId)
       ));
       const duplicates = await runtime.client.current.findDuplicateAssets(
-        nextRecords, DUPLICATE_SIMILARITY_THRESHOLD, controller.signal,
+        nextRecords, undefined, controller.signal,
       );
       if (snapshotRef.current !== snapshot) throw semanticStaleResultError();
       runtime.records.current = nextRecords;

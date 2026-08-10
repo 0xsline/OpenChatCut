@@ -15,12 +15,24 @@ export interface SemanticSamplingConfig {
   readonly maxFallbackFrames: number;
   /** Hard cap on scene-aware sample count (per asset). */
   readonly maxSceneFrames: number;
+  /** How many semantic matches a search returns at most. */
+  readonly resultLimit: number;
+  /** Relative floor: results scoring below <best> * floor are discarded (0..1). */
+  readonly relativeFloor: number;
+  /** Similarity at/above which two assets are reported as suspected duplicates (0..1). */
+  readonly duplicateThreshold: number;
+  /** Videos at/above this duration (seconds) attempt scene-aware indexing. */
+  readonly longVideoSeconds: number;
 }
 
 export const DEFAULT_SAMPLING_CONFIG: SemanticSamplingConfig = {
   intervalSeconds: 15,
   maxFallbackFrames: 12,
   maxSceneFrames: 96,
+  resultLimit: 24,
+  relativeFloor: 0.85,
+  duplicateThreshold: 0.985,
+  longVideoSeconds: 60,
 };
 
 export const SAMPLING_CONFIG_KEY = 'cc.semanticSamplingConfig';
@@ -29,11 +41,30 @@ const INTERVAL_MIN = 1;
 const INTERVAL_MAX = 300;
 const FRAMES_MIN = 1;
 const FRAMES_MAX = 480;
+const RESULT_LIMIT_MIN = 1;
+const RESULT_LIMIT_MAX = 100;
+const RATIO_MIN = 0;
+const RATIO_MAX = 1;
+const DUPLICATE_THRESHOLD_MAX = 0.999;
+const LONG_VIDEO_MIN = 10;
+const LONG_VIDEO_MAX = 600;
 
 function finiteInt(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = typeof value === 'number' ? Math.round(value) : Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function finiteRatio(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(RATIO_MAX, Math.max(RATIO_MIN, parsed));
+}
+
+function finiteDuplicateThreshold(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(DUPLICATE_THRESHOLD_MAX, Math.max(RATIO_MIN, parsed));
 }
 
 export function normalizeSamplingConfig(value: unknown): SemanticSamplingConfig {
@@ -47,6 +78,14 @@ export function normalizeSamplingConfig(value: unknown): SemanticSamplingConfig 
     ),
     maxSceneFrames: finiteInt(
       record.maxSceneFrames, DEFAULT_SAMPLING_CONFIG.maxSceneFrames, FRAMES_MIN, FRAMES_MAX,
+    ),
+    resultLimit: finiteInt(
+      record.resultLimit, DEFAULT_SAMPLING_CONFIG.resultLimit, RESULT_LIMIT_MIN, RESULT_LIMIT_MAX,
+    ),
+    relativeFloor: finiteRatio(record.relativeFloor, DEFAULT_SAMPLING_CONFIG.relativeFloor),
+    duplicateThreshold: finiteDuplicateThreshold(record.duplicateThreshold, DEFAULT_SAMPLING_CONFIG.duplicateThreshold),
+    longVideoSeconds: finiteInt(
+      record.longVideoSeconds, DEFAULT_SAMPLING_CONFIG.longVideoSeconds, LONG_VIDEO_MIN, LONG_VIDEO_MAX,
     ),
   };
 }

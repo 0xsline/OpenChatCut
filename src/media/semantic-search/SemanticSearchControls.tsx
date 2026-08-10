@@ -12,6 +12,7 @@ import { MAX_SEMANTIC_QUERY_LENGTH, type SemanticMatch } from './types';
 import { useSemanticSearch } from './useSemanticSearch';
 import {
   DEFAULT_SAMPLING_CONFIG,
+  normalizeSamplingConfig,
   readSamplingConfig,
   writeSamplingConfig,
   type SemanticSamplingConfig,
@@ -259,7 +260,7 @@ function SamplingSettings({ t }: { t: Translate }) {
     setDraft((current) => ({ ...current, [field]: Number(event.target.value) }));
   };
   const save = () => {
-    writeSamplingConfig(draft);
+    writeSamplingConfig(normalizeSamplingConfig(draft));
     showAppToast(t('采样设置已保存，重建索引后生效。'));
   };
   const reset = () => {
@@ -269,7 +270,7 @@ function SamplingSettings({ t }: { t: Translate }) {
   };
   return <details className="cc-semantic-sampling">
     <summary>{t('采样设置')}</summary>
-    <p className="cc-semantic-sampling-note">{t('索引帧采样密度，网页与桌面端通用。改动需重建索引生效。')}</p>
+    <p className="cc-semantic-sampling-note">{t('索引帧采样与搜索参数，网页与桌面端通用。改动索引相关项需重建索引生效。')}</p>
     <label>
       <span>{t('兜底间隔（秒）')}</span>
       <input type="number" min={1} max={300} value={draft.intervalSeconds}
@@ -284,6 +285,26 @@ function SamplingSettings({ t }: { t: Translate }) {
       <span>{t('场景模式上限')}</span>
       <input type="number" min={1} max={480} value={draft.maxSceneFrames}
         onChange={update('maxSceneFrames')} />
+    </label>
+    <label>
+      <span>{t('搜索结果条数')}</span>
+      <input type="number" min={1} max={100} value={draft.resultLimit}
+        onChange={update('resultLimit')} />
+    </label>
+    <label>
+      <span>{t('搜索结果相对下限')}</span>
+      <input type="number" min={0} max={1} step={0.01} value={draft.relativeFloor}
+        onChange={update('relativeFloor')} />
+    </label>
+    <label>
+      <span>{t('疑似重复阈值')}</span>
+      <input type="number" min={0} max={0.999} step={0.001} value={draft.duplicateThreshold}
+        onChange={update('duplicateThreshold')} />
+    </label>
+    <label>
+      <span>{t('长视频阈值（秒）')}</span>
+      <input type="number" min={10} max={600} value={draft.longVideoSeconds}
+        onChange={update('longVideoSeconds')} />
     </label>
     <div className="cc-semantic-sampling-actions">
       <button type="button" onClick={save}>{t('保存')}</button>

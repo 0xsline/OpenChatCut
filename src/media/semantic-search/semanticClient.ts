@@ -1,5 +1,6 @@
 import { createNativeSemanticWorkerAdapter } from './nativeSemanticWorkerAdapter';
-import { DUPLICATE_SIMILARITY_THRESHOLD, packSemanticVectors } from './vectorSearch';
+import { packSemanticVectors } from './vectorSearch';
+import { readSamplingConfig } from './samplingConfig';
 import type {
   DuplicateMatch, FramePixels, SemanticDevice, SemanticVectorRecord,
   WorkerRequest, WorkerResponse, WorkerResult,
@@ -48,12 +49,13 @@ export class SemanticClient {
 
   findDuplicateAssets(
     records: readonly SemanticVectorRecord[],
-    threshold = DUPLICATE_SIMILARITY_THRESHOLD,
+    threshold?: number,
     signal?: AbortSignal,
   ): Promise<DuplicateMatch[]> {
     if (signal?.aborted) return Promise.reject(semanticAbortError());
+    const similarityThreshold = threshold ?? readSamplingConfig().duplicateThreshold;
     const vectors = packSemanticVectors(records);
-    const request: WorkerRequest = { id: this.nextId(), type: 'find-duplicates', threshold, vectors };
+    const request: WorkerRequest = { id: this.nextId(), type: 'find-duplicates', threshold: similarityThreshold, vectors };
     const transfer = [
       vectors.assetVectorOffsets.buffer as ArrayBuffer,
       vectors.vectorValueOffsets.buffer as ArrayBuffer,
