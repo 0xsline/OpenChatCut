@@ -9,8 +9,20 @@ import { runtimeProfile, type RuntimeProfile } from './runtime-profile.ts';
 export const PROJECT_STORE_LAUNCH_TOKEN_HEADER = 'x-openchatcut-editor-launch-token';
 export const PROJECT_STORE_SESSION_HEADER = 'x-openchatcut-project-store-session';
 const TOKEN_ENV = 'OPENCHATCUT_EDITOR_LAUNCH_TOKEN';
+const NO_AUTH_ENV = 'OPENCHATCUT_DISABLE_LAUNCH_AUTH';
 const MIN_TOKEN_LENGTH = 32;
 const generatedLaunchToken = randomBytes(32).toString('base64url');
+
+/**
+ * Personal-use escape hatch: with OPENCHATCUT_DISABLE_LAUNCH_AUTH=1 (or 'true')
+ * any loopback request is authorized without a launch token or session, so the
+ * editor can be opened from a bare URL. Default is OFF: the token/session flow
+ * remains the shipped behavior for everyone else and for CI.
+ */
+export function launchAuthDisabled(): boolean {
+  const value = process.env[NO_AUTH_ENV]?.trim().toLowerCase() ?? '';
+  return value === '1' || value === 'true';
+}
 
 interface ProjectStoreSession {
   readonly token: string;
@@ -176,6 +188,11 @@ export function projectStoreReadAuthorized(req: IncomingMessage): boolean {
 export function exchangeProjectStoreLaunchToken(
   req: IncomingMessage,
 ): { sessionToken: string } | null {
+  if (launchAuthDisabled() && trustedLoopback(req) && sameOrigin(req)) {
+    // No-auth mode: mint a throwaway session so the browser's normal
+    // exchange-then-session flow keeps working untouched.
+    return { sessionToken: `no-auth-${randomBytes(16).toString('base64url')}` };
+  }
   if (!trustedLoopback(req) || !sameOrigin(req)) return null;
   const actualLaunch = header(req, PROJECT_STORE_LAUNCH_TOKEN_HEADER);
   if (!actualLaunch || !equalSecret(actualLaunch, configuredLaunchToken())) return null;
@@ -196,6 +213,7 @@ export function exchangeProjectStoreLaunchToken(
 
 export function projectStoreHttpAuthorized(req: IncomingMessage): boolean {
   if (!trustedLoopback(req)) return false;
+  if (launchAuthDisabled()) return true;
   const session = activeSession;
   if (!session || session.host !== req.headers.host.toLowerCase()
     || session.remoteAddress !== req.socket.remoteAddress) return false;
