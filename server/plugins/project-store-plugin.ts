@@ -32,7 +32,7 @@ import {
 } from '../storage/semantic-vectors.ts';
 import { searchContent } from '../storage/fulltext-search.ts';
 import { hybridSearch } from '../storage/hybrid-search.ts';
-import { sqliteMigrationStatus, sqliteImportJson, sqliteStoreEnabled } from '../storage/sqlite-store.ts';
+import { cleanupLegacyJson, sqliteMigrationStatus, sqliteImportJson, sqliteStoreEnabled } from '../storage/sqlite-store.ts';
 import {
   compareAndSwapAgentRuntime,
   compareAndSwapProjectDocument,
@@ -96,6 +96,20 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
             return;
           }
           sendProjectStoreJson(res, 200, sqliteMigrationStatus());
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/migrate-cleanup') {
+          if (!projectStoreHttpAuthorized(req)) {
+            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
+            return;
+          }
+          try {
+            const result = cleanupLegacyJson();
+            sendProjectStoreJson(res, 200, result);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            sendProjectStoreJson(res, 400, { error: message });
+          }
           return;
         }
         if (req.method === 'POST' && req.url === '/migrate') {

@@ -8,7 +8,7 @@
 // Phase 0 scope: interface-parity skeleton only. The JSON→SQLite import
 // (receipt + idempotent re-import + crash recovery) is phase 1
 // (see docs/storage-sqlite-rfc.md §5).
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { runtimeProfile } from '../runtime-profile.ts';
@@ -70,6 +70,61 @@ function openDatabase(): DatabaseSync {
  */
 export function sqliteImportJson(): ImportSummary {
   return ensureJsonImported(openDatabase());
+}
+
+export interface CleanupResult {
+  removed: number;
+  jsonKeyCount: number;
+}
+
+/**
+ * Delete the legacy JSON files after the user confirms the migration.
+ * Refuses when the SQLite backend is not the active one (receipt + database
+ * file must both exist). Deletes only the migrated JSON keys inside
+ * project-store-v1/ plus the phase-2 aux files (generation-jobs,
+ * deleted-projects) — the directory itself and every non-JSON file stay.
+ * Never automatic: callers must gate this behind explicit user confirmation.
+ */
+export function cleanupLegacyJson(): CleanupResult {
+  if (!sqliteStoreEnabled()) throw new Error('migration not completed');
+  const profile = runtimeProfile();
+  const dir = profile.projectStore.directory;
+  let removed = 0;
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((name) => name.endsWith('.json'));
+  } catch {
+    names = [];
+  }
+  for (const name of names) {
+    try {
+      rmSync(join(dir, name), { force: true });
+      removed += 1;
+    } catch {
+      // best-effort per file; remaining files stay readable for rescue
+    }
+  }
+  const aux = [
+    join(profile.rootDir, 'generation-operations-v1.json'),
+    join(profile.rootDir, 'deleted-projects-v1.json'),
+  ];
+  for (const path of aux) {
+    if (existsSync(path)) {
+      try {
+        rmSync(path, { force: true });
+        removed += 1;
+      } catch {
+        // best-effort
+      }
+    }
+  }
+  let jsonKeyCount = 0;
+  try {
+    jsonKeyCount = readdirSync(dir).filter((name) => name.endsWith('.json')).length;
+  } catch {
+    jsonKeyCount = 0;
+  }
+  return { removed, jsonKeyCount };
 }
 
 /** Migration status for the UI (never opens or mutates the store). */

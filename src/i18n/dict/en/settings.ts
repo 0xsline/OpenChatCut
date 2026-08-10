@@ -458,4 +458,9 @@ export default {
   '视觉模型': 'Vision model',
   '视觉理解': 'Vision understanding',
   '跟随主模型': 'Follow main model',
+  '清理旧 JSON 数据（{n} 个文件）': 'Clean up old JSON data ({n} files)',
+  '我确认已迁移完成，且不需要回滚到旧版本（删除后旧版本软件将看到空数据）': 'I confirm the migration is complete and I do not need to roll back to the old version (old versions will see empty data after deletion)',
+  '确认清理': 'Confirm cleanup',
+  '清理中…': 'Cleaning up…',
+  '已清理 {removed} 个旧 JSON 文件': 'Removed {removed} old JSON files',
 } as Record<string, string>;

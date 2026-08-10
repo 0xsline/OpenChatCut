@@ -204,7 +204,19 @@ async function main(): Promise<void> {
     assert.deepEqual(await store.getStoredEntry('project:tomb-probe'), { found: false },
       'a purged project must stay deleted via the SQLite tombstone');
 
-    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill / user-switch / aux-phase-upgrade all passed');
+    // ── legacy JSON cleanup (user-confirmed deletion) ──
+    const { cleanupLegacyJson } = await import('./sqlite-store.ts');
+    const jsonDir = join(root, '.openchatcut', 'project-store-v1');
+    const remainingJson = readdirSync(jsonDir).filter((name) => name.endsWith('.json'));
+    assert.ok(remainingJson.length > 0, 'sanity: legacy JSON files still exist before cleanup');
+    const cleanup = cleanupLegacyJson();
+    assert.equal(cleanup.jsonKeyCount, 0, 'cleanup must remove every legacy JSON key');
+    assert.ok(cleanup.removed >= remainingJson.length,
+      'cleanup must report the removed count (JSON keys + aux files)');
+    assert.ok(!existsSync(join(root, 'generation-operations-v1.json')), 'phase-2 aux file must be cleaned too');
+    assert.ok(existsSync(jsonDir), 'the JSON directory itself must stay');
+
+    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill / user-switch / aux-phase-upgrade / cleanup all passed');
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;

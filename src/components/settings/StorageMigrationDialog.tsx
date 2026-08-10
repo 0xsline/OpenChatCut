@@ -6,7 +6,7 @@ import { useT } from '../../i18n/locale';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 import { fetchWithEditorSession } from '../../persist/projectStoreTransport';
-import { loadMigrationStatus, STORAGE_MIGRATED_EVENT, type MigrationStatus } from './storageMigration';
+import { cleanupLegacyJson, loadMigrationStatus, STORAGE_MIGRATED_EVENT, type MigrationStatus } from './storageMigration';
 
 interface MigrateResponse {
   summary?: { imported: number; skipped: number; quarantined: number };
@@ -66,6 +66,9 @@ export function StorageMigrationDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupConfirmed, setCleanupConfirmed] = useState(false);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -105,6 +108,22 @@ export function StorageMigrationDialog({ onClose }: { onClose: () => void }) {
   };
 
   const migrated = status?.enabled === true;
+
+  const cleanup = async () => {
+    setCleanupBusy(true);
+    setError(null);
+    try {
+      const body = await cleanupLegacyJson();
+      setResult(t('已清理 {removed} 个旧 JSON 文件', { removed: body.removed }));
+      setCleanupOpen(false);
+      setCleanupConfirmed(false);
+      setStatus(await loadMigrationStatus());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setCleanupBusy(false);
+    }
+  };
 
   return (
     <div style={overlay} onMouseDown={onClose}>
@@ -166,6 +185,37 @@ export function StorageMigrationDialog({ onClose }: { onClose: () => void }) {
             >
               {busy ? t('迁移中…') : t('迁移到 SQLite')}
             </button>
+          )}
+          {migrated && (status?.jsonKeyCount ?? 0) > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch', marginTop: 10 }}>
+              <button
+                type="button"
+                style={secondaryBtn}
+                onClick={() => setCleanupOpen((open) => !open)}
+              >
+                {t('清理旧 JSON 数据（{n} 个文件）', { n: status?.jsonKeyCount ?? 0 })}
+              </button>
+              {cleanupOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: theme.text }}>
+                    <input
+                      type="checkbox"
+                      checked={cleanupConfirmed}
+                      onChange={(e) => setCleanupConfirmed(e.target.checked)}
+                    />
+                    {t('我确认已迁移完成，且不需要回滚到旧版本（删除后旧版本软件将看到空数据）')}
+                  </label>
+                  <button
+                    type="button"
+                    style={cleanupConfirmed && !cleanupBusy ? primaryBtn : primaryBtnDisabled}
+                    disabled={!cleanupConfirmed || cleanupBusy}
+                    onClick={() => { void cleanup(); }}
+                  >
+                    {cleanupBusy ? t('清理中…') : t('确认清理')}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
