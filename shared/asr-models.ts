@@ -1,4 +1,11 @@
 // On-device ASR model catalog — single source for settings, downloads, and runtime loading.
+//
+// tiny/base/small use the onnx-community exports (transformers.js v3+ era): they keep
+// the same q8 weights, but the export layout halves CPU inference memory (measured
+// -49% RSS on whisper-base q8) and unlocks fp16 / per-module dtype for WebGPU.
+// medium stays on Xenova/whisper-medium: the onnx-community medium repo is not
+// reachable via HF API/CDN (401), and keeping the old entry preserves already
+// downloaded model data (compat-first rule).
 
 export interface AsrModelFile {
   readonly path: string;
@@ -19,41 +26,41 @@ export interface AsrModelEntry {
 
 export const ASR_MODELS: readonly AsrModelEntry[] = [
   {
-    id: 'tiny', modelId: 'Xenova/whisper-tiny', revision: '5332fcc35e32a33b86612b9a57a89be7906102b1',
+    id: 'tiny', modelId: 'onnx-community/whisper-tiny', revision: 'ff4177021cc41f7db950912b73ea4fdf7d01d8e7',
     files: [
-      { path: 'config.json', sizeBytes: 2248, sha256: '2b2e4e519084e0ea028b19b153f95202735a971870d6844aa26e559edd292e94' },
-      { path: 'generation_config.json', sizeBytes: 3716, sha256: '68ac791fcb4999461a313472125042934656240ba1cba7d1c2627fcbb19ac24c' },
+      { path: 'config.json', sizeBytes: 2243, sha256: '46aeea0a406afbeb563fc8e59ca10609203df4299af6a83f73752fef369efd2d' },
+      { path: 'generation_config.json', sizeBytes: 3772, sha256: 'f5c67e5a4f7102f8cb4d058bc95da276bbc19eeec997267c3bb0f25ef68facd1' },
       { path: 'preprocessor_config.json', sizeBytes: 339, sha256: 'a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d' },
       { path: 'tokenizer.json', sizeBytes: 2480466, sha256: '27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566' },
       { path: 'tokenizer_config.json', sizeBytes: 282683, sha256: '2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce' },
-      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 10124910, sha256: 'fd9d995b9dcb0520f0dbf6cf68651af639fc385f594d9d876e69ca2802dc438e' },
-      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 30727765, sha256: '6c0c125986b007d2e3734bec84c18bda0152071b90b87fadac6d7764499927a0' },
+      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 10124990, sha256: '2af4a414ca47aa30f61246017e5fe82b0a8d229281d1255ba666a2a7f6b84d19' },
+      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 30719241, sha256: '25e807a962b6349356d0ea5d0dfe530b7e5bf0e2a484aeca0359d03143faddd3' },
     ],
-    label: 'Whisper Tiny', sizeLabel: '约 100MB', language: '中 / 英', note: '最快最省，适合低配置设备；识别精度一般。',
+    label: 'Whisper Tiny', sizeLabel: '约 40MB', language: '中 / 英', note: '最快最省，适合低配置设备；识别精度一般。',
   },
   {
-    id: 'base', modelId: 'Xenova/whisper-base', revision: '64da57285918e20ea79ea5c88eed7197933abaa8',
+    id: 'base', modelId: 'onnx-community/whisper-base', revision: '1846881b6b3a3024392c1eea3ad983695bc23925',
     files: [
-      { path: 'config.json', sizeBytes: 2248, sha256: 'd1d347fdb422e6347c2f843a90d375aa67ea3f4b3e20d2c3075f9a9f6243685b' },
-      { path: 'generation_config.json', sizeBytes: 3776, sha256: '3bba359e33fdd6dc1c10f71846a477d339b0242f462f70ea1dd73274caa38d05' },
+      { path: 'config.json', sizeBytes: 2243, sha256: 'f4d0608f7d918166da7edb3e188de5ef1bfe70d9802e785d271fd88111e9cf4b' },
+      { path: 'generation_config.json', sizeBytes: 3832, sha256: '61070cf8de25b1e9256e8e102ded49d8d24a8369ed36ef84fdf21549e68125a0' },
       { path: 'preprocessor_config.json', sizeBytes: 339, sha256: 'a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d' },
       { path: 'tokenizer.json', sizeBytes: 2480466, sha256: '27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566' },
-      { path: 'tokenizer_config.json', sizeBytes: 282683, sha256: '2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce' },
-      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 23200850, sha256: '3e345e977b55620a37c0c2b2af0644e019afdfad562dcf71eb929bb7274285f9' },
-      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 53707539, sha256: 'a6beb6baabb66f00b6a686d828c95ffca6146d51900cbad0266cad38f64cf861' },
+      { path: 'tokenizer_config.json', sizeBytes: 282682, sha256: '2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573' },
+      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 23201314, sha256: '5862993336bf33acd23736071aae2b32261d3b1b2f37780194460d4ef974dd46' },
+      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 53693315, sha256: 'fa3ef9902734ce5ae6f9ef2bdb2ba9a6c4b5785b09f4f420ce036573dc9d090b' },
     ],
     label: 'Whisper Base', sizeLabel: '约 80MB', language: '中 / 英', note: '轻量均衡，日常口播可用。',
   },
   {
-    id: 'small', modelId: 'Xenova/whisper-small', revision: '2d67713f236afa48a18992566e7647f6ca848e13',
+    id: 'small', modelId: 'onnx-community/whisper-small', revision: '36050c46d777d46dc4b5f43f6d90574fc38f8732',
     files: [
-      { path: 'config.json', sizeBytes: 2232, sha256: '5a6429d21d7a3379dd0861b74510f9f7076f32b563bffc9fcb072482d55ab3be' },
-      { path: 'generation_config.json', sizeBytes: 3837, sha256: '0b7407a4e53a677f826e03c75d409e6f830663932bf43dda3b08c5efa2223279' },
+      { path: 'config.json', sizeBytes: 2227, sha256: '457854d452f17661e197d74aee12b8e74fb75ba30ebfaa7426d0d61ea1e08a18' },
+      { path: 'generation_config.json', sizeBytes: 3893, sha256: 'f538b28220c6a6d6f1af1458d4141cacb4ef4963df3de98a19490440c412ddf0' },
       { path: 'preprocessor_config.json', sizeBytes: 339, sha256: 'a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d' },
       { path: 'tokenizer.json', sizeBytes: 2480466, sha256: '27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566' },
       { path: 'tokenizer_config.json', sizeBytes: 282683, sha256: '2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce' },
-      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 92324809, sha256: '969f5ac12974340386bf7a02ea6626003e5e2dee396ffc6ab0eec282bf55ba06' },
-      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 156780950, sha256: 'fcfc6100dc7339e7507e10f8b274350be7c4f8d8b575f0293f94cc0e156d6d24' },
+      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 92326160, sha256: 'a43a83f3c5361cd591cfa7c36f14b43cf7cb22f47a415cc14a8d557be800fa92' },
+      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 156750845, sha256: 'ec07c3cbb64172c39791e26ee870a65ac22b458c36722bfe2776b3dbf741e0c9' },
     ],
     label: 'Whisper Small', sizeLabel: '约 250MB', language: '中 / 英', note: '推荐：中英文识别均衡，简体输出，词级时间戳稳定。',
   },
