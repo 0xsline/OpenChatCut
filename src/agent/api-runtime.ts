@@ -143,14 +143,6 @@ function responseUsedTools(messages: readonly ModelMessage[]): boolean {
     && message.content.some((part) => part.type === 'tool-call'));
 }
 
-function withoutAssistantText(messages: readonly ModelMessage[]): ModelMessage[] {
-  return messages.flatMap((message): ModelMessage[] => {
-    if (message.role !== 'assistant') return [message];
-    if (typeof message.content === 'string') return [];
-    const content = message.content.filter((part) => part.type !== 'text');
-    return content.length ? [{ ...message, content } as ModelMessage] : [];
-  });
-}
 export interface ApiRuntimeDependencies {
   readonly model?: LanguageModel;
 }
@@ -250,12 +242,8 @@ class ApiAgentRunner {
   }
 
   private completeAborted(outcome: ApiAttemptOutcome, output: ApiRoundOutput): LLMMessage[] {
-    const unresolved = this.toolFailures.hasUnresolved;
-    const responseMessages = unresolved
-      ? withoutAssistantText(outcome.responseMessages)
-      : outcome.responseMessages;
-    if (unresolved) output.discardBuffered();
-    else output.flush();
+    const responseMessages = outcome.responseMessages;
+    output.flush();
     this.toolFailures.clear();
     const persisted = responseMessages.length || !output.visibleText
       ? responseMessages
@@ -265,25 +253,25 @@ class ApiAgentRunner {
 
   private completeRound(outcome: ApiAttemptOutcome, output: ApiRoundOutput): LLMMessage[] | null {
     const unresolved = this.toolFailures.hasUnresolved;
-    const responseMessages = unresolved
-      ? withoutAssistantText(outcome.responseMessages)
-      : outcome.responseMessages;
-    if (unresolved) output.discardBuffered();
-    else output.flush();
+    const responseMessages = outcome.responseMessages;
+    output.flush();
     const usedTools = responseUsedTools(responseMessages);
     if (output.askedFollowup) {
       output.flushFollowup();
       return [...this.conv, ...responseMessages];
     }
-    if (!usedTools && unresolved) return [...this.conv, output.failureCompletion()];
+    if (!usedTools) {
+      // The model saw the failed tool result in its own context and replies
+      // freely; no failure-report template is injected.
+      if (unresolved) this.toolFailures.clear();
+      return [...this.conv, ...responseMessages];
+    }
     this.conv = [...this.conv, ...responseMessages];
-    if (!usedTools) return this.conv;
     this.toolTurns += 1;
     if (this.toolTurns < MAX_TOOL_TURNS) return null;
     this.input.onEvent({ type: 'max-turns', turns: this.toolTurns });
-    return this.toolFailures.hasUnresolved
-      ? [...this.conv, output.failureCompletion()]
-      : this.conv;
+    this.toolFailures.clear();
+    return this.conv;
   }
 
   private failRound(error: unknown, output: ApiRoundOutput): LLMMessage[] {
@@ -291,14 +279,14 @@ class ApiAgentRunner {
       this.toolFailures.clear();
       return this.conv;
     }
-    const failure = this.toolFailures.hasUnresolved ? output.failureCompletion() : null;
-    if (!failure) output.flush();
+    this.toolFailures.clear();
+    output.flush();
     this.input.onEvent({ type: 'error', message: errorMessage(error).trim() });
-    return failure ? [...this.conv, failure] : this.conv;
+    return this.conv;
   }
 
   private async runRound(): Promise<LLMMessage[] | null> {
-    const output = new ApiRoundOutput(this.input.onEvent, this.toolFailures);
+    const output = new ApiRoundOutput(this.input.onEvent);
     try {
       const prepared = await this.prepareRound(output);
       const requestIndex = this.requestCount + 1;

@@ -879,13 +879,14 @@ const apiFailureResult = await runApiAgent(
   undefined,
   { model: apiFailureModel },
 );
-assert.doesNotMatch(
+assert.match(
   JSON.stringify(apiFailureResult),
   /Removed the clip successfully|operation is now fixed/,
-  'API history must discard assistant text before and after an unresolved tool error',
+  'API history must keep assistant text after an unresolved tool error',
 );
-assert.match(String(apiFailureResult.at(-1)?.content), /couldn't complete the requested operation/);
-assert.doesNotMatch(
+assert.match(JSON.stringify(apiFailureResult.at(-1)), /Removed the clip successfully/, 'final reply is the model\'s own text');
+assert.doesNotMatch(JSON.stringify(apiFailureResult), /couldn't complete the requested operation|有工具调用失败/, 'no failure-report template is injected; the model replies freely');
+assert.match(
   apiFailureEvents
     .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
     .map((event) => event.delta)
@@ -930,7 +931,7 @@ assert.equal(
   true,
   'repeated failed tools must terminate at the tool-turn limit',
 );
-assert.match(String(maxTurnResult.at(-1)?.content), /couldn't complete the requested operation/);
+assert.doesNotMatch(JSON.stringify(maxTurnResult), /couldn't complete the requested operation|有工具调用失败/, 'max-turn close emits no failure-report template');
 assert.equal(maxTurnFailures.hasUnresolved, false, 'max-turn failure reporting must close the tracker');
 
 const abortFailures = new ToolFailureTracker();

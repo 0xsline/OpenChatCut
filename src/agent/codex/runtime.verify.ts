@@ -226,15 +226,16 @@ try {
       executeTool: async () => ({ success: true, result: null }),
     },
   );
-  assert.match(String(resumed.at(-1)?.content), /couldn't complete the requested operation/);
-  assert.doesNotMatch(String(resumed.at(-1)?.content), /completed successfully/);
+  assert.match(String(resumed.at(-1)?.content), /completed successfully/, 'assistant text is kept when a carried tool failure closes');
+  assert.doesNotMatch(String(resumed.at(-1)?.content), /couldn't complete the requested operation|有工具调用失败/, 'no failure-report template is injected');
   assert.equal(followupFailures.hasUnresolved, false, 'terminal failure reporting closes the carried failure');
-  assert.doesNotMatch(
+  assert.match(
     resumedEvents
       .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
       .map((event) => event.delta)
       .join(''),
     /completed successfully/,
+    'model text streams even with a carried tool failure',
   );
 } finally {
   globalThis.fetch = originalFetch;
@@ -381,15 +382,14 @@ try {
   );
   assert.equal(failureSubmissions[0]?.success, false);
   assert.match(String(result.at(-2)?.content), /success=false/);
-  assert.match(String(result.at(-1)?.content), /couldn't complete the requested operation/);
-  assert.match(String(result.at(-1)?.content), /updates\[0\]: item not found: missing/);
-  assert.doesNotMatch(String(result.at(-1)?.content), /successfully/);
+  assert.match(String(result.at(-1)?.content), /Updated the volume successfully/, 'assistant text is kept after a tool failure');
+  assert.doesNotMatch(String(result.at(-1)?.content), /couldn't complete the requested operation|有工具调用失败/, 'no failure-report template is injected; the model replies freely');
   const displayed = failureEvents
     .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
     .map((event) => event.delta)
     .join('');
-  assert.match(displayed, /couldn't complete the requested operation/);
-  assert.doesNotMatch(displayed, /Updated the volume successfully/);
+  assert.match(displayed, /Updated the volume successfully/, 'model text must stream even when a tool failed');
+  assert.doesNotMatch(displayed, /couldn't complete the requested operation|有工具调用失败/);
 } finally {
   globalThis.fetch = originalFetch;
 }
@@ -429,9 +429,10 @@ try {
       executeTool: async () => ({ success: true, result: null }),
     },
   );
-  assert.match(String(rejected.at(-1)?.content), /couldn't complete the requested operation/);
-  assert.doesNotMatch(JSON.stringify(rejected), /completed successfully/);
-  assert.doesNotMatch(
+  assert.match(String(rejected.at(-1)?.content), /completed successfully/, 'assistant text is kept after a rejected tool');
+  assert.doesNotMatch(String(rejected.at(-1)?.content), /couldn't complete the requested operation|有工具调用失败/, 'no failure-report template is injected');
+  assert.doesNotMatch(JSON.stringify(rejected), /couldn't complete the requested operation|有工具调用失败/);
+  assert.match(
     rejectedEvents
       .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
       .map((event) => event.delta)

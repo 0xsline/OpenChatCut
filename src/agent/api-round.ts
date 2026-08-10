@@ -11,8 +11,6 @@ import {
 import { protocolForProvider } from './client';
 import { describeImagesForTextModel } from './vision';
 import { resolveVisionModel } from './visionConfig';
-import { ToolFailureTracker } from './toolFailure';
-
 export class ApiRoundOutput {
   private textStarted = false;
   private bufferedText = '';
@@ -20,11 +18,9 @@ export class ApiRoundOutput {
   private followupText: string | null = null;
   private followupRequested = false;
   private readonly onEvent: (event: AgentEvent) => void;
-  private readonly toolFailures: ToolFailureTracker;
 
-  constructor(onEvent: (event: AgentEvent) => void, toolFailures: ToolFailureTracker) {
+  constructor(onEvent: (event: AgentEvent) => void) {
     this.onEvent = onEvent;
-    this.toolFailures = toolFailures;
   }
 
   readonly emitText = (delta: string): void => {
@@ -45,10 +41,6 @@ export class ApiRoundOutput {
     return this.followupRequested;
   }
 
-  discardBuffered(): void {
-    this.bufferedText = '';
-  }
-
   flush(): void {
     if (!this.bufferedText) return;
     const pending = this.bufferedText;
@@ -60,14 +52,6 @@ export class ApiRoundOutput {
     this.followupText = null;
     if (!followup) return;
     this.emitVisible(`${this.currentVisibleText.trim() ? '\n\n' : ''}${followup}`);
-  }
-
-  failureCompletion(): ModelMessage {
-    this.bufferedText = '';
-    const report = this.toolFailures.report();
-    this.toolFailures.clear();
-    this.emitVisible(report);
-    return { role: 'assistant', content: report };
   }
 
   private emitVisible(delta: string): void {

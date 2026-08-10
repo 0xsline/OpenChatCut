@@ -131,11 +131,10 @@ export function unresolvedFailureCompletion(
   onEvent: (event: AgentEvent) => void,
 ): string | null {
   if (!state.toolFailures.hasUnresolved) return null;
-  const report = state.toolFailures.report();
+  // The model saw the failed tool result in its own context and replies
+  // freely; no failure-report template is injected, just flush its text.
   state.toolFailures.clear();
-  onEvent({ type: 'text-start' });
-  onEvent({ type: 'text-delta', delta: report });
-  return report;
+  return flushBufferedCompletion(state, onEvent);
 }
 
 export function flushBufferedCompletion(
