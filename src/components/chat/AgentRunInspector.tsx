@@ -187,6 +187,7 @@ function ContextSection({ run, t }: { run: AgentRunRecord; t: Translate }) {
     <div style={metrics}>
       <Metric label={t('活跃工具')} title={t('本次请求向模型开放可调用的工具数量')} value={numberText(contextMetric(context, 'activeToolCount'))} />
       <Metric label={t('工具定义')} title={t('随请求一起发送给模型的工具 Schema 数量')} value={numberText(contextMetric(context, 'toolSchemaCount'))} />
+      <Metric label={t('Schema 字符')} title={t('全部工具 Schema 的字符数，衡量工具面大小')} value={numberText(contextMetric(context, 'toolSchemaChars'))} />
     </div>
     <div style={subheadInSection}>{t('本次运行累计')}</div>
     <div style={metrics}>
@@ -197,12 +198,6 @@ function ContextSection({ run, t }: { run: AgentRunRecord; t: Translate }) {
       <Metric label={t('累计重试')} title={t('本次运行因临时错误自动重试的次数')} value={numberText(contextMetric(context, 'totalRetryCount'))} />
       <Metric label={t('图片输入')} title={t('本次发送给模型的图片数量')} value={numberText(contextMetric(context, 'totalMediaInputs'))} />
     </div>
-    <details style={detailsStyle}>
-      <summary style={detailsSummary}>{t('高级细节')}</summary>
-      <div style={metrics}>
-        <Metric label={t('Schema 字符')} title={t('全部工具 Schema 的字符数，衡量工具面大小')} value={numberText(contextMetric(context, 'toolSchemaChars'))} />
-      </div>
-    </details>
   </Section>;
 }
 
@@ -373,8 +368,6 @@ const interrupted: CSSProperties = { margin: '0 12px 8px', padding: 8, border: `
 const section: CSSProperties = { padding: '9px 12px', borderTop: `0.5px solid ${theme.border}` };
 const sectionTitle: CSSProperties = { margin: '0 0 7px', color: theme.textMuted, fontSize: 10.5, fontWeight: 650, display: 'flex', alignItems: 'center', gap: 4 };
 const subheadInSection: CSSProperties = { margin: '6px 0 4px', color: theme.textMuted, fontSize: 9.5, fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.3 };
-const detailsStyle: CSSProperties = { marginTop: 5 };
-const detailsSummary: CSSProperties = { color: theme.textDim, fontSize: 10, cursor: 'pointer', userSelect: 'none' };
 const metrics: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '5px 10px' };
 const metric: CSSProperties = { color: theme.text, fontSize: 10.5, fontVariantNumeric: 'tabular-nums' };
 const row: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '5px 0' };

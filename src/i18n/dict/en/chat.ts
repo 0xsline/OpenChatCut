@@ -368,7 +368,6 @@ export default {
   '命中率': 'Hit rate',
   '诊断': 'Diagnosis',
   '工具定义': 'Tool schemas',
-  '高级细节': 'Advanced details',
   '输入 token：最近一次模型请求的输入量（提示词+工具结果）': 'Input tokens in the latest model request (prompt + tool results).',
   '输出 token：最近一次模型请求返回的文本量': 'Output tokens returned by the latest model request.',
   '系统提示词占用的输入 token': 'Input tokens used by the system prompt.',
