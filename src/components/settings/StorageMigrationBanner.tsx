@@ -3,23 +3,23 @@
 // dismissible (localStorage) — never blocks the dashboard.
 import { useEffect, useState } from 'react';
 import { useT } from '../../i18n/locale';
+import { theme } from '../../theme';
 import { loadMigrationStatus, STORAGE_BANNER_DISMISS_KEY, STORAGE_MIGRATED_EVENT } from './storageMigration';
 
 const bannerStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 12,
-  marginBottom: 18, padding: '10px 14px',
-  border: '1px solid var(--cc-border)', borderRadius: 10,
-  background: 'var(--cc-bg-soft, rgba(127,127,127,.08))',
-  fontSize: 13, lineHeight: 1.5,
+  marginBottom: 18, padding: '9px 12px',
+  background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`, borderRadius: 6,
+  fontSize: 12.5, lineHeight: 1.5, color: theme.text,
 };
-const bannerBtn: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 8, border: '1px solid var(--cc-border)',
-  background: 'var(--cc-accent)', color: '#fff', cursor: 'pointer',
-  fontWeight: 600, whiteSpace: 'nowrap',
+const bannerText: React.CSSProperties = { flex: 1 };
+const primaryBtn: React.CSSProperties = {
+  background: theme.accent, border: 'none', color: theme.onAccent, cursor: 'pointer',
+  fontSize: 12.5, padding: '6px 14px', borderRadius: 4, whiteSpace: 'nowrap',
 };
 const dismissBtn: React.CSSProperties = {
-  padding: '6px 10px', borderRadius: 8, border: 'none', background: 'transparent',
-  color: 'var(--cc-text-dim, #888)', cursor: 'pointer', whiteSpace: 'nowrap',
+  background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer',
+  fontSize: 12.5, padding: '4px 8px', borderRadius: 4, whiteSpace: 'nowrap',
 };
 
 export function StorageMigrationBanner({ onOpenDialog }: { onOpenDialog: () => void }) {
@@ -54,10 +54,10 @@ export function StorageMigrationBanner({ onOpenDialog }: { onOpenDialog: () => v
 
   return (
     <div style={bannerStyle} role="status">
-      <span style={{ flex: 1 }}>
+      <span style={bannerText}>
         {t('可将工程数据迁移到 SQLite：写入更可靠、加载更快、支持全文搜索。原始 JSON 文件只读保留，随时可回滚。')}
       </span>
-      <button type="button" style={bannerBtn} onClick={onOpenDialog}>{t('迁移到 SQLite')}</button>
+      <button type="button" style={primaryBtn} onClick={onOpenDialog}>{t('迁移到 SQLite')}</button>
       <button type="button" style={dismissBtn} onClick={dismiss}>{t('忽略')}</button>
     </div>
   );
