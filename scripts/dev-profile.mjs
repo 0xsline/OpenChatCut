@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import {
-  chmod, link, lstat, mkdir, open, readFile, readdir, realpath, rm, stat,
+  chmod, link, lstat, mkdir, open, readFile, realpath, rm, stat,
 } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -182,70 +182,44 @@ async function readProfileEnv(path) {
 }
 
 /**
- * In dev, Remotion serves headless preview/render from the local
- * Node_modules/.remotion cache (versioned by the installed @remotion/* version).
- * The desktop packaging path sets CC_BROWSER_EXECUTABLE explicitly so the packaged
- * app never redownloads; dev historically left it unset, so every openBrowser()
- * re-downloaded the pinned headless-shell and could stall preview/render.
- *
- * Here we behave like the packaged runtime: if the caller did not explicitly set
- * CC_BROWSER_EXECUTABLE, resolve the installed .remotion headless-shell and pass
- * it through. Remotion treats an explicit browserExecutable as user-defined and
- * skips its own download checks, so dev stops re-downloading once the shell exists.
- * Returns undefined when nothing usable is found (caller falls back to Remotion).
+ * Reuse only the exact headless-shell build that the installed Remotion accepts
+ * for this platform and architecture. The download callback throws before any
+ * network or cache mutation; an absent, stale, or incomplete cache is left for
+ * the child renderer to repair on demand. Explicit caller configuration wins.
  */
-export async function resolveDevHeadlessShell(root = process.cwd(), environment = process.env) {
+export async function resolveDevHeadlessShell(
+  environment = process.env,
+  ensureBrowserImpl,
+) {
   if (environment.CC_BROWSER_EXECUTABLE) return undefined;
-  const remotionDir = join(root, 'node_modules', '.remotion', 'chrome-headless-shell');
-  let platformDirs;
   try {
-    platformDirs = await readdir(remotionDir);
+    const ensureBrowser = ensureBrowserImpl
+      ?? (await import('@remotion/renderer')).ensureBrowser;
+    const status = await ensureBrowser({
+      chromeMode: 'headless-shell',
+      logLevel: 'error',
+      onBrowserDownload: () => {
+        throw new Error('Remotion headless-shell cache is unavailable');
+      },
+    });
+    if (status.type !== 'local-puppeteer-browser') return undefined;
+    const executable = await stat(status.path);
+    const canExecute = process.platform === 'win32' || (executable.mode & 0o111) !== 0;
+    return executable.isFile() && canExecute ? status.path : undefined;
   } catch {
     return undefined;
   }
-  for (const platformDir of platformDirs.sort()) {
-    if (platformDir === 'VERSION') continue;
-    const appDir = join(remotionDir, platformDir);
-    let candidates;
-    try {
-      candidates = await readdir(appDir);
-    } catch {
-      continue;
-    }
-    for (const candidate of candidates.sort()) {
-      const candidatePath = join(appDir, candidate);
-      let candidateStat;
-      try {
-        candidateStat = await stat(candidatePath);
-      } catch {
-        continue;
-      }
-      if (!candidateStat.isDirectory()) continue;
-      const executableName = process.platform === 'win32'
-        ? 'chrome-headless-shell.exe'
-        : 'chrome-headless-shell';
-      const exePath = join(candidatePath, executableName);
-      try {
-        const exeStat = await stat(exePath);
-        const executable = process.platform === 'win32' || (exeStat.mode & 0o111) !== 0;
-        if (exeStat.isFile() && executable) return exePath;
-      } catch {
-        // try next candidate
-      }
-    }
-  }
-  return undefined;
 }
 
 export async function profileChildEnvironment(
   profile,
   baseEnvironment = process.env,
-  repoRoot = process.cwd(),
+  ensureBrowserImpl,
 ) {
   const saved = await readProfileEnv(profile.keystorePath);
   const environment = { ...baseEnvironment, ...saved, [DEV_PROFILE_ID_ENV]: profile.id };
   if (!environment.CC_BROWSER_EXECUTABLE) {
-    const shellPath = await resolveDevHeadlessShell(repoRoot, environment);
+    const shellPath = await resolveDevHeadlessShell(environment, ensureBrowserImpl);
     if (shellPath) environment.CC_BROWSER_EXECUTABLE = shellPath;
   }
   return environment;

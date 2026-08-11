@@ -15,7 +15,7 @@ This is an OpenChatCut-native workflow. Use the current project's assets, transc
 2. **话题分析与时长确定**：判断素材包含多少个话题，区分核心话题与次要内容。
 3. **内容组织**：开头直接呈现最重要的新闻结果/核心结论/最新进展/关键现场画面，不铺垫。
 4. **剪辑执行**：按保留/删除规则筛选，讲话按语义完整切割。
-5. **音频只保留原声**：不新增任何 BGM/配音/旁白/音效/转场音效。
+5. **音频只保留原声**：开始编辑前记录工程内所有初始视频/音频来源，成片只允许这些来源的裁剪、切分和重排，不新增任何 BGM/配音/旁白/音效/转场音效。
 6. **终检**：逐段回放核对事实忠实、讲话语义完整、剪切点衔接自然。
 
 ## 话题分析与时长确定
@@ -106,12 +106,12 @@ This is an OpenChatCut-native workflow. Use the current project's assets, transc
 
 ## OpenChatCut 工具对应
 
-- `read_project` / `read_timeline`：先读工程与时间线状态。
+- `read_project` / `read_timeline`：先读工程与时间线状态，并记录初始 `video` / `audio` 的 `sourceAssetId` 与 `src` 来源基线。
 - `transcribe_track` + 文字稿词级编辑：讲话语义完整切割、删口头语/重复。
 - `view_timeline_frames`：核对画面内容与关键现场。
 - `edit_item`（trim / ripple delete / fade）与 `split_item`（split）：按保留/删除规则剪辑并处理剪切点衔接。
 - `edit_track`：需要多轨整理时创建、调整或收紧人声轨与现场声轨。
-- 输出前用预览/导出预检核对时长与内容完整性。
+- 输出前再次 `read_project`，按来源基线核对所有最终 `video` / `audio` 项，并用预览/导出预检核对时长与内容完整性。
 
 ## 参考文件
 

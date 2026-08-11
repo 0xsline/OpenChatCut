@@ -27,15 +27,13 @@ import { computeAgentRequestShapeFingerprint } from './runtime';
 import type { Proposal } from './proposal';
 import { isFailedToolResult } from './toolFailure';
 import { verifyArtifactAndCheckpointScenarios } from './harness-runtime-artifacts.verify-helper';
-import { resolveToolTimeoutMs } from './api-attempt';
+import { AGENT_TOOL_TIMEOUTS } from './api-attempt';
 
 const projectId = 'harness-runtime-verify';
 const aspectSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'set_aspect_ratio')!;
 const installSkillSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'install_skill')!;
-const transcriptionSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'transcribe_track')!;
-assert.equal(resolveToolTimeoutMs([]), 30_000);
-assert.equal(resolveToolTimeoutMs([aspectSchema]), 30_000);
-assert.equal(resolveToolTimeoutMs([transcriptionSchema]), 300_000);
+assert.equal(AGENT_TOOL_TIMEOUTS.toolMs, 30_000);
+assert.equal(AGENT_TOOL_TIMEOUTS.tools.transcribe_trackMs, 300_000);
 const ctx = {
   getProjectId: () => projectId,
   getState: () => ({ items: [], transitions: [] }),

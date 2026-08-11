@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -64,36 +64,49 @@ try {
     'an isolated empty-value tombstone must suppress an inherited checkout secret');
   assert.equal(childEnvironment.OPENCHATCUT_DEV_PROFILE_ID, UUID_A);
 
-  const shellPaths = await fixturePaths('headless-shell');
-  const executableName = process.platform === 'win32'
-    ? 'chrome-headless-shell.exe'
-    : 'chrome-headless-shell';
-  const shellExecutable = join(
-    shellPaths.repoRoot,
-    'node_modules',
-    '.remotion',
-    'chrome-headless-shell',
-    'current-platform',
-    'current-version',
-    executableName,
-  );
-  await mkdir(join(shellExecutable, '..'), { recursive: true });
+  const shellExecutable = join(fixture, 'headless-shell');
   await writeFile(shellExecutable, 'test shell', { mode: 0o755 });
+  let browserResolutionCalls = 0;
+  const resolveCachedBrowser = async (options) => {
+    browserResolutionCalls += 1;
+    assert.equal(options.chromeMode, 'headless-shell');
+    assert.equal(options.logLevel, 'error');
+    return { type: 'local-puppeteer-browser', path: shellExecutable };
+  };
   assert.equal(
-    await resolveDevHeadlessShell(shellPaths.repoRoot, {}),
+    await resolveDevHeadlessShell({}, resolveCachedBrowser),
     shellExecutable,
-    'an installed executable headless shell is reused',
+    'Remotion-approved executable headless shell is reused',
   );
-  const discoveredShellEnvironment = await profileChildEnvironment(first, {}, shellPaths.repoRoot);
+  const discoveredShellEnvironment = await profileChildEnvironment(first, {}, resolveCachedBrowser);
   assert.equal(discoveredShellEnvironment.CC_BROWSER_EXECUTABLE, shellExecutable);
   const explicitShellEnvironment = await profileChildEnvironment(first, {
     CC_BROWSER_EXECUTABLE: '/explicit/headless-shell',
-  }, shellPaths.repoRoot);
+  }, async () => {
+    assert.fail('explicit browser configuration must bypass Remotion resolution');
+  });
   assert.equal(
     explicitShellEnvironment.CC_BROWSER_EXECUTABLE,
     '/explicit/headless-shell',
     'an explicit browser executable remains authoritative',
   );
+  assert.equal(browserResolutionCalls, 2);
+  assert.equal(
+    await resolveDevHeadlessShell({}, async (options) => {
+      options.onBrowserDownload({ chromeMode: 'headless-shell' });
+      return { type: 'no-browser' };
+    }),
+    undefined,
+    'missing or version-mismatched caches fall back without starting a download',
+  );
+  if (process.platform !== 'win32') {
+    await chmod(shellExecutable, 0o644);
+    assert.equal(
+      await resolveDevHeadlessShell({}, resolveCachedBrowser),
+      undefined,
+      'a non-executable cache entry is never injected',
+    );
+  }
   if (process.platform !== 'win32') {
     assert.equal((await stat(first.metadataPath)).mode & 0o777, 0o600);
     assert.equal((await stat(first.rootDir)).mode & 0o777, 0o700);
