@@ -12,7 +12,11 @@ import {
 import { sanitizePortableProjectDoc } from './portableProject';
 
 export function sanitizePortableChat(chat: PersistedChat): PersistedChat {
-  const { sessionGeneration: _sessionGeneration, ...portableChat } = chat;
+  const {
+    sessionGeneration: _sessionGeneration,
+    serverRunTurnIds: _serverRunTurnIds,
+    ...portableChat
+  } = chat;
   const changeLog = parseAgentChangeLog(chat.changeLog).map((session) => ({
     ...session,
     beforeDoc: sanitizePortableProjectDoc(session.beforeDoc),

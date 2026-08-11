@@ -565,6 +565,7 @@ export function ChatComposer(props: ChatComposerProps) {
         <ComposerPopover anchor={popAnchor} onClose={closePop}>
           <AgentComposerSettings
             autoApply={autoApply}
+            running={running}
             onAutoApplyChange={onAutoApplyChange}
             settings={agentSettings}
             onSettingsChange={patchAgent}

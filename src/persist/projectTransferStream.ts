@@ -30,6 +30,7 @@ export interface StreamProjectManifest {
   chat?: PersistedChat;
   creativeMode?: string;
   proposal?: StoredProposalRecord;
+  agentRuntime?: true;
 }
 
 export interface StagedStreamProject extends StreamProjectManifest {
@@ -259,7 +260,10 @@ class StreamImportState {
   ): Promise<StagedStreamProject> {
     if (!this.manifest) throw new Error('工程包缺 manifest');
     if (this.current) throw new Error('工程包媒体记录被截断');
-    const runtime = await this.runtimeReader.finish(this.manifest.chat);
+    const runtime = await this.runtimeReader.finish(
+      this.manifest.chat,
+      this.manifest.agentRuntime === true,
+    );
     return {
       ...this.manifest,
       doc: rewriteDoc(this.manifest.doc, this.replacements),

@@ -21,7 +21,7 @@ export interface AgentSettings {
   planMode: boolean;
   /** Provider prompt-cache duration: short sessions favor the default TTL; long sessions request 1h where supported. */
   cacheMode: AgentCacheMode;
-  /** Experimental: run the agent loop on the dev server (durable across refresh). */
+  /** Opt-in: run the Agent loop on the local server so browser refreshes do not interrupt it. */
   serverRun: boolean;
 }
 

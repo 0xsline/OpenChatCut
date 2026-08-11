@@ -1,6 +1,6 @@
 // The orchestration system prompt.
 // Authored in-house, grounded in the bundled skills + tool model.
-import { GENERATE_WORKFLOW } from './tools/generate-tools';
+import { GENERATE_WORKFLOW } from './generate-workflow';
 import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../editor/types';
 import type { SkillDefinition } from './skills/skill-types';
 import type { AgentContext } from './context';

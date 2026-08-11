@@ -28,6 +28,10 @@ export default {
   '重试': 'Retry',
   // ── Agent run inspector / durable guard ──
   'Agent 运行检查器': 'Agent Run Inspector',
+  '服务端运行事件': 'Server-side run events',
+  '没有服务端事件': 'No server-side events',
+  '服务端': 'Server-side',
+
   '运行中': 'Running',
   '等待确认': 'Awaiting approval',
   '等待回复': 'Awaiting reply',
@@ -220,7 +224,7 @@ export default {
   '缓存读取 {tokens}': 'Cache read {tokens}',
   '请先在设置中配置一个模型厂商。': 'Configure at least one model provider in Settings first.',
   '正在读取模型配置…': 'Loading model configuration…',
-  '服务端运行（实验）': 'Server-side runs (experimental)',
+  '服务端运行': 'Server-side runs',
   'Agent 在本地服务端执行，刷新页面不会中断正在进行的任务。': 'The Agent runs in the local server, so refreshing the page does not interrupt active work.',
   '设置': 'Settings',
   'Ask 模式': 'Ask Mode',

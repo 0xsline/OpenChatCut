@@ -87,6 +87,12 @@ export interface AgentRunContext {
   readonly cacheMissTokens?: number;
   readonly cacheMissReason?: AgentCacheMissReason;
   readonly lastRequestAt?: number;
+  /** SHA-256 verifier only; never a bearer credential. */
+  readonly serverRunCapabilityVerifier?: string;
+  /** Durable server transport lifecycle; browser proposal settlement owns AgentRunRecord.status. */
+  readonly transportStatus?: 'queued' | 'running' | 'awaiting-confirmation' | 'awaiting-user'
+    | 'completed' | 'failed' | 'cancelled';
+  readonly transportError?: string | null;
 }
 export interface AgentRunRecord {
   readonly version: 1;
@@ -138,7 +144,7 @@ export interface AgentCheckpointRecord {
   readonly sourceArtifactId: string;
   readonly createdAt: number;
 }
-export type AgentArtifactKind = 'tool-result' | 'checkpoint-source';
+export type AgentArtifactKind = 'tool-result' | 'checkpoint-source' | 'server-run-draft';
 export interface AgentArtifactRecord {
   readonly version: 1;
   readonly artifactId: string;

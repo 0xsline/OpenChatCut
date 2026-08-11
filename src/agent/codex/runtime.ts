@@ -174,6 +174,12 @@ function deniedResult(hasHandler: boolean): Record<string, unknown> {
       : 'This persistent, paid, or irreversible operation requires confirmation, but no confirmation handler is available.',
   };
 }
+function toolFollowupText(result: unknown): string | null {
+  if (!result || typeof result !== 'object' || Array.isArray(result)
+    || !('__followup' in result) || typeof result.__followup !== 'string') return null;
+  return result.__followup;
+}
+
 async function settleToolResult(
   schema: AgentToolSchema,
   args: Record<string, unknown>,
@@ -213,7 +219,7 @@ async function settleToolResult(
     artifactId: ref?.artifactId,
   }).catch(() => undefined);
   throwIfToolAborted(execution.signal, state);
-  const followup = (rawResult as { __followup?: unknown } | null)?.__followup;
+  const followup = toolFollowupText(rawResult);
   if (success && typeof followup === 'string') execution.onFollowup?.(followup);
   execution.onEvent({ type: 'tool', name: schema.name, args, result });
   if (success && typeof followup === 'string') {

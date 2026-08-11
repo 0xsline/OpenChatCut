@@ -49,9 +49,14 @@ const externalSessionId = 'external-session-transfer';
 const checkpointId = '3d594650-3436-4d7d-92f0-f44d6a89e099';
 const sourceArtifactId = 'checkpointsource01';
 const toolArtifactId = 'toolresult01';
+const draftArtifactId = 'serverdraft01';
 const summary = 'The earlier turns established the imported runtime contract.';
 const sourceBody = JSON.stringify([{ role: 'user', content: 'Preserve runtime linkage.' }]);
 const toolBody = JSON.stringify({ rows: [{ value: 'exact archived tool result' }] });
+const draftBody = JSON.stringify({
+  kind: 'tool',
+  args: { url: 'https://private.example/video.mp4?X-Amz-Signature=export-secret' },
+});
 const markerMessage = async (): Promise<string> => {
   const sourceDigest = await sha256Text(sourceBody);
   const summaryDigest = await sha256Text(summary);
@@ -76,9 +81,21 @@ async function seedRun(projectId: string, now: number, proposalId: string): Prom
     ownerInstanceId: 'source-editor-owner', leaseToken, leaseExpiresAt: now + 600_000,
     externalSessionId,
     artifactIds: [], checkpointIds: [], proposalIds: [proposalId],
+    context: {
+      requestShapeHash: await sha256Text('server-run-transfer-shape'),
+      serverRunCapabilityVerifier: 'd'.repeat(64),
+      transportStatus: 'awaiting-confirmation',
+      transportError: null,
+    },
     events: [{
       eventId, projectId, runId, sequence: 1, type: 'approval_requested',
       createdAt: now, approvalId, proposalId,
+      context: {
+        requestShapeHash: await sha256Text('server-run-transfer-event-shape'),
+        serverRunCapabilityVerifier: 'e'.repeat(64),
+        transportStatus: 'running',
+        transportError: 'transient transport detail',
+      },
     }],
   });
   await upsertAgentApproval({
@@ -105,6 +122,15 @@ async function seedArtifacts(projectId: string, now: number): Promise<string> {
     originalChars: toolBody.length, createdAt: now,
     redacted: false, binaryOmitted: false, body: toolBody,
     toolCallId: 'tool_call_transfer_01', toolName: 'inspect_project',
+  }), true);
+  const draftDigest = await sha256Text(draftBody);
+  assert.equal(await storeAgentArtifact({
+    version: 1, artifactId: draftArtifactId, projectId, runId, kind: 'server-run-draft',
+    bodySha256: draftDigest,
+    originalBytes: new TextEncoder().encode(draftBody).byteLength,
+    originalChars: draftBody.length, createdAt: now,
+    redacted: false, binaryOmitted: false, body: draftBody,
+    toolCallId: 'tool_call_draft_01', toolName: 'download_media',
   }), true);
   return sourceDigest;
 }
@@ -151,6 +177,9 @@ function verifyImportedProposalClosure(
   assert.equal(sidecar.runs[0]?.leaseExpiresAt, undefined);
   assert.equal(sidecar.runs[0]?.externalSessionId, undefined);
   assert.equal(sidecar.approvals[0]?.status, 'cancelled');
+  assert.equal(sidecar.runs[0]?.context?.serverRunCapabilityVerifier, undefined);
+  assert.equal(sidecar.runs[0]?.context?.transportStatus, undefined);
+  assert.equal(sidecar.runs[0]?.context?.transportError, undefined);
 }
 
 async function verifyPortableRuntimeExport(
@@ -163,6 +192,11 @@ async function verifyPortableRuntimeExport(
     /source-editor-owner|source-lease-token|external-session-transfer/,
     'portable records exclude live owner, lease, and external-session authority',
   );
+  assert.doesNotMatch(
+    serialized,
+    /serverdraft01|export-secret/,
+    'recovery-only server drafts are excluded from portable packages',
+  );
   const reader = new AgentRuntimeImportReader();
   for (const row of rows) await reader.consume(row);
   const snapshot = await reader.finish(chat);
@@ -171,8 +205,16 @@ async function verifyPortableRuntimeExport(
   for (const key of ['ownerInstanceId', 'leaseToken', 'leaseExpiresAt', 'externalSessionId']) {
     assert.equal(Object.hasOwn(run, key), false);
   }
+  for (const key of ['serverRunCapabilityVerifier', 'transportStatus', 'transportError']) {
+    assert.equal(Object.hasOwn(run.context ?? {}, key), false);
+  }
+  for (const key of ['serverRunCapabilityVerifier', 'transportStatus', 'transportError']) {
+    assert.equal(Object.hasOwn(run.events[0]?.context ?? {}, key), false);
+  }
   assert.equal(snapshot.artifacts.find((artifact) => artifact.artifactId === sourceArtifactId)?.body, sourceBody);
   assert.equal(snapshot.artifacts.find((artifact) => artifact.artifactId === toolArtifactId)?.body, toolBody);
+  assert.equal(snapshot.artifacts.some((artifact) => artifact.artifactId === draftArtifactId), false);
+  assert.equal(run.artifactIds.includes(draftArtifactId), false);
   const marker = await verifyCanonicalContextCheckpoint(
     chat.llm as ModelMessage[],
     snapshot.sidecar.checkpoints,
@@ -186,6 +228,11 @@ async function verifySourceAuthorityPreserved(projectId: string): Promise<void> 
   assert.equal(liveRun.ownerInstanceId, 'source-editor-owner');
   assert.equal(liveRun.leaseToken, leaseToken);
   assert.equal(liveRun.externalSessionId, externalSessionId);
+  assert.equal(liveRun.context?.serverRunCapabilityVerifier, 'd'.repeat(64));
+  assert.equal(liveRun.context?.transportStatus, 'awaiting-confirmation');
+  assert.equal(liveRun.context?.transportError, null);
+  assert.equal(liveRun.events[0]?.context?.serverRunCapabilityVerifier, 'e'.repeat(64));
+  assert.equal(liveRun.events[0]?.context?.transportStatus, 'running');
 }
 
 
@@ -199,6 +246,7 @@ async function verifyRoundTrip(): Promise<Record<string, unknown>[]> {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
   assert.equal(rows[0]?.format, PROJECT_STREAM_FORMAT);
   assert.equal('runtime' in rows[0]!, false, 'runtime is never aggregated into the manifest line');
+  assert.equal(rows[0]?.agentRuntime, true, 'manifest declares the following runtime segment');
   assert.ok(rows[0]?.proposal, 'pending proposal payload is carried in the manifest');
   assert.ok(rows.some((row) => row.type === 'agent-runtime-start'));
   assert.ok(rows.some((row) => row.type === 'agent-artifact-chunk'));
@@ -275,6 +323,12 @@ await rejectsBeforePublish(exportedRows, (rows) => rows.map((row, index) => {
   const { proposal: _proposal, ...manifest } = row;
   return manifest;
 }), /proposal.*closure|closure.*proposal/i);
+await rejectsBeforePublish(
+  exportedRows,
+  (rows) => [rows[0]!],
+  /runtime.*missing|missing.*runtime|truncated/i,
+);
+
 
 
 await rejectsBeforePublish(exportedRows, (rows) => rows.map((row) => (
@@ -298,6 +352,19 @@ await rejectsBeforePublish(exportedRows, (rows) => rows.map((row) => (
     ? { ...row, originalBytes: 8 * 1024 * 1024 + 1 }
     : row
 )), /cap|invalid|exceed/i);
+
+await rejectsBeforePublish(exportedRows, (rows) => {
+  const start = rows.find((row) => row.type === 'agent-runtime-start');
+  assert(start && typeof start.bytes === 'number');
+  const excessive = Array.from(
+    { length: Math.ceil(start.bytes / (48 * 1024)) + 1 },
+    () => ({ type: 'agent-runtime-chunk', data: 'e30=' }),
+  );
+  return rows.flatMap((row) => {
+    if (row.type === 'agent-runtime-chunk') return [];
+    return row.type === 'agent-runtime-end' ? [...excessive, row] : [row];
+  });
+}, /chunk count exceeds cap/i);
 
 await rejectsBeforePublish(exportedRows, (rows) => rows.map((row) => (
   row.type === 'agent-artifact-start' && row.artifactId === toolArtifactId

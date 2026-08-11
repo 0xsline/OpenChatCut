@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
 import type { ToolResultPart } from 'ai';
-import { loadChat, saveChat } from '../persist/projectStore';
+import {
+  loadChat,
+  saveChat,
+  type PersistedChat,
+} from '../persist/projectStore';
 import {
   clearProposal,
   loadProposalRecord,
@@ -30,6 +34,11 @@ import {
   type ProposalRuntimeStatus,
 } from './runtime-ledger';
 import {
+  clearStoredServerRun,
+  readStoredServerRun,
+} from './serverRunSessionStorage';
+import { storedServerRunPreservesHydration } from './serverRunRecovery';
+import {
   loadAgentRuntimeSidecar,
   recoverInterruptedAgentRuns,
   type AgentRunStatus,
@@ -48,11 +57,19 @@ export async function recordProposalOutcome(
   const sidecar = await loadAgentRuntimeSidecar(projectId);
   const run = sidecar.runs.find((candidate) => candidate.runId === proposal.agentRunId);
   if (!run) throw new Error('Agent proposal run is missing.');
-  if (['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) return;
-  const recorder = await resumeAgentRun(projectId, proposal.agentRunId);
+  if (['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) {
+    clearStoredServerRun(projectId, proposal.agentRunId);
+    return;
+  }
+  const stored = readStoredServerRun(projectId);
+  const leaseToken = stored?.runId === proposal.agentRunId ? stored.leaseToken : undefined;
+  const recorder = await resumeAgentRun(projectId, proposal.agentRunId, leaseToken);
   if (!recorder) throw new Error('Agent proposal is active in another editor or no longer resumable.');
   await recorder.recordProposal(proposal.id, status);
   await recorder.finalize(finalStatus, summary);
+  if (['completed', 'failed', 'aborted', 'interrupted'].includes(finalStatus)) {
+    clearStoredServerRun(projectId, proposal.agentRunId);
+  }
 }
 
 function externalProposalRunIds(external: StoredExternalProposal | null): Set<string> {
@@ -127,7 +144,9 @@ async function claimRecoveredProposalRun(
 ) {
   const runId = record?.phase !== 'settled' ? record?.proposal.agentRunId : undefined;
   if (!runId) return null;
-  const recorder = await resumeAgentRun(projectId, runId);
+  const stored = readStoredServerRun(projectId);
+  const leaseToken = stored?.runId === runId ? stored.leaseToken : undefined;
+  const recorder = await resumeAgentRun(projectId, runId, leaseToken);
   if (recorder) return recorder;
   const run = (await loadAgentRuntimeSidecar(projectId)).runs
     .find((candidate) => candidate.runId === runId);
@@ -152,10 +171,15 @@ export async function loadRecoveredAgentSession(
   ]);
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   const externalRunIds = externalProposalRunIds(external);
+  const preservedRunIds = preservedProposalRunIds(record, external);
+  const storedServerRun = readStoredServerRun(projectId);
+  if (storedServerRunPreservesHydration(storedServerRun)) {
+    preservedRunIds.add(storedServerRun.runId);
+  }
   await recover(
     projectId,
     Date.now(),
-    preservedProposalRunIds(record, external),
+    preservedRunIds,
     externalRunIds,
     currentAgentRunOwnerInstanceId(),
   );
@@ -223,7 +247,11 @@ export function cleanupAgentHydration(
   if (!activeExecution) void stopLeases(projectId);
 }
 
-export function useAgentHydration(state: AgentHookState, projectId: string, enabled = true): void {
+export function useAgentHydration(
+  state: AgentHookState,
+  projectId: string,
+  enabled = true,
+): void {
   const stateRef = useRef(state);
   stateRef.current = state;
   useEffect(() => {
@@ -366,25 +394,35 @@ export function projectLlmMessagesForPersistence(messages: readonly LLMMessage[]
     });
 }
 
-function persistAgentSession(state: AgentHookState, projectId: string): void {
-  void saveChat(projectId, {
+export function agentSessionSnapshot(
+  state: AgentHookState,
+  llm: readonly LLMMessage[] = state.llmRef.current,
+): PersistedChat {
+  return {
     messages: messagesForPersistence(state.messages),
-    llm: projectLlmMessagesForPersistence(state.llmRef.current),
+    llm: projectLlmMessagesForPersistence(llm),
     changeLog: state.changeLog,
     llmFormat: 'ai-sdk-v1',
     llmProvider: state.llmProviderRef.current,
     toolFailures: state.toolFailuresRef.current.snapshot(),
-  });
+  };
 }
 
-export function useAgentPersistence(state: AgentHookState, projectId: string, enabled = true): void {
+function persistAgentSession(state: AgentHookState, projectId: string): void {
+  void saveChat(projectId, agentSessionSnapshot(state));
+}
+
+export function useAgentPersistence(
+  state: AgentHookState,
+  projectId: string,
+  enabled = true,
+): void {
   const stateRef = useRef(state);
   stateRef.current = state;
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled) return;
     const current = stateRef.current;
     if (!current.hydratedRef.current || current.runningRef.current) return undefined;
     persistAgentSession(current, projectId);
-    return undefined;
-  }, [enabled, state.changeLog, state.messages, state.running, projectId]);
+  }, [enabled, state.messages, state.changeLog, state.running, projectId]);
 }

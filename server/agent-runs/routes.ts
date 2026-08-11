@@ -1,21 +1,80 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
-import { defaultModelForProvider, normalizeLlmProvider } from '../../shared/llm-providers';
+import {
+  defaultModelForProvider,
+  normalizeLlmProvider,
+  normalizeOpenAiApiMode,
+} from '../../shared/llm-providers';
 import { resolveLlmProviderConfig } from '../llm-config';
 import { getKey, type KeyName } from '../keystore';
-import { executeRun } from './executor';
+import { activateOfflineAgentRuntimeBackend } from '../external-agent/agent-runtime-persistence';
+import { executeRun, type ServerRunInput } from './executor';
+import { resolveServerRunToolCatalog } from './tool-policy';
 import {
   cancelRun,
-  createRun,
-  deliverToolResult,
-  failToolResult,
+  claimToolRequest,
+  createRunWithPresentedCapability,
+  flushRunPersistence,
   getRun,
-  pruneRuns,
-  waitForRunEvents,
+  prepareRunAdmission,
+  recoverServerRun,
+  verifyServerRunCapability,
+  replayWindow,
+  settleToolResult,
+  RunStoreLimitError,
   type ServerRun,
+  type ToolClaimOutcome,
+  type ToolResultOutcome,
 } from './store';
+import { digestValue } from './store-values';
+import {
+  readJson,
+  requestHeader,
+  requestOrigin,
+  requireProjectId,
+  validateCreateInput,
+  type ValidatedCreateInput,
+} from './request';
+import { CursorProtocolError, resolveCursor, sseForRun } from './sse';
+import { projectStoreHttpAuthorized, projectStoreReadAuthorized } from '../project-store-http-auth';
+const MAX_TOOL_RESULT_BODY_BYTES = 1024 * 1024;
+const SERVER_RUN_CAPABILITY_HEADER = 'x-openchatcut-run-capability';
+const SERVER_RUN_ADMISSION_TIMEOUT_MS = 60_000;
+interface DeferredRun {
+  readonly input: ServerRunInput;
+  readonly timeout: NodeJS.Timeout;
+}
+const deferredRuns = new Map<string, DeferredRun>();
+const startedRuns = new Set<string>();
 
-const MAX_BODY_BYTES = 1024 * 1024;
+function deferRunExecution(run: ServerRun, input: ServerRunInput): void {
+  const timeout = setTimeout(() => {
+    if (!deferredRuns.delete(run.id)) return;
+    void cancelRun(run);
+  }, SERVER_RUN_ADMISSION_TIMEOUT_MS);
+  deferredRuns.set(run.id, { input, timeout });
+}
+
+function startDeferredRun(run: ServerRun): 'started' | 'already_started' | 'unavailable' {
+  const deferred = deferredRuns.get(run.id);
+  if (!deferred) {
+    return startedRuns.has(run.id) || run.status !== 'queued'
+      ? 'already_started'
+      : 'unavailable';
+  }
+  deferredRuns.delete(run.id);
+  clearTimeout(deferred.timeout);
+  startedRuns.add(run.id);
+  void executeRun(run, deferred.input).finally(() => startedRuns.delete(run.id));
+  return 'started';
+}
+
+function discardDeferredRun(runId: string): void {
+  const deferred = deferredRuns.get(runId);
+  if (deferred) clearTimeout(deferred.timeout);
+  deferredRuns.delete(runId);
+}
+
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -25,195 +84,334 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buffer.length;
-    if (total > MAX_BODY_BYTES) throw new Error('request body too large');
-    chunks.push(buffer);
-  }
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('body must be a JSON object');
-  }
-  return parsed as Record<string, unknown>;
+function outcomeStatus(outcome: ToolClaimOutcome | ToolResultOutcome): number {
+  if (outcome === 'unknown-call') return 404;
+  return outcome === 'mismatch' || outcome === 'unclaimed'
+    || outcome === 'already-claimed' || outcome === 'run-settled'
+    ? 409
+    : 200;
 }
 
-function writeSse(res: ServerResponse, event: { id: number; type: string; data: unknown }): void {
-  res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
-}
 
-function sseForRun(req: IncomingMessage, res: ServerResponse, run: ServerRun): void {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
+
+async function boundRun(
+  req: IncomingMessage,
+  res: ServerResponse,
+  projectId: string,
+  runId: string,
+): Promise<ServerRun | null> {
+  const current = getRun(runId);
+  if (
+    current
+    && !verifyServerRunCapability(
+      current.capabilityVerifier,
+      requestHeader(req, SERVER_RUN_CAPABILITY_HEADER),
+    )
+  ) {
+    sendJson(res, 403, { error: 'invalid run capability' });
+    return null;
+  }
+  if (current && current.projectId !== projectId) {
+    sendJson(res, 409, { error: 'projectId does not match the run' });
+    return null;
+  }
+  const run = await recoverServerRun(projectId, runId);
+  if (!run) {
+    sendJson(res, 404, { error: 'run not found' });
+    return null;
+  }
+  if (!current && !verifyServerRunCapability(
+    run.capabilityVerifier,
+    requestHeader(req, SERVER_RUN_CAPABILITY_HEADER),
+  )) {
+    sendJson(res, 403, { error: 'invalid run capability' });
+    return null;
+  }
+  return run;
+}
+function runRequestDigests(
+  input: ValidatedCreateInput,
+  execution: ServerRunInput,
+  askOnly: boolean,
+  sessionGeneration: string,
+): { readonly userInputDigest: string; readonly requestShapeHash: string } {
+  const userInputDigest = digestValue(input.messages);
+  return {
+    userInputDigest,
+    requestShapeHash: digestValue({
+      projectId: input.projectId,
+      sessionGeneration,
+      userInputDigest,
+      askOnly,
+      references: input.references,
+      externalSessionId: input.externalSessionId,
+      context: input.context,
+      provider: execution.provider,
+      model: execution.model,
+      openAiApiMode: execution.openAiApiMode,
+      cacheMode: execution.cacheMode,
+      maxOutputTokens: execution.maxOutputTokens,
+      tools: execution.tools,
+      instructions: execution.instructions,
+    }),
+  };
+}
+function sendCreatedRun(
+  res: ServerResponse,
+  run: ServerRun,
+  capability: string,
+  status: 200 | 201,
+): void {
+  sendJson(res, status, {
+    id: run.id,
+    sessionGeneration: run.sessionGeneration,
+    projectId: run.projectId,
+    capability,
+    askOnly: run.askOnly,
+    references: run.references,
+    externalSessionId: run.externalSessionId ?? null,
+    context: run.context ?? null,
   });
-  const lastEventId = Number(req.headers['last-event-id'] ?? 0);
-  let closed = false;
-  const close = (): void => {
-    closed = true;
-    run.waiters.delete(pump);
-    res.end();
-  };
-  req.on('close', close);
-  res.on('close', close);
-  const pump = async (): Promise<void> => {
-    while (!closed) {
-      const pending = run.events.filter((event) => event.id > lastEventId);
-      if (pending.length > 0) {
-        for (const event of pending) writeSse(res, event);
-        return;
-      }
-      const settled = run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled';
-      if (settled) {
-        writeSse(res, { id: run.eventCursor + 1, type: 'done', data: { status: run.status } });
-        res.end();
-        return;
-      }
-      await waitForRunEvents(run, run.eventCursor);
-    }
-  };
-  run.waiters.add(pump);
-  void pump();
 }
 
-export function agentRunsPlugin(): Plugin {
+function ensureDeferredRunExecution(run: ServerRun, input: ServerRunInput): void {
+  if (run.status !== 'queued' || deferredRuns.has(run.id) || startedRuns.has(run.id)) return;
+  deferRunExecution(run, input);
+}
+
+
+
+async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readJson(req);
+  const input = validateCreateInput(body);
+  const askOnly = body.askOnly === true;
+  const origin = requestOrigin(req);
+  if (!origin) return sendJson(res, 400, { error: 'valid request host is required' });
+  const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
+  const requestedModel = input.model;
+  const readKey = (name: string): string => getKey(name as KeyName);
+  const config = resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
+  const effectiveProvider = normalizeLlmProvider(config.provider);
+  const effectiveModel = requestedModel || config.model || defaultModelForProvider(effectiveProvider);
+  const openAiApiMode = normalizeOpenAiApiMode(body.openAiApiMode);
+  const tools = resolveServerRunToolCatalog(input.tools, askOnly);
+  const existing = getRun(input.runId)
+    ?? await recoverServerRun(input.projectId, input.runId);
+  const sessionGeneration = existing?.sessionGeneration
+    ?? await prepareRunAdmission(input.projectId);
+  const execution: ServerRunInput = {
+    messages: input.messages,
+    provider: effectiveProvider,
+    model: effectiveModel,
+    openAiApiMode,
+    cacheMode: input.cacheMode,
+    maxOutputTokens: input.maxOutputTokens,
+    origin,
+    tools,
+    instructions: input.instructions,
+  };
+  const digests = runRequestDigests(input, execution, askOnly, sessionGeneration);
+  if (existing) {
+    const matches = existing.projectId === input.projectId
+      && verifyServerRunCapability(existing.capabilityVerifier, input.capability)
+      && existing.requestShapeHash === digests.requestShapeHash;
+    if (!matches) {
+      sendJson(res, 409, { error: 'Agent run identity already exists with different input.' });
+      return;
+    }
+    ensureDeferredRunExecution(existing, execution);
+    sendCreatedRun(res, existing, input.capability, 200);
+    return;
+  }
+  const { run, capability } = createRunWithPresentedCapability({
+    id: input.runId,
+    projectId: input.projectId,
+    sessionGeneration,
+    provider: effectiveProvider,
+    model: effectiveModel,
+    askOnly,
+    references: input.references,
+    ...(input.externalSessionId ? { externalSessionId: input.externalSessionId } : {}),
+    ...(input.context !== undefined ? { context: input.context } : {}),
+    ...digests,
+  }, input.capability);
+  await flushRunPersistence(run);
+  deferRunExecution(run, execution);
+  sendCreatedRun(res, run, capability, 201);
+}
+
+async function handleStart(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+  const body = await readJson(req);
+  const projectId = requireProjectId(body.projectId);
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
+  const outcome = startDeferredRun(run);
+  if (outcome === 'unavailable') {
+    return sendJson(res, 409, { error: 'agent run admission is no longer available' });
+  }
+  sendJson(res, outcome === 'started' ? 202 : 200, { ok: true, outcome });
+}
+
+async function handleEvents(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  runId: string,
+): Promise<void> {
+  const projectId = requireProjectId(url.searchParams.get('projectId'));
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
+  await flushRunPersistence(run);
+  sseForRun(req, res, run, resolveCursor(req, url, run));
+}
+
+function toolBinding(body: Record<string, unknown>) {
+  const toolCallId = typeof body.toolCallId === 'string' ? body.toolCallId.trim() : '';
+  const argsDigest = typeof body.argsDigest === 'string' ? body.argsDigest.trim() : '';
+  const claimId = typeof body.claimId === 'string' ? body.claimId.trim() : '';
+  if (!toolCallId || !argsDigest || !claimId) {
+    throw new Error('toolCallId, argsDigest, and claimId are required');
+  }
+  return { toolCallId, argsDigest, claimId };
+}
+
+async function handleToolClaim(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+  const body = await readJson(req);
+  const projectId = requireProjectId(body.projectId);
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
+  const outcome = claimToolRequest(run, toolBinding(body));
+  sendJson(res, outcomeStatus(outcome), {
+    claimed: outcome === 'claimed' || outcome === 'duplicate',
+    outcome,
+  });
+}
+
+async function handleToolResult(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+  const body = await readJson(req, MAX_TOOL_RESULT_BODY_BYTES);
+  const projectId = requireProjectId(body.projectId);
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
+  const binding = toolBinding(body);
+  const hasResult = Object.hasOwn(body, 'result');
+  const error = typeof body.error === 'string' ? body.error : undefined;
+  const hasError = Object.hasOwn(body, 'error');
+  if (hasResult === hasError || (hasError && error === undefined)) {
+    throw new Error('provide exactly one of result or string error');
+  }
+  const outcome = settleToolResult(run, {
+    ...binding,
+    ...(error === undefined ? { result: body.result } : { error }),
+  });
+  sendJson(res, outcomeStatus(outcome), {
+    ok: outcome === 'accepted' || outcome === 'duplicate',
+    outcome,
+  });
+}
+
+async function handleCancel(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+  const body = await readJson(req);
+  const projectId = requireProjectId(body.projectId);
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
+  await cancelRun(run);
+  discardDeferredRun(run.id);
+  sendJson(res, 200, { ok: true, status: run.status });
+}
+
+async function handleMetadata(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  runId: string,
+): Promise<void> {
+  const projectId = requireProjectId(url.searchParams.get('projectId'));
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
+  const window = replayWindow(run);
+  sendJson(res, 200, {
+    id: run.id,
+    sessionGeneration: run.sessionGeneration,
+    projectId: run.projectId,
+    provider: run.provider,
+    model: run.model,
+    askOnly: run.askOnly,
+    references: run.references,
+    externalSessionId: run.externalSessionId ?? null,
+    context: run.context ?? null,
+    status: run.status,
+    createdAt: run.createdAt,
+    error: run.error,
+    eventCount: run.events.length,
+    firstEventId: window.firstEventId,
+    lastEventId: window.lastEventId,
+  });
+}
+
+async function routeAgentRunRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  const pathname = url.pathname;
+  if (req.method === 'POST' && pathname === '/') return handleCreate(req, res);
+  const match = /^\/([0-9a-f-]{36})(?:\/(start|events|tool-claim|tool-result|cancel))?$/.exec(pathname);
+  if (!match) return sendJson(res, 404, { error: 'not found' });
+  const runId = match[1]!;
+  const action = match[2];
+  if (req.method === 'GET' && action === 'events') return handleEvents(req, res, url, runId);
+  if (req.method === 'POST' && action === 'start') return handleStart(req, res, runId);
+  if (req.method === 'POST' && action === 'tool-claim') return handleToolClaim(req, res, runId);
+  if (req.method === 'POST' && action === 'tool-result') return handleToolResult(req, res, runId);
+  if (req.method === 'POST' && action === 'cancel') return handleCancel(req, res, runId);
+  if (req.method === 'GET' && !action) return handleMetadata(req, res, url, runId);
+  sendJson(res, 404, { error: 'not found' });
+}
+
+function sendRouteError(res: ServerResponse, error: unknown): void {
+  if (error instanceof RunStoreLimitError) {
+    res.setHeader('Retry-After', '1');
+    sendJson(res, 429, { error: error.message, retryable: true });
+    return;
+  }
+  if (error instanceof CursorProtocolError) {
+    sendJson(res, error.status, { error: error.message, ...(error.details ?? {}) });
+    return;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  sendJson(res, message === 'request body too large' ? 413 : 400, { error: message });
+}
+
+function mountedUrl(req: IncomingMessage): URL {
+  const mounted = req.url ?? '';
+  const stripped = mounted.startsWith('/api/agent-runs')
+    ? mounted.slice('/api/agent-runs'.length) || '/'
+    : mounted;
+  return new URL(stripped, 'http://localhost');
+}
+
+export interface AgentRunsPluginOptions {
+  readonly activatePersistence?: () => void;
+}
+
+export function agentRunsPlugin(options: AgentRunsPluginOptions = {}): Plugin {
   return {
     name: 'openchatcut-agent-runs',
     configureServer(server) {
+      (options.activatePersistence ?? activateOfflineAgentRuntimeBackend)();
       server.middlewares.use('/api/agent-runs', async (req, res) => {
-        // connect semantics: the mount prefix stays on req.url; strip it so
-        // the route matchers below see bare paths (same as project-store).
-        const mounted = req.url ?? '';
-        const stripped = mounted.startsWith('/api/agent-runs')
-          ? mounted.slice('/api/agent-runs'.length) || '/'
-          : mounted;
-        const url = new URL(stripped, 'http://localhost');
-        const pathname = url.pathname;
+        const readOnly = req.method === 'GET';
+        const authorized = readOnly
+          ? projectStoreReadAuthorized(req) || projectStoreHttpAuthorized(req)
+          : projectStoreHttpAuthorized(req);
+        if (!authorized) {
+          sendJson(res, 403, { error: 'invalid agent run session' });
+          return;
+        }
         try {
-          if (req.method === 'POST' && pathname === '/') {
-            const body = await readJson(req);
-            const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
-            const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
-            const model = typeof body.model === 'string' ? body.model.trim() : '';
-            const messages = Array.isArray(body.messages) ? body.messages : [];
-            const tools = Array.isArray(body.tools) ? body.tools : [];
-            if (!projectId || messages.length === 0) {
-              sendJson(res, 400, { error: 'projectId and messages are required' });
-              return;
-            }
-            // Provider/model default to the server keystore when the client
-            // does not pin them (the browser model picker is built-in-run
-            // state; server runs follow the configured LLM_PROVIDER).
-            // The resolver wants a string reader; getKey accepts the known
-            // key union, and unknown names read as '' (no crash).
-            const readKey = (name: string): string => getKey(name as KeyName);
-            const config = resolveLlmProviderConfig(
-              provider || getKey('LLM_PROVIDER'),
-              readKey,
-            );
-            const effectiveProvider = normalizeLlmProvider(config.provider);
-            const effectiveModel = model || config.model || defaultModelForProvider(effectiveProvider);
-            pruneRuns();
-            const run = createRun({
-              projectId,
-              provider: effectiveProvider,
-              model: effectiveModel,
-            });
-            const origin = req.headers.host
-              ? `http://${req.headers.host}`
-              : 'http://127.0.0.1:5199';
-            void executeRun(run, {
-              messages: messages.map((m) => {
-                const role = typeof m?.role === 'string' ? m.role : 'user';
-                const content = typeof m?.content === 'string' ? m.content : String(m?.content ?? '');
-                return { role: role === 'assistant' ? 'assistant' : 'user', content };
-              }),
-              provider: effectiveProvider,
-              model: effectiveModel,
-              origin,
-              tools: tools.flatMap((t) => {
-                if (!t || typeof t !== 'object' || Array.isArray(t)) return [];
-                if (!('name' in t) || typeof t.name !== 'string' || !t.name) return [];
-                if (!('input_schema' in t) || !t.input_schema || typeof t.input_schema !== 'object') return [];
-                const description = 'description' in t && typeof t.description === 'string'
-                  ? t.description
-                  : '';
-                return [{ name: t.name, description, input_schema: t.input_schema }];
-              }),
-            });
-            sendJson(res, 201, { id: run.id });
-            return;
-          }
-          const runMatch = /^\/([0-9a-f-]{36})\/events$/.exec(pathname);
-          if (req.method === 'GET' && runMatch) {
-            const run = getRun(runMatch[1]!);
-            if (!run) {
-              sendJson(res, 404, { error: 'run not found' });
-              return;
-            }
-            sseForRun(req, res, run);
-            return;
-          }
-          const resultMatch = /^\/([0-9a-f-]{36})\/tool-result$/.exec(pathname);
-          if (req.method === 'POST' && resultMatch) {
-            const run = getRun(resultMatch[1]!);
-            if (!run) {
-              sendJson(res, 404, { error: 'run not found' });
-              return;
-            }
-            const body = await readJson(req);
-            const toolCallId = typeof body.toolCallId === 'string' ? body.toolCallId : '';
-            if (!toolCallId) {
-              sendJson(res, 400, { error: 'toolCallId is required' });
-              return;
-            }
-            if (typeof body.error === 'string') {
-              failToolResult(run, toolCallId, body.error);
-            } else {
-              deliverToolResult(run, toolCallId, body.result);
-            }
-            sendJson(res, 200, { ok: true });
-            return;
-          }
-          const cancelMatch = /^\/([0-9a-f-]{36})\/cancel$/.exec(pathname);
-          if (req.method === 'POST' && cancelMatch) {
-            const run = getRun(cancelMatch[1]!);
-            if (!run) {
-              sendJson(res, 404, { error: 'run not found' });
-              return;
-            }
-            cancelRun(run);
-            sendJson(res, 200, { ok: true });
-            return;
-          }
-          const getMatch = /^\/([0-9a-f-]{36})$/.exec(pathname);
-          if (req.method === 'GET' && getMatch) {
-            const run = getRun(getMatch[1]!);
-            if (!run) {
-              sendJson(res, 404, { error: 'run not found' });
-              return;
-            }
-            sendJson(res, 200, {
-              id: run.id,
-              projectId: run.projectId,
-              provider: run.provider,
-              model: run.model,
-              status: run.status,
-              createdAt: run.createdAt,
-              error: run.error,
-              eventCount: run.events.length,
-            });
-            return;
-          }
-          sendJson(res, 404, { error: 'not found' });
+          await routeAgentRunRequest(req, res, mountedUrl(req));
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          sendJson(res, 400, { error: message });
+          sendRouteError(res, error);
         }
       });
     },

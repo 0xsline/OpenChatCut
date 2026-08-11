@@ -6,6 +6,21 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-08-11
+
+### Added / 新增
+
+- Added opt-in server-side execution for the built-in Agent on API models. A capability-bound local server now owns the model loop while the active editor continues to execute tools through the existing `EditorCommands` boundary; runs survive page refreshes and local service restarts, and the existing browser execution path remains the default.
+  为内置 Agent 的 API 模型新增可选服务端执行模式。本地服务端通过能力令牌接管模型循环，活动编辑器仍经既有 `EditorCommands` 边界执行工具；运行可跨页面刷新和本地服务重启恢复，原有浏览器执行路径继续作为默认模式。
+- Added durable server-run events, ordered SSE replay, reconnect recovery, browser tool claim/result handoff, cancellation, proposal continuation, run inspection, and portable recovery metadata without granting the server direct timeline authority.
+  新增持久化服务端运行事件、有序 SSE 回放、断线恢复、浏览器工具认领/结果回传、取消、提案续接、运行检查器及可移植恢复元数据，同时不向服务端授予时间线直接修改权限。
+
+### Security / 安全
+
+- Hardened server-run admission and recovery with loopback/same-origin request checks, per-run capabilities, idempotent request digests, bounded histories and event payloads, credential redaction, retention limits, and fail-closed ownership recovery.
+  通过回环地址/同源请求校验、逐运行能力令牌、幂等请求摘要、有界历史与事件载荷、凭据脱敏、保留上限及失败即关闭的所有权恢复，加固服务端运行的准入与恢复链路。
+
+
 ## [0.2.0] - 2026-08-11
 
 ### Added / 新增
@@ -485,6 +500,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added Electron desktop packaging for macOS, Windows, and Linux.  
   提供 macOS、Windows 与 Linux 的 Electron 桌面端打包能力。
 
+[0.3.0]: https://github.com/0xsline/OpenChatCut/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/0xsline/OpenChatCut/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/0xsline/OpenChatCut/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/0xsline/OpenChatCut/compare/v0.1.7...v0.1.8

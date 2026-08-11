@@ -21,6 +21,7 @@ const CACHE_LABELS: Record<AgentCacheMode, string> = {
 
 interface AgentComposerSettingsProps {
   readonly autoApply: boolean;
+  readonly running: boolean;
   readonly onAutoApplyChange: (value: boolean) => void;
   readonly settings: AgentSettings;
   readonly onSettingsChange: (patch: Partial<AgentSettings>) => void;
@@ -41,7 +42,7 @@ function choiceStyle(active: boolean): CSSProperties {
 
 export function AgentComposerSettings(props: AgentComposerSettingsProps) {
   const t = useT();
-  const { autoApply, onAutoApplyChange, settings, onSettingsChange } = props;
+  const { autoApply, onAutoApplyChange, running, settings, onSettingsChange } = props;
   return (
     <>
       <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('模式')}</div>
@@ -94,11 +95,15 @@ export function AgentComposerSettings(props: AgentComposerSettingsProps) {
       <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
         {t('先出编号计划，确认后再动手。')}
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
-        <input type="checkbox" checked={settings.serverRun}
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+        cursor: running ? 'not-allowed' : 'pointer',
+        color: theme.text, fontSize: 12.5, opacity: running ? 0.55 : 1,
+      }}>
+        <input type="checkbox" checked={settings.serverRun} disabled={running}
           onChange={(event) => onSettingsChange({ serverRun: event.target.checked })}
           style={{ accentColor: theme.accent }} />
-        {t('服务端运行（实验）')}
+        {t('服务端运行')}
       </label>
       <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
         {t('Agent 在本地服务端执行，刷新页面不会中断正在进行的任务。')}

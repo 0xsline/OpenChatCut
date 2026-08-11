@@ -9,10 +9,8 @@ import {
   serializeMessagesForPrompt,
   serializeMessagesForSummary,
 } from './context-compaction';
-import {
-  contextWindowForPreparation,
-  summarizeConversation,
-} from './context-management';
+import { contextWindowForPreparation } from './context-management';
+import { summarizeConversation } from './context-summary';
 import { usageNeedsChoiceRefresh } from './context-usage';
 import { resolveModelCapabilities } from '../../shared/model-capabilities';
 import {
