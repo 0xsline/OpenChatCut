@@ -134,7 +134,6 @@ export interface OwnerSafeLeaseOptions {
   retryMs?: number;
   pid?: number;
   now?: () => number;
-  isPidAlive?: (pid: number) => boolean;
 }
 
 interface LeaseConfig {
@@ -146,19 +145,9 @@ interface LeaseConfig {
   retryMs: number;
   pid: number;
   now: () => number;
-  isPidAlive: (pid: number) => boolean;
 }
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-function pidIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
 
 function validOwner(value: unknown): value is LeaseOwner {
   if (!value || typeof value !== 'object') return false;
@@ -193,7 +182,14 @@ async function expiredWithoutOwner(path: string, config: LeaseConfig): Promise<b
 async function canReap(path: string, config: LeaseConfig): Promise<boolean> {
   const owner = await readOwner(path);
   if (!owner) return expiredWithoutOwner(path, config);
-  return owner.expiresAt <= config.now() && !config.isPidAlive(owner.pid);
+  // A healthy owner renews `expiresAt` to now+leaseMs on every heartbeat
+  // (heartbeatMs = leaseMs/3), so an expired `expiresAt` reliably means the
+  // owner stopped renewing: it was killed, crashed, or its guard leaked.
+  // Judging staleness by PID liveness instead is unsound — on Windows PIDs
+  // get reused, and an abandoned same-process guard keeps a "live" PID while
+  // blocking every later acquirer forever (issue #63). Expiry is the only
+  // trustworthy liveness signal.
+  return owner.expiresAt <= config.now();
 }
 
 async function moveAside(path: string, reason: string): Promise<string | undefined> {
@@ -307,7 +303,6 @@ function normalizeOptions(options: OwnerSafeLeaseOptions): LeaseConfig {
     retryMs: options.retryMs ?? 10,
     pid: options.pid ?? process.pid,
     now: options.now ?? Date.now,
-    isPidAlive: options.isPidAlive ?? pidIsAlive,
   };
 }
 

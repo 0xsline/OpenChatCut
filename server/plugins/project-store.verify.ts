@@ -20,7 +20,6 @@ async function verifyLongOwnershipCannotBeStolen(root: string): Promise<void> {
     heartbeatMs: 10,
     retries: 6,
     retryMs: 5,
-    isPidAlive: () => true,
   };
   const owner = await createOwnerSafeLeaseLock(options).acquire();
   await sleep(120);
@@ -52,7 +51,12 @@ async function verifyOldReleaseCannotRemoveReplacement(root: string): Promise<vo
   await rm(displaced, { recursive: true, force: true });
 }
 
-async function verifyLiveExpiredOwnerIsNotReaped(root: string): Promise<void> {
+// A live PID is NOT a trustworthy liveness signal for an expired lease: on
+// Windows PIDs are reused and an abandoned same-process guard keeps a "live"
+// PID while blocking every later acquirer forever (issue #63). An expired
+// `expiresAt` is the only reliable sign the owner stopped renewing, so a
+// contender must be able to reclaim it even when the owning process is alive.
+async function verifyExpiredOwnerIsReapedEvenWhenPidAlive(root: string): Promise<void> {
   const path = join(root, 'live-expired.lock');
   await mkdir(path);
   await writeFile(join(path, 'owner.json'), JSON.stringify({
@@ -65,12 +69,38 @@ async function verifyLiveExpiredOwnerIsNotReaped(root: string): Promise<void> {
     leaseMs: 50,
     retries: 4,
     retryMs: 5,
-    isPidAlive: () => true,
   });
-  await assert.rejects(contender.acquire(), /busy/, 'an expired lease cannot supersede a live owner');
+  const recovered = await contender.acquire();
   const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as { token: string };
-  assert.equal(record.token, 'live-owner');
+  assert.notEqual(record.token, 'live-owner', 'an expired owner must be reclaimed even when its PID is alive');
+  await recovered.release();
   await rm(path, { recursive: true, force: true });
+}
+
+// Issue #63: a leaked `.guard` directory whose owner.json records the *current*
+// process PID but whose expiresAt is long past must not block the app forever.
+// The guard's per-PID staleness check errored because an alive app PID is never
+// "dead", so the guard could never be reaped and every later acquire() threw
+// "busy". Expiry-based reaping must let acquire() reclaim the stale guard.
+async function verifyExpiredSamePidGuardIsReclaimed(root: string): Promise<void> {
+  const path = join(root, 'leaked-guard.lock');
+  const guardPath = `${path}.guard`;
+  await mkdir(guardPath, { recursive: true });
+  await writeFile(join(guardPath, 'owner.json'), JSON.stringify({
+    token: 'leaked-guard-owner',
+    pid: process.pid,
+    expiresAt: Date.now() - 5_000,
+  }));
+  const lock = createOwnerSafeLeaseLock({ path, leaseMs: 50, heartbeatMs: 10 });
+  // Pre-fix this throws "project store guard lock is busy"; the fix lets it
+  // reclaim the stale same-pid guard and acquire normally.
+  const owner = await lock.acquire();
+  try {
+    const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as { token: string };
+    assert.equal(record.token, owner.token, 'the lease must be owned by the new acquirer');
+  } finally {
+    await owner.release();
+  }
 }
 
 async function verifyDeadStaleRecovery(root: string): Promise<void> {
@@ -85,7 +115,6 @@ async function verifyDeadStaleRecovery(root: string): Promise<void> {
     path,
     leaseMs: 50,
     heartbeatMs: 10,
-    isPidAlive: () => false,
   }).acquire();
   assert.notEqual(recovered.token, 'dead-owner');
   await recovered.release();
@@ -182,7 +211,8 @@ const lockRoot = await mkdtemp(join(tmpdir(), 'openchatcut-project-store-'));
 try {
   await verifyLongOwnershipCannotBeStolen(lockRoot);
   await verifyOldReleaseCannotRemoveReplacement(lockRoot);
-  await verifyLiveExpiredOwnerIsNotReaped(lockRoot);
+  await verifyExpiredOwnerIsReapedEvenWhenPidAlive(lockRoot);
+  await verifyExpiredSamePidGuardIsReclaimed(lockRoot);
   await verifyDeadStaleRecovery(lockRoot);
   await verifyConcurrentWritersSerialize(lockRoot);
   await verifyAtomicWriteOrdering();
