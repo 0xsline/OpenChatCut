@@ -1,14 +1,17 @@
 // On-device ASR model catalog — single source for settings, downloads, and runtime loading.
 //
-// All tiers stay on the Xenova exports (transformers.js v2-era): they are the
-// only ones whose ONNX graphs output cross-attentions, which transformers.js
-// needs for word-level timestamps — the project's transcript editor depends on
-// them (measured: onnx-community exports throw "Model outputs must contain
-// cross attentions" on return_timestamps:'word' on both Node and browser).
+// Word-level timestamps require ONNX graphs that output cross-attentions.
+// Older onnx-community exports (whisper-base/small/medium without the
+// `_timestamped` suffix) throw "Model outputs must contain cross attentions"
+// on return_timestamps:'word' on both Node and browser — so the "small" and
+// "medium" tiers keep the Xenova (transformers.js v2-era) exports that work.
 //
-// fp16/fp32 variants are registered per tier for the opt-in WebGPU path
-// (encoder fp32 + decoder fp16 mixed dtype; measured on M5: WebGPU + fp16
-// encoder yields empty transcripts, q8/int8 are unsupported on the WebGPU EP).
+// The "base" tier now uses onnx-community/whisper-base_timestamped, the
+// timestamped re-export designed for word-level timestamps. It loads much
+// faster than the Xenova export and produces identical word-level output,
+// while keeping the fp16/fp32 WebGPU variant slots (encoder fp32 + decoder
+// fp16 mixed dtype; measured on M5: WebGPU + fp16 encoder yields empty
+// transcripts, q8/int8 are unsupported on the WebGPU EP).
 
 export interface AsrModelFile {
   readonly path: string;
@@ -46,21 +49,21 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
     label: 'Whisper Tiny', sizeLabel: '约 100MB', language: '中 / 英', note: '最快最省，适合低配置设备；识别精度一般。',
   },
   {
-    id: 'base', modelId: 'Xenova/whisper-base', revision: '64da57285918e20ea79ea5c88eed7197933abaa8',
+    id: 'base', modelId: 'onnx-community/whisper-base_timestamped', revision: '608c49e61301901684bc36cac8f74b95ff6b5a8e',
     files: [
-      { path: 'config.json', sizeBytes: 2248, sha256: 'd1d347fdb422e6347c2f843a90d375aa67ea3f4b3e20d2c3075f9a9f6243685b' },
-      { path: 'generation_config.json', sizeBytes: 3776, sha256: '3bba359e33fdd6dc1c10f71846a477d339b0242f462f70ea1dd73274caa38d05' },
+      { path: 'config.json', sizeBytes: 2243, sha256: 'f4d0608f7d918166da7edb3e188de5ef1bfe70d9802e785d271fd88111e9cf4b' },
+      { path: 'generation_config.json', sizeBytes: 3832, sha256: '61070cf8de25b1e9256e8e102ded49d8d24a8369ed36ef84fdf21549e68125a0' },
       { path: 'preprocessor_config.json', sizeBytes: 339, sha256: 'a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d' },
       { path: 'tokenizer.json', sizeBytes: 2480466, sha256: '27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566' },
-      { path: 'tokenizer_config.json', sizeBytes: 282683, sha256: '2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce' },
-      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 23200850, sha256: '3e345e977b55620a37c0c2b2af0644e019afdfad562dcf71eb929bb7274285f9' },
-      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 53707539, sha256: 'a6beb6baabb66f00b6a686d828c95ffca6146d51900cbad0266cad38f64cf861' },
+      { path: 'tokenizer_config.json', sizeBytes: 282682, sha256: '2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573' },
+      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 23159167, sha256: '2714484ebe1bae7c1646e8eadb768bb9d415cf11763466d21f23039a29c62e6f' },
+      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 53712708, sha256: 'cf9a8d5bcddc0917a0078135b484cedcaf44f28909cd91910abd29dced9171db' },
       // WebGPU mixed-dtype path (encoder fp32 + decoder fp16).
-      { path: 'onnx/encoder_model_fp16.onnx', sizeBytes: 41333198, sha256: 'b12013ba360d247e5af6805590501a94b18f14abb5ba2607f992783adcb23c73' },
-      { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 104742968, sha256: 'd875a521a214f62258f922933e8afe96794c03d571b4039fe08bc9000fb49ddc' },
-      { path: 'onnx/encoder_model.onnx', sizeBytes: 82474863, sha256: 'f0bd7927234639c6e1f293cef18a210cee4e4aea93e200ebbe48e1d7acf6fdb1' },
+      { path: 'onnx/encoder_model_fp16.onnx', sizeBytes: 41270731, sha256: '2d31aa4b0c8c74c2e49a5c8d8a5640e38e75aac493cf15290f8c1466ee8c1845' },
+      { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 104701989, sha256: 'e6770b411d380038c3d69e9196aaf3bc9d72d848c809a24919d9a4adccb534ee' },
+      { path: 'onnx/encoder_model.onnx', sizeBytes: 82451730, sha256: '7fcea817bb2be4d86729b521e5a7fcbec28fa743edfed67e882b33ff15852540' },
     ],
-    label: 'Whisper Base', sizeLabel: '约 80MB', language: '中 / 英', note: '轻量均衡，日常口播可用。',
+    label: 'Whisper Base', sizeLabel: '约 80MB', language: '中 / 英', note: '轻量均衡，日常口播可用；timestamped 转写更快。',
   },
   {
     id: 'small', modelId: 'Xenova/whisper-small', revision: '2d67713f236afa48a18992566e7647f6ca848e13',

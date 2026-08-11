@@ -55,7 +55,7 @@ try {
 
 assert.deepEqual(ASR_MODELS.map((entry) => entry.revision), [
   '5332fcc35e32a33b86612b9a57a89be7906102b1',
-  '64da57285918e20ea79ea5c88eed7197933abaa8',
+  '608c49e61301901684bc36cac8f74b95ff6b5a8e',
   '2d67713f236afa48a18992566e7647f6ca848e13',
   '8c5b90880ab9f79487ab33613413431bf661d595',
 ]);
