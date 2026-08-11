@@ -66,6 +66,11 @@ export default {
   productName: 'OpenChatCut',
   artifactName: '${productName}-${version}-${arch}.${ext}',
   directories: { output: 'release' },
+  // 7z LZMA maximum compression for the distributable installers (dmg/zip/nsis/AppImage).
+  // Trade-off: noticeably slower packaging time in exchange for a smaller final download.
+  // The app.asar content itself is handled by the `compression` setting; native binaries
+  // (onnxruntime-node, ffmpeg-static, @remotion/compositor) remain unpacked per their filters.
+  compression: 'maximum',
   publish: [{
     provider: 'github',
     owner: '0xsline',
