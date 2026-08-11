@@ -112,3 +112,8 @@ This is an OpenChatCut-native workflow. Use the current project's assets, transc
 - `edit_item`（trim/ripple/split/delete）：按保留/删除规则剪辑；fadeInSeconds/fadeOutSeconds 处理剪切点衔接。
 - `split_track` / 多轨：人声轨与现场声整理。
 - 输出前用预览/导出预检核对时长与内容完整性。
+
+## 参考文件
+
+- 执行成片时遵循固定的确定性流程与强制性验收清单，见 [references/deterministic-execution-and-acceptance.md](references/deterministic-execution-and-acceptance.md)：环境检查 → 素材解析 → 生成单条编辑方案 → 一次性执行 → 逐项终检验收（至少 1 个视频轨片段、成片后无新增外部音频、讲话语义完整、剪切点衔接自然）。
+

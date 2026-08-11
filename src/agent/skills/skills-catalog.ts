@@ -132,6 +132,21 @@ export const CREATIVE_SKILL_METADATA: CreativeSkillMetadata[] = [
     ]
   },
   {
+    id: '11111111-1240-4000-8000-000000000014',
+    slug: 'news-rough-cut',
+    name: 'News Rough Cut',
+    nameZh: '新闻智能粗剪',
+    summary: '把新闻素材粗剪为一条内容完整、逻辑清晰、节奏紧凑的新闻短视频，不加任何外部声音。',
+    scenarios: [
+      'news-rough-cut',
+      'news-cut',
+      '新闻剪辑',
+      '粗剪新闻',
+      'news footage',
+      'rough-cut-news'
+    ]
+  },
+  {
     id: '11111111-1240-4000-8000-000000000013',
     slug: 'skill-creator',
     name: 'Skill Creator',
