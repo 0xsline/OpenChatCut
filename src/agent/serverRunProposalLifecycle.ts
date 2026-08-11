@@ -6,6 +6,7 @@ import type { AgentContext } from './context';
 import {
   buildOperation,
   partitionProposalActions,
+  projectDocsDiffer,
 } from './proposal';
 import {
   commitPersistentOperations,
@@ -41,6 +42,13 @@ interface ProposalRunState {
 }
 
 type ProposalRunRef = MutableValue<ProposalRunState>;
+export function serverRunDraftBaseChanged(
+  baseDoc: ProjectDoc,
+  currentDoc: ProjectDoc,
+): boolean {
+  return projectDocsDiffer(baseDoc, currentDoc);
+}
+
 
 function turnContext(ctx: AgentContext, doc: ProjectDoc) {
   const draft = makeDraft(doc);
@@ -120,7 +128,7 @@ function applyToolActions(
         (error) => { turn.persistentSaveError = error; },
       );
     }
-    if (observed !== turn.baseDoc) turn.draftInvalidated = true;
+    if (serverRunDraftBaseChanged(turn.baseDoc, observed)) turn.draftInvalidated = true;
     turn.proposalBaseDoc = replayActions(turn.proposalBaseDoc, persistent);
     turn.persistentOps.push(buildOperation(input.name, input.args, persistent));
   }

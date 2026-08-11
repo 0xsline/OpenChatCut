@@ -5,6 +5,7 @@ import { makeDraft, replayActions, projectReduce } from './store';
 import { historyReduce } from './reduce';
 import { activeTimeline, type ProjectDoc, type Timeline } from './types';
 import { buildOperation, buildProposal, isProposalStale, partitionProposalActions } from '../agent/proposal';
+import { serverRunDraftBaseChanged } from '../agent/serverRunProposalLifecycle';
 import { resolveAgentReferences, type AgentContext } from '../agent/context';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 
@@ -76,6 +77,16 @@ assert.strictEqual(isProposalStale(proposal, applied), true, 'a changed project 
 // After IDB rehydrate, baseDoc is a deep clone (new reference, same content).
 const rehydrated = { ...proposal, baseDoc: JSON.parse(JSON.stringify(base)) as typeof base };
 assert.strictEqual(isProposalStale(rehydrated, base), false, 'structurally equal clone is still applicable');
+assert.strictEqual(
+  serverRunDraftBaseChanged(rehydrated.baseDoc, base),
+  false,
+  'server-run draft recovery accepts a structurally equal rehydrated project',
+);
+assert.strictEqual(
+  serverRunDraftBaseChanged(rehydrated.baseDoc, applied),
+  true,
+  'server-run draft recovery still rejects a genuinely changed live project',
+);
 
 // attaching a transcript is an editing operation and therefore gets its own
 // undo snapshot (previously it silently bypassed history).
