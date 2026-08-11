@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   为内置 Agent 的 API 模型新增可选服务端执行模式。本地服务端通过能力令牌接管模型循环，活动编辑器仍经既有 `EditorCommands` 边界执行工具；运行可跨页面刷新和本地服务重启恢复，原有浏览器执行路径继续作为默认模式。
 - Added durable server-run events, ordered SSE replay, reconnect recovery, browser tool claim/result handoff, cancellation, proposal continuation, run inspection, and portable recovery metadata without granting the server direct timeline authority.
   新增持久化服务端运行事件、有序 SSE 回放、断线恢复、浏览器工具认领/结果回传、取消、提案续接、运行检查器及可移植恢复元数据，同时不向服务端授予时间线直接修改权限。
+- Added a one-click `news-rough-cut` workflow that analyzes the selected news footage before editing, chooses duration from the available information, preserves complete speech, and limits the final soundtrack to the selected source footage's original onsite audio.
+  新增一键式 `news-rough-cut` 新闻智能粗剪工作流：剪辑前完整分析选定新闻素材，根据信息量决定成片时长，保留完整讲话语义，并将最终声音严格限制为选定源素材的原始现场声。
 
 ### Security / 安全
 
@@ -67,6 +69,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Reduced Agent token use with request-scoped tool schemas, one-shot `ToolSearch` expansion, bounded tool-result/history compaction, provider prompt-cache hints, and an in-chat system/tool/history/cache usage breakdown.
   降低 Agent 令牌消耗：按请求暴露工具 schema、每轮最多一次 `ToolSearch` 扩展、对模型可见的工具结果与旧历史做有界压缩、启用供应商提示词缓存提示，并在聊天框展示系统/工具/历史/缓存用量拆分。
+- Upgraded the on-device Base transcription tier to the timestamp-capable Whisper export and gave transcription tools a dedicated five-minute execution window while preserving the 30-second default for unrelated Agent tools.
+  本地 Base 转写档升级为支持时间戳的 Whisper 导出；转写工具获得独立的五分钟执行窗口，其他 Agent 工具仍保持默认 30 秒超时。
 - Self-hosted Geist + Geist Mono as the UI typeface, removing the network font dependency.
   UI 字体改为自托管 Geist + Geist Mono，不再依赖网络字体。
 - Made semantic-index sampling configurable per media import.
@@ -84,6 +88,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   监控文件夹导入在渲染进程丢失时也能保持素材所有权；旧 watcher 代际会被隔离；取消原生 ASR 时立即终止活跃 worker，避免误删素材或残留后台推理。
 - Preserved authored clip slots during relink, blocked any partially materialized blob export before job creation, and retained completed browser exports when a destination handle must be reselected.
   重链素材时保留已编排的片段时段；任何 Blob 素材未完全就绪都会在创建导出任务前阻止提交；浏览器导出目标需重新选择时会保留已完成的渲染结果。
+- Made isolated development startup reuse only the exact Remotion-compatible cached headless-shell binary, avoiding browser downloads without accepting stale or mismatched executables.
+  隔离开发启动现在只复用与当前 Remotion 精确兼容的本地 headless-shell 缓存，避免重复下载，同时拒绝过期或版本不匹配的可执行文件。
 
 ## [0.1.9] - 2026-08-06
 
