@@ -10,6 +10,7 @@ import {
 import {
   commitPersistentOperations,
   createPendingProposal,
+  discardUnexposedProposal,
   exposePendingProposal,
   type AgentTurn,
 } from './useAgentRun';
@@ -22,6 +23,7 @@ import {
   saveServerRunDraftTool,
   type ServerRunDraftToolBody,
 } from './serverRunDraftStore';
+import { ServerRunTerminalHandoffs } from './serverRunTerminalHandoff';
 import { permanentServerRunRecoveryError } from './serverRunRecovery';
 import type {
   ServerRunPreparation,
@@ -35,6 +37,7 @@ import type {
 interface ProposalRunState {
   turn: AgentTurn | null;
   seenToolCalls: Set<string>;
+  handoffs: ServerRunTerminalHandoffs;
 }
 
 type ProposalRunRef = MutableValue<ProposalRunState>;
@@ -286,10 +289,10 @@ async function finalizeCompletedTurn(
     await recorder.finalize('aborted', 'server run proposal was not exposed');
     return 'finalized';
   }
-  await recorder.finalize('waiting_approval', 'server run proposal awaiting approval');
   return {
     disposition: 'waiting_approval',
     afterModelCommit: () => exposePendingProposal(turn, proposal),
+    onAbandon: () => discardUnexposedProposal(turn.projectId, proposal),
   };
 }
 
@@ -304,7 +307,7 @@ async function resolveTerminalDisposition(
   }
   if (input.status === 'awaiting_user') {
     turn.completionStatus = 'awaiting_user';
-    await recorder.finalize('awaiting_user', input.assistantText || 'server run awaiting user input');
+    await recorder.finalize('completed', input.assistantText || 'server run awaiting user input');
     return 'finalized';
   }
   if (input.status !== 'completed') {
@@ -323,11 +326,19 @@ async function finishServerRun(
   input: ServerRunTerminal,
   ref: ProposalRunRef,
 ): Promise<ServerRunTerminalResolution | false> {
+  const cached = ref.current.handoffs.get(input.runId);
+  if (cached) return cached;
   const turn = ref.current.turn;
   const recorder = turn?.recorder;
   if (!turn || !recorder || recorder.runId !== input.runId) return false;
   beginTerminal(turn, input);
   const disposition = await resolveTerminalDisposition(turn, input, recorder);
+  if (typeof disposition === 'object') {
+    return ref.current.handoffs.retain(input.runId, disposition, async () => {
+      if (ref.current.turn?.recorder?.runId === input.runId) ref.current.turn = null;
+      await clearServerRunDraft(projectId, input.runId).catch(() => undefined);
+    });
+  }
   ref.current.turn = null;
   await clearServerRunDraft(projectId, input.runId).catch(() => undefined);
   return disposition;
@@ -341,15 +352,17 @@ export function useServerRunProposalCallbacks(
   const ref = useRef<ProposalRunState>({
     turn: null,
     seenToolCalls: new Set(),
+    handoffs: new ServerRunTerminalHandoffs(),
   });
   const onRunPrepare = useCallback(
     (input: ServerRunPreparation) => prepareServerRun(projectId, input),
     [projectId],
   );
-  const onRunAbandon = useCallback(
-    (runId: string) => clearServerRunDraft(projectId, runId),
-    [projectId],
-  );
+  const onRunAbandon = useCallback(async (runId: string) => {
+    await ref.current.handoffs.clear(runId);
+    if (ref.current.turn?.recorder?.runId === runId) ref.current.turn = null;
+    await clearServerRunDraft(projectId, runId);
+  }, [projectId]);
   const onRunStart = useCallback(
     (input: ServerRunStart) => startServerRun(state, ctx, projectId, input, ref),
     [ctx, projectId, state],

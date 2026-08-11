@@ -5,6 +5,7 @@ import {
 } from './serverRunEvents.ts';
 import { restoreServerRunToolActivation } from './serverRunProtocol.ts';
 import { finishRecoveredRun } from './serverRunRecovery.ts';
+import { ServerRunTerminalHandoffs } from './serverRunTerminalHandoff.ts';
 import {
   resumeAgentRun,
   startAgentRun,
@@ -155,6 +156,43 @@ assert.deepEqual(terminalOrder, ['model-history-persisted', 'proposal-exposed'],
 assert.equal(readStoredServerRun(projectId)?.leaseToken, 'lease-token-1',
   'waiting approval retains the recorder recovery capability for apply or deny');
 assert.deepEqual(finalizedStatuses, []);
+const handoffs = new ServerRunTerminalHandoffs();
+let proposalAttempts = 0;
+let handoffSettlements = 0;
+const retainedHandoff = handoffs.retain(runId, {
+  disposition: 'waiting_approval',
+  afterModelCommit: () => {
+    proposalAttempts += 1;
+    if (proposalAttempts === 1) throw new Error('transient proposal exposure failure');
+  },
+}, () => { handoffSettlements += 1; });
+assert.equal(handoffs.get(runId), retainedHandoff);
+await assert.rejects(
+  async () => { await retainedHandoff.afterModelCommit(); },
+  /transient proposal exposure failure/,
+);
+assert.equal(handoffs.get(runId), retainedHandoff,
+  'a failed terminal handoff remains available for recovery retry');
+await retainedHandoff.afterModelCommit();
+assert.equal(proposalAttempts, 2);
+assert.equal(handoffSettlements, 1);
+assert.equal(handoffs.get(runId), null,
+  'terminal proposal state is released only after model history and exposure settle');
+let staleProposalExposures = 0;
+let abandonedProposals = 0;
+const abandonedHandoff = handoffs.retain('abandoned-run', {
+  disposition: 'waiting_approval',
+  afterModelCommit: () => { staleProposalExposures += 1; },
+  onAbandon: () => { abandonedProposals += 1; },
+}, () => { handoffSettlements += 1; });
+await handoffs.clear('abandoned-run');
+await abandonedHandoff.afterModelCommit();
+assert.equal(staleProposalExposures, 0,
+  'an abandoned terminal handoff cannot expose a proposal after project switch');
+assert.equal(abandonedProposals, 1,
+  'abandonment settles the persisted proposal exactly once');
+assert.equal(handoffSettlements, 1,
+  'an invalidated handoff cannot run successful-settlement cleanup');
 
 resetAgentRuntimeStoreMemory();
 const refreshProjectId = 'waiting-proposal-refresh';

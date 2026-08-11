@@ -17,6 +17,7 @@ export class ServerRunOwnership {
   private pendingKey: string | null = null;
   private pending: Promise<boolean> | null = null;
   private releaseHeld: (() => void) | null = null;
+  private heldReleased: Promise<void> | null = null;
 
   constructor(manager: ServerRunLockManager | null = (
     typeof navigator === 'undefined' || !navigator.locks
@@ -26,11 +27,19 @@ export class ServerRunOwnership {
     this.manager = manager;
   }
 
+  private async waitForLocalRelease(): Promise<void> {
+    if (this.pending) await this.pending;
+    if (this.heldReleased) await this.heldReleased;
+  }
+
   acquire(projectId: string, runId: string): Promise<boolean> {
     const key = lockName(projectId, runId);
     if (this.heldKey === key) return Promise.resolve(true);
     if (this.pendingKey === key && this.pending) return this.pending;
-    if (!this.manager || this.heldKey || this.pendingKey) return Promise.resolve(false);
+    if (!this.manager) return Promise.resolve(false);
+    if (this.heldKey || this.pendingKey) {
+      return this.waitForLocalRelease().then(() => this.acquire(projectId, runId));
+    }
     const ready = Promise.withResolvers<boolean>();
     this.pendingKey = key;
     this.pending = ready.promise;
@@ -41,10 +50,12 @@ export class ServerRunOwnership {
       const released = Promise.withResolvers<void>();
       this.heldKey = key;
       this.releaseHeld = released.resolve;
+      this.heldReleased = released.promise;
       ready.resolve(true);
       await released.promise;
       if (this.heldKey === key) this.heldKey = null;
       this.releaseHeld = null;
+      this.heldReleased = null;
     }).catch(() => {
       this.pendingKey = null;
       this.pending = null;

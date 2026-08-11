@@ -322,7 +322,7 @@ export async function commitPersistentOperations(
   return true;
 }
 
-async function discardUnexposedProposal(projectId: string, proposal: Proposal): Promise<void> {
+export async function discardUnexposedProposal(projectId: string, proposal: Proposal): Promise<void> {
   await settleProposal(projectId, proposal, 'stale');
   await clearProposal(projectId, proposal.id);
 }

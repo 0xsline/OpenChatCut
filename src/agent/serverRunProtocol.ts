@@ -57,6 +57,7 @@ export type ServerRunTerminalDisposition = 'finalized' | 'waiting_approval';
 export interface ServerRunTerminalHandoff {
   readonly disposition: ServerRunTerminalDisposition;
   readonly afterModelCommit: () => void | Promise<void>;
+  readonly onAbandon?: () => void | Promise<void>;
 }
 export type ServerRunTerminalResolution =
   | ServerRunTerminalDisposition

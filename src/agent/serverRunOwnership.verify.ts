@@ -32,5 +32,17 @@ owner.release('project-1', 'run-1');
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.equal(await duplicate.acquire('project-1', 'run-1'), true);
 duplicate.release('project-1', 'run-1');
+assert.equal(await owner.acquire('project-1', 'run-2'), true);
+let switched = false;
+const switchedOwnership = owner.acquire('project-2', 'run-3').then((acquired) => {
+  switched = acquired;
+  return acquired;
+});
+await Promise.resolve();
+assert.equal(switched, false, 'destination recovery waits while this page settles its previous run');
+owner.release('project-1', 'run-2');
+assert.equal(await switchedOwnership, true,
+  'destination recovery acquires ownership after the previous project releases it');
+owner.release('project-2', 'run-3');
 
 console.log('serverRunOwnership.verify: run-scoped tab ownership fence OK');
