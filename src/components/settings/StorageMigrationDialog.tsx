@@ -10,7 +10,7 @@ import { cleanupLegacyJson, loadMigrationStatus, STORAGE_MIGRATED_EVENT, type Mi
 
 interface MigrateResponse {
   summary?: { imported: number; skipped: number; quarantined: number };
-  enabled?: boolean;
+  status?: MigrationStatus;
   error?: string;
 }
 
@@ -93,13 +93,18 @@ export function StorageMigrationDialog({ onClose }: { onClose: () => void }) {
         setError(body.error ?? t('迁移失败'));
         return;
       }
+      if (body.status?.phase !== 'complete' || !body.status.receipt || body.status.enabled !== true) {
+        setError(body.status?.error ?? t('迁移尚未完成，仍在使用 JSON 文件目录'));
+        setStatus(body.status ?? await loadMigrationStatus());
+        return;
+      }
       setResult(t('已迁移 {imported} 个数据键，跳过 {skipped} 个', {
         imported: body.summary?.imported ?? 0,
         skipped: body.summary?.skipped ?? 0,
       }) + t('，今后项目将默认使用 SQLite 存储工程数据'));
-      // Let the dashboard banner re-check and hide itself.
+      setStatus(body.status);
+      // Emit completion only after the authoritative SQLite receipt is visible.
       window.dispatchEvent(new Event(STORAGE_MIGRATED_EVENT));
-      setStatus(await loadMigrationStatus());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

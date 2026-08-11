@@ -62,7 +62,7 @@ function timelineIdentity(timeline: Timeline): Timeline {
   return changed ? { ...timeline, items, captions, tracks } : timeline;
 }
 
-/** Finalize-time v4 enrichment also repairs already-written v4 docs from before stable identities existed. */
+/** Finalize-time enrichment repairs documents written before stable caption identities existed. */
 export function backfillProjectCaptionIdentity(doc: ProjectDoc): ProjectDoc {
   let changed = false;
   const assets = doc.assets.map((asset) => {

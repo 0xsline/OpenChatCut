@@ -1,5 +1,5 @@
-// Parallel test runner: executes every segment of the `test` script with a
-// bounded concurrency (one child process per segment — verifies are isolated
+// Parallel test runner: executes every segment of the `test:serial` script
+// with bounded concurrency (one child process per segment — verifies are isolated
 // by their own HOME/temp dirs, so processes never share state).
 //
 // Falls back to serial execution on failure collection so a broken verify
@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 // TEST_CONCURRENCY=8 on machines with headroom (and a page file).
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-const segments = pkg.scripts.test.split('&&').map((s) => s.trim()).filter(Boolean);
+const segments = pkg.scripts['test:serial'].split('&&').map((s) => s.trim()).filter(Boolean);
 const CONCURRENCY = Math.max(2, Math.min(8, Number(process.env.TEST_CONCURRENCY) || 4));
 
 const run = (command) => new Promise((resolve) => {

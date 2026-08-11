@@ -25,6 +25,7 @@ import {
 import { installProjectStoreIpc } from './project-store-ipc.ts';
 import { installEditorAuthIpc } from './editor-auth-ipc.ts';
 import { installDesktopUpdateIpc } from './update-ipc.ts';
+import { supportsDirectDesktopUpdates } from './update-service.ts';
 import { installDesktopInferenceIpc } from './native-inference-ipc.ts';
 import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
 import {
@@ -35,6 +36,7 @@ import {
 import type { DesktopPageUrlDecision, DesktopPageUrlSurface } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { focusExistingWindow } from './single-instance.ts';
+import { requestProfileScopedSingleInstanceLock } from './runtime-profile.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import {
@@ -43,6 +45,7 @@ import {
 } from '../server/export-destinations.ts';
 import { resolveExportRevealTarget } from './export-reveal.ts';
 import { runDesktopSmokeProbe } from './smoke-probe.ts';
+import { runtimeProfile } from '../server/runtime-profile.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
@@ -362,7 +365,13 @@ async function boot(): Promise<void> {
   registerDesktopHandlers(origin);
   installProjectStoreIpc(origin);
   installEditorAuthIpc(origin);
-  installDesktopUpdateIpc(origin, { enabled: app.isPackaged && !SMOKE });
+  installDesktopUpdateIpc(origin, {
+    enabled: supportsDirectDesktopUpdates({
+      packaged: app.isPackaged,
+      smoke: SMOKE,
+      platform: process.platform,
+    }),
+  });
   installDirectoryWatchIpc(origin);
   const desktopInference = installDesktopInferenceIpc(
     origin,
@@ -408,7 +417,7 @@ async function boot(): Promise<void> {
 
 app.on('window-all-closed', () => app.quit());
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const hasSingleInstanceLock = requestProfileScopedSingleInstanceLock(app, runtimeProfile());
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {

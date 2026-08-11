@@ -2,7 +2,9 @@ import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { historyReduce, projectReduce } from './reduce';
+import { makeDraft } from './store';
 import { timelineItemAssetId, usedMediaAssetIds } from './mediaAssetUsage';
+import { verifyMulticamAssetRemoval } from './mediaAssetUsageMulticam.verify-support';
 import { sourceRevisionForTimelineItem } from './mediaSourceRevision';
 import { resolveTimelineRenderPlan } from './sequenceGraph';
 import { remainingSourceFrames } from './sourceLimit';
@@ -254,6 +256,137 @@ assert.deepEqual(
   'clip-only relink must no-op when the item is missing',
 );
 
+const replacementOneFrameLonger: MediaAssetRelinkPatch = {
+  src: '/media/relinked-31.mp4',
+  name: 'Relinked 31.mp4',
+  durationInFrames: 31,
+  sourceRevision: 'replacement-31-revision',
+};
+const backToBackAsset: MediaAsset = {
+  id: 'asset-back-to-back',
+  name: 'Back to back.mp4',
+  kind: 'video',
+  src: '/media/back-to-back.mp4',
+  durationInFrames: 30,
+  sourceRevision: 'back-to-back-revision',
+};
+const backToBackTimeline = (id: string, linked: boolean): Timeline => ({
+  id,
+  name: id,
+  order: id === 'linked-timeline-a' ? 0 : 1,
+  fps: 30,
+  width: 1920,
+  height: 1080,
+  items: [
+    {
+      id: `${id}-first`,
+      track: 'V1',
+      startFrame: 0,
+      durationInFrames: 30,
+      kind: 'video',
+      name: linked ? backToBackAsset.name : 'Detached.mp4',
+      src: linked ? backToBackAsset.src : '/media/detached.mp4',
+      sourceAssetId: linked ? backToBackAsset.id : undefined,
+      srcInFrame: 0,
+    },
+    {
+      id: `${id}-second`,
+      track: 'V1',
+      startFrame: 30,
+      durationInFrames: 30,
+      kind: 'video',
+      name: linked ? backToBackAsset.name : 'Neighbor.mp4',
+      src: linked ? backToBackAsset.src : '/media/neighbor.mp4',
+      sourceAssetId: linked ? backToBackAsset.id : undefined,
+      srcInFrame: 0,
+    },
+  ],
+  tracks: { V1: { kind: 'video' } },
+  trackOrder: ['V1'],
+  selectedId: null,
+});
+const assertBackToBack = (timeline: Timeline, message: string) => {
+  const [first, second] = timeline.items.toSorted((left, right) => left.startFrame - right.startFrame);
+  assert.equal(first?.durationInFrames, 30, `${message}: first clip must retain its authored duration`);
+  assert.equal(second?.durationInFrames, 30, `${message}: second clip must retain its authored duration`);
+  assert.ok(
+    (first?.startFrame ?? 0) + (first?.durationInFrames ?? 0) <= (second?.startFrame ?? 0),
+    `${message}: relink must not create an overlap`,
+  );
+};
+
+const linkedBackToBackDoc: ProjectDoc = {
+  version: CURRENT_PROJECT_VERSION,
+  assets: [backToBackAsset],
+  mediaFolders: [],
+  activeTimelineId: 'linked-timeline-a',
+  timelines: [
+    backToBackTimeline('linked-timeline-a', true),
+    backToBackTimeline('linked-timeline-b', true),
+  ],
+};
+const linkedDraft = makeDraft(linkedBackToBackDoc);
+const linkedRelinkResult = linkedDraft.commands.relinkMediaAsset(
+  backToBackAsset.id,
+  replacementOneFrameLonger,
+);
+assert.deepEqual(linkedRelinkResult, { ok: true, changed: true });
+for (const timeline of linkedDraft.getDoc().timelines) {
+  assertBackToBack(timeline, `pool relink in ${timeline.id}`);
+}
+assert.equal(
+  linkedDraft.getDoc().assets[0]?.durationInFrames,
+  31,
+  'the pool master records the replacement source duration without expanding timeline slots',
+);
+const linkedRelinkActions = linkedDraft.takeActions();
+assert.equal(linkedRelinkActions.length, 1, 'pool relink must dispatch one atomic action');
+assert.equal(
+  historyReduce(
+    { past: [], present: linkedBackToBackDoc, future: [] },
+    linkedRelinkActions[0]!,
+  ).past.length,
+  1,
+  'pool relink must create one undo step',
+);
+
+const detachedTimeline = backToBackTimeline('detached-timeline', false);
+const detachedDoc: ProjectDoc = {
+  version: CURRENT_PROJECT_VERSION,
+  assets: [],
+  mediaFolders: [],
+  activeTimelineId: detachedTimeline.id,
+  timelines: [detachedTimeline],
+};
+const detachedDraft = makeDraft(detachedDoc);
+const detachedRelinkResult = detachedDraft.commands.relinkTimelineItem(
+  detachedTimeline.items[0]!.id,
+  replacementOneFrameLonger,
+);
+assert.deepEqual(detachedRelinkResult, { ok: true, changed: true });
+assertBackToBack(detachedDraft.getDoc().timelines[0]!, 'detached relink');
+assert.equal(detachedDraft.takeActions().length, 1, 'detached relink must dispatch one atomic action');
+
+const lockedDetachedDoc: ProjectDoc = {
+  ...detachedDoc,
+  timelines: detachedDoc.timelines.map((timeline) => ({
+    ...timeline,
+    tracks: { V1: { kind: 'video', locked: true } },
+  })),
+};
+const rejectedDraft = makeDraft(lockedDetachedDoc);
+const rejectedBefore = rejectedDraft.getDoc();
+assert.deepEqual(
+  rejectedDraft.commands.relinkTimelineItem(
+    lockedDetachedDoc.timelines[0]!.items[0]!.id,
+    replacementOneFrameLonger,
+  ),
+  { ok: false, changed: false, reason: 'no-document-change' },
+  'a rejected relink must report that the document did not change',
+);
+assert.equal(rejectedDraft.getDoc(), rejectedBefore, 'a rejected relink must remain atomic');
+assert.equal(rejectedDraft.takeActions().length, 0, 'a rejected relink must not create a false undo step');
+
 const renamed = projectReduce(doc, {
   type: 'pool.updateAsset', id: assetA.id, patch: { name: 'Renamed.mp4' },
 });
@@ -271,132 +404,20 @@ assert.equal(removed.timelines[0]!.linkGroups?.[0]?.anchorItemId, linkedB.id);
 assert.deepEqual(removed.timelines[0]!.selectedIds, [linkedB.id]);
 assert.equal(removed.timelines[0]!.selectedId, linkedB.id);
 
-const targetAngleA = {
-  ...clip('multicam-a', assetA.name, assetA.src, assetA.id),
-  durationInFrames: 45,
-  multicamGroupId: 'multicam-target',
-  multicamAngleId: 'target-angle-a',
-};
-const targetAngleB = {
-  ...clip('multicam-b', assetB.name, assetB.src, assetB.id),
-  durationInFrames: 45,
-  multicamGroupId: 'multicam-target',
-  multicamAngleId: 'target-angle-b',
-};
-const targetAngleBSplit = {
-  ...targetAngleB,
-  id: 'multicam-b-split',
-  startFrame: 45,
-};
-const independentAngleB = {
-  ...clip('independent-b', assetB.name, assetB.src, assetB.id),
-  multicamGroupId: 'multicam-independent',
-  multicamAngleId: 'independent-angle-b',
-};
-const independentAngleC = {
-  ...clip('independent-c', otherAsset.name, otherAsset.src, otherAsset.id),
-  multicamGroupId: 'multicam-independent',
-  multicamAngleId: 'independent-angle-c',
-};
-const multicamTimeline: Timeline = {
-  ...doc.timelines[0]!,
-  id: 'multicam-timeline',
-  items: [targetAngleA, targetAngleB, targetAngleBSplit, independentAngleB, independentAngleC],
-  multicamGroups: [
-    {
-      id: 'multicam-target',
-      referenceAngleId: 'target-angle-a',
-      masterAngleId: 'target-angle-a',
-      angles: [
-        {
-          id: 'target-angle-a',
-          itemId: targetAngleA.id,
-          source: targetAngleA,
-          label: 'Camera A',
-          offsetFrames: 0,
-          confidence: 1,
-        },
-        {
-          id: 'target-angle-b',
-          itemId: targetAngleB.id,
-          source: targetAngleB,
-          label: 'Camera B',
-          offsetFrames: 0,
-          confidence: 1,
-        },
-      ],
-      syncMethod: 'audio' as const,
-      evidence: [],
-    },
-    {
-      id: 'multicam-independent',
-      referenceAngleId: 'independent-angle-b',
-      masterAngleId: 'independent-angle-b',
-      angles: [
-        {
-          id: 'independent-angle-b',
-          itemId: independentAngleB.id,
-          source: independentAngleB,
-          label: 'Independent B',
-          offsetFrames: 0,
-          confidence: 1,
-        },
-        {
-          id: 'independent-angle-c',
-          itemId: independentAngleC.id,
-          source: independentAngleC,
-          label: 'Independent C',
-          offsetFrames: 0,
-          confidence: 1,
-        },
-      ],
-      syncMethod: 'audio' as const,
-      evidence: [],
-    },
-  ],
-};
-const removedMulticam = projectReduce(
-  {
-    ...doc,
-    activeTimelineId: multicamTimeline.id,
-    timelines: [multicamTimeline],
-  },
-  { type: 'pool.removeAsset', id: assetA.id },
-).timelines[0]!;
-assert.equal(
-  removedMulticam.items.some((item) => item.id === targetAngleA.id),
-  false,
-  'the deleted asset angle must be removed from the timeline',
-);
-assert.deepEqual(
-  removedMulticam.multicamGroups?.map((group) => group.id),
-  ['multicam-independent'],
-  'deleting one angle from a two-angle group must collapse only that group',
-);
-for (const id of [targetAngleB.id, targetAngleBSplit.id]) {
-  const survivor = removedMulticam.items.find((item) => item.id === id);
-  assert.equal(survivor?.multicamGroupId, undefined, 'collapsed group membership must be removed from survivors');
-  assert.equal(survivor?.multicamAngleId, undefined, 'collapsed angle membership must be removed from split descendants');
-}
-assert.equal(
-  removedMulticam.items.find((item) => item.id === independentAngleB.id)?.multicamGroupId,
-  'multicam-independent',
-  'unrelated multicam membership must be preserved',
-);
-const survivingMulticamGroupIds = new Set(removedMulticam.multicamGroups?.map((group) => group.id) ?? []);
-for (const item of removedMulticam.items) {
-  assert.ok(
-    !item.multicamGroupId || survivingMulticamGroupIds.has(item.multicamGroupId),
-    `timeline item ${item.id} must not reference a missing multicam group`,
-  );
-}
+verifyMulticamAssetRemoval({ doc, assetA, assetB, otherAsset, clip });
 
-const [storeSource, poolSource] = await Promise.all([
-  readFile(new URL('./store.ts', import.meta.url), 'utf8'),
+const [storeSource, poolSource, timelineMediaActionsSource] = await Promise.all([
+  readFile(new URL('./storeCommandBuilder.ts', import.meta.url), 'utf8'),
   readFile(new URL('../media/MediaPoolPanel.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../components/timeline/useTimelineMediaActions.ts', import.meta.url), 'utf8'),
 ]);
 assert.match(storeSource, /sourceAssetId:\s*asset\.id/, 'new timeline clips must retain their pool-master identity');
 assert.match(poolSource, /usedAssetIds/, 'the media pool must receive used-asset state');
 assert.match(poolSource, /此素材正在剪辑中，确定删除吗？/, 'deleting an in-use asset must explain the destructive cascade');
+assert.match(
+  timelineMediaActionsSource,
+  /if\s*\(!result\.changed\)/,
+  'the timeline must not show relink success when the document was unchanged',
+);
 
 console.log('mediaAssetUsage.verify: ok');

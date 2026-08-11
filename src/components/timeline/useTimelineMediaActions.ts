@@ -53,11 +53,10 @@ export function useTimelineMediaActions({
       const liveAssets = liveState.assets ?? [];
       if (media.kind !== liveItem.kind) throw new Error(t('请重新选择同类型文件'));
       const poolAssetId = timelineItemAssetId(liveItem, liveAssets);
-      if (poolAssetId) {
-        commands.relinkMediaAsset(poolAssetId, mediaAssetRelinkPatch(media));
-      } else {
-        commands.relinkTimelineItem(liveItem.id, mediaAssetRelinkPatch(media));
-      }
+      const result = poolAssetId
+        ? commands.relinkMediaAsset(poolAssetId, mediaAssetRelinkPatch(media))
+        : commands.relinkTimelineItem(liveItem.id, mediaAssetRelinkPatch(media));
+      if (!result.changed) throw new Error(t('重新链接文件失败'));
       const msg = t('已重新链接文件');
       setClipJob({ msg });
       window.setTimeout(() => setClipJob((current) => current?.msg === msg && !current.error ? null : current), 5_000);

@@ -19,8 +19,27 @@ export default defineConfig(({ mode }) => {
       Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     )
     : loadEnv(mode, process.cwd(), '');
+  // loadEnv lets a host shell override .env files. In the default profile the
+  // checkout's explicit provider remains authoritative; isolated profiles use
+  // their wrapper-merged process environment instead.
+  if (profile.mode !== 'isolated-dev' && existsSync('.env.local')) {
+    const fileProvider = readFileSync('.env.local', 'utf8')
+      .split('\n')
+      .find((line) => /^LLM_PROVIDER=/.test(line))
+      ?.split('=', 2)[1]?.trim();
+    if (fileProvider) env.LLM_PROVIDER = fileProvider;
+  }
+  // The default profile must honor an explicit checkout .env.local provider even
+  // when the parent shell exports a different LLM_PROVIDER. Isolated profiles
+  // remain authoritative through the wrapper-provided process environment.
+  if (profile.mode !== 'isolated-dev' && existsSync('.env.local')) {
+    const fileProvider = readFileSync('.env.local', 'utf8')
+      .split('\n')
+      .find((line) => /^LLM_PROVIDER=/.test(line))
+      ?.split('=', 2)[1]?.trim();
+    if (fileProvider) env.LLM_PROVIDER = fileProvider;
+  }
   if (profile.mode === 'isolated-dev') {
-    process.stdout.write(`[OpenChatCut] isolated profile ${profile.id} · ${profile.rootDir}\n`);
   }
   // Seed the runtime keystore so the settings UI (POST /api/keys) can override any key
   // live. Server plugins (assembled in server/plugins/index.ts, shared with the

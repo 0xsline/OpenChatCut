@@ -14,217 +14,36 @@ import { recordExportPerformance } from './exportRoutePlanner';
 import {
   createExportFailure,
   exportFailureFrom,
-  ExportFailureError,
-  isExportFailure,
-  type ExportFailure,
 } from './exportFailure';
 import { createExportVerifier } from './exportQaOperation';
 import {
-  deleteServerExportJob as deleteServerExportRecovery,
+  checkServerExportDelivery,
+  claimServerExportDelivery,
+  hasServerExportDestinationAuthority,
   listServerExportJobs,
+  markServerExportDeliveryAmbiguous,
+  markServerExportOutputReady,
   markServerExportTargetCommitted,
-  persistServerExportJob,
+  rebindServerExportJob,
+  releaseServerExportDelivery,
+  renewServerExportDelivery,
   type PersistedServerExportJob,
+  type ServerExportDeliveryClaim,
 } from './serverExportRecovery';
+import {
+  pollExport,
+  renderCompleted,
+  retireAndDeleteExportJob,
+  type ExportCodec,
+  type ExportFormat,
+  type ServerExportContext,
+} from './serverExportRenderOperation';
 import type {
-  ExportEngineInfo,
   ExportJobResult,
-  ExportJobSnapshot,
-  ExportPhase,
-  ExportProgress,
-  RenderEngine,
-  StateSetter,
   Translate,
   UseExportWorkflowOptions,
 } from './exportWorkflowTypes';
-
-interface ServerExportContext {
-  autoQaEnabled: boolean;
-  destination: ExportDestination;
-  options: UseExportWorkflowOptions;
-  targetPath?: string | null;
-  beginTargetCommit(): void;
-  endTargetCommit(): void;
-  markTargetCommitted(): void;
-  setBusy: StateSetter<string | null>;
-  setEngineInfo: StateSetter<ExportEngineInfo | null>;
-  setEngineReason: StateSetter<string | null>;
-  setProgress: StateSetter<ExportProgress | null>;
-  setRenderEngine: StateSetter<RenderEngine>;
-  t: Translate;
-  verifyCompletedExport: (completed: ExportJobResult, signal?: AbortSignal) => Promise<void>;
-}
-
-type ExportFormat = 'video' | 'audio';
-type ExportCodec = 'h264' | 'vp8' | 'prores' | 'mp3';
-function recoveryRecord(
-  context: ServerExportContext,
-  renderId: string,
-  format: ExportFormat,
-  codec: ExportCodec,
-): PersistedServerExportJob {
-  const projectId = context.options.projectId;
-  const ext = format === 'audio' ? 'mp3' : codec === 'vp8' ? 'webm' : codec === 'prores' ? 'mov' : 'mp4';
-  const now = Date.now();
-  return {
-    version: 1,
-    renderId,
-    projectId,
-    label: `${context.options.base}.${ext}`,
-    targetPath: context.targetPath ?? null,
-    createdAt: now,
-    updatedAt: now,
-    format,
-    codec,
-    base: context.options.base,
-    fps: context.options.fps,
-    state: context.options.state,
-    destination: context.destination,
-    autoQaEnabled: context.autoQaEnabled,
-    stage: 'polling',
-  };
-}
-
-export class ServerRenderError extends Error {
-  readonly failure?: ExportFailure;
-  constructor(cause: unknown) {
-    super(cause instanceof Error ? cause.message : String(cause), { cause });
-    this.name = 'ServerRenderError';
-    const failure = exportFailureFrom(cause);
-    if (failure) this.failure = failure;
-  }
-}
-
-export function isServerRenderError(error: unknown): error is ServerRenderError {
-  return error instanceof ServerRenderError;
-}
-
-function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  signal?.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException('Export cancelled', 'AbortError'));
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-function submissionBody(context: ServerExportContext, format: ExportFormat, codec: ExportCodec) {
-  const { state, project, timelineId, base, resolution, fps, requestedVideoBitrate } = context.options;
-  const body: Record<string, unknown> = { state, format, codec, name: base, ...(project && timelineId ? { project, timelineId } : {}) };
-  if (format !== 'video') return body;
-  body.resolution = resolution;
-  if (fps !== state.fps) body.fps = fps;
-  if (requestedVideoBitrate !== undefined) body.videoBitrate = requestedVideoBitrate;
-  return body;
-}
-
-async function submitExport(
-  context: ServerExportContext,
-  format: ExportFormat,
-  codec: ExportCodec,
-  signal?: AbortSignal,
-) {
-  const submission = await fetch('/export/job', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(submissionBody(context, format, codec)),
-    signal,
-  });
-  const submitted: unknown = await submission.json().catch(() => null);
-  if (submitted && typeof submitted === 'object' && 'failure' in submitted && isExportFailure(submitted.failure)) {
-    throw new ExportFailureError(submitted.failure);
-  }
-  const renderId = submitted && typeof submitted === 'object' && 'renderId' in submitted
-    && typeof submitted.renderId === 'string'
-    ? submitted.renderId
-    : null;
-  if (!submission.ok || !renderId) {
-    const error = submitted && typeof submitted === 'object' && 'error' in submitted
-      && typeof submitted.error === 'string'
-      ? submitted.error
-      : context.t('导出失败 ({status})', { status: submission.status });
-    throw new Error(error);
-  }
-  return renderId;
-}
-
-async function readSnapshot(
-  renderId: string,
-  t: Translate,
-  signal?: AbortSignal,
-): Promise<ExportJobSnapshot> {
-  const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { signal });
-  const snapshot: unknown = await response.json().catch(() => null);
-  const validSnapshot = snapshot !== null && typeof snapshot === 'object'
-    && 'status' in snapshot
-    && (snapshot.status === 'queued' || snapshot.status === 'running'
-      || snapshot.status === 'succeeded' || snapshot.status === 'failed')
-    && 'progress' in snapshot && typeof snapshot.progress === 'number';
-  if ((!response.ok || !validSnapshot)
-    && snapshot && typeof snapshot === 'object'
-    && 'failure' in snapshot && isExportFailure(snapshot.failure)) {
-    throw new ExportFailureError(snapshot.failure);
-  }
-  if (!response.ok || !validSnapshot) {
-    const message = snapshot && typeof snapshot === 'object' && 'error' in snapshot
-      && typeof snapshot.error === 'string' ? snapshot.error : undefined;
-    throw new Error(message ?? t('无法读取导出进度 ({status})', { status: response.status }));
-  }
-  return snapshot as ExportJobSnapshot;
-}
-
-function activePhase(snapshot: ExportJobSnapshot): ExportPhase {
-  if (snapshot.phase === 'queued') return 'queued';
-  if (snapshot.phase === 'finalizing') return 'finalizing';
-  return snapshot.phase === 'rendering' ? 'rendering' : 'preparing';
-}
-
-function updateActiveProgress(context: ServerExportContext, snapshot: ExportJobSnapshot): void {
-  context.setProgress((current) => current ? {
-    ...current,
-    phase: activePhase(snapshot),
-    percent: Math.min(99, Math.max(current.percent, Math.round(snapshot.progress))),
-    processedFrames: snapshot.processedFrames,
-    totalFrames: snapshot.totalFrames,
-  } : current);
-}
-
-function completeSnapshot(context: ServerExportContext, snapshot: ExportJobSnapshot): ExportJobResult {
-  if (!snapshot.result?.path) throw new Error(context.t('导出完成，但没有可下载的文件'));
-  context.setProgress((current) => current ? {
-    ...current,
-    phase: 'finalizing',
-    percent: 99,
-    processedFrames: snapshot.processedFrames,
-    totalFrames: snapshot.totalFrames,
-  } : current);
-  return snapshot.result;
-}
-
-async function pollExport(
-  context: ServerExportContext,
-  renderId: string,
-  signal?: AbortSignal,
-): Promise<ExportJobResult> {
-  while (true) {
-    const snapshot = await readSnapshot(renderId, context.t, signal);
-    if (snapshot.status === 'failed') {
-      const cause = snapshot.failure
-        ? new ExportFailureError(snapshot.failure)
-        : new Error(snapshot.error ?? context.t('导出失败'));
-      throw new ServerRenderError(cause);
-    }
-    if (snapshot.status === 'succeeded') return completeSnapshot(context, snapshot);
-    updateActiveProgress(context, snapshot);
-    await wait(300, signal);
-  }
-}
+export { isServerRenderError, ServerRenderError } from './serverExportRenderOperation';
 
 function updateActualEngine(context: ServerExportContext, completed: ExportJobResult): void {
   if (!completed.encoder) return;
@@ -232,38 +51,46 @@ function updateActualEngine(context: ServerExportContext, completed: ExportJobRe
   if (completed.encoderFallbackReason) context.setEngineReason(completed.encoderFallbackReason);
 }
 
-async function deleteExportJob(renderId: string): Promise<void> {
-  await fetch(`/export/job/${encodeURIComponent(renderId)}`, { method: 'DELETE' }).catch(() => undefined);
-}
-
-async function renderCompleted(
+async function writeCompletedWithLease(
   context: ServerExportContext,
-  format: ExportFormat,
-  codec: ExportCodec,
+  filename: string,
+  path: string,
+  renderId: string,
+  claim: ServerExportDeliveryClaim,
   signal?: AbortSignal,
-): Promise<{ renderId: string; completed: ExportJobResult }> {
-  let renderId: string | null = null;
+): Promise<void> {
+  signal?.throwIfAborted();
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', onAbort, { once: true });
+  let renewing = false;
+  const heartbeat = setInterval(() => {
+    if (renewing || controller.signal.aborted) return;
+    renewing = true;
+    void renewServerExportDelivery(renderId, claim)
+      .then((active) => {
+        if (!active) controller.abort(new Error('导出恢复所有权已失效'));
+      })
+      .catch((error: unknown) => controller.abort(error))
+      .finally(() => { renewing = false; });
+  }, 40_000);
   try {
-    renderId = await submitExport(context, format, codec, signal);
-    const recovery = recoveryRecord(context, renderId, format, codec);
-    if (recovery) await persistServerExportJob(recovery);
-    return { renderId, completed: await pollExport(context, renderId, signal) };
-  } catch (error) {
-    if (renderId) {
-      await deleteExportJob(renderId);
-      await deleteServerExportRecovery(renderId).catch(() => undefined);
-    }
-    throw error;
+    await writeUrlToDestination(context.destination, filename, path, controller.signal);
+  } finally {
+    clearInterval(heartbeat);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
+
 async function saveCompleted(
   context: ServerExportContext,
   format: ExportFormat,
   codec: ExportCodec,
   completed: ExportJobResult,
   renderId: string,
+  claim: ServerExportDeliveryClaim,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   signal?.throwIfAborted();
   context.setBusy(context.t('正在保存…'));
   context.setProgress((current) => current ? {
@@ -272,16 +99,38 @@ async function saveCompleted(
     percent: 99,
     detail: context.t('正在写入所选位置'),
   } : current);
+  const renewed = await renewServerExportDelivery(renderId, claim);
+  if (!renewed || !await checkServerExportDelivery(renderId, renewed)) {
+    throw new ExportDestinationError('导出恢复所有权已失效，请重试');
+  }
   signal?.throwIfAborted();
   const ext = format === 'audio' ? 'mp3' : codec === 'vp8' ? 'webm' : 'mp4';
   const filename = completed.name ?? `${context.options.base}.${ext}`;
+  const ambiguousDownload = context.destination.type === 'downloads';
   context.beginTargetCommit();
+  let targetCommitted = false;
   try {
-    await writeUrlToDestination(context.destination, filename, completed.path!, signal);
-    await markServerExportTargetCommitted(renderId);
-    context.markTargetCommitted();
+    if (ambiguousDownload) await markServerExportDeliveryAmbiguous(renderId, renewed);
+    if (!await checkServerExportDelivery(renderId, renewed)) {
+      throw new ExportDestinationError('导出恢复所有权已失效，请重试');
+    }
+    await writeCompletedWithLease(
+      context,
+      filename,
+      completed.path!,
+      renderId,
+      renewed,
+      signal,
+    );
+    if (ambiguousDownload) {
+      context.endTargetCommit();
+    } else {
+      await markServerExportTargetCommitted(renderId, renewed);
+      context.markTargetCommitted();
+      targetCommitted = true;
+    }
   } catch (error) {
-    context.endTargetCommit();
+    if (!targetCommitted) context.endTargetCommit();
     throw error;
   }
   context.setProgress((current) => current ? { ...current, outputSize: completed.sizeBytes } : current);
@@ -295,6 +144,7 @@ async function saveCompleted(
     createdAt: Date.now(),
     ...(destinationId ? { destinationId } : {}),
   });
+  return targetCommitted;
 }
 
 function recordServerPerformance(context: ServerExportContext, completed: ExportJobResult, startedAt: number): void {
@@ -316,6 +166,8 @@ async function exportMedia(
   const codec = format === 'audio' ? 'mp3' : context.options.codec;
   const startedAt = performance.now();
   const { renderId, completed } = await renderCompleted(context, format, codec, signal);
+  let targetCommitted = false;
+  let claim: ServerExportDeliveryClaim | null = null;
   try {
     if (format === 'video') updateActualEngine(context, completed);
     signal?.throwIfAborted();
@@ -323,12 +175,16 @@ async function exportMedia(
       await context.verifyCompletedExport(completed, signal);
       signal?.throwIfAborted();
     }
-    await saveCompleted(context, format, codec, completed, renderId, signal);
+    claim = await claimServerExportDelivery(renderId);
+    if (!claim) throw new ExportDestinationError('此导出正在由另一个窗口恢复，请稍后重试');
+    targetCommitted = await saveCompleted(context, format, codec, completed, renderId, claim, signal);
     if (format === 'video') recordServerPerformance(context, completed, startedAt);
     return completed;
   } finally {
-    await deleteExportJob(renderId);
-    await deleteServerExportRecovery(renderId).catch(() => undefined);
+    if (claim) await releaseServerExportDelivery(renderId, claim).catch(() => undefined);
+    if (targetCommitted) {
+      await retireAndDeleteExportJob(renderId).catch(() => false);
+    }
   }
 }
 
@@ -342,10 +198,11 @@ interface ResumePersistedServerExportsOptions {
   t: Translate;
 }
 
-const recoveringServerExports = new Set<string>();
+const RESELECT_RECOVERY_DESTINATION = '导出目标授权已失效，请重新选择导出位置后重试';
 
 function recoveredContext(
   record: PersistedServerExportJob,
+  destination: ExportDestination,
   setters: BackgroundExportJobSetters,
   t: Translate,
 ): ServerExportContext {
@@ -367,7 +224,7 @@ function recoveredContext(
   };
   return {
     autoQaEnabled: record.autoQaEnabled,
-    destination: record.destination,
+    destination,
     options,
     targetPath: record.targetPath,
     t,
@@ -386,27 +243,51 @@ async function runRecoveredServerExport(
   setters: BackgroundExportJobSetters,
   signal: AbortSignal,
   t: Translate,
+  initialClaim: ServerExportDeliveryClaim | null = null,
 ): Promise<void> {
-  const context = recoveredContext(record, setters, t);
-  const startedAt = performance.now();
+  let claim = initialClaim;
+  let targetCommitted = record.stage === 'target-committed';
   setters.setClock(Date.now());
   setters.setBusy(t('正在恢复导出…'));
   setters.setRenderEngine(record.format === 'video' ? 'server' : 'idle');
   try {
-    if (record.stage === 'target-committed') {
+    if (targetCommitted) {
       setters.markTargetCommitted();
     } else {
+      if (record.stage === 'delivery-ambiguous') {
+        throw new ExportDestinationError(RESELECT_RECOVERY_DESTINATION);
+      }
+      if (!hasServerExportDestinationAuthority(record.destination)) {
+        throw new ExportDestinationError(RESELECT_RECOVERY_DESTINATION);
+      }
+      const context = recoveredContext(record, record.destination, setters, t);
+      const startedAt = performance.now();
       signal.throwIfAborted();
-      await ensureExportDestinationWritable(record.destination);
-      signal.throwIfAborted();
+      await ensureExportDestinationWritable(record.destination).catch((error: unknown) => {
+        if (record.destination.type === 'browser-directory' || record.destination.type === 'browser-file') {
+          throw new ExportDestinationError(RESELECT_RECOVERY_DESTINATION);
+        }
+        throw error;
+      });
       const completed = await pollExport(context, record.renderId, signal);
+      if (record.stage === 'polling') await markServerExportOutputReady(record.renderId, claim ?? undefined);
       if (record.format === 'video') updateActualEngine(context, completed);
       signal.throwIfAborted();
       if (record.format === 'video' && record.autoQaEnabled) {
         await context.verifyCompletedExport(completed, signal);
         signal.throwIfAborted();
       }
-      await saveCompleted(context, record.format, record.codec, completed, record.renderId, signal);
+      claim ??= await claimServerExportDelivery(record.renderId);
+      if (!claim) throw new ExportDestinationError('此导出正在由另一个窗口恢复，请稍后重试');
+      targetCommitted = await saveCompleted(
+        context,
+        record.format,
+        record.codec,
+        completed,
+        record.renderId,
+        claim,
+        signal,
+      );
       if (record.format === 'video') recordServerPerformance(context, completed, startedAt);
     }
     const finishedAt = Date.now();
@@ -437,10 +318,11 @@ async function runRecoveredServerExport(
       finishedAt: Date.now(),
     } : current);
   } finally {
-    await deleteExportJob(record.renderId);
-    await deleteServerExportRecovery(record.renderId).catch(() => undefined);
+    if (claim) await releaseServerExportDelivery(record.renderId, claim).catch(() => undefined);
+    if (targetCommitted) {
+      await retireAndDeleteExportJob(record.renderId).catch(() => false);
+    }
     setters.setBusy(null);
-    recoveringServerExports.delete(record.renderId);
   }
 }
 
@@ -452,14 +334,47 @@ export async function resumePersistedServerExports({
 }: ResumePersistedServerExportsOptions): Promise<void> {
   const records = await listServerExportJobs(projectId);
   for (const record of records) {
-    if (recoveringServerExports.has(record.renderId)) continue;
-    const recovered = exportJobs.recover({
+    exportJobs.recover({
       id: `server-export-${record.renderId}`,
       label: record.label,
       targetPath: record.targetPath,
       createdAt: record.createdAt,
       execute: ({ signal, setters }) => runRecoveredServerExport(record, setters, signal, t),
     });
-    if (recovered) recoveringServerExports.add(record.renderId);
   }
+}
+
+interface RebindPersistedServerExportOptions {
+  destination: ExportDestination;
+  exportJobs: ExportJobStore;
+  renderId: string;
+  t: Translate;
+  targetPath: string;
+}
+
+export async function rebindAndResumePersistedServerExport({
+  destination,
+  exportJobs,
+  renderId,
+  t,
+  targetPath,
+}: RebindPersistedServerExportOptions): Promise<string> {
+  const claim = await claimServerExportDelivery(renderId);
+  if (!claim) throw new ExportDestinationError('此导出正在由另一个窗口恢复，请稍后重试');
+  let rebound: PersistedServerExportJob;
+  try {
+    rebound = await rebindServerExportJob(renderId, destination, targetPath, claim);
+  } catch (error) {
+    await releaseServerExportDelivery(renderId, claim).catch(() => undefined);
+    throw error;
+  }
+  return exportJobs.start({
+    label: rebound.label,
+    targetPath,
+    execute: ({ signal, setters }) => runRecoveredServerExport(rebound, setters, signal, t, claim),
+  });
+}
+
+export async function retirePersistedServerExport(renderId: string): Promise<boolean> {
+  return retireAndDeleteExportJob(renderId);
 }

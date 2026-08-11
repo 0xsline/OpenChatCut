@@ -37,6 +37,7 @@ interface CleanupStaleExportOptions {
   now?: number;
   retentionMs?: number;
   onError?: (path: string, error: unknown) => void;
+  shouldRetain?: (renderId: string) => Promise<boolean> | boolean;
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -45,9 +46,6 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
-function isTemporaryExportFilename(filename: string): boolean {
-  return EXPORT_JOB_FILENAME.test(filename);
-}
 
 export function exportJobFilename(id: string, extension: string): string {
   if (!EXPORT_JOB_ID.test(id) || !EXPORT_JOB_EXTENSIONS.has(extension)) {
@@ -97,11 +95,13 @@ export async function cleanupStaleExportFiles(
 
   let removed = 0;
   for (const entry of entries) {
-    if (!entry.isFile() || !isTemporaryExportFilename(entry.name)) continue;
+    const match = entry.isFile() ? EXPORT_JOB_FILENAME.exec(entry.name) : null;
+    if (!match) continue;
     const path = join(directory, entry.name);
     try {
       const info = await stat(path);
       if (now - info.mtimeMs < retentionMs) continue;
+      if (await options.shouldRetain?.(match[1])) continue;
       await unlinkWithRetry(path);
       removed += 1;
     } catch (error) {

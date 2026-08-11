@@ -31,7 +31,11 @@ import {
 } from '../storage/semantic-vectors.ts';
 import { searchContent } from '../storage/fulltext-search.ts';
 import { hybridSearch } from '../storage/hybrid-search.ts';
-import { cleanupLegacyJson, sqliteMigrationStatus, sqliteImportJson, sqliteStoreEnabled } from '../storage/sqlite-store.ts';
+import {
+  cleanupLegacyJson,
+  runStorageMigration,
+  sqliteMigrationStatus,
+} from '../storage/sqlite-store.ts';
 import { AgentSessionClearBlockedError } from './project-store-agent-session.ts';
 import {
   compareAndSwapAgentRuntime,
@@ -43,6 +47,7 @@ import {
   rotateAgentSession,
   setStoredEntry,
   updateStoredAgentRunLease,
+  updateExportRecoveryLease,
 } from './project-store.ts';
 
 const HTTP_OPERATIONS = {
@@ -56,6 +61,7 @@ const HTTP_OPERATIONS = {
   rotateAgentSession,
   setEntry: setStoredEntry,
   updateAgentRunLease: updateStoredAgentRunLease,
+  updateExportRecoveryLease,
   // Semantic vectors (phase C): sqlite-vec server-side index.
   semanticVectorsUpsert: (request: {
     scopeId: string;
@@ -109,8 +115,9 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
             return;
           }
           try {
-            const summary = sqliteImportJson();
-            sendProjectStoreJson(res, 200, { summary, enabled: sqliteStoreEnabled() });
+            const summary = await runStorageMigration();
+            const status = sqliteMigrationStatus();
+            sendProjectStoreJson(res, 200, { summary, enabled: status.enabled, status });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             server.config.logger.error(`[project-store] migrate failed: ${message}`);

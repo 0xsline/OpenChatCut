@@ -57,10 +57,14 @@ function currentContentHashes(assets: readonly MediaAsset[]): string[] {
   }
   return [...hashes];
 }
+function publicationKey(watchId: string, importId: string): string {
+  return `${watchId}\0${importId}`;
+}
 
 export class DirectoryImportRuntime {
   readonly #options: DirectoryImportRuntimeOptions;
   #session: RuntimeSession | null = null;
+  readonly #pendingAccepted = new Map<string, { watchId: string; file: DirectoryImportedFile }>();
   #startVersion = 0;
 
   constructor(options: DirectoryImportRuntimeOptions) {
@@ -121,7 +125,10 @@ export class DirectoryImportRuntime {
     this.#session = null;
     this.#options.onWatchChange(null);
     this.#options.onBusyChange(false);
-    if (!session) return;
+    if (!session) {
+      await this.#reconcileAccepted();
+      return;
+    }
     session.cancelled = true;
     await session.queue;
     try {
@@ -129,6 +136,7 @@ export class DirectoryImportRuntime {
     } catch (reason) {
       this.#options.onError(reason);
     }
+    await this.#reconcileAccepted(session.watchId);
   }
 
   #createSession(result: DirectoryWatchStartResult, hashes: readonly string[]): RuntimeSession {
@@ -158,27 +166,103 @@ export class DirectoryImportRuntime {
   }
 
   async #processFile(session: RuntimeSession, file: DirectoryImportedFile): Promise<void> {
-    let disposition: DirectoryImportDisposition = 'rejected';
+    let asset: MediaAsset;
+    let hash: string | null;
     try {
-      if (!this.#isCurrent(session)) return;
-      const descriptorHash = normalizeSha256Hash(file.contentHash);
-      if (descriptorHash && this.#hasContentHash(session, descriptorHash)) {
-        disposition = 'duplicate';
+      if (!this.#isCurrent(session)) {
+        await this.#acknowledge(session, file, 'rejected');
         return;
       }
-      const asset = await (this.#options.convert ?? directoryFileToAsset)(file, this.#options.getFps());
-      if (!this.#isCurrent(session)) return;
-      const hash = normalizeSha256Hash(asset.sourceContentHash);
-      if (hash && this.#hasContentHash(session, hash)) disposition = 'duplicate';
-      else {
-        this.#options.ingest(asset);
-        if (hash) session.acceptedHashes.add(hash);
-        disposition = 'accepted';
+      const descriptorHash = normalizeSha256Hash(file.contentHash);
+      if (descriptorHash && this.#hasContentHash(session, descriptorHash)) {
+        await this.#acknowledge(session, file, 'duplicate');
+        return;
+      }
+      asset = await (this.#options.convert ?? directoryFileToAsset)(file, this.#options.getFps());
+      if (!this.#isCurrent(session)) {
+        await this.#acknowledge(session, file, 'rejected');
+        return;
+      }
+      hash = normalizeSha256Hash(asset.sourceContentHash) ?? null;
+      if (hash && this.#hasContentHash(session, hash)) {
+        await this.#acknowledge(session, file, 'duplicate');
+        return;
       }
     } catch (reason) {
+      let acknowledgementFailed = false;
+      let acknowledgeError: unknown;
+      try {
+        await this.#acknowledge(session, file, 'rejected');
+      } catch (error) {
+        acknowledgementFailed = true;
+        acknowledgeError = error;
+      }
       this.#options.onError(reason);
-    } finally {
-      await this.#acknowledge(session, file, disposition);
+      if (acknowledgementFailed) this.#options.onError(acknowledgeError);
+      return;
+    }
+
+    try {
+      await this.#acknowledge(session, file, 'reserved');
+    } catch (reason) {
+      this.#options.onError(reason);
+      return;
+    }
+    if (!this.#isCurrent(session)) {
+      try {
+        await this.#acknowledge(session, file, 'rejected');
+      } catch (reason) {
+        this.#options.onError(reason);
+      }
+      return;
+    }
+
+    try {
+      this.#options.ingest(asset);
+    } catch (reason) {
+      let rollbackFailed = false;
+      let rollbackError: unknown;
+      try {
+        await this.#acknowledge(session, file, 'rejected');
+      } catch (error) {
+        rollbackFailed = true;
+        rollbackError = error;
+      }
+      this.#options.onError(reason);
+      if (rollbackFailed) this.#options.onError(rollbackError);
+      return;
+    }
+    if (hash) session.acceptedHashes.add(hash);
+
+    const pendingKey = publicationKey(session.watchId, file.importId);
+    this.#pendingAccepted.set(pendingKey, { watchId: session.watchId, file });
+    try {
+      await this.#acknowledge(session, file, 'accepted');
+      this.#pendingAccepted.delete(pendingKey);
+    } catch (reason) {
+      try {
+        await this.#acknowledge(session, file, 'accepted');
+        this.#pendingAccepted.delete(pendingKey);
+      } catch (retryReason) {
+        this.#options.onError(reason);
+        this.#options.onError(retryReason);
+      }
+    }
+  }
+
+  async #reconcileAccepted(watchId?: string): Promise<void> {
+    for (const [pendingKey, pending] of [...this.#pendingAccepted]) {
+      if (watchId && pending.watchId !== watchId) continue;
+      try {
+        await this.#options.api.acknowledgeImportDirectoryFile(
+          pending.watchId,
+          pending.file.importId,
+          'accepted',
+        );
+        this.#pendingAccepted.delete(pendingKey);
+      } catch (reason) {
+        this.#options.onError(reason);
+      }
     }
   }
 
@@ -187,15 +271,11 @@ export class DirectoryImportRuntime {
     file: DirectoryImportedFile,
     disposition: DirectoryImportDisposition,
   ): Promise<void> {
-    try {
-      await this.#options.api.acknowledgeImportDirectoryFile(
-        session.watchId,
-        file.importId,
-        disposition,
-      );
-    } catch (reason) {
-      this.#options.onError(reason);
-    }
+    await this.#options.api.acknowledgeImportDirectoryFile(
+      session.watchId,
+      file.importId,
+      disposition,
+    );
   }
 
   #hasContentHash(session: RuntimeSession, hash: string): boolean {

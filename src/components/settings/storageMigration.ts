@@ -3,9 +3,11 @@ import { fetchWithEditorSession } from '../../persist/projectStoreTransport';
 
 export interface MigrationStatus {
   enabled: boolean;
+  phase: 'legacy' | 'migrating' | 'complete' | 'failed';
   receipt: { count: number; importedAt: string } | null;
   jsonKeyCount: number;
   sqliteKeyCount: number;
+  error?: string;
 }
 
 export const STORAGE_BANNER_DISMISS_KEY = 'cc.storageMigrationBannerDismissed';

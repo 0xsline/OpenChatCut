@@ -103,26 +103,116 @@ jobs:
       - name: Package
         run: npm run ${{ matrix.script }}
 
-      - name: Smoke test macOS
+      - name: Smoke test macOS distribution
         if: runner.os == 'macOS'
         shell: bash
         env:
           CC_SMOKE: '1'
           CC_SMOKE_RENDER: '1'
         run: |
-          app="$(find release -type d -name OpenChatCut.app | head -n 1)"
-          test -n "$app"
-          "$app/Contents/MacOS/OpenChatCut"
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(release/*.dmg)
+          zips=(release/*.zip)
+          [[ "${#dmgs[@]}" -eq 1 ]]
+          [[ "${#zips[@]}" -eq 1 ]]
 
-      - name: Smoke test Windows
+          mount_dir="$(mktemp -d "$RUNNER_TEMP/openchatcut-dmg.XXXXXX")"
+          zip_dir="$(mktemp -d "$RUNNER_TEMP/openchatcut-zip.XXXXXX")"
+          mounted=false
+          cleanup() {
+            if [[ "$mounted" == true ]]; then
+              hdiutil detach "$mount_dir" || hdiutil detach -force "$mount_dir"
+            fi
+            rm -rf "$mount_dir"
+            rm -rf "$zip_dir"
+          }
+          trap cleanup EXIT
+
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount_dir" "${dmgs[0]}"
+          mounted=true
+          mounted_app="$mount_dir/OpenChatCut.app"
+          test -x "$mounted_app/Contents/MacOS/OpenChatCut"
+          "$mounted_app/Contents/MacOS/OpenChatCut"
+
+          unzip -tq "${zips[0]}"
+          test "$(unzip -Z1 "${zips[0]}" 'OpenChatCut.app/Contents/MacOS/OpenChatCut')" = \
+            'OpenChatCut.app/Contents/MacOS/OpenChatCut'
+          test "$(unzip -Z1 "${zips[0]}" \
+            'OpenChatCut.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework')" = \
+            'OpenChatCut.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework'
+          unzip -q "${zips[0]}" -d "$zip_dir"
+          zipped_app="$zip_dir/OpenChatCut.app"
+          test -x "$zipped_app/Contents/MacOS/OpenChatCut"
+          "$zipped_app/Contents/MacOS/OpenChatCut"
+          case "$(uname -m)" in
+            arm64) runtime_arch='mac-arm64' ;;
+            x86_64) runtime_arch='mac-x64' ;;
+            *) echo "Unsupported macOS architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          render_runtime="OpenChatCut.app/Contents/Resources/chrome-headless-shell/$runtime_arch/chrome-headless-shell-$runtime_arch/chrome-headless-shell"
+          test "$(unzip -Z1 "${zips[0]}" "$render_runtime")" = "$render_runtime"
+          test -x "$zip_dir/$render_runtime"
+
+      - name: Smoke test Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           CC_SMOKE: '1'
           CC_SMOKE_RENDER: '1'
-        run: '& "release/win-unpacked/OpenChatCut.exe" | Out-Host'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem -LiteralPath release -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) {
+            throw "Expected one NSIS installer, found $($installers.Count)"
+          }
 
-      - name: Smoke test Linux
+          $installDir = Join-Path $env:RUNNER_TEMP "openchatcut-smoke-$PID"
+          Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+          $installed = $false
+          try {
+            $install = Start-Process -FilePath $installers[0].FullName `
+              -ArgumentList @('/S', "/D=$installDir") -Wait -PassThru
+            if ($install.ExitCode -ne 0) {
+              throw "NSIS installer exited with $($install.ExitCode)"
+            }
+
+            $installedExe = Join-Path $installDir 'OpenChatCut.exe'
+            if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
+              throw "NSIS installer did not create $installedExe"
+            }
+            $installed = $true
+            $smoke = Start-Process -FilePath $installedExe -Wait -PassThru
+            if ($smoke.ExitCode -ne 0) {
+              throw "Installed OpenChatCut smoke exited with $($smoke.ExitCode)"
+            }
+          } finally {
+            $cleanupError = $null
+            if ($installed) {
+              try {
+                $uninstallers = @(Get-ChildItem -LiteralPath $installDir -Filter 'Uninstall*.exe' -File)
+                if ($uninstallers.Count -ne 1) {
+                  throw "Expected one NSIS uninstaller, found $($uninstallers.Count)"
+                }
+                $uninstall = Start-Process -FilePath $uninstallers[0].FullName `
+                  -ArgumentList '/S' -Wait -PassThru
+                if ($uninstall.ExitCode -ne 0) {
+                  throw "NSIS uninstaller exited with $($uninstall.ExitCode)"
+                }
+              } catch {
+                $cleanupError = $_.Exception.Message
+              }
+            }
+            Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $installDir) {
+              $cleanupError = "Failed to clean installed application at $installDir"
+            }
+            if ($cleanupError) {
+              throw $cleanupError
+            }
+          }
+
+      - name: Smoke test Linux AppImage
         if: runner.os == 'Linux'
         shell: bash
         env:
@@ -130,10 +220,15 @@ jobs:
           CC_SMOKE_RENDER: '1'
           ELECTRON_DISABLE_SANDBOX: '1'
         run: |
-          # Ubuntu 24.04 restricts non-privileged userns by default, allowing the Electron / headless-shell sandbox to be available
+          set -euo pipefail
+          shopt -s nullglob
+          appimages=(release/*.AppImage)
+          [[ "${#appimages[@]}" -eq 1 ]]
+          chmod +x "${appimages[0]}"
+          # Ubuntu runners do not expose FUSE, so execute the shipped AppImage through its runtime extraction path.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
-          xvfb-run --auto-servernum release/linux-unpacked/openchatcut
+          xvfb-run --auto-servernum "${appimages[0]}" --appimage-extract-and-run
 
       - uses: actions/upload-artifact@v7
         with:
@@ -186,26 +281,36 @@ jobs:
           test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-arm64.zip.blockmap"
           test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-x64.zip.blockmap"
           test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-x64.exe.blockmap"
-          test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-x64.AppImage.blockmap"
+          test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-x86_64.AppImage.blockmap"
 
       - name: Generate checksums
         working-directory: release-files
         run: sha256sum ./* > SHA256SUMS.txt
 
-      - name: Create GitHub Release
+      - name: Create or reuse draft release
         shell: bash
         run: |
           set -euo pipefail
+          release_ready=false
 
           for attempt in {1..8}; do
-            if gh release view "$GITHUB_REF_NAME" \
-              --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if is_draft="$(gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json isDraft \
+              --jq '.isDraft' 2>/dev/null)"; then
+              if [[ "$is_draft" != "true" ]]; then
+                echo "Release $GITHUB_REF_NAME is already public; refusing to replace it" >&2
+                exit 1
+              fi
+              release_ready=true
               break
             fi
             if gh release create "$GITHUB_REF_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
-              --generate-notes; then
+              --generate-notes \
+              --draft; then
+              release_ready=true
               break
             fi
             if [[ "$attempt" == 8 ]]; then
@@ -213,15 +318,74 @@ jobs:
             fi
             sleep $((attempt * 15))
           done
+          [[ "$release_ready" == "true" ]]
+
+      - name: Upload and verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          uploaded=false
 
           for attempt in {1..8}; do
             if gh release upload "$GITHUB_REF_NAME" \
               release-files/* \
+              --repo "$GITHUB_REPOSITORY" \
               --clobber; then
-              exit 0
+              uploaded=true
+              break
             fi
             if [[ "$attempt" == 8 ]]; then
               exit 1
             fi
             sleep $((attempt * 15))
           done
+          [[ "$uploaded" == "true" ]]
+
+          local_manifest="$RUNNER_TEMP/local-release-assets.tsv"
+          remote_manifest="$RUNNER_TEMP/remote-release-assets.tsv"
+          : > "$local_manifest"
+          for asset in release-files/*; do
+            digest="$(sha256sum "$asset" | cut -d ' ' -f1)"
+            printf '%s\tsha256:%s\n' "${asset##*/}" "$digest" >> "$local_manifest"
+          done
+          LC_ALL=C sort -o "$local_manifest" "$local_manifest"
+
+          verified=false
+          for attempt in {1..8}; do
+            if release_json="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}")"; then
+              if [[ "$(jq -r '.draft' <<<"$release_json")" != "true" ]]; then
+                echo "Release $GITHUB_REF_NAME became public before asset verification" >&2
+                exit 1
+              fi
+              jq -r '.assets[] | [.name, (.digest // "")] | @tsv' \
+                <<<"$release_json" | LC_ALL=C sort > "$remote_manifest"
+              if cmp -s "$local_manifest" "$remote_manifest"; then
+                verified=true
+                break
+              fi
+              echo "Release asset names or SHA-256 digests do not match local files" >&2
+              diff -u "$local_manifest" "$remote_manifest" || true
+            fi
+            if [[ "$attempt" == 8 ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+          [[ "$verified" == "true" ]]
+
+      - name: Publish verified draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          is_draft="$(gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft \
+            --jq '.isDraft')"
+          if [[ "$is_draft" != "true" ]]; then
+            echo "Release $GITHUB_REF_NAME is already public; refusing to republish it" >&2
+            exit 1
+          fi
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false

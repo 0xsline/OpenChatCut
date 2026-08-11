@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { AppUpdater, UpdateInfo } from 'electron-updater';
-import { DesktopUpdateService } from './update-service';
+import {
+  DesktopUpdateService,
+  supportsDirectDesktopUpdates,
+} from './update-service';
 
 function updateInfo(version: string): UpdateInfo {
   return { version, releaseDate: new Date(0).toISOString(), files: [], path: '', sha512: '' };
@@ -44,6 +47,29 @@ class FakeUpdater extends EventEmitter {
     this.installCalls += 1;
   }
 }
+
+for (const platform of ['win32', 'linux'] satisfies NodeJS.Platform[]) {
+  assert.equal(
+    supportsDirectDesktopUpdates({ packaged: true, smoke: false, platform }),
+    true,
+    `${platform} packaged builds must support direct updates`,
+  );
+}
+assert.equal(
+  supportsDirectDesktopUpdates({ packaged: true, smoke: false, platform: 'darwin' }),
+  false,
+  'ad-hoc signed macOS builds must use the release-page fallback',
+);
+assert.equal(
+  supportsDirectDesktopUpdates({ packaged: false, smoke: false, platform: 'win32' }),
+  false,
+  'development builds must not contact update servers',
+);
+assert.equal(
+  supportsDirectDesktopUpdates({ packaged: true, smoke: true, platform: 'linux' }),
+  false,
+  'smoke builds must not contact update servers',
+);
 
 const unsupportedUpdater = new FakeUpdater();
 const unsupported = new DesktopUpdateService(unsupportedUpdater as unknown as AppUpdater, {

@@ -4,6 +4,7 @@
 // - desktop/embedded-server.ts → Electron production shell (stub mounting)
 // Getter reads keystore immediately - the next request will take effect after the setting panel is saved, no need to restart.
 import type { Plugin } from "vite";
+import { storageLifecyclePlugin } from './storage-lifecycle.ts';
 import { projectStorePlugin } from "./project-store-plugin.ts";
 import { extensionStorePlugin } from "./extension-store.ts";
 import { exportPlugin } from "./export.ts";
@@ -51,6 +52,7 @@ import { installSystemProxy } from '../net.ts';
 export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
   installSystemProxy();
   return [
+    storageLifecyclePlugin(),
     llmProxyPlugin(),
     skillFilesPlugin(),
     skillInstallPlugin(),

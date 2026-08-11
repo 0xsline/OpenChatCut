@@ -1,6 +1,9 @@
 export const PROJECT_STORE_CHANNEL = 'openchatcut:project-store';
 
 export type AgentRunLeaseAction = 'claim' | 'renew' | 'release' | 'check';
+export type ExportRecoveryLeaseAction =
+  | 'claim' | 'renew' | 'release' | 'check' | 'retire'
+  | 'ready' | 'ambiguous' | 'commit' | 'rebind' | 'reconcile';
 
 export interface AgentRunLeaseState {
   ownerInstanceId: string;
@@ -69,6 +72,17 @@ export type ProjectStoreRequest =
     ownerInstanceId: string;
     leaseToken?: string;
     leaseMs?: number;
+  }
+  | {
+    operation: 'export-recovery-lease';
+    key: string;
+    renderId: string;
+    action: ExportRecoveryLeaseAction;
+    ownerInstanceId: string;
+    leaseToken?: string;
+    leaseMs?: number;
+    value?: unknown;
+    authorityEstablished?: boolean;
   }
   // Semantic vectors (phase C): server-side sqlite-vec index.
   | {

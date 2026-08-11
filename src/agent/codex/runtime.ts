@@ -22,6 +22,7 @@ import { buildAgentSystemPrompt } from '../systemPrompt';
 import { runCodexTurn } from './client';
 import { isFailedToolResult, ToolFailureTracker } from '../toolFailure';
 import {
+  effectiveToolInvocationArgs,
   policyForTool,
   validateAgentToolInvocation,
   type ToolExecutionPolicy,
@@ -73,6 +74,7 @@ export interface LocalToolExecutionContext {
 
 interface ToolBoundaryState {
   readonly toolCallId: string;
+  invocationArgs: Record<string, unknown>;
   policy: ToolExecutionPolicy;
   argsDigest?: string;
   operationId?: string;
@@ -111,16 +113,26 @@ async function prepareToolBoundary(
       kind: 'validation_failed', summary: validation.issues.join('; ').slice(0, 1_000),
     });
   }
-  const resolvedGuard = await execution.resolveGuard(schema.name, args, execution.ctx);
-  state.policy = policyForTool(schema.name, resolvedGuard, args);
+  state.invocationArgs = effectiveToolInvocationArgs(schema.name, args);
+  const resolvedGuard = await execution.resolveGuard(
+    schema.name,
+    state.invocationArgs,
+    execution.ctx,
+  );
+  state.policy = policyForTool(schema.name, resolvedGuard, state.invocationArgs);
   state.operationId = resolvedGuard?.operationId;
   state.argsDigest = execution.runRecorder
     ? (await execution.runRecorder.recordToolRequested({
-      toolCallId: state.toolCallId, toolName: schema.name, args,
+      toolCallId: state.toolCallId, toolName: schema.name, args: state.invocationArgs,
       operationId: resolvedGuard?.operationId,
     })).argsDigest
-    : await digestAgentToolArgs(args);
-  const guard = guardRequestForPolicy(schema.name, args, state.policy, resolvedGuard);
+    : await digestAgentToolArgs(state.invocationArgs);
+  const guard = guardRequestForPolicy(
+    schema.name,
+    state.invocationArgs,
+    state.policy,
+    resolvedGuard,
+  );
   return guard ? { ...guard, argsDigest: state.argsDigest } : null;
 }
 async function requestToolApproval(
@@ -238,7 +250,9 @@ export async function executeOpenChatCutTool(
 ): Promise<CodexToolExecution> {
   const state: ToolBoundaryState = {
     toolCallId: execution.toolCallId ?? crypto.randomUUID(),
-    policy: policyForTool(schema.name, null, args), started: false,
+    invocationArgs: args,
+    policy: policyForTool(schema.name, null, args),
+    started: false,
   };
   try {
     const guard = await prepareToolBoundary(schema, args, execution, state);
@@ -251,7 +265,7 @@ export async function executeOpenChatCutTool(
         toolCallId: state.toolCallId, toolName: schema.name, argsDigest: state.argsDigest,
         operationId: state.operationId, outcome: { kind: 'denied' },
       });
-      execution.onEvent({ type: 'tool', name: schema.name, args, result: denied });
+      execution.onEvent({ type: 'tool', name: schema.name, args: state.invocationArgs, result: denied });
       return { success: true, result: denied };
     }
     await execution.runRecorder?.recordToolStarted({
@@ -262,12 +276,12 @@ export async function executeOpenChatCutTool(
     state.before = snapshotTimeline(execution.ctx.getState());
     state.started = true;
     const result = await (execution.executeTool ?? executeEditorTool)(
-      schema.name, args, execution.ctx, execution.toolCatalog, execution.harness,
+      schema.name, state.invocationArgs, execution.ctx, execution.toolCatalog, execution.harness,
     );
     throwIfToolAborted(execution.signal, state);
-    return await settleToolResult(schema, args, result, execution, state);
+    return await settleToolResult(schema, state.invocationArgs, result, execution, state);
   } catch (error) {
-    return settleToolError(schema, args, execution, state, error);
+    return settleToolError(schema, state.invocationArgs, execution, state, error);
   }
 }
 interface LinkedAbort {

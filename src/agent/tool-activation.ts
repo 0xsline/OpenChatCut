@@ -1,8 +1,7 @@
 import type { ModelMessage } from 'ai';
 import type { ProviderOptions } from '@ai-sdk/provider-utils';
 import type { AgentToolSchema } from './tool-schema';
-import { isExternalGlobalReadTool, isExternalReadTool } from './external-tool-policy';
-import { routedToolSelection } from './tool-routing';
+import { hasMutationRoutingIntent, routedToolSelection } from './tool-routing';
 import { activatedToolNamesForResult } from './skills/skill-tool-activation';
 
 const BOOT_TOOL_NAMES: Record<string, true> = {
@@ -15,15 +14,21 @@ const BOOT_TOOL_NAMES: Record<string, true> = {
   read_agent_artifact: true,
 };
 
-const READ_ONLY_TERMS = ['不要修改', '不要编辑', '只读', 'read only', 'read-only', 'do not edit', "don't edit", 'without editing'];
+const READ_ONLY_TERMS = [
+  '不要修改', '不要编辑', '只读',
+  'read only', 'read-only', 'do not edit', "don't edit", 'without editing',
+];
 
-function isReadOnlyRequest(request: string): boolean {
-  return READ_ONLY_TERMS.some((term) => request.includes(term));
-}
-function isReadOnlyTool(name: string): boolean {
-  return BOOT_TOOL_NAMES[name] === true
-    || isExternalGlobalReadTool(name)
-    || isExternalReadTool(name);
+/** A natural-language hint may narrow initial routing, but never becomes tool authority. */
+function isReadOnlyRoutingHint(request: string): boolean {
+  let remainder = request.toLowerCase();
+  let matched = false;
+  for (const term of READ_ONLY_TERMS) {
+    if (!remainder.includes(term)) continue;
+    matched = true;
+    remainder = remainder.split(term).join('');
+  }
+  return matched && !hasMutationRoutingIntent(remainder);
 }
 
 
@@ -135,7 +140,7 @@ function routedNames(
 ): { readonly names: string[]; readonly overflow: boolean } {
   const request = latestUserText(messages);
   if (!request) return { names: [], overflow: false };
-  const routed = routedToolSelection(request, isReadOnlyRequest(request));
+  const routed = routedToolSelection(request, isReadOnlyRoutingHint(request));
   return {
     names: catalog.filter((schema) => routed.names.has(schema.name)).map((schema) => schema.name),
     overflow: routed.overflow,
@@ -146,29 +151,23 @@ export class ToolActivation {
   private readonly activeNames: ReadonlySet<string>;
   private readonly byName: ReadonlyMap<string, AgentToolSchema>;
   private readonly catalog: readonly AgentToolSchema[];
-  private readonly readOnly: boolean;
 
   constructor(
     catalog: readonly AgentToolSchema[],
     messages: readonly ModelMessage[],
     activeNames: Iterable<string> = [],
     allowSearch = true,
-    readOnly = isReadOnlyRequest(latestUserText(messages)),
   ) {
     this.catalog = catalog;
     this.byName = new Map(catalog.map((schema) => [schema.name, schema]));
     const routed = routedNames(catalog, messages);
     const searchAllowed = allowSearch && !toolSearchConsumed(messages);
-    this.readOnly = readOnly;
     const requested = [
       ...bootNames(),
       ...activatedToolNamesFromMessages(messages),
       ...routed.names,
       ...activeNames,
-    ].filter((name) => (
-      (searchAllowed || name !== 'ToolSearch')
-      && (!this.readOnly || isReadOnlyTool(name))
-    ));
+    ].filter((name) => searchAllowed || name !== 'ToolSearch');
     this.activeNames = new Set(requested.filter((name) => this.byName.has(name)));
   }
 
@@ -176,8 +175,7 @@ export class ToolActivation {
     readonly activation: ToolActivation;
     readonly result: unknown;
   } {
-    const activatedTools = activatedToolNamesForResult(toolName, result, this.catalog)
-      .filter((name) => !this.readOnly || isReadOnlyTool(name));
+    const activatedTools = activatedToolNamesForResult(toolName, result, this.catalog);
     const retainSearch = toolName === 'ToolSearch'
       ? activatedTools.length === 0
       : this.activeNames.has('ToolSearch');
@@ -187,7 +185,6 @@ export class ToolActivation {
         [],
         [...this.activeNames, ...activatedTools],
         retainSearch,
-        this.readOnly,
       ),
       result: result && typeof result === 'object' && !Array.isArray(result)
         ? { ...result, activatedTools }

@@ -13,8 +13,9 @@ async function main(): Promise<void> {
   process.env.OPENCHATCUT_SQLITE_STORE = '1';
 
   try {
-    const { SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
+    const { initializeSqliteProjectStore, SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
     process.env[SQLITE_STORE_ENV] = '1';
+    await initializeSqliteProjectStore();
     const {
       indexStoreKey,
       removeStoreKey,
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
       'rebuild must restore hits');
 
     // ── search unavailable without SQLite enabled ──
-    delete process.env[SQLITE_STORE_ENV];
+    process.env[SQLITE_STORE_ENV] = '0';
     resetSearchForTests();
     assert.equal(searchContent('字幕').length, 0, 'search must be a no-op without the SQLite store');
 

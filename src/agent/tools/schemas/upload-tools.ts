@@ -8,7 +8,7 @@ export const UPLOAD_TOOL_SCHEMAS: AgentToolSchema[] = [
     description: [
       'Create a formal external import session with one short-lived, single-use upload slot.',
       'The slot is bound to session, project, asset, filename, POST method, MIME type, and exact byte size.',
-      'Upload the declared bytes, then pass only the opaque server receipt to finalize_uploaded_asset.',
+      'Upload the declared bytes, then pass the opaque server receipt and echoed assetType to finalize_uploaded_asset.',
       'No media-pool asset is published before finalize succeeds.',
       'Provide assetId only to replace an existing pool asset; omit it for a new asset.',
       'Prefer download_media for public URLs.',
@@ -42,22 +42,34 @@ export const UPLOAD_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'finalize_uploaded_asset',
     description: [
       'Finalize bytes uploaded through an external upload handoff.',
-      'Pass only the opaque receipt from the successful upload response; path, hash, size, type, filename, and asset identity are resolved server-side.',
-      'The receipt is one-time and project-bound. Do not call before upload completes.',
-      'durationInSeconds is required for audio/video/gif; width/height may supply media metadata.',
+      'Pass the opaque receipt plus assetType from the successful upload response; path, hash, size, filename, and authoritative media type are resolved server-side.',
+      'The receipt is claimed during validation and normalization, then consumed only after the asset commit succeeds.',
+      'durationInSeconds is schema-required for audio/video/gif; width/height may supply media metadata.',
     ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
         receipt: { type: 'string', description: 'Opaque one-time receipt from the successful upload response.' },
-        durationInSeconds: { type: 'number', description: 'Required for audio, gif, video.' },
-        width: { type: 'number' },
-        height: { type: 'number' },
-        fps: { type: 'number', description: 'Optional video fps metadata (stored only if useful).' },
+        assetType: {
+          type: 'string',
+          enum: [...ASSET_TYPES],
+          description: 'Media type echoed by the upload response; it must match the trusted receipt.',
+        },
+        durationInSeconds: { type: 'number', exclusiveMinimum: 0, description: 'Duration for audio, gif, or video.' },
+        width: { type: 'number', exclusiveMinimum: 0 },
+        height: { type: 'number', exclusiveMinimum: 0 },
+        fps: { type: 'number', exclusiveMinimum: 0, description: 'Optional video fps metadata (stored only if useful).' },
         hasAudioTrack: { type: 'boolean' },
         projectId: { type: 'string' },
       },
-      required: ['receipt'],
+      required: ['receipt', 'assetType'],
+      allOf: [{
+        if: {
+          properties: { assetType: { enum: ['audio', 'gif', 'video'] } },
+          required: ['assetType'],
+        },
+        then: { required: ['durationInSeconds'] },
+      }],
     },
   },
   {

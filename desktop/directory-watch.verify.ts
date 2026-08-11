@@ -118,6 +118,7 @@ const lifecycleSession = sessionFor(lifecycle, 'lifecycle');
 const initial = await lifecycleSession.start();
 assert.equal(initial.files.length, 1);
 assert.equal(initial.files[0].name, 'a.mp4');
+await lifecycleSession.acknowledge(initial.files[0].importId, 'reserved');
 await lifecycleSession.acknowledge(initial.files[0].importId, 'accepted');
 
 lifecycle.tree.set(ROOT, [entry('a.mp4'), entry('b.mp4')]);
@@ -129,6 +130,101 @@ assert.equal(lifecycle.events[0].projectId, 'project-lifecycle');
 await lifecycleSession.acknowledge(lifecycle.events[0].file.importId, 'duplicate');
 assert.deepEqual(lifecycle.removed, [[`${UPLOADS}/b-mp4.mp4`]], 'renderer duplicate ack must clean output');
 await lifecycleSession.stop();
+
+const committedPublication = createHarness();
+committedPublication.tree.set(ROOT, [entry('committed.mp4')]);
+const committedSession = sessionFor(committedPublication, 'committed-publication');
+const committedStart = await committedSession.start();
+const [committedFile] = committedStart.files;
+assert.ok(committedFile);
+await assert.rejects(
+  committedSession.acknowledge(committedFile.importId, 'accepted'),
+  /publication is not reserved/,
+  'ownership cannot finalize before the renderer reserves the publication',
+);
+await committedSession.acknowledge(committedFile.importId, 'reserved');
+await committedSession.acknowledge(committedFile.importId, 'accepted');
+await committedSession.acknowledge(
+  committedFile.importId,
+  'accepted',
+);
+const reopenedProjectDoc = structuredClone({ assets: [{ src: committedFile.src }] });
+await committedSession.stop();
+assert.deepEqual(
+  committedPublication.removed,
+  [],
+  'owner loss after an accepted acknowledgement must not unlink committed media',
+);
+assert.equal(
+  reopenedProjectDoc.assets[0]?.src,
+  committedFile.src,
+  'a reopened ProjectDoc must retain its reachable committed publication reference',
+);
+
+const retiredReservation = createHarness();
+retiredReservation.tree.set(ROOT, [entry('reserved-only.mp4')]);
+const retiredReservationSession = sessionFor(retiredReservation, 'retired-reservation');
+const retiredReservationStart = await retiredReservationSession.start();
+const [retiredReservationFile] = retiredReservationStart.files;
+assert.ok(retiredReservationFile);
+await retiredReservationSession.acknowledge(retiredReservationFile.importId, 'reserved');
+await retiredReservationSession.stop();
+assert.deepEqual(
+  retiredReservation.removed,
+  [],
+  'retirement conservatively retains a reservation that may already be referenced by ProjectDoc',
+);
+await retiredReservationSession.acknowledge(retiredReservationFile.importId, 'accepted');
+await retiredReservationSession.acknowledge(retiredReservationFile.importId, 'accepted');
+assert.deepEqual(retiredReservation.removed, [], 'accepted retirement reconciliation permanently retains bytes');
+const retiredRejection = createHarness();
+retiredRejection.tree.set(ROOT, [entry('rejected-after-retirement.mp4')]);
+const retiredRejectionSession = sessionFor(retiredRejection, 'retired-rejection');
+const retiredRejectionStart = await retiredRejectionSession.start();
+const [retiredRejectionFile] = retiredRejectionStart.files;
+assert.ok(retiredRejectionFile);
+await retiredRejectionSession.acknowledge(retiredRejectionFile.importId, 'reserved');
+await retiredRejectionSession.stop();
+assert.deepEqual(retiredRejection.removed, [], 'retirement keeps the ambiguous reservation');
+await retiredRejectionSession.acknowledge(retiredRejectionFile.importId, 'rejected');
+await retiredRejectionSession.acknowledge(retiredRejectionFile.importId, 'rejected');
+assert.deepEqual(
+  retiredRejection.removed,
+  [[`${UPLOADS}/rejected-after-retirement-mp4.mp4`]],
+  'an explicit rejection cleans retired bytes exactly once',
+);
+
+
+const failedCommit = createHarness();
+failedCommit.tree.set(ROOT, [entry('retryable.mp4')]);
+const failedCommitSession = sessionFor(failedCommit, 'failed-commit');
+const failedCommitStart = await failedCommitSession.start();
+const [failedCommitFile] = failedCommitStart.files;
+assert.ok(failedCommitFile);
+const failedCommitStop = failedCommitSession.stop();
+await assert.rejects(
+  failedCommitSession.acknowledge(failedCommitFile.importId, 'reserved'),
+  /directory watch is stopped/,
+  'an acknowledgement that loses ownership before commit must fail',
+);
+await failedCommitStop;
+assert.deepEqual(
+  failedCommit.removed,
+  [[`${UPLOADS}/retryable-mp4.mp4`]],
+  'stop may clean a publication whose ownership reservation never committed',
+);
+const retryCommitSession = sessionFor(failedCommit, 'retry-commit');
+const retryCommitStart = await retryCommitSession.start();
+const [retryCommitFile] = retryCommitStart.files;
+assert.ok(retryCommitFile);
+await retryCommitSession.acknowledge(retryCommitFile.importId, 'reserved');
+await retryCommitSession.acknowledge(retryCommitFile.importId, 'accepted');
+await retryCommitSession.stop();
+assert.deepEqual(
+  failedCommit.removed,
+  [[`${UPLOADS}/retryable-mp4.mp4`]],
+  'a retry that commits must survive stop without a second unlink',
+);
 
 const setupRace = createHarness();
 const setupDependencies: DirectoryWatchDependencies = {
@@ -153,6 +249,7 @@ assert.deepEqual(
   ['created-during-setup.mp4'],
   'installing fs.watch before the initial scan must close the setup race',
 );
+await setupSession.acknowledge(setupResult.files[0].importId, 'reserved');
 await setupSession.acknowledge(setupResult.files[0].importId, 'accepted');
 await setupSession.stop();
 
@@ -227,6 +324,114 @@ assert.deepEqual(
 stopping.fireWatch();
 assert.equal(stopping.events.length, 0, 'closed native watchers must not enqueue later scans');
 
+const debounceEntered = Promise.withResolvers<void>();
+const releaseDebounce = Promise.withResolvers<void>();
+let debounceImports = 0;
+const closingDuringDebounce = createHarness(async (request) => {
+  debounceImports += 1;
+  return imported(request);
+});
+const debounceSession = new DirectoryWatchSession({
+  watchId: 'debounce-close',
+  projectId: 'project-debounce-close',
+  root: ROOT,
+  pinnedUploadDirectory: UPLOADS,
+  existingContentHashes: [],
+  onImported: (event) => {
+    closingDuringDebounce.events.push(event);
+    return true;
+  },
+}, {
+  ...closingDuringDebounce.dependencies,
+  settleWrites: async () => {
+    debounceEntered.resolve();
+    await releaseDebounce.promise;
+  },
+});
+await debounceSession.start();
+await debounceSession.activate();
+closingDuringDebounce.tree.set(ROOT, [entry('deleted-before-import.mp4')]);
+closingDuringDebounce.fireWatch();
+await debounceEntered.promise;
+closingDuringDebounce.tree.delete(ROOT);
+const debounceStop = debounceSession.stop();
+assert.equal(debounceImports, 0, 'close during debounce must invalidate paths before import');
+releaseDebounce.resolve();
+await debounceStop;
+assert.equal(closingDuringDebounce.events.length, 0, 'close during debounce must not emit a snapshot');
+
+const vanishedErrors: unknown[] = [];
+const vanished = createHarness(async (request) => {
+  if (request.name === 'gone.mp4') {
+    throw Object.assign(new Error('candidate vanished'), { code: 'ENOENT' });
+  }
+  return imported(request);
+});
+vanished.tree.set(ROOT, [entry('gone.mp4'), entry('valid.mp4')]);
+const vanishedSession = new DirectoryWatchSession({
+  watchId: 'vanished',
+  projectId: 'project-vanished',
+  root: ROOT,
+  pinnedUploadDirectory: UPLOADS,
+  existingContentHashes: [],
+  onImported: (event) => {
+    vanished.events.push(event);
+    return true;
+  },
+  onFileError: (error) => { vanishedErrors.push(error); },
+}, vanished.dependencies);
+const vanishedStart = await vanishedSession.start();
+assert.deepEqual(
+  vanishedStart.files.map((file) => file.name),
+  ['valid.mp4'],
+  'a vanished candidate must not abort imports that remain valid',
+);
+assert.equal(vanishedErrors.length, 1, 'a vanished candidate must be reported individually');
+await vanishedSession.acknowledge(vanishedStart.files[0].importId, 'reserved');
+await vanishedSession.acknowledge(vanishedStart.files[0].importId, 'accepted');
+await vanishedSession.stop();
+
+const firstReadyImport = Promise.withResolvers<void>();
+const releaseFirstReadyImport = Promise.withResolvers<void>();
+const secondReadyImport = Promise.withResolvers<void>();
+const releaseSecondReadyImport = Promise.withResolvers<void>();
+let readyImportCalls = 0;
+const currentReady = createHarness(async (request) => {
+  readyImportCalls += 1;
+  if (readyImportCalls === 1) {
+    firstReadyImport.resolve();
+    await releaseFirstReadyImport.promise;
+  } else if (readyImportCalls === 2) {
+    secondReadyImport.resolve();
+    await releaseSecondReadyImport.promise;
+  }
+  return imported(request);
+});
+currentReady.tree.set(ROOT, [entry('current.mp4')]);
+const currentReadySession = sessionFor(currentReady, 'current-ready');
+let readySettled = false;
+const currentReadyStart = currentReadySession.start();
+void currentReadyStart.then(
+  () => { readySettled = true; },
+  () => { readySettled = true; },
+);
+await firstReadyImport.promise;
+currentReady.fireWatch();
+releaseFirstReadyImport.resolve();
+await secondReadyImport.promise;
+assert.equal(readySettled, false, 'ready must wait for the current generation reconcile');
+releaseSecondReadyImport.resolve();
+const currentReadyResult = await currentReadyStart;
+assert.deepEqual(currentReadyResult.files.map((file) => file.name), ['current.mp4']);
+assert.deepEqual(
+  currentReady.removed,
+  [[`${UPLOADS}/current-mp4.mp4`]],
+  'a superseded generation must clean its staged copy before ready',
+);
+await currentReadySession.acknowledge(currentReadyResult.files[0].importId, 'reserved');
+await currentReadySession.acknowledge(currentReadyResult.files[0].importId, 'accepted');
+await currentReadySession.stop();
+
 const destination = createHarness();
 const destinationSession = sessionFor(destination, 'destination');
 await destinationSession.start();
@@ -254,5 +459,17 @@ assert.deepEqual(
   [],
   'directory symlink entries must never become import candidates',
 );
+const scanErrors: unknown[] = [];
+assert.deepEqual(
+  await scanImportDirectory(ROOT, {
+    readdir: async (path) => {
+      if (path === ROOT) return [entry('blocked', 'directory'), entry('survivor.mp4')];
+      throw Object.assign(new Error('directory is inaccessible'), { code: 'EACCES' });
+    },
+  }, () => false, (error) => { scanErrors.push(error); }),
+  [{ path: `${ROOT}/survivor.mp4`, name: 'survivor.mp4' }],
+  'an inaccessible nested directory must not discard readable sibling files',
+);
+assert.equal(scanErrors.length, 1, 'nested scan failures must be reported individually');
 
 process.stdout.write('directory-watch.verify: lifecycle, barriers, retries, and bounds passed\n');

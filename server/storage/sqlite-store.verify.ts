@@ -1,226 +1,377 @@
-// SQLite project-store backend — phase 0 verification.
+// Focused SQLite migration lifecycle regression.
 //
-// Covers: default-off (JSON-file store unchanged), opt-in switch (single
-// SQLite db, JSON dir untouched), full entry lifecycle, merge, purge, and
-// reopen persistence. Runs against a temporary HOME so no real data is touched.
-//
-// IMPORTANT: every import of the store/profile modules must happen AFTER the
-// temporary HOME is set — runtime-profile.ts caches activeProfile at module
-// load, and a static import would freeze the real user profile.
+// Covers one process-wide migration lease, receipt-less partial recovery,
+// cfc-sidecar authority promotion without row replay, safe candidate refusal,
+// sidecar repair after restart, and custom generation-ledger migration.
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { verifyCfcMigrationChecks } from './sqlite-store-cfc.verify-support.ts';
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const sha256 = (value: Buffer): string => createHash('sha256').update(value).digest('hex');
+
+function replaceSqlite(path: string, rows: Record<string, string>): void {
+  rmSync(path, { force: true });
+  rmSync(`${path}-wal`, { force: true });
+  rmSync(`${path}-shm`, { force: true });
+  const db = new DatabaseSync(path);
+  db.exec('CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
+  const insert = db.prepare('INSERT INTO kv (k, v) VALUES (?, ?)');
+  for (const [key, value] of Object.entries(rows)) insert.run(key, value);
+  db.close();
+}
+
+function writeMigrationReceipt(path: string, receipt: unknown): void {
+  const db = new DatabaseSync(path);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS storage_migration_state (
+      singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+      state TEXT NOT NULL CHECK (state = 'complete'),
+      receipt TEXT NOT NULL
+    )
+  `);
+  db.prepare(
+    'INSERT OR REPLACE INTO storage_migration_state (singleton, state, receipt) VALUES (1, ?, ?)',
+  ).run('complete', JSON.stringify(receipt));
+  db.close();
+}
+
+function readMigrationPhase(path: string): number | null {
+  const db = new DatabaseSync(path);
+  const row = db.prepare(
+    'SELECT receipt FROM storage_migration_state WHERE singleton = 1 AND state = ?',
+  ).get('complete') as { receipt: string } | undefined;
+  db.close();
+  if (!row) return null;
+  const parsed: unknown = JSON.parse(row.receipt);
+  if (!parsed || typeof parsed !== 'object' || !('phase' in parsed)
+    || typeof parsed.phase !== 'number') return null;
+  return parsed.phase;
+}
 
 async function main(): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'occ-sqlite-store-verify-'));
+  const home = mkdtempSync(join(tmpdir(), 'occ-sqlite-migration-'));
   const previousHome = process.env.HOME;
-  process.env.HOME = root;
+  const previousStore = process.env.OPENCHATCUT_GENERATION_JOB_STORE;
+  const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
+  const customJobsPath = join(home, 'custom-profile', 'jobs-ledger.json');
+  process.env.HOME = home;
+  process.env.OPENCHATCUT_GENERATION_JOB_STORE = customJobsPath;
+  delete process.env.OPENCHATCUT_SQLITE_STORE;
 
   try {
-    const { SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
-    delete process.env[SQLITE_STORE_ENV];
-
-    // Import AFTER HOME is set: runtimeProfile() freezes the profile at load.
-    const store = await import('../plugins/project-store.ts');
+    // Import only after profile variables are installed: runtimeProfile caches.
     const {
-      sqliteMigrationStatus,
-      sqliteStoreEnabled,
-      sqliteImportJson,
+      cleanupLegacyJson,
+      initializeSqliteProjectStore,
+      registerStorageMigrationBarrier,
       resetSqliteStoreForTests,
+      runStorageMigration,
+      sqliteMigrationStatus,
+      sqliteDeleteEntry,
+      sqliteDeleteProjectEntries,
+      sqliteReadEntry,
+      sqliteStoreEnabled,
+      sqliteWriteEntry,
     } = await import('./sqlite-store.ts');
+    const {
+      DELETED_PROJECTS_KV_KEY,
+      GENERATION_JOBS_KV_KEY,
+      importReceiptPath,
+      readImportReceipt,
+    } = await import('./sqlite-migration.ts');
+    const { runtimeProfile } = await import('../runtime-profile.ts');
 
-    const storeDir = join(root, '.openchatcut', 'project-store-v1');
-    const sqlitePath = join(root, '.openchatcut', 'project-store-v1.sqlite3');
+    const profile = runtimeProfile();
+    assert.equal(profile.generationJobStore, customJobsPath,
+      'the custom runtime-profile ledger must be authoritative');
+    mkdirSync(profile.projectStore.directory, { recursive: true });
+    const projectSource = join(profile.projectStore.directory, 'project%3Alegacy.json');
+    writeFileSync(projectSource, JSON.stringify({ id: 'legacy', title: 'preserved' }));
+    const concurrentSource = join(profile.projectStore.directory, 'chat%3Aconcurrent.json');
+    writeFileSync(concurrentSource, JSON.stringify({ source: 'latest' }));
+    const deletedLegacySource = join(profile.projectStore.directory, 'chat%3Adeleted-partial.json');
+    writeFileSync(deletedLegacySource, JSON.stringify({ mustNotResurrect: true }));
 
-    // ── Scenario A: default off → JSON-file store, byte-identical behavior ──
-    assert.equal(sqliteStoreEnabled(), false, 'the SQLite backend must be off by default');
-    await store.setStoredEntry('chat:test-a', { hello: 'file' });
-    assert.equal(existsSync(join(storeDir, 'chat%3Atest-a.json')), true,
-      'default mode must write the JSON file exactly as before');
-    assert.deepEqual(await store.getStoredEntry('chat:test-a'), { found: true, value: { hello: 'file' } });
-    const before = await store.readStore();
-    assert.equal(before.entries['chat:test-a']?.hello, 'file');
-    await store.deleteStoredEntry('chat:test-a');
-    assert.deepEqual(await store.getStoredEntry('chat:test-a'), { found: false });
-
-    // ── Scenario B: opt-in → SQLite backend, JSON dir untouched ──
-    process.env[SQLITE_STORE_ENV] = '1';
-    assert.equal(sqliteStoreEnabled(), true, 'the switch must enable the SQLite backend');
-
-    await store.setStoredEntry('project:sqlite-b', { doc: { timeline: true } });
-    await store.setStoredEntry('chat:sqlite-b', { message: 'hello' });
-    await store.setStoredEntry('versions:sqlite-b', [{ v: 1 }]);
-    await sleep(50);
-
-    // Bug regression: writing the projects index in SQLite mode must keep
-    // existing projects (the file-based existence probe must not run).
-    // updatedAt:1 keeps the later merge (updatedAt:2) able to overwrite.
-    await store.setStoredEntry('projects', [{ id: 'sqlite-b', updatedAt: 1 }]);
-    const indexCheck = await store.getStoredEntry('projects');
-    assert.equal(Array.isArray(indexCheck.value) && indexCheck.value.length === 1,
-      true, 'SQLite mode must keep the project in the index');
-    assert.equal(indexCheck.value?.[0]?.id, 'sqlite-b');
-    assert.equal(existsSync(sqlitePath), true, 'the SQLite db file must be created');
-    assert.equal(
-      readdirSync(storeDir).some((f) => f.includes('sqlite-b')),
-      false,
-      'the JSON store directory must not receive new files in SQLite mode',
-    );
-    assert.deepEqual(await store.getStoredEntry('project:sqlite-b'),
-      { found: true, value: { doc: { timeline: true } } });
-    const snapshot = await store.readStore();
-    assert.equal(snapshot.entries['chat:sqlite-b']?.message, 'hello');
-    assert.equal(snapshot.entries['versions:sqlite-b']?.length, 1);
-
-    // merge (full replace) must land in SQLite atomically; the projects
-    // index drives updatedAt-based overwrite semantics for project keys.
-    await store.mergeStoredEntries({
-      projects: [{ id: 'sqlite-b', updatedAt: 2 }],
-      'project:sqlite-b': { doc: { merged: true } },
-      'chat:sqlite-b': { message: 'merged' },
-    });
-    assert.equal((await store.getStoredEntry('project:sqlite-b')).value?.doc.merged, true);
-
-    // Bug regression: removeEntry (compareAndSwap/agent-session paths) must
-    // delete SQLite rows, not just the (absent) JSON file.
-    await store.withProjectStoreLock((locked) => locked.removeEntry('versions:sqlite-b'));
-    assert.deepEqual(await store.getStoredEntry('versions:sqlite-b'), { found: false },
-      'removeEntry must delete the SQLite row');
-
-    // purge a project: document + chat + versions all removed, tombstone kept
-    await store.deleteStoredEntry('project:sqlite-b');
-    assert.deepEqual(await store.getStoredEntry('project:sqlite-b'), { found: false });
-    assert.deepEqual(await store.getStoredEntry('chat:sqlite-b'), { found: false });
-    assert.deepEqual(await store.getStoredEntry('versions:sqlite-b'), { found: false });
-
-    // ── Reopen persistence: close the connection, data must survive ──
-    await store.setStoredEntry('project:persist-c', { value: 42 });
-    resetSqliteStoreForTests();
-    assert.deepEqual(await store.getStoredEntry('project:persist-c'),
-      { found: true, value: { value: 42 } },
-      'data must survive a connection close (WAL checkpoint)');
-
-    // ── Switch back off: SQLite file stays, JSON mode keeps working ──
-    delete process.env[SQLITE_STORE_ENV];
-    await store.setStoredEntry('chat:after-off', { ok: true });
-    assert.equal(existsSync(join(storeDir, 'chat%3Aafter-off.json')), true,
-      'turning the switch off must restore the JSON-file path immediately');
-
-    // ── Scenario C: JSON→SQLite import (phase 1) ──
-    // Seed legacy JSON data in file mode first.
-    await store.setStoredEntry('project:import-p', { doc: { v: 1 }, updatedAt: 1 });
-    await store.setStoredEntry('chat:import-1', { m: 'one' });
-    await store.setStoredEntry('chat:import-2', { m: 'two' });
-    await store.setStoredEntry('versions:import-p', [{ v: 1 }]);
-    await store.setStoredEntry('thumb:import-p', { thumb: true });
-    const jsonFilesBefore = readdirSync(storeDir).filter((f) => f.endsWith('.json')).sort();
-
-    // Before migration: status reports JSON mode, no receipt, no SQLite file.
-    const statusBefore = sqliteMigrationStatus();
-    assert.equal(statusBefore.enabled, false, 'status must report JSON mode before migration');
-    assert.equal(statusBefore.receipt, null);
-    assert.equal(statusBefore.jsonKeyCount, 6);
-    assert.equal(statusBefore.sqliteKeyCount, 3); // projects index + persist-c + tombstone from scenario B
-
-    process.env[SQLITE_STORE_ENV] = '1';
-    const first = sqliteImportJson();
-    assert.equal(first.imported, 6, 'all six legacy keys (5 import + after-off) must be imported');
-    assert.equal(first.quarantined, 0);
-    assert.equal(first.receiptWritten, true, 'a completion receipt must be written');
-    assert.deepEqual(await store.getStoredEntry('chat:import-1'),
-      { found: true, value: { m: 'one' } },
-      'imported keys must be readable through the SQLite store');
-    assert.equal((await store.getStoredEntry('thumb:import-p')).value?.thumb, true);
-
-    // The JSON directory must not be touched (no move, no delete, no rewrite).
-    const jsonFilesAfter = readdirSync(storeDir).filter((f) => f.endsWith('.json')).sort();
-    assert.deepEqual(jsonFilesAfter, jsonFilesBefore,
-      'the JSON source directory must remain byte-untouched after import');
-    assert.equal(existsSync(join(root, '.openchatcut', 'project-store-v1.sqlite3.receipt.json')), true,
-      'the receipt must live next to the SQLite database');
-
-    // Idempotent re-run: receipt present → no-op; forced re-scan → all skipped.
-    const noop = sqliteImportJson();
-    assert.equal(noop.imported, 0, 'a receipt must gate further imports');
-    const receiptPath = join(root, '.openchatcut', 'project-store-v1.sqlite3.receipt.json');
-    rmSync(receiptPath, { force: true }); // simulate crash-without-receipt
-    const resume = sqliteImportJson();
-    assert.equal(resume.imported, 0, 'resume must skip keys whose hash still matches');
-    assert.equal(resume.skipped, 6);
-
-    // Resume must refill a missing row (crash between batches).
-    rmSync(receiptPath, { force: true });
-    await store.deleteStoredEntry('chat:import-2');
-    const refill = sqliteImportJson();
-    assert.equal(refill.imported, 1, 'the deleted row must be refilled from the JSON source');
-    assert.deepEqual(await store.getStoredEntry('chat:import-2'),
-      { found: true, value: { m: 'two' } });
-
-    // ── User-initiated switch: after migration, no env var is needed ──
-    delete process.env[SQLITE_STORE_ENV];
-    assert.equal(sqliteStoreEnabled(), true,
-      'a completed migration must enable the SQLite backend without the env var');
-    const after = sqliteMigrationStatus();
-    assert.equal(after.enabled, true);
-    assert.equal(after.receipt?.count, 6, 'the status must report the migrated key count');
-    assert.equal(after.sqliteKeyCount, 9, 'the status must report SQLite row count (3 prior + 6 imported)');
-
-    // ── Scenario D: auxiliary files (generation-operations + tombstone) ──
-    // A user who migrated on an earlier build has a phase-1 receipt; the next
-    // start must import the two server-managed files and upgrade the receipt.
-    const auxGeneration = join(root, '.openchatcut', 'generation-operations-v1.json');
-    const auxTombstone = join(root, '.openchatcut', 'deleted-projects-v1.json');
-    writeFileSync(auxGeneration, JSON.stringify({
+    const jobs = {
       version: 1,
-      jobs: [{ id: 'gen-1', status: 'succeeded', progress: 1, params: {}, createdAt: 1, updatedAt: 1 }],
+      jobs: [
+        { id: 'queued', status: 'queued', progress: 0, params: {}, createdAt: 1, updatedAt: 1 },
+        { id: 'running', status: 'running', progress: 0.5, params: {}, createdAt: 2, updatedAt: 3 },
+        { id: 'completed', status: 'succeeded', progress: 1, params: {}, createdAt: 4, updatedAt: 5 },
+      ],
+    };
+    mkdirSync(dirname(customJobsPath), { recursive: true });
+    const jobsBytes = Buffer.from(JSON.stringify(jobs));
+    writeFileSync(customJobsPath, jobsBytes);
+
+    // Simulate an interrupted older attempt: SQLite contains partial imports,
+    // including one key subsequently deleted from authoritative legacy storage.
+    const sqlitePath = join(profile.rootDir, 'project-store-v1.sqlite3');
+    mkdirSync(dirname(sqlitePath), { recursive: true });
+    const partial = new DatabaseSync(sqlitePath);
+    partial.exec('CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
+    partial.prepare('INSERT INTO kv (k, v) VALUES (?, ?)')
+      .run('project:legacy', JSON.stringify({ stale: true }));
+    partial.prepare('INSERT INTO kv (k, v) VALUES (?, ?)')
+      .run('chat:concurrent', JSON.stringify({ stale: true }));
+    partial.prepare('INSERT INTO kv (k, v) VALUES (?, ?)')
+      .run('chat:deleted-partial', JSON.stringify({ mustNotResurrect: true }));
+    partial.close();
+    rmSync(deletedLegacySource);
+
+    // A forged/independent sidecar cannot activate a receipt-less database.
+    writeFileSync(importReceiptPath(profile), JSON.stringify({
+      source: profile.projectStore.directory,
+      count: 0,
+      importedAt: new Date(0).toISOString(),
+      phase: 2,
+      keys: {},
+      sources: {},
     }));
-    writeFileSync(auxTombstone, JSON.stringify({ 'deleted-old-project': Date.now() }));
-    const receiptPath2 = join(root, '.openchatcut', 'project-store-v1.sqlite3.receipt.json');
-    const phase1Receipt = JSON.parse(readFileSync(receiptPath2, 'utf8'));
-    delete phase1Receipt.phase; // simulate a receipt written by the earlier build
-    writeFileSync(receiptPath2, JSON.stringify(phase1Receipt));
+    assert.equal(sqliteStoreEnabled(), false,
+      'only the SQLite completion row may switch backend authority');
+    assert.throws(() => cleanupLegacyJson(), /migration not completed/);
+    assert.equal(existsSync(customJobsPath), true,
+      'configured legacy ledger must survive before confirmed import');
 
-    const upgrade = sqliteImportJson();
-    assert.equal(upgrade.imported, 1,
-      'only the missing generation snapshot is imported (kv tombstone is authoritative)');
-    assert.equal(upgrade.skipped, 1, 'the existing kv tombstone is skipped (dir keys are not rescanned)');
-    const genRow = await store.getStoredEntry('generation-jobs:snapshot');
-    assert.equal(genRow.found, true, 'generation operations must live in SQLite after the upgrade');
-    assert.equal(genRow.value?.jobs?.[0]?.id, 'gen-1');
-    const tombRow = await store.getStoredEntry('deleted-projects:v1');
-    assert.equal(tombRow.found, true, 'the tombstone must live in SQLite after the upgrade');
-    assert.equal(typeof tombRow.value?.['sqlite-b'], 'number',
-      'the runtime tombstone (scenario B purge) must stay authoritative over the archived file');
-    const upgradedReceipt = JSON.parse(readFileSync(receiptPath2, 'utf8'));
-    assert.equal(upgradedReceipt.phase, 2, 'the receipt must be upgraded to phase 2');
+    const unreadableSource = join(profile.projectStore.directory, 'chat%3Abroken.json');
+    writeFileSync(unreadableSource, '{not-json');
+    await assert.rejects(runStorageMigration(), /refused to activate/);
+    assert.equal(sqliteStoreEnabled(), false,
+      'a partial source failure must keep the legacy backend authoritative');
+    assert.equal(existsSync(customJobsPath), true,
+      'a failed import must not delete the configured legacy ledger');
+    rmSync(unreadableSource);
 
-    // Tombstone semantics over SQLite: a purged project stays deleted.
-    process.env[SQLITE_STORE_ENV] = '1';
-    await store.setStoredEntry('project:tomb-probe', { doc: {} });
-    await store.deleteStoredEntry('project:tomb-probe');
-    assert.deepEqual(await store.getStoredEntry('project:tomb-probe'), { found: false },
-      'a purged project must stay deleted via the SQLite tombstone');
+    await assert.rejects(
+      runStorageMigration(),
+      /target row\(s\) absent from authoritative legacy storage/,
+    );
+    assert.equal(sqliteStoreEnabled(), false,
+      'a partial row deleted from legacy must block activation instead of resurfacing');
+    assert.deepEqual(await sqliteReadEntry('chat:deleted-partial'), {
+      found: true,
+      value: { mustNotResurrect: true },
+    }, 'unmatched target data is preserved for recovery, never cleared');
+    await sqliteDeleteEntry('chat:deleted-partial');
 
-    // ── legacy JSON cleanup (user-confirmed deletion) ──
-    const { cleanupLegacyJson } = await import('./sqlite-store.ts');
-    const jsonDir = join(root, '.openchatcut', 'project-store-v1');
-    const remainingJson = readdirSync(jsonDir).filter((name) => name.endsWith('.json'));
-    assert.ok(remainingJson.length > 0, 'sanity: legacy JSON files still exist before cleanup');
+    // Deterministic same-process race: both manual and startup paths share the
+    // lease. Exactly one run writes the marker; queued callers observe it.
+    const [first, initialized, second] = await Promise.all([
+      runStorageMigration(),
+      initializeSqliteProjectStore(),
+      runStorageMigration(),
+    ]);
+    assert.equal([first, second].filter((summary) => summary.receiptWritten).length, 1,
+      'concurrent starts must commit exactly one migration receipt');
+    assert.equal(initialized.phase, 'complete');
+    assert.equal(sqliteMigrationStatus().phase, 'complete');
+    assert.equal(sqliteStoreEnabled(), true);
+
+    assert.deepEqual(await sqliteReadEntry('project:legacy'), {
+      found: true,
+      value: { id: 'legacy', title: 'preserved' },
+    }, 'restart recovery refreshes stale partial import from authoritative legacy data');
+    assert.deepEqual(await sqliteReadEntry('chat:concurrent'), {
+      found: true,
+      value: { source: 'latest' },
+    }, 'a populated target row with a live source is reconciled without clearing the database');
+    assert.deepEqual((await sqliteReadEntry(GENERATION_JOBS_KV_KEY)).value, jobs,
+      'queued/running/completed generation jobs survive custom-path migration');
+
+    await sqliteWriteEntry('chat:abc', { exact: true });
+    await sqliteWriteEntry('chat:abcdef', { prefix: true });
+    await sqliteDeleteProjectEntries('abc');
+    assert.deepEqual(await sqliteReadEntry('chat:abc'), { found: false });
+    assert.deepEqual(await sqliteReadEntry('chat:abcdef'), {
+      found: true,
+      value: { prefix: true },
+    }, 'purging abc must not delete the distinct abcdef project');
+
+    const receipt = readImportReceipt(profile);
+    assert.ok(receipt, 'the committed receipt sidecar must be materialized');
+    assert.equal(receipt.sources[GENERATION_JOBS_KV_KEY]?.path, customJobsPath,
+      'receipt records the exact configured generation source');
+    assert.equal(receipt.sources[GENERATION_JOBS_KV_KEY]?.sha256, sha256(jobsBytes),
+      'receipt records the exact configured generation source hash');
+
+    // Crash window after SQLite commit but before/while writing the sidecar:
+    // restart trusts the SQLite row, repairs the sidecar, and keeps all rows.
+    rmSync(importReceiptPath(profile), { force: true });
+    resetSqliteStoreForTests();
+    const recovered = await initializeSqliteProjectStore();
+    assert.equal(recovered.phase, 'complete');
+    assert.equal(existsSync(importReceiptPath(profile)), true,
+      'startup repairs a missing receipt sidecar from SQLite authority');
+    assert.deepEqual((await sqliteReadEntry(GENERATION_JOBS_KV_KEY)).value, jobs);
+
     const cleanup = cleanupLegacyJson();
-    assert.equal(cleanup.jsonKeyCount, 0, 'cleanup must remove every legacy JSON key');
-    assert.ok(cleanup.removed >= remainingJson.length,
-      'cleanup must report the removed count (JSON keys + aux files)');
-    assert.ok(!existsSync(join(root, 'generation-operations-v1.json')), 'phase-2 aux file must be cleaned too');
-    assert.ok(existsSync(jsonDir), 'the JSON directory itself must stay');
+    assert.ok(cleanup.removed >= 2);
+    assert.equal(existsSync(customJobsPath), false,
+      'custom ledger cleanup occurs only after its exact hash was confirmed imported');
 
-    console.log('✓ sqlite-store verify: import / receipt / source-untouched / idempotent / resume-refill / user-switch / aux-phase-upgrade / cleanup all passed');
+    // A phase-1 marker proves current SQLite project authority but is not yet a
+    // usable phase-2 store. Startup imports only missing auxiliary snapshots.
+    resetSqliteStoreForTests();
+    const phaseOneProjectSource = join(
+      profile.projectStore.directory,
+      'project%3Aphase-one-edited.json',
+    );
+    const phaseOneDeletedSource = join(
+      profile.projectStore.directory,
+      'chat%3Aphase-one-deleted.json',
+    );
+    const phaseOneOriginalProject = JSON.stringify({ title: 'phase-one-original' });
+    const phaseOneDeletedChat = JSON.stringify({ mustNotResurrect: true });
+    writeFileSync(phaseOneProjectSource, phaseOneOriginalProject);
+    writeFileSync(phaseOneDeletedSource, phaseOneDeletedChat);
+    replaceSqlite(sqlitePath, {
+      'project:phase-one-edited': phaseOneOriginalProject,
+      'chat:phase-one-deleted': phaseOneDeletedChat,
+    });
+    const phaseOneKeys = {
+      'project:phase-one-edited': sha256(Buffer.from(phaseOneOriginalProject)),
+      'chat:phase-one-deleted': sha256(Buffer.from(phaseOneDeletedChat)),
+    };
+    const phaseOneReceipt = {
+      source: profile.projectStore.directory,
+      count: 2,
+      importedAt: '2026-08-11T00:00:00.000Z',
+      phase: 1,
+      keys: phaseOneKeys,
+      sources: {
+        'project:phase-one-edited': {
+          path: phaseOneProjectSource,
+          sha256: phaseOneKeys['project:phase-one-edited'],
+          kind: 'project-store-entry',
+        },
+        'chat:phase-one-deleted': {
+          path: phaseOneDeletedSource,
+          sha256: phaseOneKeys['chat:phase-one-deleted'],
+          kind: 'project-store-entry',
+        },
+      },
+    };
+    writeMigrationReceipt(sqlitePath, phaseOneReceipt);
+    const current = new DatabaseSync(sqlitePath);
+    current.prepare('UPDATE kv SET v = ? WHERE k = ?')
+      .run(JSON.stringify({ title: 'edited-in-phase-one-sqlite' }), 'project:phase-one-edited');
+    current.prepare('DELETE FROM kv WHERE k = ?').run('chat:phase-one-deleted');
+    current.prepare('INSERT INTO kv (k, v) VALUES (?, ?)')
+      .run('project:phase-one-sqlite-only', JSON.stringify({ inserted: true }));
+    current.close();
+
+    const phaseOneJobs = { version: 1, jobs: [{ id: 'phase-one-job', status: 'queued' }] };
+    const deletedProjects = { 'phase-one-deleted-project': 1_723_337_200_000 };
+    writeFileSync(customJobsPath, JSON.stringify(phaseOneJobs));
+    writeFileSync(profile.projectStore.tombstonePath, JSON.stringify(deletedProjects));
+    assert.equal(sqliteStoreEnabled(), false,
+      'a phase-1 marker must not enable the SQLite backend');
+    assert.equal(sqliteMigrationStatus().phase, 'legacy',
+      'a phase-1 marker must not report migration complete');
+
+    let enteredBarrier!: () => void;
+    const barrierEntered = new Promise<void>((resolve) => {
+      enteredBarrier = resolve;
+    });
+    let allowUpgrade!: () => void;
+    const upgradeAllowed = new Promise<void>((resolve) => {
+      allowUpgrade = resolve;
+    });
+    const unregisterBarrier = registerStorageMigrationBarrier(async () => {
+      enteredBarrier();
+      await upgradeAllowed;
+    });
+    const upgrading = initializeSqliteProjectStore();
+    await barrierEntered;
+    assert.equal(sqliteStoreEnabled(), false,
+      'phase 1 stays disabled while the upgrade is waiting under the migration lease');
+    assert.equal(sqliteMigrationStatus().phase, 'migrating');
+    assert.equal(sqliteMigrationStatus().receipt, null,
+      'phase-1 receipt metadata must not be presented as completed phase 2');
+    allowUpgrade();
+    const upgraded = await upgrading;
+    unregisterBarrier();
+    assert.equal(upgraded.phase, 'complete');
+    assert.equal(sqliteStoreEnabled(), true);
+    assert.equal(readMigrationPhase(sqlitePath), 2);
+    assert.deepEqual(await sqliteReadEntry('project:phase-one-edited'), {
+      found: true,
+      value: { title: 'edited-in-phase-one-sqlite' },
+    }, 'phase-1 upgrade preserves current SQLite project edits');
+    assert.deepEqual(await sqliteReadEntry('chat:phase-one-deleted'), { found: false },
+      'phase-1 upgrade does not resurrect deleted chat JSON');
+    assert.deepEqual(await sqliteReadEntry('project:phase-one-sqlite-only'), {
+      found: true,
+      value: { inserted: true },
+    }, 'phase-1 upgrade preserves SQLite-only inserts');
+    assert.deepEqual((await sqliteReadEntry(GENERATION_JOBS_KV_KEY)).value, phaseOneJobs);
+    assert.deepEqual((await sqliteReadEntry(DELETED_PROJECTS_KV_KEY)).value, deletedProjects);
+
+    // Auxiliary inserts and the phase-2 marker roll back together on failure.
+    resetSqliteStoreForTests();
+    replaceSqlite(sqlitePath, {
+      'project:phase-one-edited': JSON.stringify({ title: 'still-authoritative' }),
+    });
+    writeMigrationReceipt(sqlitePath, phaseOneReceipt);
+    writeFileSync(profile.projectStore.tombstonePath, JSON.stringify(deletedProjects));
+    const failing = new DatabaseSync(sqlitePath);
+    failing.exec(`
+      CREATE TRIGGER fail_phase_two_auxiliary
+      BEFORE INSERT ON kv
+      WHEN NEW.k = '${DELETED_PROJECTS_KV_KEY}'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced phase-2 marker failure');
+      END
+    `);
+    failing.close();
+    const failedUpgrade = await initializeSqliteProjectStore();
+    assert.equal(failedUpgrade.phase, 'failed');
+    assert.equal(failedUpgrade.enabled, false);
+    assert.equal(failedUpgrade.receipt, null);
+    assert.equal(readMigrationPhase(sqlitePath), 1,
+      'a failed auxiliary import must leave the phase-1 marker authoritative');
+    assert.deepEqual(await sqliteReadEntry(GENERATION_JOBS_KV_KEY), { found: false },
+      'an auxiliary row inserted before failure must roll back with the marker');
+    rmSync(profile.projectStore.tombstonePath);
+    rmSync(customJobsPath);
+
+    await verifyCfcMigrationChecks({
+      profile,
+      sqlitePath,
+      jobs,
+      store: {
+        cleanupLegacyJson,
+        initializeSqliteProjectStore,
+        resetSqliteStoreForTests,
+        runStorageMigration,
+        sqliteMigrationStatus,
+        sqliteReadEntry,
+      },
+      migration: {
+        GENERATION_JOBS_KV_KEY,
+        importReceiptPath,
+        readImportReceipt,
+      },
+    });
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
-    rmSync(root, { recursive: true, force: true });
+    if (previousStore === undefined) delete process.env.OPENCHATCUT_GENERATION_JOB_STORE;
+    else process.env.OPENCHATCUT_GENERATION_JOB_STORE = previousStore;
+    if (previousSwitch === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;
+    else process.env.OPENCHATCUT_SQLITE_STORE = previousSwitch;
+    rmSync(home, { recursive: true, force: true });
   }
 }
 

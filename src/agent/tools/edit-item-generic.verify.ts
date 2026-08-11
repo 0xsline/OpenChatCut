@@ -3,7 +3,7 @@
 // + that commit delegates to the right editor commands, and the atomic-abort contract via
 // the same validators execEditItemTool batches. Run: tsx src/agent/tools/edit-item-generic.check.ts
 import assert from 'node:assert';
-import type { MediaAsset, TimelineState } from '../../editor/types';
+import type { MediaAsset, MediaRelinkResult, TimelineState } from '../../editor/types';
 import {
   GENERIC_ITEM_KINDS, GENERIC_ADD_KINDS, validateGenericAdd, validateGenericUpdate, validateGenericDelete, applyGeneric,
   didYouMean, rejectUnknownFields, type GenericCommands,
@@ -20,7 +20,7 @@ const state = {
   fps: 30, trackOrder: ['V2', 'V1', 'A1', 'A2'], tracks: {}, width: 1920, height: 1080, selectedId: null,
 } as unknown as TimelineState;
 
-function recorder() {
+function recorder(relinkResult: MediaRelinkResult = { ok: true, changed: true }) {
   const calls: Array<[string, ...unknown[]]> = [];
   const rec = (name: string) => (...a: unknown[]) => { calls.push([name, ...a]); };
   const commands: GenericCommands = {
@@ -44,7 +44,11 @@ function recorder() {
     setItemFade: rec('setItemFade'), setItemKeyframe: rec('setItemKeyframe'),
     setItemFilters: rec('setItemFilters'), setItemTransform: rec('setItemTransform'),
     setItemSpeed: rec('setItemSpeed'), clearItemKeyframes: rec('clearItemKeyframes'),
-    replaceItemMedia: rec('replaceItemMedia'), relinkTimelineItem: rec('relinkTimelineItem'),
+    replaceItemMedia: rec('replaceItemMedia'),
+    relinkTimelineItem: (id, next) => {
+      calls.push(['relinkTimelineItem', id, next]);
+      return relinkResult;
+    },
     setItemBackgroundFill: rec('setItemBackgroundFill'),
     removeItem: rec('removeItem'), rippleDeleteItem: rec('rippleDeleteItem'),
   };

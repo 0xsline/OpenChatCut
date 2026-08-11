@@ -1,13 +1,81 @@
 // Runnable contract check: `npx tsx src/agent/export-tools.check.ts`.
 // fetch is stubbed — this NEVER touches the network or the dev server.
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import assert from 'node:assert';
 import { makeDraft } from '../../editor/store';
+import type { ProjectDoc } from '../../editor/types';
 import { docFromTimeline } from '../../persist/projectStore';
 import type { AgentContext } from '../context';
 import { execExportTool, EXPORT_TOOL_NAMES, EXPORT_TOOL_SCHEMAS, __resetExportSessionJobs } from './export-tools';
+import { executeGenerateCommand } from './generate-tool-handlers';
 
 const draft = makeDraft(docFromTimeline({ fps: 30, width: 1920, height: 1080, items: [], selectedId: null, assets: [] }));
 const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
+
+const BLOB_A = 'blob:http://127.0.0.1:5199/agent-a';
+const BLOB_B = 'blob:http://127.0.0.1:5199/agent-b';
+
+function contextWithBlobSources(sources: Array<{ id: string; name: string; src: string }>): AgentContext {
+  const blobDraft = makeDraft(docFromTimeline({
+    fps: 30,
+    width: 1920,
+    height: 1080,
+    items: sources.map((source, index) => ({
+      ...source,
+      kind: 'image' as const,
+      track: 'V1',
+      startFrame: index * 30,
+      durationInFrames: 30,
+    })),
+    selectedId: null,
+    assets: [],
+  }));
+  return {
+    commands: blobDraft.commands,
+    getState: blobDraft.getState,
+    getDoc: blobDraft.getDoc,
+    getCreativeMode: () => null,
+    templates: [],
+    audio: [],
+  };
+}
+
+function nestedExportContext(): { ctx: AgentContext; doc: ProjectDoc } {
+  const timeline = (id: string, order: number, items: ProjectDoc['timelines'][number]['items']) => ({
+    id, name: id, order, fps: 30, width: 1920, height: 1080, selectedId: null, items,
+  });
+  const doc: ProjectDoc = {
+    version: CURRENT_PROJECT_VERSION,
+    assets: [{ id: 'unused', name: 'unused.png', kind: 'image', src: BLOB_B, durationInFrames: 30 }],
+    mediaFolders: [],
+    activeTimelineId: 'root',
+    timelines: [
+      timeline('root', 0, [{
+        id: 'nested', name: 'nested', kind: 'sequence', timelineId: 'child',
+        track: 'V1', startFrame: 0, durationInFrames: 30,
+      }]),
+      timeline('child', 1, [{
+        id: 'child-image', name: 'child.png', kind: 'image', src: BLOB_A,
+        track: 'V1', startFrame: 0, durationInFrames: 30,
+      }]),
+      timeline('inactive', 2, [{
+        id: 'inactive-image', name: 'inactive.png', kind: 'image', src: BLOB_B,
+        track: 'V1', startFrame: 0, durationInFrames: 30,
+      }]),
+    ],
+  };
+  return {
+    doc,
+    ctx: {
+      commands: {} as AgentContext['commands'],
+      getState: () => { throw new Error('export must derive state from the project snapshot'); },
+      getDoc: () => doc,
+      getCreativeMode: () => null,
+      templates: [],
+      audio: [],
+    },
+  };
+}
 
 const originalFetch = globalThis.fetch;
 
@@ -31,14 +99,153 @@ assert.strictEqual(rec.body.startFrame, 0);
 assert.strictEqual(rec.body.endFrameExclusive, 90);
 assert.ok(rec.body.state, 'body must carry the timeline state');
 
-// 2) track_export status maps a single snapshot to the tool result (no downloadUrl mid-flight).
+// 2) Async Agent submission materializes its exact render snapshot before POST.
+let readableJobPosts = 0;
+let readablePostedState: { items?: Array<{ src?: string }> } | undefined;
+globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  const target = String(url);
+  if (target === BLOB_A) {
+    return new Response(new Blob([new Uint8Array([1])], { type: 'image/png' }), { status: 200 });
+  }
+  if (target.startsWith('/upload')) {
+    const name = new URL(target, 'http://x').searchParams.get('name');
+    return Response.json({ path: `/media/uploads/${name}` });
+  }
+  if (target === '/export/job' && init?.method === 'POST') {
+    readableJobPosts += 1;
+    const body = JSON.parse(String(init.body)) as { state?: { items?: Array<{ src?: string }> } };
+    readablePostedState = body.state;
+    return Response.json({ renderId: 'r-readable' });
+  }
+  throw new Error(`unexpected fetch: ${target}`);
+}) as typeof fetch;
+const readableSubmit = await execExportTool(
+  'submit_render_job',
+  { format: 'video' },
+  contextWithBlobSources([{ id: 'readable', name: 'readable.png', src: BLOB_A }]),
+) as { ok?: boolean; renderId?: string };
+assert.strictEqual(readableSubmit.ok, true);
+assert.strictEqual(readableSubmit.renderId, 'r-readable');
+assert.strictEqual(readableJobPosts, 1);
+assert.strictEqual(readablePostedState?.items?.[0]?.src, '/media/uploads/readable-blob.png');
+
+// Nested sequence closure: the child blob is materialized from one immutable
+// ProjectDoc snapshot, while unreachable revoked blobs never enter preflight.
+const asyncNested = nestedExportContext();
+type CapturedExportSubmission = {
+  state?: ProjectDoc['timelines'][number];
+  project?: ProjectDoc;
+  timelineId?: string;
+};
+let asyncNestedBody: CapturedExportSubmission | undefined;
+globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  const target = String(url);
+  if (target === BLOB_A) {
+    return new Response(new Blob([new Uint8Array([1])], { type: 'image/png' }), { status: 200 });
+  }
+  if (target === BLOB_B) throw new Error('unreachable blob must not be fetched');
+  if (target.startsWith('/upload')) return Response.json({ path: '/media/uploads/child-blob.png' });
+  if (target === '/export/job' && init?.method === 'POST') {
+    asyncNestedBody = JSON.parse(String(init.body)) as CapturedExportSubmission;
+    return Response.json({ renderId: 'r-nested' });
+  }
+  throw new Error(`unexpected fetch: ${target}`);
+}) as typeof fetch;
+const asyncNestedPromise = execExportTool(
+  'submit_render_job',
+  { format: 'video' },
+  asyncNested.ctx,
+) as Promise<{ ok?: boolean }>;
+asyncNested.doc.timelines[1]!.items[0]!.src = BLOB_B;
+assert.strictEqual((await asyncNestedPromise).ok, true);
+const postedAsyncNested = asyncNestedBody as CapturedExportSubmission;
+assert.strictEqual(postedAsyncNested.timelineId, 'root');
+assert.strictEqual(postedAsyncNested.state?.id, 'root');
+assert.strictEqual(postedAsyncNested.project?.timelines[1]?.items[0]?.src, '/media/uploads/child-blob.png');
+assert.strictEqual(postedAsyncNested.project?.timelines[2]?.items[0]?.src, BLOB_B);
+assert.strictEqual(postedAsyncNested.project?.assets[0]?.src, BLOB_B);
+
+const syncNested = nestedExportContext();
+let syncNestedBody: CapturedExportSubmission | undefined;
+const previousDocument = globalThis.document;
+globalThis.document = {
+  createElement: () => ({ href: '', download: '', click() {}, remove() {} }),
+  body: { appendChild() {} },
+} as unknown as Document;
+try {
+  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    const target = String(url);
+    if (target === BLOB_A) {
+      return new Response(new Blob([new Uint8Array([1])], { type: 'image/png' }), { status: 200 });
+    }
+    if (target === BLOB_B) throw new Error('unreachable blob must not be fetched');
+    if (target.startsWith('/upload')) return Response.json({ path: '/media/uploads/child-blob.png' });
+    if (target === '/export' && init?.method === 'POST') {
+      syncNestedBody = JSON.parse(String(init.body)) as CapturedExportSubmission;
+      return new Response(new Blob(['video']), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${target}`);
+  }) as typeof fetch;
+  const syncNestedPromise = executeGenerateCommand(
+    'submit_export',
+    { format: 'video', timelineId: 'root' },
+    syncNested.ctx,
+  ) as Promise<{ ok?: boolean }>;
+  syncNested.doc.timelines[1]!.items[0]!.src = BLOB_B;
+  assert.strictEqual((await syncNestedPromise).ok, true);
+} finally {
+  globalThis.document = previousDocument;
+}
+const postedSyncNested = syncNestedBody as CapturedExportSubmission;
+assert.strictEqual(postedSyncNested.timelineId, 'root');
+assert.strictEqual(postedSyncNested.state?.id, 'root');
+assert.strictEqual(postedSyncNested.project?.timelines[1]?.items[0]?.src, '/media/uploads/child-blob.png');
+assert.strictEqual(postedSyncNested.project?.timelines[2]?.items[0]?.src, BLOB_B);
+assert.strictEqual(postedSyncNested.project?.assets[0]?.src, BLOB_B);
+
+// 3) One readable plus one revoked blob blocks the Agent path with zero POSTs.
+let blockedJobPosts = 0;
+let partialUploads = 0;
+globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  const target = String(url);
+  if (target === BLOB_A) {
+    return new Response(new Blob([new Uint8Array([1])], { type: 'image/png' }), { status: 200 });
+  }
+  if (target === BLOB_B) return new Response(null, { status: 404 });
+  if (target.startsWith('/upload')) {
+    partialUploads += 1;
+    const name = new URL(target, 'http://x').searchParams.get('name');
+    return Response.json({ path: `/media/uploads/${name}` });
+  }
+  if (target === '/export/job' && init?.method === 'POST') {
+    blockedJobPosts += 1;
+    return Response.json({ renderId: 'must-not-exist' });
+  }
+  throw new Error(`unexpected fetch: ${target}`);
+}) as typeof fetch;
+const blockedSubmit = await execExportTool(
+  'submit_render_job',
+  { format: 'video' },
+  contextWithBlobSources([
+    { id: 'readable', name: 'readable.png', src: BLOB_A },
+    { id: 'revoked', name: 'revoked.png', src: BLOB_B },
+  ]),
+) as { error?: string; code?: string; retryable?: boolean };
+assert.strictEqual(partialUploads, 1, 'the readable source materializes while every reachable source is checked');
+assert.strictEqual(blockedJobPosts, 0, 'revoked reachable media must block Agent job submission');
+assert.strictEqual(blockedSubmit.code, 'export_media_not_ready');
+assert.strictEqual(blockedSubmit.retryable, false);
+assert.match(blockedSubmit.error ?? '', /revoked\.png/);
+assert.match(blockedSubmit.error ?? '', /重新导入|re-import/);
+
+// 4) track_export status maps a single snapshot to the tool result (no downloadUrl mid-flight).
 globalThis.fetch = (async () => new Response(JSON.stringify({ id: 'r-123', status: 'running', progress: 10, params: {} }), { status: 200 })) as typeof fetch;
 const status = await execExportTool('track_export', { renderId: 'r-123', action: 'status' }, ctx) as { status?: string; progress?: number; downloadUrl?: string };
 assert.strictEqual(status.status, 'running');
 assert.strictEqual(status.progress, 10);
 assert.strictEqual(status.downloadUrl, undefined);
 
-// 3) track_export wait polls queued → running → succeeded, then returns the downloadUrl.
+// 5) track_export wait polls queued → running → succeeded, then returns the downloadUrl.
 const sequence: unknown[] = [
   { id: 'r-123', status: 'queued', progress: 0, params: {} },
   { id: 'r-123', status: 'running', progress: 10, params: {} },
@@ -53,7 +260,7 @@ assert.strictEqual(waited.downloadUrl, '/media/uploads/r-123.mp4');
 assert.strictEqual(waited.sizeBytes, 2048);
 assert.ok(calls >= 3, 'wait should have polled through queued/running/succeeded');
 
-// 4) unknown renderId (404) → clean error result, never a raw throw.
+// 6) unknown renderId (404) → clean error result, never a raw throw.
 globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'render job not found' }), { status: 404 })) as typeof fetch;
 const missing = await execExportTool('track_export', { renderId: 'nope', action: 'status' }, ctx) as { error?: string; ok?: boolean };
 assert.ok(missing.error, 'unknown renderId should return an error field');

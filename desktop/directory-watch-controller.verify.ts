@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import type {
+  DirectoryImportDisposition,
   DirectoryImportedFile,
   DirectoryImportEvent,
   DirectoryWatchStartResult,
@@ -37,7 +38,7 @@ class FakeSession implements DirectoryWatchSessionContract {
   readonly options: DirectoryWatchSessionOptions;
   activations = 0;
   stops = 0;
-  acknowledgements: string[] = [];
+  acknowledgements: Array<{ importId: string; disposition: DirectoryImportDisposition }> = [];
 
   constructor(options: DirectoryWatchSessionOptions) {
     this.options = options;
@@ -56,7 +57,9 @@ class FakeSession implements DirectoryWatchSessionContract {
 
   async activate(): Promise<void> { this.activations += 1; }
   async stop(): Promise<void> { this.stops += 1; }
-  async acknowledge(importId: string): Promise<void> { this.acknowledgements.push(importId); }
+  async acknowledge(importId: string, disposition: DirectoryImportDisposition): Promise<void> {
+    this.acknowledgements.push({ importId, disposition });
+  }
 }
 
 function importedFile(importId: string): DirectoryImportedFile {
@@ -133,14 +136,27 @@ assert.equal(ownerA.sent.length, 1, 'project-mismatched events must be suppresse
 
 await assert.rejects(controller.activate(ownerB, 'watch-1'), /grant is unavailable/);
 await assert.rejects(
-  controller.acknowledge(ownerB, 'watch-1', 'import-a', 'accepted'),
+  controller.acknowledge(ownerB, 'watch-1', 'import-a', 'reserved'),
   /grant is unavailable/,
 );
 await assert.rejects(controller.stop(ownerB, 'watch-1'), /grant is unavailable/);
 await controller.activate(ownerA, 'watch-1');
+await controller.acknowledge(ownerA, 'watch-1', 'import-a', 'reserved');
+await controller.stop(ownerA, 'watch-1');
+assert.equal(sessions[0].options.onImported(eventA), false, 'retirement closes active publication routing');
+await controller.acknowledge(ownerA, 'watch-1', 'import-a', 'accepted');
 await controller.acknowledge(ownerA, 'watch-1', 'import-a', 'accepted');
 assert.equal(sessions[0].activations, 1);
-assert.deepEqual(sessions[0].acknowledgements, ['import-a']);
+assert.equal(sessions[0].stops, 1, 'retirement closes the OS watcher once');
+assert.deepEqual(sessions[0].acknowledgements, [
+  { importId: 'import-a', disposition: 'reserved' },
+  { importId: 'import-a', disposition: 'accepted' },
+  { importId: 'import-a', disposition: 'accepted' },
+]);
+selected = '/replacement-a';
+const replacementA = await controller.start(ownerA, 'project-a', []);
+assert.equal(replacementA?.watchId, 'watch-3', 'a retired grant must not block a replacement watch');
+
 
 ownerA.destroy();
 const destructionTurn = Promise.withResolvers<void>();
@@ -148,6 +164,7 @@ setImmediate(destructionTurn.resolve);
 await destructionTurn.promise;
 assert.equal(sessions[0].stops, 1, 'WebContents destruction must close every owned watch');
 assert.equal(sessions[0].options.onImported(eventA), false, 'destroyed owners cannot receive events');
+assert.equal(sessions[2].stops, 1, 'owner teardown closes the replacement active watcher');
 
 uploadDirectory = '/changed-media';
 selected = '/changed-media';
@@ -157,5 +174,66 @@ await assert.rejects(
   'root checks must use the current MEDIA_DIR destination, not a cached path',
 );
 
-await controller.stop(ownerB, 'watch-2');
+assert.equal(sessions[1].stops, 1, 'reconfiguration must settle the previous project watch first');
+
+const oldStartEntered = Promise.withResolvers<void>();
+const releaseOldStart = Promise.withResolvers<void>();
+let reconfiguredSelection = '/old-root';
+let reconfiguredId = 0;
+const reconfiguredSessions: Array<{
+  readonly options: DirectoryWatchSessionOptions;
+  stops: number;
+}> = [];
+const reconfigureController = new DirectoryWatchController({
+  selectDirectory: async () => reconfiguredSelection,
+  realpath: async (path) => path,
+  canonicalUploadDirectory: async () => '/media/uploads',
+  randomId: () => `reconfigured-${++reconfiguredId}`,
+  createSession: (options) => {
+    const state = { options, stops: 0 };
+    const isOldRoot = options.root === '/old-root';
+    reconfiguredSessions.push(state);
+    return {
+      watchId: options.watchId,
+      projectId: options.projectId,
+      start: async () => {
+        if (isOldRoot) {
+          oldStartEntered.resolve();
+          await releaseOldStart.promise;
+        }
+        return {
+          watchId: options.watchId,
+          projectId: options.projectId,
+          directoryName: isOldRoot ? 'old-root' : 'new-root',
+          files: [],
+        };
+      },
+      activate: async () => undefined,
+      acknowledge: async () => undefined,
+      stop: async () => { state.stops += 1; },
+    };
+  },
+  reportError: () => undefined,
+});
+const reconfigureOwner = new FakeSender(3);
+const staleStart = reconfigureController.start(reconfigureOwner, 'project-reconfigure', []);
+await oldStartEntered.promise;
+reconfiguredSelection = '/new-root';
+const currentStart = await reconfigureController.start(
+  reconfigureOwner, 'project-reconfigure', [],
+);
+assert.equal(currentStart?.directoryName, 'new-root');
+releaseOldStart.resolve();
+assert.equal(await staleStart, null, 'an old-root completion must not publish a stale start snapshot');
+assert.ok(reconfiguredSessions[0].stops >= 1, 'reconfiguration must stop the old generation');
+assert.equal(
+  reconfiguredSessions[0].options.onImported({
+    watchId: 'reconfigured-1',
+    projectId: 'project-reconfigure',
+    file: importedFile('stale-import'),
+  }),
+  false,
+  'an old generation must not emit after reconfiguration',
+);
+await reconfigureController.stop(reconfigureOwner, 'reconfigured-2');
 process.stdout.write('directory-watch-controller.verify: ownership, routing, and opaque grants passed\n');

@@ -252,25 +252,7 @@ export async function loadRawProject(id: string): Promise<unknown> {
 export async function loadProject(id: string, options?: ProjectMigrationOptions): Promise<ProjectDoc | null> {
   try {
     const raw = await idbGet<unknown>(projectKey(id));
-    let upgraded = false;
-    const doc = migrateProjectDoc(raw, {
-      onProgress: (progress) => {
-        upgraded = true;
-        options?.onProgress?.(progress);
-      },
-    });
-    if (!doc) return null;
-    // Persist only after the complete chain succeeds. A broken migration leaves
-    // the original bytes untouched and can be retried by a future build.
-    if (upgraded) {
-      try {
-        await idbSet(projectKey(id), doc);
-      } catch {
-        // The migrated in-memory document is still safe to open. Persistence can
-        // retry on the next load without ever writing an intermediate version.
-      }
-    }
-    return doc;
+    return migrateProjectDoc(raw, options);
   } catch {
     return null;
   }

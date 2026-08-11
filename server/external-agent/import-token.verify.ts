@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import {
   ImportTokenRegistry,
+  abortUploadReceipt,
+  claimUploadReceipt,
+  commitUploadReceipt,
   importUploadUrl,
-  consumeUploadReceipt,
   parseImportTokenScope,
   mintUploadReceipt,
   type ImportTokenScope,
@@ -103,11 +105,92 @@ const receipt = mintUploadReceipt(scope, {
   bytes: scope.expectedBytes,
   contentHash: 'ab'.repeat(32),
 });
-assert.equal(consumeUploadReceipt(receipt, 'wrong-project'), null);
-const consumedReceipt = consumeUploadReceipt(receipt, scope.projectId);
-assert.equal(consumedReceipt?.sessionId, scope.sessionId);
-assert.equal(consumedReceipt?.contentHash, 'ab'.repeat(32));
-assert.equal(consumeUploadReceipt(receipt, scope.projectId), null, 'receipt must not replay');
+assert.equal(claimUploadReceipt(receipt, 'wrong-project').status, 'mismatch');
+const firstClaim = claimUploadReceipt(receipt, scope.projectId);
+assert.equal(firstClaim.status, 'accepted');
+if (firstClaim.status !== 'accepted') throw new Error('receipt claim should be accepted');
+assert.equal(firstClaim.value.sessionId, scope.sessionId);
+assert.equal(firstClaim.value.contentHash, 'ab'.repeat(32));
+const repeatedClaim = claimUploadReceipt(receipt, scope.projectId, firstClaim.claimId);
+assert.equal(repeatedClaim.status, 'accepted', 'retrying the same claim id must be idempotent');
+assert.equal(
+  claimUploadReceipt(receipt, scope.projectId).status,
+  'claimed',
+  'a concurrent finalizer must not acquire the same receipt',
+);
+assert.equal(abortUploadReceipt(receipt, scope.projectId, firstClaim.claimId), true);
+const retryClaim = claimUploadReceipt(receipt, scope.projectId);
+assert.equal(retryClaim.status, 'accepted', 'abort must restore receipt retryability');
+if (retryClaim.status !== 'accepted') throw new Error('receipt retry claim should be accepted');
+assert.equal(commitUploadReceipt(receipt, scope.projectId, retryClaim.claimId), true);
+assert.equal(
+  commitUploadReceipt(receipt, scope.projectId, retryClaim.claimId),
+  true,
+  'repeating the matching commit is idempotent',
+);
+assert.equal(
+  claimUploadReceipt(receipt, scope.projectId).status,
+  'consumed',
+  'a committed receipt must reject terminal replay',
+);
+
+const originalDateNow = Date.now;
+let receiptNow = originalDateNow();
+Date.now = () => receiptNow;
+try {
+  const crossingReceipt = mintUploadReceipt(scope, {
+    path: '/media/uploads/asset-crossing.mov',
+    fileKey: 'uploads/asset-crossing.mov',
+    bytes: scope.expectedBytes,
+    contentHash: 'cd'.repeat(32),
+  });
+  receiptNow += 9 * 60_000;
+  const crossingClaim = claimUploadReceipt(
+    crossingReceipt,
+    scope.projectId,
+    'crossing-claim-id'.padEnd(32, '_'),
+  );
+  assert.equal(crossingClaim.status, 'accepted');
+  if (crossingClaim.status !== 'accepted') throw new Error('cross-expiry claim should be accepted');
+  const originalClaimExpiry = crossingClaim.claimExpiresAt;
+  receiptNow += 2 * 60_000;
+  const renewedClaim = claimUploadReceipt(
+    crossingReceipt,
+    scope.projectId,
+    crossingClaim.claimId,
+  );
+  assert.equal(renewedClaim.status, 'accepted');
+  if (renewedClaim.status !== 'accepted') throw new Error('same claim renewal should be accepted');
+  assert.ok(
+    renewedClaim.claimExpiresAt > originalClaimExpiry,
+    'same-claim renewal after receipt expiry must extend a fresh bounded lease',
+  );
+  receiptNow += 4 * 60_000;
+  assert.equal(
+    claimUploadReceipt(crossingReceipt, scope.projectId).status,
+    'claimed',
+    'a different claimant cannot use the superseded lease expiry to evict the renewed claim',
+  );
+  assert.equal(
+    commitUploadReceipt(crossingReceipt, scope.projectId, crossingClaim.claimId),
+    true,
+    'the renewed claim must settle after its original lease and receipt have expired',
+  );
+  mintUploadReceipt(scope, {
+    path: '/media/uploads/prune-trigger.mov',
+    fileKey: 'uploads/prune-trigger.mov',
+    bytes: scope.expectedBytes,
+    contentHash: 'ef'.repeat(32),
+  });
+  assert.equal(
+    commitUploadReceipt(crossingReceipt, scope.projectId, crossingClaim.claimId),
+    true,
+    'pruning after cross-expiry commit must preserve the idempotent retry tombstone',
+  );
+  assert.equal(claimUploadReceipt(crossingReceipt, scope.projectId).status, 'consumed');
+} finally {
+  Date.now = originalDateNow;
+}
 assert.equal(displayed.searchParams.get('assetType'), scope.assetType);
 
 console.log('import token registry verification passed');

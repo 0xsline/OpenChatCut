@@ -15,13 +15,13 @@ The agent cannot read the user's filesystem. If the user gives you a `/Users/...
 
 ## Path 2 — public URLs (agent-driven)
 
-Use `download_media` with up to 4 URLs per call. The server fetches, stores under `/media/uploads/`, and registers pool assets. Prefer this for stock/web media the user pointed at. After download, the asset behaves exactly like an upload (same transcode/ASR pipeline).
+Use `download_media` with up to 4 URLs per call. The server fetches, stores under `/media/uploads/`, and registers pool assets. Prefer this for stock/web media the user pointed at. After download, the asset behaves like any other media-pool asset.
 
 ## Path 3 — external host transfer
 
 Call `import_media` with `{"action":"create_session", "assetType":..., "filename":..., "contentType":..., "size":...}`. It returns one short-lived upload slot bound to the current project, session, asset identity, basename, `POST`, MIME type, and exact byte count. A host-side script may upload to that exact URL with the declared headers. The agent sandbox cannot reach the user's localhost, so do not attempt the transfer from `run_code`.
 
-The successful upload response returns an opaque receipt and uploaded path. Probe the uploaded path when exact duration, dimensions, fps, or audio presence are needed, then call `finalize_uploaded_asset` with only the receipt and measured media metadata. The server resolves the authoritative hash, path, size, filename, and asset id. The asset is not present or usable before finalize succeeds. For missing-media replacement, pass the existing `assetId` to `import_media`; omit it for a new asset. Never construct `/media/uploads/...` yourself and never claim bytes are ready before the upload response.
+The successful upload response returns an opaque receipt, echoed `assetType`, and uploaded path. Probe the uploaded path when exact duration, dimensions, fps, or audio presence are needed, then call `finalize_uploaded_asset` with the receipt, echoed `assetType`, measured media metadata, and `durationInSeconds` for audio/video/gif. The server resolves the authoritative hash, path, size, filename, and asset id. Finalize commits the asset but never starts ASR; after placing an audio/video asset on a track, invoke `transcribe_track` separately if transcription is desired. The asset is not present or usable before finalize succeeds. For missing-media replacement, pass the existing `assetId` to `import_media`; omit it for a new asset. Never construct `/media/uploads/...` yourself and never claim bytes are ready before the upload response.
 
 ## Editing discipline
 

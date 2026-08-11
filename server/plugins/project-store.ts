@@ -7,14 +7,20 @@ import {
   isProjectStoreRecord,
   projectIdFromProjectStoreKey,
 } from '../../shared/project-store-validation.ts';
+import type { ProjectStoreMutationResponse } from '../../shared/project-store-transport.ts';
 import { runtimeProfile } from '../runtime-profile.ts';
 import {
-  mergeAgentSidecar,
   mergeProjectEntries,
   mergeProjectIndex,
+  mergeAgentSidecar,
   withoutDeletedProjects,
 } from './project-store-entries.ts';
 import { createAgentRuntimeStoreOperations } from './project-store-agent-runtime.ts';
+import {
+  createExportRecoveryLeaseOperation,
+  executeImmediateExportRecoveryMutation,
+  type ExportRecoveryLeaseInput,
+} from './project-store-export-recovery.ts';
 import {
   assertAgentSessionMigrationSafe,
   createAgentSessionStoreOperation,
@@ -22,11 +28,14 @@ import {
 } from './project-store-agent-session.ts';
 import { createProjectDocumentStoreOperation } from './project-store-project-document.ts';
 import {
+  initializeSqliteProjectStore,
+  registerStorageMigrationBarrier,
   sqliteDeleteEntry,
   sqliteDeleteProjectEntries,
   sqliteReadAll,
   sqliteReadEntry,
   sqliteStoreEnabled,
+  sqliteImmediateTransaction,
   sqliteWriteAll,
   sqliteWriteEntry,
 } from '../storage/sqlite-store.ts';
@@ -40,6 +49,16 @@ import {
   durableRemove,
   durableRename,
 } from './project-store-durable.ts';
+import {
+  createProjectStoreEntryAdapter,
+  type LockedProjectStore,
+  type StoredEntryValue,
+} from './project-store-locked.ts';
+
+export type {
+  LockedProjectStore,
+  StoredEntryValue,
+} from './project-store-locked.ts';
 
 const {
   legacyStorePath: LEGACY_STORE_PATH,
@@ -62,24 +81,24 @@ const STORE_LOCK = createOwnerSafeLeaseLock({
   retries: 200,
   retryMs: 10,
 });
+registerStorageMigrationBarrier(async () => {
+  const lease = await STORE_LOCK.acquire();
+  try {
+    // Finish the older monolith→directory transition before SQLite snapshots
+    // the directory. The held owner-safe lease also drains concurrent writers.
+    await migrateLegacyLocked();
+    return lease.release;
+  } catch (error) {
+    await lease.release();
+    throw error;
+  }
+});
 
 interface StoreFile {
   version: 1;
   entries: Record<string, unknown>;
 }
 
-export interface StoredEntryValue {
-  found: boolean;
-  value?: unknown;
-}
-
-export interface LockedProjectStore {
-  readEntry: (key: string) => Promise<StoredEntryValue>;
-  writeEntry: (key: string, value: unknown) => Promise<void>;
-  writeAgentRuntimeExact: (key: string, value: unknown) => Promise<void>;
-  writeEntryExact: (key: string, value: unknown) => Promise<void>;
-  removeEntry: (key: string) => Promise<void>;
-}
 
 async function readLegacyStore(): Promise<{ exists: boolean; store: StoreFile }> {
   try {
@@ -242,6 +261,7 @@ async function migrateLegacyLocked(): Promise<void> {
 }
 
 async function ensureStoreReady(): Promise<void> {
+  await initializeSqliteProjectStore();
   // SQLite backend: no JSON dir / .ready / legacy-file migration needed; the
   // database self-creates its directory and schema (phase 1 adds import).
   if (sqliteStoreEnabled()) return;
@@ -401,21 +421,11 @@ export async function deleteStoredEntry(key: string): Promise<void> {
   }
 }
 
-async function readEntryFile(key: string): Promise<StoredEntryValue> {
-  if (sqliteStoreEnabled()) return sqliteReadEntry(key);
-  const file = `${encodeURIComponent(key)}.json`;
-  try {
-    const raw = await readFile(entryPath(key), 'utf8');
-    try {
-      return { found: true, value: JSON.parse(raw) };
-    } catch {
-      return { found: true, value: await quarantineEntryFile(file, key) };
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { found: false };
-    throw error;
-  }
-}
+const { createLockedProjectStore, readEntryFile } = createProjectStoreEntryAdapter({
+  entryPath,
+  quarantineEntryFile,
+  writeStoredEntry,
+});
 
 export async function getStoredEntry(key: string): Promise<StoredEntryValue> {
   if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
@@ -430,78 +440,6 @@ export async function getStoredEntry(key: string): Promise<StoredEntryValue> {
   }
 }
 
-function validateLockedEntryKey(key: string): string | undefined {
-  if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
-  return projectIdFromProjectStoreKey(key);
-}
-
-function assertProjectNotDeleted(projectId: string | undefined, deletedIds: ReadonlySet<string>): void {
-  if (projectId && deletedIds.has(projectId)) throw new Error('project was deleted');
-}
-
-async function readLockedEntry(
-  key: string,
-  deletedIds: ReadonlySet<string>,
-): Promise<StoredEntryValue> {
-  const projectId = validateLockedEntryKey(key);
-  return projectId && deletedIds.has(projectId) ? { found: false } : readEntryFile(key);
-}
-
-async function writeLockedEntry(
-  key: string,
-  value: unknown,
-  deletedIds: ReadonlySet<string>,
-): Promise<void> {
-  assertProjectNotDeleted(validateLockedEntryKey(key), deletedIds);
-  if (key.startsWith('agent-runtime:') || key.startsWith('agent-session-runtime:')
-    || key.startsWith('agent-artifact:') || key.startsWith('agent-session-artifact:')) {
-    const current = await readEntryFile(key);
-    const sidecar = mergeAgentSidecar(key, current.value, value, current.found);
-    if (sidecar.accepted) await writeStoredEntry(key, sidecar.value);
-    return;
-  }
-  await writeStoredEntry(key, value);
-}
-
-async function writeAgentRuntimeExactLocked(
-  key: string,
-  value: unknown,
-  deletedIds: ReadonlySet<string>,
-): Promise<void> {
-  const projectId = validateLockedEntryKey(key);
-  if (!key.startsWith('agent-runtime:') && !key.startsWith('agent-session-runtime:')) {
-    throw new Error('exact write is limited to agent runtime');
-  }
-  assertProjectNotDeleted(projectId, deletedIds);
-  await writeStoredEntry(key, value);
-}
-
-async function writeEntryExactLocked(
-  key: string,
-  value: unknown,
-  deletedIds: ReadonlySet<string>,
-): Promise<void> {
-  const projectId = validateLockedEntryKey(key);
-  if (!key.startsWith('project:') && !key.startsWith('project-edit-ownership:')) {
-    throw new Error('exact write is limited to project document CAS');
-  }
-  assertProjectNotDeleted(projectId, deletedIds);
-  await writeStoredEntry(key, value);
-}
-
-function createLockedProjectStore(deletedIds: ReadonlySet<string>): LockedProjectStore {
-  return {
-    readEntry: (key) => readLockedEntry(key, deletedIds),
-    writeEntry: (key, value) => writeLockedEntry(key, value, deletedIds),
-    writeAgentRuntimeExact: (key, value) => writeAgentRuntimeExactLocked(key, value, deletedIds),
-    writeEntryExact: (key, value) => writeEntryExactLocked(key, value, deletedIds),
-    removeEntry: async (key) => {
-      validateLockedEntryKey(key);
-      if (sqliteStoreEnabled()) await sqliteDeleteEntry(key);
-      else await durableRemove(entryPath(key));
-    },
-  };
-}
 
 export async function withProjectStoreLock<T>(
   work: (store: LockedProjectStore) => Promise<T>,
@@ -520,6 +458,23 @@ export const {
   compareAndSwapAgentRuntime,
   updateStoredAgentRunLease,
 } = createAgentRuntimeStoreOperations(withProjectStoreLock);
+const updateLegacyExportRecovery =
+  createExportRecoveryLeaseOperation(withProjectStoreLock);
+
+export async function updateExportRecoveryLease(
+  input: ExportRecoveryLeaseInput,
+): Promise<ProjectStoreMutationResponse> {
+  await ensureStoreReady();
+  if (!sqliteStoreEnabled()) return updateLegacyExportRecovery(input);
+  const release = await acquireLock();
+  try {
+    return sqliteImmediateTransaction((store) => (
+      executeImmediateExportRecoveryMutation(store, input)
+    ));
+  } finally {
+    await release();
+  }
+}
 
 export const compareAndSwapProjectDocument =
   createProjectDocumentStoreOperation(withProjectStoreLock);

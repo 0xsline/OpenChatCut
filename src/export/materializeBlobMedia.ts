@@ -1,5 +1,7 @@
+import type { ProjectDoc, Timeline } from '../editor/types';
 import { t } from '../i18n/locale';
 import { createExportFailure, ExportFailureError } from './exportFailure';
+import { collectExportMediaPlan, immutableExportSnapshot } from './exportMediaPlan';
 
 /**
  * Blob URLs only exist inside the browser tab that created them and are revoked
@@ -19,39 +21,36 @@ function isBlobSource(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('blob:');
 }
 
-export interface MaterializeFailure {
+interface MaterializeFailure {
   source: string;
+  name: string;
   message: string;
 }
 
 export interface MaterializeBlobMediaOptions {
+  /** Exact selected-timeline/project snapshot whose renderer-visible closure is materialized. */
+  mediaPlanSnapshot?: unknown;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
-}
-
-export interface MaterializeBlobMediaResult<T> {
-  /** Snapshot with every reachable blob source re-published. Identical reference when nothing changed. */
-  snapshot: T;
-  /** Number of distinct blob sources successfully re-published. */
-  replaced: number;
-  /** Blob sources that could not be re-published (revoked / upload failed). */
-  failed: MaterializeFailure[];
 }
 
 interface BlobCandidate {
   source: string;
   name: string;
-  mime: string;
 }
 
 /** Collect distinct blob media sources with a best-effort display name. */
-function collectBlobCandidates(value: unknown, seen: WeakSet<object>): Map<string, BlobCandidate> {
+function collectBlobCandidates(
+  value: unknown,
+  seen: WeakSet<object>,
+  reachableSources: ReadonlySet<string>,
+): Map<string, BlobCandidate> {
   const candidates = new Map<string, BlobCandidate>();
   if (value === null || typeof value !== 'object' || seen.has(value)) return candidates;
   seen.add(value);
   if (Array.isArray(value)) {
     for (const child of value) {
-      for (const [source, candidate] of collectBlobCandidates(child, seen)) {
+      for (const [source, candidate] of collectBlobCandidates(child, seen, reachableSources)) {
         if (!candidates.has(source)) candidates.set(source, candidate);
       }
     }
@@ -62,9 +61,9 @@ function collectBlobCandidates(value: unknown, seen: WeakSet<object>): Map<strin
     if (key === 'name' && typeof child === 'string' && child.trim()) objectName = child;
   }
   for (const [key, child] of Object.entries(value)) {
-    if (isMediaField(key) && isBlobSource(child)) {
+    if (isMediaField(key) && isBlobSource(child) && reachableSources.has(child)) {
       if (!candidates.has(child)) {
-        candidates.set(child, { source: child, name: objectName ?? '', mime: '' });
+        candidates.set(child, { source: child, name: objectName ?? '' });
       } else if (objectName && !candidates.get(child)!.name) {
         const existing = candidates.get(child)!;
         candidates.set(child, { ...existing, name: objectName });
@@ -73,7 +72,7 @@ function collectBlobCandidates(value: unknown, seen: WeakSet<object>): Map<strin
   }
   for (const child of Object.values(value)) {
     if (typeof child === 'object') {
-      for (const [source, candidate] of collectBlobCandidates(child, seen)) {
+      for (const [source, candidate] of collectBlobCandidates(child, seen, reachableSources)) {
         if (!candidates.has(source)) candidates.set(source, candidate);
         else if (candidate.name && !candidates.get(source)!.name) {
           const existing = candidates.get(source)!;
@@ -158,17 +157,21 @@ function replaceBlobSources<T>(value: T, resolve: (source: string) => string | n
 }
 
 /**
- * Re-publish every reachable blob: media source to /media/uploads and return a
- * renderable snapshot. Revoked blobs cannot be recovered — they surface in
- * `failed` and must be re-imported by the user. All-failed throws a preflight
- * failure so the export dialog shows one actionable message.
+ * Re-publish every reachable blob media source to /media/uploads and return a
+ * renderable snapshot. The result is all-or-nothing: if even one reachable
+ * source cannot be recovered, this rejects with the actionable export
+ * preflight failure and no caller may submit a partial snapshot.
  */
 export async function materializeBlobMedia<T extends object>(
   snapshot: T,
   options: MaterializeBlobMediaOptions = {},
-): Promise<MaterializeBlobMediaResult<T>> {
-  const candidates = collectBlobCandidates(snapshot, new WeakSet());
-  if (candidates.size === 0) return { snapshot, replaced: 0, failed: [] };
+): Promise<T> {
+  const plan = collectExportMediaPlan(options.mediaPlanSnapshot ?? snapshot);
+  const reachableSources = new Set(
+    plan.references.map((reference) => reference.source).filter(isBlobSource),
+  );
+  const candidates = collectBlobCandidates(snapshot, new WeakSet(), reachableSources);
+  if (candidates.size === 0) return snapshot;
 
   const failed: MaterializeFailure[] = [];
   const published = new Map<string, string>();
@@ -178,12 +181,15 @@ export async function materializeBlobMedia<T extends object>(
     } catch (error) {
       failed.push({
         source: candidate.source,
+        name: candidate.name,
         message: error instanceof Error ? error.message : String(error),
       });
     }
   }
-  if (failed.length === candidates.size) {
-    const detail = failed.map((item) => item.source).join('、');
+  if (failed.length > 0) {
+    const detail = failed
+      .map((item) => `${item.name ? `${item.name} (${item.source})` : item.source}: ${item.message}`)
+      .join('、');
     throw new ExportFailureError(createExportFailure({
       stage: 'preflight',
       code: 'export_media_not_ready',
@@ -194,10 +200,36 @@ export async function materializeBlobMedia<T extends object>(
       }),
     }));
   }
-  const replacedSnapshot = replaceBlobSources(snapshot, (source) => published.get(source) ?? null);
-  return {
-    snapshot: replacedSnapshot,
-    replaced: published.size,
-    failed,
-  };
+  return replaceBlobSources(snapshot, (source) => published.get(source) ?? null);
+}
+
+export interface MaterializedTimelineExport {
+  state: Timeline;
+  project: ProjectDoc;
+  timelineId: string;
+}
+
+/**
+ * Freeze the selected project snapshot before the first asynchronous upload,
+ * materialize only its renderer-reachable timeline graph, then derive the
+ * submitted root state from that same materialized project.
+ */
+export async function materializeTimelineExport(
+  project: ProjectDoc,
+  timelineId: string,
+  options: Omit<MaterializeBlobMediaOptions, 'mediaPlanSnapshot'> = {},
+): Promise<MaterializedTimelineExport> {
+  const selected = project.timelines.find((timeline) => timeline.id === timelineId);
+  if (!selected) throw new Error(`timeline not found: ${timelineId}`);
+  const snapshot = immutableExportSnapshot({
+    ...project,
+    activeTimelineId: timelineId,
+  });
+  const materialized = await materializeBlobMedia(snapshot, {
+    ...options,
+    mediaPlanSnapshot: snapshot,
+  });
+  const state = materialized.timelines.find((timeline) => timeline.id === timelineId);
+  if (!state) throw new Error(`timeline not found: ${timelineId}`);
+  return { state, project: materialized, timelineId };
 }

@@ -57,6 +57,7 @@ export function useExportDestination(suggestedFilename?: string) {
         fileSelectionKeyRef.current = fileDestination ? suggestedFilename : undefined;
         setDestination(selected);
       }
+      return selected;
     } finally {
       setChoosingDestination(false);
     }

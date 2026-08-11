@@ -223,10 +223,11 @@ export function cleanupAgentHydration(
   if (!activeExecution) void stopLeases(projectId);
 }
 
-export function useAgentHydration(state: AgentHookState, projectId: string): void {
+export function useAgentHydration(state: AgentHookState, projectId: string, enabled = true): void {
   const stateRef = useRef(state);
   stateRef.current = state;
   useEffect(() => {
+    if (!enabled) return undefined;
     let mounted = true;
     const current = stateRef.current;
     const hydrationEpoch = ++current.hydrationEpochRef.current;
@@ -250,7 +251,7 @@ export function useAgentHydration(state: AgentHookState, projectId: string): voi
       mounted = false;
       cleanupAgentHydration(current, projectId);
     };
-  }, [projectId, state.refreshEstimatedContextUsage]);
+  }, [enabled, projectId, state.refreshEstimatedContextUsage]);
 }
 
 function messagesForPersistence(messages: DisplayMessage[]): DisplayMessage[] {
@@ -374,15 +375,16 @@ function persistAgentSession(state: AgentHookState, projectId: string): void {
     llmProvider: state.llmProviderRef.current,
     toolFailures: state.toolFailuresRef.current.snapshot(),
   });
-
 }
 
-export function useAgentPersistence(state: AgentHookState, projectId: string): void {
+export function useAgentPersistence(state: AgentHookState, projectId: string, enabled = true): void {
   const stateRef = useRef(state);
   stateRef.current = state;
   useEffect(() => {
+    if (!enabled) return undefined;
     const current = stateRef.current;
-    if (!current.hydratedRef.current || current.runningRef.current) return;
+    if (!current.hydratedRef.current || current.runningRef.current) return undefined;
     persistAgentSession(current, projectId);
-  }, [state.messages, state.changeLog, state.running, projectId]);
+    return undefined;
+  }, [enabled, state.changeLog, state.messages, state.running, projectId]);
 }

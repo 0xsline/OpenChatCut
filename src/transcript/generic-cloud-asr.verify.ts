@@ -9,6 +9,8 @@ const originalFetch = globalThis.fetch;
 
 function requestBody(init: RequestInit | undefined): Blob {
   assert.ok(init != null && init.body instanceof Blob, 'transcription request must send a Blob body');
+  assert.equal(new Headers(init.headers).get('content-type'), 'application/octet-stream',
+    'transcription request must declare its binary body');
   return init.body;
 }
 

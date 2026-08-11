@@ -20,8 +20,9 @@ async function main(): Promise<void> {
   process.env.OPENCHATCUT_SQLITE_STORE = '1';
 
   try {
-    const { SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
+    const { initializeSqliteProjectStore, SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
     process.env[SQLITE_STORE_ENV] = '1';
+    await initializeSqliteProjectStore();
     const { indexStoreKey } = await import('./fulltext-search.ts');
     const { upsertSemanticVectors } = await import('./semantic-vectors.ts');
     const { hybridSearch } = await import('./hybrid-search.ts');
@@ -61,7 +62,7 @@ async function main(): Promise<void> {
     assert.ok(textOnly.some((hit) => hit.kind === 'chat'), 'text lane must still work');
 
     // ── store disabled → no hits ──
-    delete process.env[SQLITE_STORE_ENV];
+    process.env[SQLITE_STORE_ENV] = '0';
     const { resetSearchForTests } = await import('./fulltext-search.ts');
     const { resetSemanticVectorsForTests } = await import('./semantic-vectors.ts');
     resetSearchForTests();

@@ -16,7 +16,11 @@ import {
 import type { ExportDestination } from './exportDestination';
 import { immutableExportSnapshot } from './exportMediaPlan';
 import { materializeBlobMedia } from './materializeBlobMedia';
-import { createServerExporter } from './serverExportOperation';
+import {
+  createServerExporter,
+  rebindAndResumePersistedServerExport,
+  retirePersistedServerExport,
+} from './serverExportOperation';
 import { createVideoExporter } from './videoExportOperation';
 import { useExportDestination } from './useExportDestination';
 import type {
@@ -131,6 +135,13 @@ const EMPTY_WORKFLOW = {
   qa: ExportQaUiState | null;
   renderEngine: RenderEngine;
 };
+const RECOVERED_SERVER_EXPORT_PREFIX = 'server-export-';
+
+function recoveredServerRenderId(jobId: string | null): string | null {
+  return jobId?.startsWith(RECOVERED_SERVER_EXPORT_PREFIX)
+    ? jobId.slice(RECOVERED_SERVER_EXPORT_PREFIX.length)
+    : null;
+}
 
 export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs: ExportJobStore) {
   const t = useT();
@@ -150,6 +161,19 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
       options.onClose();
       return;
     }
+    const retainedRenderId = recoveredServerRenderId(viewedJobId);
+    if (retainedRenderId) {
+      try {
+        const retired = await retirePersistedServerExport(retainedRenderId);
+        if (!retired) {
+          setSetupError(t('此导出正在由另一个窗口恢复，请稍后重试'));
+          return;
+        }
+      } catch (error) {
+        setSetupError(exportDestinationErrorMessage(error, t));
+        return;
+      }
+    }
     const filename = suggestedExportFilename(options) ?? `${options.base}-${options.tab}`;
     let targetPath: string;
     try {
@@ -160,11 +184,16 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
     }
     setSetupError(null);
     let capturedOptions = snapshotWorkflowOptions(options);
-    // Blob placeholders (incomplete imports) are invisible to the Node renderer;
-    // re-publish any still-readable blob media to the server before submitting.
+    const mediaPlanSnapshot = capturedOptions.project
+      ? {
+          ...capturedOptions.project,
+          activeTimelineId: capturedOptions.timelineId ?? capturedOptions.project.activeTimelineId,
+        }
+      : capturedOptions.state;
+    // The shared materialization preflight returns only a fully renderable
+    // selected-timeline closure; any failed reachable blob rejects before a job.
     try {
-      const materialized = await materializeBlobMedia(capturedOptions, {});
-      capturedOptions = materialized.snapshot;
+      capturedOptions = await materializeBlobMedia(capturedOptions, { mediaPlanSnapshot });
     } catch (error) {
       setSetupError(exportDestinationErrorMessage(error, t));
       return;
@@ -202,7 +231,18 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
   const chooseDestination = async () => {
     setSetupError(null);
     try {
-      await destinationState.chooseDestination();
+      const selected = await destinationState.chooseDestination();
+      const renderId = recoveredServerRenderId(viewedJobId);
+      if (!selected || !renderId || !viewedJob) return;
+      const targetPath = exportDestinationTargetPath(selected, viewedJob.label);
+      const jobId = await rebindAndResumePersistedServerExport({
+        destination: selected,
+        exportJobs,
+        renderId,
+        t,
+        targetPath,
+      });
+      setViewedJobId(jobId);
     } catch (reason) {
       setSetupError(exportDestinationErrorMessage(reason, t));
     }

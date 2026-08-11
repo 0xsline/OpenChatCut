@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MobileUploadService } from './mobile-upload-service';
-import { isLoopbackAddress } from './plugins/mobile-upload';
+import { isLoopbackAddress } from './loopback-address';
 
 assert.equal(isLoopbackAddress('127.0.0.1'), true);
 assert.equal(isLoopbackAddress('::1'), true);

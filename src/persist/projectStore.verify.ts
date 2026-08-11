@@ -18,7 +18,7 @@ import {
   SaveCoordinator,
   type ProjectMeta,
 } from './projectStoreCoordinators';
-import { recoverFailedAutosave } from './autosaveRecovery';
+import { pendingAutosaveAfterObservation, recoverFailedAutosave } from './autosaveRecovery';
 import { kvKeys, kvSet } from './sharedKv';
 import {
   MAX_AUTOMATIC_VERSIONS,
@@ -163,6 +163,20 @@ assert.equal(
   assert.equal(maxActiveWriters, 1, 'one project never has concurrent persistence writers');
   assert.equal((await coordinator.flush('serial-project')).ok, true);
   assert.deepEqual(writes.at(-1), 'Second', 'an older completion cannot overwrite the newer revision');
+}
+
+// Loading a project establishes an autosave baseline; only a later edit of
+// that same project is queued. Strict-mode replay and project switches stay clean.
+{
+  const hydrated = { projectId: 'hydrated-project', doc: versionDoc('Hydrated') };
+  assert.equal(pendingAutosaveAfterObservation(null, hydrated), null);
+  assert.equal(pendingAutosaveAfterObservation(hydrated, { ...hydrated }), null);
+  assert.equal(
+    pendingAutosaveAfterObservation(hydrated, { projectId: 'other-project', doc: versionDoc('Other') }),
+    null,
+  );
+  const edited = { projectId: hydrated.projectId, doc: versionDoc('First edit') };
+  assert.equal(pendingAutosaveAfterObservation(hydrated, edited), edited);
 }
 
 // Editor autosave recovery is monotonic across enqueue attempts. If S1 fails

@@ -62,6 +62,33 @@ assert.ok(
   linux.files?.includes('!node_modules/onnxruntime-node/**'),
   'unsupported Linux packages must exclude ONNX Runtime entirely',
 );
+assert.equal(
+  linux.files?.includes('!node_modules/sqlite-vec-linux-x64/**'),
+  false,
+  'Linux x64 packages must retain sqlite-vec-linux-x64',
+);
+for (const foreignPackage of [
+  'darwin-arm64',
+  'darwin-x64',
+  'windows-x64',
+  'linux-arm64',
+]) {
+  assert.ok(
+    linux.files?.includes(`!node_modules/sqlite-vec-${foreignPackage}/**`),
+    `Linux x64 packages must exclude sqlite-vec-${foreignPackage}`,
+  );
+}
+
+const windows = await configFor('win32-x64');
+assert.equal(
+  windows.files?.includes('!node_modules/sqlite-vec-windows-x64/**'),
+  false,
+  'Windows packages must map win32-x64 to sqlite-vec-windows-x64',
+);
+assert.ok(
+  windows.files?.includes('!node_modules/sqlite-vec-linux-x64/**'),
+  'Windows packages must exclude foreign sqlite-vec extensions',
+);
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   scripts: Record<string, string>;
@@ -74,6 +101,22 @@ assert.match(
 assert.match(packageJson.scripts['desktop:dist'], /--mac --arm64/, 'arm64 packaging must build every configured mac target');
 assert.match(packageJson.scripts['desktop:dist:mac-x64'], /--mac --x64/, 'x64 packaging must build every configured mac target');
 assert.doesNotMatch(packageJson.scripts['desktop:dist'], /--mac dmg/, 'mac packaging must not suppress update zip metadata');
+const windowsDistScript = packageJson.scripts['desktop:dist:win'];
+assert.match(
+  windowsDistScript,
+  /spawnSync\(process\.execPath,\['node_modules\/electron-builder\/cli\.js'/,
+  'Windows packaging must launch electron-builder through a cross-platform Node wrapper',
+);
+assert.match(
+  windowsDistScript,
+  /env:\{\.\.\.process\.env,CC_EB_TARGET:'win32-x64'\}/,
+  'Windows packaging must explicitly select win32-x64 filters on every host',
+);
+assert.doesNotMatch(
+  windowsDistScript,
+  /&& electron-builder /,
+  'Windows packaging must not invoke electron-builder with host-derived filters',
+);
 
 const workflow = await readFile(new URL('../.github/workflows/desktop.yml', import.meta.url), 'utf8');
 for (const metadata of ['latest-arm64-mac.yml', 'latest-x64-mac.yml', 'latest-x64.yml', 'latest-x64-linux.yml']) {
@@ -87,7 +130,7 @@ for (const blockmap of [
   'arm64.zip.blockmap',
   'x64.zip.blockmap',
   'x64.exe.blockmap',
-  'x64.AppImage.blockmap',
+  'x86_64.AppImage.blockmap',
 ]) {
   assert.ok(
     workflow.includes(`release-files/OpenChatCut-\${EXPECTED_VERSION}-${blockmap}`),
@@ -99,5 +142,115 @@ assert.match(workflow, /test -f release-files\/latest-x64-mac\.yml/);
 assert.match(workflow, /test -f release-files\/latest-x64\.yml/);
 assert.match(workflow, /test -f release-files\/latest-x64-linux\.yml/);
 assert.match(workflow, /release-files\/\*/, 'GitHub Release must publish installers and update metadata together');
+
+assert.doesNotMatch(
+  workflow,
+  /find release -type d -name OpenChatCut\.app|(?:mac|win|linux)-unpacked\b/,
+  'desktop smoke tests must never launch unpacked electron-builder output',
+);
+assert.equal(
+  workflow.match(/CC_SMOKE: '1'/g)?.length,
+  3,
+  'every shipped desktop artifact must run the application smoke contract',
+);
+assert.equal(
+  workflow.match(/CC_SMOKE_RENDER: '1'/g)?.length,
+  3,
+  'every shipped desktop artifact must run the render smoke contract',
+);
+assert.match(workflow, /hdiutil attach[\s\S]*?"\$\{dmgs\[0\]\}"/, 'macOS smoke must mount the generated DMG');
+assert.match(
+  workflow,
+  /"\$mounted_app\/Contents\/MacOS\/OpenChatCut"/,
+  'macOS smoke must launch the app from the mounted DMG',
+);
+assert.match(workflow, /unzip -tq "\$\{zips\[0\]\}"/, 'macOS smoke must validate the generated update ZIP');
+assert.match(
+  workflow,
+  /OpenChatCut\.app\/Contents\/MacOS\/OpenChatCut/,
+  'macOS update ZIP must contain the application executable',
+);
+assert.match(
+  workflow,
+  /OpenChatCut\.app\/Contents\/Frameworks\/Electron Framework\.framework\/Versions\/A\/Electron Framework/,
+  'macOS update ZIP must contain the Electron runtime',
+);
+assert.match(
+  workflow,
+  /render_runtime="OpenChatCut\.app\/Contents\/Resources\/chrome-headless-shell\//,
+  'macOS update ZIP must contain the packaged render runtime',
+);
+assert.match(
+  workflow,
+  /Get-ChildItem -LiteralPath release -Filter '\*\.exe' -File/,
+  'Windows smoke must select the generated NSIS installer',
+);
+assert.match(
+  workflow,
+  /ArgumentList @\('\/S', "\/D=\$installDir"\)/,
+  'Windows smoke must silently install NSIS into an isolated path',
+);
+assert.match(
+  workflow,
+  /Start-Process -FilePath \$installedExe -Wait -PassThru/,
+  'Windows smoke must launch the installed executable',
+);
+assert.match(
+  workflow,
+  /Get-ChildItem -LiteralPath \$installDir -Filter 'Uninstall\*\.exe' -File/,
+  'Windows smoke must run the generated uninstaller',
+);
+assert.match(
+  workflow,
+  /xvfb-run --auto-servernum "\$\{appimages\[0\]\}" --appimage-extract-and-run/,
+  'Linux smoke must execute the generated AppImage without relying on FUSE',
+);
+for (const smokeName of [
+  'Smoke test macOS distribution',
+  'Smoke test Windows installer',
+  'Smoke test Linux AppImage',
+]) {
+  const smokeIndex = workflow.indexOf(`- name: ${smokeName}`);
+  const artifactIndex = workflow.indexOf('- uses: actions/upload-artifact@v7');
+  assert.ok(smokeIndex >= 0 && smokeIndex < artifactIndex, `${smokeName} must gate artifact publication`);
+}
+
+const draftIndex = workflow.indexOf('- name: Create or reuse draft release');
+const uploadIndex = workflow.indexOf('- name: Upload and verify release assets');
+const publishIndex = workflow.indexOf('- name: Publish verified draft');
+assert.ok(
+  draftIndex >= 0 && draftIndex < uploadIndex && uploadIndex < publishIndex,
+  'release workflow must create a draft, verify uploaded assets, then publish in that order',
+);
+assert.match(
+  workflow,
+  /gh release create[\s\S]*?--draft; then/,
+  'new GitHub Releases must begin as drafts',
+);
+assert.match(
+  workflow,
+  /if \[\[ "\$is_draft" != "true" \]\]; then[\s\S]*?already public/,
+  'release retries must reject an existing public release',
+);
+assert.match(
+  workflow,
+  /gh release upload[\s\S]*?release-files\/\*[\s\S]*?--clobber; then/,
+  'draft retries must replace partial or stale copies of expected assets',
+);
+assert.match(workflow, /sha256sum "\$asset"/, 'release verification must hash each local asset');
+assert.match(
+  workflow,
+  /\.assets\[\] \| \[\.name, \(\.digest \/\/ ""\)\]/,
+  'release verification must read back every remote asset name and digest',
+);
+assert.match(
+  workflow,
+  /cmp -s "\$local_manifest" "\$remote_manifest"/,
+  'remote asset names and SHA-256 digests must exactly match the local manifest',
+);
+assert.ok(
+  workflow.indexOf('--draft=false') > publishIndex,
+  'the verified draft must be published only in the final release step',
+);
 
 console.log('update-packaging.verify: per-architecture channels and release metadata contract OK');

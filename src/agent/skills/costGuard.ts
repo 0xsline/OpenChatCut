@@ -60,6 +60,6 @@ export function shouldBlockAutoApply(_proposal: Proposal, autoApply: boolean): b
 export function highCostOps(proposal: Proposal): string[] {
   return proposal.options[0].operations
     .filter((op) => isHighCostTool(op.tool)
-      && !(op.tool === 'transcribe_track' && !transcriptionIsPaid()))
+      && !(op.tool === 'transcribe_track' && !transcriptionIsPaid(op.args)))
     .map((op) => op.tool);
 }

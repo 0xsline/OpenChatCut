@@ -24,7 +24,11 @@ if (existsSync(moduleUrl)) {
 }
 
 const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-assert.match(mainSource, /requestSingleInstanceLock\(\)/, 'desktop must request a single-instance lock');
+assert.match(
+  mainSource,
+  /requestProfileScopedSingleInstanceLock\(app,\s*runtimeProfile\(\)\)/,
+  'desktop must request a profile-scoped single-instance lock',
+);
 assert.match(mainSource, /second-instance/, 'a second launch must focus the existing window');
 
 console.log('desktop single-instance verification passed');

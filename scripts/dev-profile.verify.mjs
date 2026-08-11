@@ -65,6 +65,7 @@ try {
   if (process.platform !== 'win32') {
     assert.equal((await stat(first.metadataPath)).mode & 0o777, 0o600);
     assert.equal((await stat(first.rootDir)).mode & 0o777, 0o700);
+    assert.equal((await stat(join(first.rootDir, 'electron-user-data'))).mode & 0o777, 0o700);
     assert.equal((await stat(join(first.rootDir, 'project-store-auth-v1'))).mode & 0o777, 0o700);
     assert.equal((await stat(join(first.rootDir, 'media', 'uploads'))).mode & 0o777, 0o700);
   }

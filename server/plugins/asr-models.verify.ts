@@ -106,6 +106,13 @@ try {
   await writeFile(join(modelRoot, entry.files[0]!.path), expectedContent);
   __resetAsrTasks();
   assert.deepEqual(await inspectAsrModel(entry, root), { downloaded: true, bytes: expectedContent.length });
+  const canceledInspection = new AbortController();
+  canceledInspection.abort(new DOMException('canceled', 'AbortError'));
+  await assert.rejects(
+    inspectAsrModel(entry, root, canceledInspection.signal),
+    (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
+    'an aborted inspection must reject even when an integrity result is cached',
+  );
 } finally {
   await rm(root, { recursive: true, force: true });
 }

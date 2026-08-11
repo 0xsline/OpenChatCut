@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { enqueueVisualAnalysis } from '../agent/progress/visual-analysis-jobs';
 import { useT } from '../i18n/locale';
-import { recoverFailedAutosave } from '../persist/autosaveRecovery';
+import { pendingAutosaveAfterObservation, recoverFailedAutosave } from '../persist/autosaveRecovery';
 import { acknowledgeIngestedGenerationResults, resumeOpenGenerationJobs } from '../persist/jobRegistryStore';
 import {
   flushProjectSaves,
@@ -78,8 +78,13 @@ function usePendingSaveQueue(): {
 function useEditorAutosave(projectId: string, doc: ProjectDoc): () => Promise<boolean> {
   const t = useT();
   const { unsavedRef, enqueuePendingSave } = usePendingSaveQueue();
+  const previousDocumentRef = useRef<PendingSave | null>(null);
   useEffect(() => {
-    unsavedRef.current = { projectId, doc };
+    const next = { projectId, doc };
+    const pending = pendingAutosaveAfterObservation(previousDocumentRef.current, next);
+    previousDocumentRef.current = next;
+    unsavedRef.current = pending;
+    if (pending === null) return undefined;
     const timer = setTimeout(() => { enqueuePendingSave(); }, 500);
     return () => clearTimeout(timer);
   }, [doc, enqueuePendingSave, projectId, unsavedRef]);

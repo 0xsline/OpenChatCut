@@ -82,6 +82,7 @@ export interface DirectoryCandidateRequest {
   readonly knownHashes: ReadonlySet<string>;
   readonly cancelled: () => boolean;
   readonly signal: AbortSignal;
+  readonly reportError?: (error: unknown) => void;
 }
 
 export interface DirectoryMediaProbe {
@@ -462,6 +463,7 @@ export async function importDirectoryCandidate(
     if (error instanceof DirectoryImportCancelledError || request.cancelled() || request.signal.aborted) {
       throw new DirectoryImportCancelledError();
     }
+    request.reportError?.(error);
     return { status: 'retry', retryImmediately: false };
   }
   if (!stable) return { status: 'retry', retryImmediately: false };
@@ -477,6 +479,7 @@ export async function importDirectoryCandidate(
     if (error instanceof DirectoryImportCancelledError || error instanceof DirectoryDestinationChangedError) {
       throw error;
     }
+    request.reportError?.(error);
     return { status: 'retry', retryImmediately: false };
   }
 }

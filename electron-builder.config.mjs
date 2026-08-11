@@ -42,11 +42,22 @@ const onnxRuntimeFilters = keepOnnxRuntime
       .filter((runtimeTarget) => runtimeTarget !== keepOnnxRuntime)
       .map((runtimeTarget) => `!node_modules/onnxruntime-node/bin/napi-v6/${runtimeTarget}/**`)
   : ['!node_modules/onnxruntime-node/**'];
-// sqlite-vec ships per-platform extension subpackages; keep only this artifact's.
-const SQLITE_VEC_PLATFORMS = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'];
-const sqliteVecFilters = SQLITE_VEC_PLATFORMS
-  .filter((platform) => platform !== keep)
-  .map((platform) => `!node_modules/sqlite-vec-${platform}/**`);
+// sqlite-vec publishes separate extension packages whose suffixes do not all
+// match Node's process.platform names. Keep only the package for this artifact.
+const SQLITE_VEC_PACKAGES = [
+  'darwin-arm64', 'darwin-x64', 'windows-x64', 'linux-arm64', 'linux-x64',
+];
+const TARGET_SQLITE_VEC_PACKAGE = {
+  'darwin-arm64': 'darwin-arm64',
+  'darwin-x64': 'darwin-x64',
+  'win32-x64': 'windows-x64',
+  'linux-arm64': 'linux-arm64',
+  'linux-x64': 'linux-x64',
+};
+const keepSqliteVec = TARGET_SQLITE_VEC_PACKAGE[target];
+const sqliteVecFilters = SQLITE_VEC_PACKAGES
+  .filter((packageSuffix) => packageSuffix !== keepSqliteVec)
+  .map((packageSuffix) => `!node_modules/sqlite-vec-${packageSuffix}/**`);
 const updateChannel = target.includes('arm64') ? 'latest-arm64' : 'latest-x64';
 const hasMacSigningCertificate = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
 

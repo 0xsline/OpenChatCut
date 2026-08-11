@@ -1,3 +1,7 @@
+import {
+  isTranscriptionProviderId,
+  type TranscriptionProviderId,
+} from '../../transcript/types';
 // Agent settings that actually change code paths (not soft prompt hints).
 // Cost guard: high-cost tools (generation/export/transcription/web/sandbox)
 // confirm before execution in Ask mode; YOLO/auto mode skips confirmation
@@ -164,8 +168,8 @@ export function createInlineThinkingExtractor(): {
  * Names match live TOOL_SCHEMAS plus persisted legacy aliases.
  * Keep this list exhaustive: every paid API surface must be here —
  * generation (image/video/music/sound/voice/MG), shaders, export, reruns,
- * paid transcription (AssemblyAI), paid web scraping (Firecrawl), and the
- * paid sandbox (E2B). costGuard.verify.ts guards this invariant. */
+ * paid transcription (every provider except local), paid web scraping (Firecrawl),
+ * and the paid sandbox (E2B). costGuard.verify.ts guards this invariant. */
 export const HIGH_COST_TOOLS: Readonly<Record<string, true>> = {
   submit_image: true,
   submit_video: true,
@@ -192,7 +196,7 @@ export const HIGH_COST_TOOLS: Readonly<Record<string, true>> = {
   generate_music: true,
   generate_voice: true,
   generate_sound: true,
-  // paid transcription (AssemblyAI, per-minute)
+  // paid transcription (all configured cloud providers, per-minute)
   transcribe_track: true,
   // paid web scraping (Firecrawl, per-page)
   web_browser: true,
@@ -209,16 +213,27 @@ export function isHighCostTool(name: string): boolean {
 }
 
 /**
- * Local (on-device) transcription is free; only the cloud AssemblyAI path makes
- * transcribe_track a paid tool. Reads the same flag the provider router uses
- * (cc.transcriptionProvider); missing/unknown storage falls back to paid.
+ * Resolve the transcription provider that will actually receive this invocation.
+ * Tool arguments have precedence over the saved setting; callers invoke this only
+ * after schema validation, while the defensive checks keep direct callers safe.
  */
-export function transcriptionIsPaid(): boolean {
-  try {
-    return (globalThis.localStorage?.getItem('cc.transcriptionProvider') ?? 'assemblyai') !== 'local';
-  } catch {
-    return true;
+export function effectiveTranscriptionProvider(
+  args?: Readonly<Record<string, unknown>>,
+): TranscriptionProviderId {
+  if (args?.provider !== undefined) {
+    return isTranscriptionProviderId(args.provider) ? args.provider : 'assemblyai';
   }
+  try {
+    const saved = globalThis.localStorage?.getItem('cc.transcriptionProvider');
+    return isTranscriptionProviderId(saved) ? saved : 'assemblyai';
+  } catch {
+    return 'assemblyai';
+  }
+}
+
+/** Only the on-device provider is free; every external transcription provider is paid. */
+export function transcriptionIsPaid(args?: Readonly<Record<string, unknown>>): boolean {
+  return effectiveTranscriptionProvider(args) !== 'local';
 }
 
 export type CostGuardCategory =
@@ -231,7 +246,10 @@ export type CostGuardCategory =
   | 'high-cost-operation';
 
 /** Every HIGH_COST_TOOLS entry has a runtime guard; known categories retain tailored copy. */
-export function costCategoryForTool(tool: string): CostGuardCategory | null {
+export function costCategoryForTool(
+  tool: string,
+  args?: Readonly<Record<string, unknown>>,
+): CostGuardCategory | null {
   if (tool === 'submit_image' || tool === 'generate_image' || tool === 'submit_image_generation') return 'image-gen';
   if (
     tool === 'submit_motion_graphic' || tool === 'create_motion_graphic'
@@ -248,7 +266,7 @@ export function costCategoryForTool(tool: string): CostGuardCategory | null {
     tool === 'submit_export' || tool === 'submit_render_job' || tool === 'export_timeline'
     || tool === 'export_motion_graphic_prores' || tool === 'convert_motion_graphic_to_video'
   ) return 'irreversible-export';
-  // Local transcription is free — no confirmation card when the on-device model is active.
-  if (tool === 'transcribe_track' && !transcriptionIsPaid()) return null;
+  // The explicit validated override wins over the saved provider setting.
+  if (tool === 'transcribe_track' && !transcriptionIsPaid(args)) return null;
   return isHighCostTool(tool) ? 'high-cost-operation' : null;
 }

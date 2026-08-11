@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
+import { editorCredentialAuthorized } from '../editor-auth.ts';
+
 import {
   assertTranscriptionProviderConfigured,
   TranscriptionConfigurationError,
@@ -29,6 +31,21 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(body));
+}
+
+function rejectBeforeBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+  status: number,
+  error: string,
+): void {
+  req.resume();
+  sendJson(res, status, { error });
+}
+
+function hasBinaryContentType(req: IncomingMessage): boolean {
+  const value = req.headers['content-type'];
+  return typeof value === 'string' && value.trim().toLowerCase() === 'application/octet-stream';
 }
 
 function assertDeclaredAudioSize(req: IncomingMessage): void {
@@ -85,7 +102,15 @@ async function handleTranscription(
   logger: { error(message: string): void },
 ): Promise<void> {
   if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'method not allowed — use POST' });
+    rejectBeforeBody(req, res, 405, 'method not allowed — use POST');
+    return;
+  }
+  if (!editorCredentialAuthorized(req, true)) {
+    rejectBeforeBody(req, res, 401, 'editor credential required');
+    return;
+  }
+  if (!hasBinaryContentType(req)) {
+    rejectBeforeBody(req, res, 415, 'content-type must be application/octet-stream');
     return;
   }
   try {

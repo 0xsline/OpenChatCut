@@ -1,5 +1,5 @@
 export type DirectoryImportMediaKind = 'video' | 'image' | 'audio' | 'gif' | 'svg';
-export type DirectoryImportDisposition = 'accepted' | 'duplicate' | 'rejected';
+export type DirectoryImportDisposition = 'reserved' | 'accepted' | 'duplicate' | 'rejected';
 
 export interface DirectoryImportedFile {
   readonly importId: string;
@@ -51,7 +51,8 @@ const MEDIA_KINDS: Record<DirectoryImportMediaKind, true> = {
 
 
 export function isDirectoryImportDisposition(value: unknown): value is DirectoryImportDisposition {
-  return value === 'accepted' || value === 'duplicate' || value === 'rejected';
+  return value === 'reserved' || value === 'accepted'
+    || value === 'duplicate' || value === 'rejected';
 }
 
 export function isDirectoryImportOpaqueId(value: unknown): value is string {

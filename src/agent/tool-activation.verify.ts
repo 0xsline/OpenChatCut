@@ -138,30 +138,56 @@ assert.deepEqual(
   neutral.names(),
   'read-only timeline requests do not expose editing schemas',
 );
-const readOnlyMusic = new ToolActivation(catalog, [
+for (const prompt of [
+  '只查看标题内容，不要修改',
+  "Tell me what the title says; don't edit.",
+]) {
+  const readOnlyTitle = new ToolActivation(catalog, [{ role: 'user', content: prompt }]);
+  assert.equal(
+    readOnlyTitle.names().includes('edit_item'),
+    false,
+    `${prompt} remains read-only`,
+  );
+}
+const naturalReadOnlyMusic = new ToolActivation(catalog, [
   { role: 'user', content: '只读查看音乐分析，不要修改' },
 ], ['sync_cuts_to_music']);
-assert.ok(readOnlyMusic.names().includes('music_edit_plan'));
+assert.ok(naturalReadOnlyMusic.names().includes('music_edit_plan'));
 assert.equal(
-  readOnlyMusic.names().includes('sync_cuts_to_music'),
-  false,
-  'explicit read-only requests drop mutating tools even when routed or previously active',
+  naturalReadOnlyMusic.names().includes('sync_cuts_to_music'),
+  true,
+  'natural-language read-only hints cannot revoke an already routed mutating capability',
 );
-const readOnlySearch = readOnlyMusic.withSearchResult({
+const naturalReadOnlySearch = naturalReadOnlyMusic.withSearchResult({
   results: [{ name: 'sync_cuts_to_music' }],
 });
 assert.equal(
-  readOnlySearch.activation.names().includes('sync_cuts_to_music'),
-  false,
-  'ToolSearch cannot activate a mutating tool during an explicit read-only request',
+  naturalReadOnlySearch.activation.names().includes('sync_cuts_to_music'),
+  true,
+  'natural-language read-only hints cannot turn ToolSearch into mutation authority',
 );
-const readOnlySearchRetry = readOnlySearch.activation.withSearchResult({
-  results: [{ name: 'sync_cuts_to_music' }],
-});
+for (const prompt of [
+  '不要修改原片，只加标题',
+  '给原片加个标题，其他不要修改',
+  "Don't edit the footage; adding a title is okay.",
+  '不要修改其他内容，只删除标题',
+  "Don't edit the footage; removing the title is okay.",
+]) {
+  const mixedIntent = new ToolActivation(catalog, [{ role: 'user', content: prompt }]);
+  assert.ok(mixedIntent.names().includes('edit_item'), `${prompt} retains the mutating tool`);
+  assert.ok(mixedIntent.names().includes('edit_track'), `${prompt} retains generic editing tools`);
+  assert.ok(mixedIntent.names().includes('ToolSearch'), `${prompt} retains ToolSearch`);
+  assert.ok(mixedIntent.names().includes('load_skill'), `${prompt} retains load_skill`);
+}
+const askOnlyCatalog = catalog.filter((tool) => tool.name !== 'edit_item' && tool.name !== 'edit_track'
+  && tool.name !== 'sync_cuts_to_music');
+const askOnlyMixedIntent = new ToolActivation(askOnlyCatalog, [
+  { role: 'user', content: '不要修改原片，只加标题' },
+], ['edit_item', 'sync_cuts_to_music']);
 assert.equal(
-  readOnlySearchRetry.activation.names().includes('sync_cuts_to_music'),
+  askOnlyMixedIntent.names().some((name) => name === 'edit_item' || name === 'sync_cuts_to_music'),
   false,
-  'read-only state survives ToolSearch activation rebuilds',
+  'askOnly catalog is the hard mutation-suppression authority',
 );
 const discoveryRouted = new ToolActivation(catalog, [
   { role: 'user', content: '先看看有哪些音频相关能力，只列出最匹配的三个能力名称' },

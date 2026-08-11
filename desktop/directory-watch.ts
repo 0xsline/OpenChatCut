@@ -19,7 +19,6 @@ import {
   type DirectoryFileFingerprint,
   type PreparedDirectoryImport,
 } from './directory-watch-import.ts';
-
 export const DIRECTORY_SCAN_MAX_FILES = 400;
 export const DIRECTORY_SCAN_MAX_DEPTH = 12;
 
@@ -55,10 +54,12 @@ export interface DirectoryWatchSessionOptions {
   readonly existingContentHashes: readonly string[];
   readonly onImported: (event: DirectoryImportEvent) => boolean;
   readonly onFatalError?: (error: unknown) => void;
+  readonly onFileError?: (error: unknown) => void;
 }
 
-interface PendingPublication {
+interface Publication {
   readonly paths: readonly string[];
+  readonly state: 'uncommitted' | 'reserved' | 'committed' | 'rejected';
 }
 
 interface ScanCandidate {
@@ -97,16 +98,24 @@ export async function scanImportDirectory(
   root: string,
   dependencies: Pick<DirectoryWatchDependencies, 'readdir'>,
   cancelled: () => boolean = () => false,
+  reportFileError: (error: unknown) => void = () => undefined,
 ): Promise<readonly ScanCandidate[]> {
   const queue: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }];
   const candidates: ScanCandidate[] = [];
   for (let index = 0; index < queue.length; index += 1) {
     if (cancelled()) throw new DirectoryImportCancelledError();
     const current = queue[index];
-    const entries = [...await dependencies.readdir(current.path)]
-      .sort((left, right) => left.name.localeCompare(right.name));
+    let entries: readonly DirectoryEntry[];
+    try {
+      entries = await dependencies.readdir(current.path);
+    } catch (error) {
+      if (cancelled()) throw new DirectoryImportCancelledError();
+      if (index === 0) throw error;
+      reportFileError(error);
+      continue;
+    }
     if (cancelled()) throw new DirectoryImportCancelledError();
-    for (const entry of entries) {
+    for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
       if (entry.isSymbolicLink()) continue;
       const path = join(current.path, entry.name);
       if (entry.isDirectory()) {
@@ -134,12 +143,14 @@ export class DirectoryWatchSession {
   private readonly dependencies: DirectoryWatchDependencies;
   private readonly hashes: Set<string>;
   private readonly known = new Map<string, DirectoryFileFingerprint>();
-  private readonly pending = new Map<string, PendingPublication>();
+  private readonly publications = new Map<string, Publication>();
   private readonly initialFiles: DirectoryImportedFile[] = [];
-  private readonly abortController = new AbortController();
   private phase: WatchPhase = 'created';
   private watcher: DirectoryWatchHandle | null = null;
   private runner: Promise<void> | null = null;
+  private activeAbortController: AbortController | null = null;
+  private generation = 0;
+  private reconciledGeneration = -1;
   private dirty = false;
   private closeError: unknown;
 
@@ -161,7 +172,7 @@ export class DirectoryWatchSession {
     try {
       this.watcher = this.dependencies.watch(this.options.root, () => this.markDirty());
       await this.requestScan();
-      if (this.cancelled()) throw new DirectoryImportCancelledError();
+      this.assertReady();
       this.phase = 'inactive';
       return {
         watchId: this.watchId,
@@ -179,12 +190,14 @@ export class DirectoryWatchSession {
   async activate(): Promise<void> {
     if (this.phase === 'active') {
       await this.requestScan();
+      this.assertReady();
       return;
     }
     if (this.phase !== 'inactive') throw new Error('directory watch is not ready for activation');
     this.phase = 'active';
     try {
       await this.requestScan();
+      this.assertReady();
     } catch (error) {
       this.beginStop(error);
       await this.finishStop();
@@ -193,11 +206,26 @@ export class DirectoryWatchSession {
   }
 
   async acknowledge(importId: string, disposition: DirectoryImportDisposition): Promise<void> {
-    if (this.cancelled()) throw new Error('directory watch is stopped');
-    const publication = this.pending.get(importId);
+    const publication = this.publications.get(importId);
     if (!publication) throw new Error('directory import grant is unavailable');
-    this.pending.delete(importId);
-    if (disposition !== 'accepted') await this.dependencies.removeFiles(publication.paths);
+    if (disposition === 'reserved') {
+      if (publication.state === 'rejected') throw new Error('directory import grant is unavailable');
+      if (publication.state === 'uncommitted') {
+        if (this.cancelled()) throw new Error('directory watch is stopped');
+        this.publications.set(importId, { ...publication, state: 'reserved' });
+      }
+      return;
+    }
+    if (disposition === 'accepted') {
+      if (publication.state === 'rejected') throw new Error('directory import grant is unavailable');
+      if (publication.state === 'uncommitted') throw new Error('directory import publication is not reserved');
+      if (publication.state === 'reserved') this.publications.set(importId, { ...publication, state: 'committed' });
+      return;
+    }
+    if (publication.state === 'rejected') return;
+    if (publication.state === 'committed') throw new Error('directory import publication is already committed');
+    await this.dependencies.removeFiles(publication.paths);
+    if (this.publications.get(importId) === publication) this.publications.set(importId, { ...publication, state: 'rejected' });
   }
 
   async stop(): Promise<void> {
@@ -210,15 +238,27 @@ export class DirectoryWatchSession {
 
   private markDirty(): void {
     if (this.cancelled()) return;
-    this.dirty = true;
+    this.scheduleReconcile();
     if (this.phase === 'active') {
       void this.ensureRunner().catch((error) => this.handleBackgroundFailure(error));
     }
   }
 
-  private requestScan(): Promise<void> {
+  private async requestScan(): Promise<void> {
+    const requestedGeneration = this.scheduleReconcile();
+    while (!this.cancelled()) {
+      await this.ensureRunner();
+      if (this.reconciledGeneration === this.generation
+        && this.reconciledGeneration >= requestedGeneration) return;
+    }
+    throw new DirectoryImportCancelledError();
+  }
+
+  private scheduleReconcile(): number {
+    this.generation += 1;
     this.dirty = true;
-    return this.ensureRunner();
+    this.activeAbortController?.abort(new DirectoryImportCancelledError());
+    return this.generation;
   }
 
   private ensureRunner(): Promise<void> {
@@ -230,7 +270,25 @@ export class DirectoryWatchSession {
     try {
       while (this.dirty && !this.cancelled()) {
         this.dirty = false;
-        await this.scanOnce();
+        const generation = this.generation;
+        const abortController = new AbortController();
+        this.activeAbortController = abortController;
+        try {
+          const retryImmediately = await this.scanOnce(generation, abortController.signal);
+          this.assertCurrent(generation, abortController.signal);
+          this.reconciledGeneration = generation;
+          if (retryImmediately) this.scheduleReconcile();
+        } catch (error) {
+          if (error instanceof DirectoryImportCancelledError
+            && !this.cancelled() && generation !== this.generation) {
+            continue;
+          }
+          throw error;
+        } finally {
+          if (this.activeAbortController === abortController) {
+            this.activeAbortController = null;
+          }
+        }
       }
     } finally {
       this.runner = null;
@@ -240,94 +298,175 @@ export class DirectoryWatchSession {
     }
   }
 
-  private async validateEnvironment(): Promise<void> {
+  private async validateEnvironment(generation: number, signal: AbortSignal): Promise<void> {
     const [root, destination] = await Promise.all([
       this.dependencies.realpath(this.options.root),
       this.dependencies.canonicalUploadDirectory(),
     ]);
-    if (this.cancelled()) throw new DirectoryImportCancelledError();
+    this.assertCurrent(generation, signal);
     if (root !== this.options.root || destination !== this.options.pinnedUploadDirectory) {
       throw new DirectoryDestinationChangedError();
     }
   }
 
-  private async scanOnce(): Promise<void> {
-    await this.validateEnvironment();
-    const candidates = await scanImportDirectory(
-      this.options.root, this.dependencies, this.cancelled,
-    );
-    if (candidates.length) {
-      await this.dependencies.settleWrites();
-      if (this.cancelled()) throw new DirectoryImportCancelledError();
-    }
-    const currentPaths = new Set(candidates.map((candidate) => candidate.path));
-    for (const knownPath of this.known.keys()) {
-      if (!currentPaths.has(knownPath)) this.known.delete(knownPath);
-    }
-    for (const candidate of candidates) {
-      if (this.cancelled()) throw new DirectoryImportCancelledError();
-      const result = await this.dependencies.importCandidate({
-        sourcePath: candidate.path,
-        root: this.options.root,
-        name: candidate.name,
-        pinnedUploadDirectory: this.options.pinnedUploadDirectory,
-        knownFingerprint: this.known.get(candidate.path),
-        knownHashes: this.hashes,
-        cancelled: this.cancelled,
-        signal: this.abortController.signal,
-      });
-      await this.consumeCandidate(candidate, result);
-    }
-  }
+  private async scanOnce(generation: number, signal: AbortSignal): Promise<boolean> {
+    const cancelled = (): boolean => !this.isCurrent(generation, signal);
+    const staged: Array<{ candidate: ScanCandidate; prepared: PreparedDirectoryImport }> = [];
+    try {
+      await this.validateEnvironment(generation, signal);
+      const candidates = await scanImportDirectory(
+        this.options.root,
+        this.dependencies,
+        cancelled,
+        (error) => this.reportFileError(error),
+      );
+      if (candidates.length) {
+        await this.dependencies.settleWrites();
+        this.assertCurrent(generation, signal);
+      }
 
-  private async consumeCandidate(
-    candidate: ScanCandidate,
-    result: DirectoryCandidateResult,
-  ): Promise<void> {
-    if (result.status === 'retry') {
-      if (result.retryImmediately) this.dirty = true;
-      return;
+      const nextKnown = new Map(this.known);
+      const nextHashes = new Set(this.hashes);
+      const currentPaths = new Set(candidates.map((candidate) => candidate.path));
+      for (const knownPath of nextKnown.keys()) {
+        if (!currentPaths.has(knownPath)) nextKnown.delete(knownPath);
+      }
+
+      let retryImmediately = false;
+      for (const candidate of candidates) {
+        this.assertCurrent(generation, signal);
+        let result: DirectoryCandidateResult;
+        try {
+          result = await this.dependencies.importCandidate({
+            sourcePath: candidate.path,
+            root: this.options.root,
+            name: candidate.name,
+            pinnedUploadDirectory: this.options.pinnedUploadDirectory,
+            knownFingerprint: nextKnown.get(candidate.path),
+            knownHashes: nextHashes,
+            cancelled,
+            signal,
+            reportError: (error) => this.reportFileError(error),
+          });
+        } catch (error) {
+          if (cancelled() || error instanceof DirectoryImportCancelledError) {
+            throw new DirectoryImportCancelledError();
+          }
+          if (this.isPerFileError(error)) {
+            this.reportFileError(error);
+            continue;
+          }
+          throw error;
+        }
+        if (result.status === 'imported') {
+          staged.push({ candidate, prepared: result.prepared });
+        }
+        this.assertCurrent(generation, signal);
+        if (result.status === 'retry') {
+          retryImmediately ||= result.retryImmediately;
+        } else if (result.status === 'unsupported' || result.status === 'duplicate') {
+          nextKnown.set(candidate.path, result.fingerprint);
+        } else if (result.status === 'imported') {
+          nextKnown.set(candidate.path, result.prepared.fingerprint);
+          nextHashes.add(result.prepared.file.contentHash);
+        }
+      }
+
+      this.assertCurrent(generation, signal);
+      this.known.clear();
+      for (const [path, fingerprint] of nextKnown) this.known.set(path, fingerprint);
+      this.hashes.clear();
+      for (const hash of nextHashes) this.hashes.add(hash);
+
+      while (staged.length) {
+        const publication = staged.shift();
+        if (!publication) break;
+        await this.publishCandidate(
+          generation, signal, publication.candidate, publication.prepared,
+        );
+      }
+      this.assertCurrent(generation, signal);
+      return retryImmediately;
+    } catch (error) {
+      if (staged.length) {
+        const cleanups = staged.map(({ prepared }) =>
+          this.dependencies.removeFiles(prepared.createdPaths));
+        const results = await Promise.allSettled(cleanups);
+        const failures = results
+          .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+          .map((result) => result.reason);
+        if (failures.length) {
+          throw new AggregateError([error, ...failures], 'directory reconcile cleanup failed');
+        }
+      }
+      throw error;
     }
-    if (result.status === 'unchanged') return;
-    if (result.status === 'unsupported' || result.status === 'duplicate') {
-      this.known.set(candidate.path, result.fingerprint);
-      return;
-    }
-    await this.publishCandidate(candidate, result.prepared);
   }
 
   private async publishCandidate(
+    generation: number,
+    signal: AbortSignal,
     candidate: ScanCandidate,
     prepared: PreparedDirectoryImport,
   ): Promise<void> {
-    if (this.cancelled()) {
+    if (!this.isCurrent(generation, signal)) {
       await this.dependencies.removeFiles(prepared.createdPaths);
       throw new DirectoryImportCancelledError();
     }
     const importId = this.dependencies.randomId();
     const file: DirectoryImportedFile = { importId, ...prepared.file };
-    this.pending.set(importId, { paths: prepared.createdPaths });
+    this.publications.set(importId, { paths: prepared.createdPaths, state: 'uncommitted' });
     this.hashes.add(file.contentHash);
     this.known.set(candidate.path, prepared.fingerprint);
     if (this.phase === 'starting') {
       this.initialFiles.push(file);
       return;
     }
-    if (this.phase !== 'active' || !this.options.onImported({
-      watchId: this.watchId, projectId: this.projectId, file,
-    })) {
-      this.pending.delete(importId);
+    if (!this.isCurrent(generation, signal) || this.phase !== 'active'
+      || !this.options.onImported({
+        watchId: this.watchId, projectId: this.projectId, file,
+      })) {
+      this.publications.delete(importId);
       await this.dependencies.removeFiles(prepared.createdPaths);
       this.beginStop();
       throw new DirectoryImportCancelledError();
     }
   }
 
+  private isCurrent(generation: number, signal: AbortSignal): boolean {
+    return !this.cancelled() && generation === this.generation && !signal.aborted;
+  }
+
+  private assertCurrent(generation: number, signal: AbortSignal): void {
+    if (!this.isCurrent(generation, signal)) throw new DirectoryImportCancelledError();
+  }
+
+  private assertReady(): void {
+    if (this.cancelled() || this.reconciledGeneration !== this.generation) {
+      throw new DirectoryImportCancelledError();
+    }
+  }
+
+  private isPerFileError(error: unknown): boolean {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES'
+      || code === 'EPERM' || code === 'ESTALE';
+  }
+
+  private reportFileError(error: unknown): void {
+    try {
+      this.options.onFileError?.(error);
+    } catch {
+      // Error reporting must not turn an isolated candidate failure into a watch failure.
+    }
+  }
+
   private beginStop(error?: unknown): void {
     if (this.cancelled()) return;
     this.phase = 'stopping';
+    this.generation += 1;
     this.dirty = false;
-    this.abortController.abort(new DirectoryImportCancelledError());
+    this.activeAbortController?.abort(new DirectoryImportCancelledError());
     try {
       this.watcher?.close();
     } catch (closeError) {
@@ -339,10 +478,13 @@ export class DirectoryWatchSession {
 
   private async finishStop(): Promise<void> {
     await this.runner?.catch(() => undefined);
-    const publications = [...this.pending.values()];
-    this.pending.clear();
+    const abandoned = [...this.publications.entries()]
+      .filter(([, publication]) => publication.state === 'uncommitted');
     const results = await Promise.allSettled(
-      publications.map((publication) => this.dependencies.removeFiles(publication.paths)),
+      abandoned.map(async ([importId, publication]) => {
+        await this.dependencies.removeFiles(publication.paths);
+        if (this.publications.get(importId) === publication) this.publications.set(importId, { ...publication, state: 'rejected' });
+      }),
     );
     this.phase = 'stopped';
     const failures = results.filter((result) => result.status === 'rejected');

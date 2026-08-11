@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "assets": [
+    {
+      "id": "asset_v3_compat",
+      "name": "compatibility.mp4",
+      "kind": "video",
+      "src": "/media/uploads/compatibility.mp4",
+      "durationInFrames": 90,
+      "sourceContentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "assetSentinel": { "preserve": true }
+    }
+  ],
+  "mediaFolders": [],
+  "timelines": [
+    {
+      "id": "tl_v3_compat",
+      "name": "V0.1.9 compatible sequence",
+      "order": 0,
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "selectedId": "clip_v3_compat",
+      "trackOrder": ["track_v3_compat"],
+      "tracks": {
+        "track_v3_compat": {
+          "kind": "video",
+          "trackSentinel": { "preserve": true }
+        }
+      },
+      "items": [
+        {
+          "id": "clip_v3_compat",
+          "track": "track_v3_compat",
+          "startFrame": 0,
+          "durationInFrames": 90,
+          "name": "compatibility.mp4",
+          "kind": "video",
+          "src": "/media/uploads/compatibility.mp4",
+          "sourceAssetId": "asset_v3_compat",
+          "sourceContentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backgroundFill": true,
+          "backgroundFillStrength": 75,
+          "itemSentinel": { "preserve": true }
+        }
+      ],
+      "timelineSentinel": { "preserve": true }
+    }
+  ],
+  "activeTimelineId": "tl_v3_compat",
+  "topLevelSentinel": { "preserve": true }
+}

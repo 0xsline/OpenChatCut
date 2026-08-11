@@ -1,23 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import { loadProject, migrateProjectDoc, resetProjectStoreMemory } from '../projectStore';
 import { parseProjectEnvelope, PROJECT_EXPORT_FORMAT } from '../projectTransfer';
 import { kvGet, kvSet } from '../sharedKv';
-import { listTemplates, saveTemplate } from '../templateStore';
+import { listTemplates } from '../templateStore';
 import { listVersions } from '../versionStore';
 import { runProjectMigrations } from './index';
+import { v1, v2, v3, v3V019Compatible, v4, v5, v6 } from './migrations.verify.fixtures';
+import { verifySourceMetadataMigration } from './migrations.verify.source-metadata';
 
-const fixture = (name: string): unknown => JSON.parse(
-  readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'),
-);
-
-const v1 = fixture('project-v1.json');
-const v2 = fixture('project-v2.json');
-const v3 = fixture('project-v3.json');
-const v4 = fixture('project-v4.json');
-const v5 = fixture('project-v5.json');
-const v6 = fixture('project-v6.json');
 
 {
   const sourceSnapshot = JSON.stringify(v1);
@@ -32,8 +23,8 @@ const v6 = fixture('project-v6.json');
   });
   assert.ok(migrated);
   assert.equal(migrated.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3', 'v3-to-v4', 'v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
-  assert.deepEqual(progress, [[1, 2, 1, 6], [2, 3, 2, 6], [3, 4, 3, 6], [4, 5, 4, 6], [5, 6, 5, 6], [6, 7, 6, 6]]);
+  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3']);
+  assert.deepEqual(progress, [[1, 2, 1, 2], [2, 3, 2, 2]]);
   assert.deepEqual(migrated.doc.assets.map((asset) => asset.id), ['asset_video', 'asset_audio']);
   assert.equal(migrated.doc.assets[0].name, 'interview.mp4', 'project-level asset wins duplicate ids');
   assert.equal(migrated.doc.assets[0].folderId, undefined, 'missing folders are detached');
@@ -55,50 +46,169 @@ const v6 = fixture('project-v6.json');
 {
   const migrated = runProjectMigrations(v2);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3', 'v3-to-v4', 'v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
+  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3']);
   assert.equal(migrated.doc.timelines[0].items[0].track, 'track_tl_fixture_2');
 }
 
 {
-  const migrated = runProjectMigrations(v3);
+  const progress: Array<[number, number]> = [];
+  const migrated = runProjectMigrations(v3, {
+    onProgress: (event) => progress.push([event.fromVersion, event.toVersion]),
+  });
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v3-to-v4', 'v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
-  assert.deepEqual(migrated.doc, { ...(v3 as object), version: CURRENT_PROJECT_VERSION });
+  assert.deepEqual(migrated.appliedSteps, []);
+  assert.deepEqual(progress, [], 'current V3 documents never show migration progress');
+  assert.deepEqual(migrated.doc, v3);
 }
+// V0.1.9 accepted V3 by validating the then-required core shape and ignored
+// additional object properties. This faithful reader proves new optional fields
+// remain readable without a schema-label bump.
+const parseWithV019Reader = (value: unknown): object | null => {
+  if (!value || typeof value !== 'object') return null;
+  const project = value as {
+    version?: unknown;
+    assets?: unknown;
+    mediaFolders?: unknown;
+    timelines?: unknown;
+    activeTimelineId?: unknown;
+  };
+  if (project.version !== 3
+    || !Array.isArray(project.assets)
+    || !Array.isArray(project.mediaFolders)
+    || !Array.isArray(project.timelines)
+    || project.timelines.length === 0
+    || typeof project.activeTimelineId !== 'string') return null;
+  const timelinesValid = project.timelines.every((timeline) => {
+    if (!timeline || typeof timeline !== 'object') return false;
+    const legacy = timeline as { fps?: unknown; items?: unknown };
+    return typeof legacy.fps === 'number'
+      && Number.isFinite(legacy.fps)
+      && legacy.fps > 0
+      && Array.isArray(legacy.items)
+      && legacy.items.every((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const oldItem = item as Record<string, unknown>;
+        return typeof oldItem.id === 'string'
+          && typeof oldItem.track === 'string'
+          && typeof oldItem.name === 'string'
+          && typeof oldItem.kind === 'string'
+          && typeof oldItem.startFrame === 'number'
+          && typeof oldItem.durationInFrames === 'number';
+      });
+  });
+  return timelinesValid ? value : null;
+};
 
 {
-  const sourceSnapshot = JSON.stringify(v4);
-  const migrated = runProjectMigrations(v4);
+  assert.equal(parseWithV019Reader(v3V019Compatible), v3V019Compatible);
+  const migrated = runProjectMigrations(v3V019Compatible);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
+  assert.equal(parseWithV019Reader(migrated.doc), migrated.doc);
+  const compatDoc = migrated.doc as unknown as Record<string, unknown>;
+  const compatTimeline = migrated.doc.timelines[0] as unknown as Record<string, unknown>;
+  const compatAsset = migrated.doc.assets[0] as unknown as Record<string, unknown>;
+  const compatItem = migrated.doc.timelines[0]?.items[0] as unknown as Record<string, unknown>;
+  const compatTrack = migrated.doc.timelines[0]?.tracks?.track_v3_compat as unknown as Record<string, unknown>;
+  assert.deepEqual(compatDoc.topLevelSentinel, { preserve: true });
+  assert.deepEqual(compatTimeline.timelineSentinel, { preserve: true });
+  assert.deepEqual(compatAsset.assetSentinel, { preserve: true });
+  assert.deepEqual(compatItem.itemSentinel, { preserve: true });
+  assert.deepEqual(compatTrack.trackSentinel, { preserve: true });
+  assert.equal(compatItem.backgroundFill, true);
+  assert.equal(compatItem.backgroundFillStrength, 75);
+  assert.equal(compatAsset.sourceContentHash, 'a'.repeat(64));
+  assert.deepEqual(migrateProjectDoc(migrated.doc), migrated.doc);
+}
+
+
+const withUnknownSentinels = (source: unknown, version: number): unknown => {
+  const project = source as { timelines: Array<Record<string, unknown>> };
+  return {
+    ...(project as object),
+    version,
+    topLevelSentinel: { preserve: true },
+    timelines: project.timelines.map((timeline) => ({
+      ...timeline,
+      timelineSentinel: { preserve: true },
+      items: (timeline.items as Array<Record<string, unknown>>).map((item) => ({
+        ...item,
+        itemSentinel: { preserve: true },
+      })),
+    })),
+  };
+};
+
+for (const [version, source] of [[4, v4], [5, v5], [6, v6], [7, v6]] as const) {
+  const input = withUnknownSentinels(source, version);
+  const sourceSnapshot = JSON.stringify(input);
+  const migrated = runProjectMigrations(input);
+  assert.ok(migrated);
+  assert.deepEqual(migrated.appliedSteps, [`dev-v${version}-to-v3`]);
   assert.equal(migrated.doc.version, CURRENT_PROJECT_VERSION);
-  assert.equal(migrated.doc.timelines[0]?.items[0]?.backgroundFill, undefined,
-    'V4 clips retain the historical disabled appearance');
-  assert.equal(JSON.stringify(v4), sourceSnapshot, 'V4 migration never mutates source bytes');
+  assert.deepEqual((migrated.doc as unknown as Record<string, unknown>).topLevelSentinel, { preserve: true });
+  assert.deepEqual(
+    (migrated.doc.timelines[0] as unknown as Record<string, unknown>).timelineSentinel,
+    { preserve: true },
+  );
+  assert.deepEqual(
+    (migrated.doc.timelines[0]!.items[0] as unknown as Record<string, unknown>).itemSentinel,
+    { preserve: true },
+  );
+  assert.equal(JSON.stringify(input), sourceSnapshot, `development V${version} collapse never mutates source bytes`);
+  assert.deepEqual(migrateProjectDoc(migrated.doc), migrated.doc, `development V${version} collapse is idempotent`);
 }
 
 {
-  const sourceSnapshot = JSON.stringify(v5);
-  const migrated = runProjectMigrations(v5);
+  const migratedV4 = runProjectMigrations(v4);
+  const migratedV5 = runProjectMigrations(v5);
+  const migratedV6 = runProjectMigrations(v6);
+  assert.ok(migratedV4 && migratedV5 && migratedV6);
+  assert.equal(migratedV4.doc.timelines[0]?.items[0]?.backgroundFill, undefined);
+  assert.equal(migratedV5.doc.timelines[0]?.items[0]?.backgroundFill, true);
+  assert.equal(migratedV5.doc.timelines[0]?.items[0]?.backgroundFillStrength, undefined);
+  const v6Clip = migratedV6.doc.timelines[0]?.items[0];
+  assert.equal(v6Clip?.backgroundFillStrength, 75, 'development preset collapse keeps the exact strength');
+  assert.equal(Object.hasOwn(v6Clip ?? {}, 'backgroundFillPreset'), false);
+}
+for (const [preset, expectedStrength] of [
+  ['soft', 25],
+  ['medium', undefined],
+  ['strong', 75],
+  ['maximum', 100],
+] as const) {
+  const source = v6 as { timelines: Array<{ items: Array<Record<string, unknown>> }> };
+  const input = {
+    ...source,
+    version: 6,
+    timelines: source.timelines.map((timeline) => ({
+      ...timeline,
+      items: timeline.items.map((item) => ({ ...item, backgroundFillPreset: preset })),
+    })),
+  };
+  const migrated = runProjectMigrations(input);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v5-to-v6', 'v6-to-v7']);
-  const clip = migrated.doc.timelines[0]?.items[0];
-  assert.equal(clip?.backgroundFill, true, 'V5 enabled fills remain enabled');
-  assert.equal(clip?.backgroundFillStrength, undefined, 'V5 fills resolve to the compatible 50% default');
-  assert.equal(JSON.stringify(v5), sourceSnapshot, 'V5 migration never mutates source bytes');
+  const item = migrated.doc.timelines[0]?.items[0];
+  assert.equal(item?.backgroundFillStrength, expectedStrength);
+  assert.equal(Object.hasOwn(item ?? {}, 'backgroundFillPreset'), false);
 }
 
 {
-  const sourceSnapshot = JSON.stringify(v6);
-  const migrated = runProjectMigrations(v6);
+  const source = v6 as { timelines: Array<{ items: Array<Record<string, unknown>> }> };
+  const input = {
+    ...source,
+    version: 7,
+    timelines: source.timelines.map((timeline) => ({
+      ...timeline,
+      items: timeline.items.map((item) => ({ ...item, backgroundFill: false, backgroundFillPreset: 'maximum' })),
+    })),
+  };
+  const migrated = runProjectMigrations(input);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v6-to-v7']);
-  const clip = migrated.doc.timelines[0]?.items[0];
-  assert.equal(clip?.backgroundFill, true, 'V6 enabled fills remain enabled');
-  assert.equal(clip?.backgroundFillStrength, 75, 'V6 strong presets migrate to 75%');
-  assert.equal(Object.hasOwn(clip ?? {}, 'backgroundFillPreset'), false, 'V7 removes the legacy preset field');
-  assert.equal(JSON.stringify(v6), sourceSnapshot, 'V6 migration never mutates source bytes');
+  const item = migrated.doc.timelines[0]?.items[0];
+  assert.equal(item?.backgroundFillStrength, undefined);
+  assert.equal(Object.hasOwn(item ?? {}, 'backgroundFillPreset'), false);
 }
+
 
 {
   const legacyAsset = {
@@ -146,10 +256,10 @@ const v6 = fixture('project-v6.json');
   assert.ok(migrated);
   const { sourceRevision: assetRevision, ...assetWithoutRevision } = migrated.doc.assets[0]!;
   const { sourceRevision: itemRevision, ...itemWithoutRevision } = migrated.doc.timelines[0]!.items[0]!;
-  assert.deepEqual(assetWithoutRevision, legacyAsset, 'valid V3 asset data survives V4 migration unchanged');
-  assert.deepEqual(itemWithoutRevision, legacyItem, 'valid V3 item data survives V4 migration unchanged');
+  assert.deepEqual(assetWithoutRevision, legacyAsset, 'valid V3 asset data survives normalization unchanged');
+  assert.deepEqual(itemWithoutRevision, legacyItem, 'valid V3 item data survives normalization unchanged');
   assert.ok(assetRevision);
-  assert.equal(itemRevision, assetRevision, 'V4 derives one shared source revision without inventing a content hash');
+  assert.equal(itemRevision, assetRevision, 'normalization derives one shared source revision without inventing a content hash');
   assert.equal(Object.hasOwn(migrated.doc.assets[0]!, 'sourceContentHash'), false);
   assert.equal(Object.hasOwn(migrated.doc.timelines[0]!.items[0]!, 'sourceContentHash'), false);
   assert.deepEqual(migrateProjectDoc(migrated.doc), migrated.doc, 'V3 media migration is idempotent');
@@ -185,162 +295,7 @@ const v6 = fixture('project-v6.json');
   assert.equal(migrateProjectDoc(invalidItem({ id: '' })), null, 'empty item ids are rejected');
 }
 
-// Runtime migration normalizes string source filenames and removes malformed
-// values from every media-source shape while retaining desktop-only local paths.
-{
-  const privatePath = '/Users/local-editor/private/interview.mov';
-  const hostileItem = {
-    id: 'clip_hostile',
-    track: 'track_tl_sources_1',
-    startFrame: 0,
-    durationInFrames: 30,
-    name: 'Hostile',
-    kind: 'video',
-    src: '/media/uploads/hostile.mov',
-    sourceFilename: { attacker: true },
-    originalFilePath: 'relative/private/interview.mov',
-    sourceRevision: 'bad\u0001revision',
-    sourceContentHash: 'not-a-sha256',
-  };
-  const validItem = {
-    ...hostileItem,
-    id: 'clip_valid',
-    name: 'Valid',
-    sourceFilename: '/Users/editor/采访/interview.final.mov',
-    originalFilePath: privatePath,
-    sourceContentHash: 'AB'.repeat(32),
-  };
-  const hostileDoc = {
-    version: CURRENT_PROJECT_VERSION,
-    assets: [
-      {
-        id: 'asset_hostile',
-        name: 'Hostile',
-        kind: 'video',
-        src: '/media/uploads/hostile.mov',
-        durationInFrames: 30,
-        sourceFilename: 'bad\u0001.mov',
-        originalFilePath: privatePath,
-        sourceRevision: 'bad\u0001revision',
-        sourceContentHash: 'not-a-sha256',
-        sourceSize: -1,
-        sourceModifiedAt: Number.POSITIVE_INFINITY,
-        sourceTimecode: { frameCount: -1, frameRate: { numerator: 0, denominator: 1 }, dropFrame: 'yes' },
-        captureClock: { frameCount: Number.NaN, frameRate: { numerator: 30, denominator: 1 }, dropFrame: false },
-      },
-      {
-        id: 'asset_valid',
-        name: 'Valid',
-        kind: 'video',
-        src: '/media/uploads/valid.mov',
-        durationInFrames: 30,
-        sourceFilename: 'D:\\capture\\interview.final.mov',
-        sourceContentHash: 'CD'.repeat(32),
-        sourceSize: 0,
-        sourceModifiedAt: 0,
-        sourceTimecode: { frameCount: 1_800, frameRate: { numerator: 30_000, denominator: 1_001 }, dropFrame: true },
-      },
-    ],
-    mediaFolders: [],
-    timelines: [{
-      id: 'tl_sources',
-      name: 'Source metadata',
-      order: 0,
-      fps: 30,
-      width: 1920,
-      height: 1080,
-      trackOrder: ['track_tl_sources_1'],
-      tracks: { track_tl_sources_1: { kind: 'video' } },
-      items: [hostileItem, validItem],
-      multicamGroups: [{
-        id: 'group_sources',
-        referenceAngleId: 'angle_hostile',
-        masterAngleId: 'angle_hostile',
-        syncMethod: 'audio',
-        angles: [
-          {
-            id: 'angle_hostile',
-            itemId: hostileItem.id,
-            label: 'Hostile',
-            micRole: 'camera',
-            offsetFrames: 0,
-            confidence: 1,
-            source: { ...hostileItem, sourceFilename: ['private.mov'] },
-          },
-          {
-            id: 'angle_valid',
-            itemId: validItem.id,
-            label: 'Valid',
-            micRole: 'camera',
-            offsetFrames: 0,
-            confidence: 1,
-            source: { ...validItem, sourceFilename: '\\\\server\\share\\机位.最终版.001.mov' },
-          },
-        ],
-        evidence: [
-          { angleId: 'angle_hostile', method: 'audio', confidence: 1, offsetFrames: 0 },
-          { angleId: 'angle_valid', method: 'audio', confidence: 1, offsetFrames: 0 },
-        ],
-        decisions: [],
-      }],
-      selectedId: null,
-    }],
-    activeTimelineId: 'tl_sources',
-  };
-  const migrated = migrateProjectDoc(hostileDoc);
-  assert.ok(migrated);
-  assert.equal(migrated.assets[0]?.sourceFilename, undefined);
-  assert.equal(migrated.assets[1]?.sourceFilename, 'interview.final.mov', 'asset Windows path becomes a basename');
-  assert.equal(migrated.timelines[0]?.items[0]?.sourceFilename, undefined);
-  assert.equal(migrated.timelines[0]?.items[1]?.sourceFilename, 'interview.final.mov', 'item POSIX path becomes a basename');
-  assert.equal(migrated.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.sourceFilename, undefined);
-  assert.equal(migrated.timelines[0]?.multicamGroups?.[0]?.angles[1]?.source.sourceFilename, '机位.最终版.001.mov',
-    'multicam UNC path becomes a basename without losing Chinese or multiple dots');
-  assert.equal(migrated.assets[0]?.originalFilePath, privatePath, 'local migration retains desktop source paths');
-  assert.equal(migrated.assets[0]?.sourceContentHash, undefined);
-  assert.notEqual(migrated.assets[0]?.sourceRevision, 'bad\u0001revision');
-  assert.equal(migrated.assets[0]?.sourceSize, undefined);
-  assert.equal(migrated.assets[0]?.sourceModifiedAt, undefined);
-  assert.equal(migrated.assets[0]?.sourceTimecode, undefined);
-  assert.equal(migrated.assets[0]?.captureClock, undefined);
-  assert.equal(migrated.assets[1]?.sourceContentHash, 'cd'.repeat(32));
-  assert.equal(migrated.assets[1]?.sourceSize, 0);
-  assert.equal(migrated.assets[1]?.sourceModifiedAt, 0);
-  assert.equal(migrated.assets[1]?.sourceTimecode?.frameRate.numerator, 30_000);
-  assert.equal(migrated.timelines[0]?.items[0]?.sourceContentHash, undefined);
-  assert.equal(migrated.timelines[0]?.items[0]?.originalFilePath, undefined);
-  assert.equal(migrated.timelines[0]?.items[1]?.sourceContentHash, 'ab'.repeat(32));
-  assert.equal(migrated.timelines[0]?.items[1]?.originalFilePath, privatePath);
-  assert.equal(hostileDoc.assets[0]?.sourceFilename, 'bad\u0001.mov', 'migration never mutates hostile input');
-
-  resetProjectStoreMemory();
-  await kvSet('project:local-source-path', migrated);
-  assert.equal((await loadProject('local-source-path'))?.assets[0]?.originalFilePath, privatePath,
-    'local project persistence retains a legal desktop source path');
-
-  resetProjectStoreMemory();
-  await kvSet('templates:all', [{
-    id: 'template_private',
-    name: 'Old private template',
-    createdAt: 1,
-    doc: migrated,
-    assetIds: ['asset_hostile'],
-  }]);
-  const oldTemplate = (await listTemplates())[0]!;
-  assert.equal(oldTemplate.doc.assets[0]?.originalFilePath, undefined);
-  assert.equal(oldTemplate.doc.timelines[0]?.items[0]?.originalFilePath, undefined);
-  assert.equal(oldTemplate.doc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.originalFilePath, undefined);
-  assert.equal(oldTemplate.doc.assets[1]?.sourceFilename, 'interview.final.mov');
-  assert.equal(JSON.stringify(await kvGet('templates:all')).includes(privatePath), false,
-    'reading an old shared template rewrites its portable ProjectDoc');
-
-  resetProjectStoreMemory();
-  const liveDoc = structuredClone(migrated);
-  const savedTemplate = await saveTemplate('Portable', liveDoc);
-  assert.equal(JSON.stringify(savedTemplate.doc).includes(privatePath), false);
-  assert.equal(JSON.stringify(await kvGet('templates:all')).includes(privatePath), false);
-  assert.equal(liveDoc.assets[0]?.originalFilePath, privatePath, 'template save never mutates the live ProjectDoc');
-}
+await verifySourceMetadataMigration();
 
 // Portable project imports report and use the exact same migration chain.
 {
@@ -354,10 +309,10 @@ const v6 = fixture('project-v6.json');
   }), { onProgress: (event) => progress.push([event.fromVersion, event.toVersion]) });
   assert.ok('envelope' in parsed);
   if ('envelope' in parsed) assert.equal(parsed.envelope.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[2, 3], [3, 4], [4, 5], [5, 6], [6, 7]]);
+  assert.deepEqual(progress, [[2, 3]]);
 }
 
-// Cache migration is atomic: save only the completed chain; invalid bytes remain untouched.
+// Project reads normalize in memory without eagerly rewriting stored bytes.
 {
   resetProjectStoreMemory();
   await kvSet('project:fixture-v1', v1);
@@ -366,8 +321,8 @@ const v6 = fixture('project-v6.json');
     onProgress: (event) => progress.push([event.fromVersion, event.toVersion]),
   });
   assert.equal(loaded?.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7]]);
-  assert.equal((await kvGet<{ version?: number }>('project:fixture-v1'))?.version, CURRENT_PROJECT_VERSION);
+  assert.deepEqual(progress, [[1, 2], [2, 3]]);
+  assert.deepEqual(await kvGet('project:fixture-v1'), v1, 'successful read migration leaves source bytes untouched');
 
   const broken = { version: 2, timelines: [], activeTimelineId: '' };
   await kvSet('project:broken', broken);
@@ -385,7 +340,7 @@ const v6 = fixture('project-v6.json');
     'a later step failure never persists an intermediate version');
 }
 
-// Shared templates and named snapshots use the same chain and persist atomically.
+// Shared templates still persist complete-library migration atomically.
 {
   resetProjectStoreMemory();
   await kvSet('templates:all', [{
@@ -405,10 +360,14 @@ const v6 = fixture('project-v6.json');
   assert.deepEqual(await kvGet('templates:all'), mixedLibrary, 'partial library migration is never persisted');
 
   resetProjectStoreMemory();
-  await kvSet('versions:project_legacy', [{ id: 'snapshot_legacy', name: 'Before', createdAt: 1, doc: v2 }]);
+  const storedLegacyVersions = [{ id: 'snapshot_legacy', name: 'Before', createdAt: 1, doc: v2 }];
+  await kvSet('versions:project_legacy', storedLegacyVersions);
   assert.equal((await listVersions('project_legacy'))[0].doc.version, CURRENT_PROJECT_VERSION);
-  const storedVersions = await kvGet<Array<{ doc: { version?: number } }>>('versions:project_legacy');
-  assert.equal(storedVersions?.[0].doc.version, CURRENT_PROJECT_VERSION);
+  assert.deepEqual(
+    await kvGet('versions:project_legacy'),
+    storedLegacyVersions,
+    'listing versions normalizes in memory without rewriting stored snapshots',
+  );
 }
 
 console.log('project migrations verification passed');

@@ -3,6 +3,7 @@ import addFormats from 'ajv-formats';
 import type { AgentToolSchema } from './tool-schema';
 import type { RuntimeGuardRequest } from './runtime-guard';
 import { isExternalGlobalReadTool, isExternalReadTool } from './external-tool-policy';
+import { effectiveTranscriptionProvider } from './settings/agentSettings';
 
 export type ToolEffect =
   | 'read'
@@ -57,6 +58,18 @@ function designStylePolicy(args?: Readonly<Record<string, unknown>>): ToolExecut
   }
   return { effect: 'persistent_local', approval: 'once', recovery: 'idempotent' };
 }
+/**
+ * Materialize setting-backed defaults after schema validation so approval,
+ * persistence, and execution all bind to the same effective invocation.
+ */
+export function effectiveToolInvocationArgs(
+  name: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (name !== 'transcribe_track' || args.provider !== undefined) return args;
+  return { ...args, provider: effectiveTranscriptionProvider(args) };
+}
+
 
 /** Every callable name receives a conservative execution policy; unknown names still fail active-set validation. */
 export function policyForTool(

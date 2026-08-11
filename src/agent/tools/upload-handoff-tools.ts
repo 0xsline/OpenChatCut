@@ -78,7 +78,8 @@ async function requestUploadSlot(
     return { error: `asset ${existing.id} is ${existing.kind}, not ${kind}` };
   }
   const assetId = existing?.id ?? newId();
-  const fileKey = `uploads/${assetId}${mediaType.extension}`;
+  const uploadName = `${assetId}.${sessionId}${mediaType.extension}`;
+  const fileKey = `uploads/${uploadName}`;
   const readUrl = `/media/${fileKey}`;
   const handoff = await mintUploadHandoff(
     sessionId,
@@ -123,8 +124,8 @@ async function createSession(args: Args, ctx: AgentContext): Promise<unknown> {
     slots: [slot],
     next: [
       'Upload once to the exact slot uploadUrl before expiry with the declared headers.',
-      'Pass only the opaque receipt from the successful upload JSON to finalize_uploaded_asset.',
-      'The asset becomes consumable only after finalize succeeds.',
+      'Pass the opaque receipt and echoed assetType to finalize_uploaded_asset; audio/video/gif also require durationInSeconds.',
+      'The asset becomes consumable only after finalize succeeds; invoke transcribe_track separately if transcription is desired.',
     ],
     note: 'Import session created with one verified, filename-scoped, short-lived, single-use slot.',
   };

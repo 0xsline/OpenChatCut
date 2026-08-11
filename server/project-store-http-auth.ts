@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import { runtimeProfile, type RuntimeProfile } from './runtime-profile.ts';
+import { isLoopbackAddress } from './loopback-address.ts';
 
 /**
  * Local-device trust model (no shared secrets).
@@ -27,10 +28,6 @@ export function projectStoreAuthDir(profile: RuntimeProfile = runtimeProfile()):
   return profile.authDir;
 }
 
-function loopbackAddress(value: string | undefined): value is string {
-  return value === '127.0.0.1' || value === '::1' || value === '::ffff:127.0.0.1';
-}
-
 function loopbackHost(value: string | undefined): value is string {
   if (!value) return false;
   const lower = value.toLowerCase();
@@ -47,7 +44,7 @@ function header(req: IncomingMessage, name: string): string | null {
 }
 
 function trustedLoopback(req: IncomingMessage): boolean {
-  return loopbackAddress(req.socket.remoteAddress) && loopbackHost(req.headers.host);
+  return isLoopbackAddress(req.socket.remoteAddress) && loopbackHost(req.headers.host);
 }
 
 function sameOrigin(req: IncomingMessage): boolean {

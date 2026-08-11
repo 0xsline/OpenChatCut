@@ -3,7 +3,7 @@ export { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES } from './schemas/probe-tools';
 // It reads stream and format metadata to determine audio, fps, duration, dimensions,
 // and codec information. The agent probes before
 // finalize_uploaded_asset so it can pass measured hasAudioTrack/fps/duration metadata;
-// silent/no-audio media then skips ASR.
+// transcription remains a separate explicit transcribe_track call.
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 
@@ -114,7 +114,7 @@ export async function execProbeTool(name: string, args: Args, ctx: AgentContext)
     const res = await fetch('/e2b/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     data = (await res.json()) as Record<string, unknown>;
     if (!res.ok) {
-      return { error: (data.error as string) ?? `probe failed (${res.status})`, hint: 'e2b sandbox may be unconfigured — you can finalize_uploaded_asset without probing (video defaults to transcribe).' };
+      return { error: (data.error as string) ?? `probe failed (${res.status})`, hint: 'e2b sandbox may be unconfigured — finalize_uploaded_asset can still commit the upload, but it will not start transcription.' };
     }
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
@@ -137,7 +137,7 @@ export async function execProbeTool(name: string, args: Args, ctx: AgentContext)
     source: resolved.url,
     ...probe,
     next: probe.hasAudioTrack
-      ? `Has audio → finalize_uploaded_asset with hasAudioTrack=true${probe.fps ? `, fps=${probe.fps}` : ''}; 上传即转写 ASR auto-starts, then track_progress target=transcription.`
-      : 'No audio track → finalize_uploaded_asset with hasAudioTrack=false to skip transcription.',
+      ? `Has audio → finalize_uploaded_asset with the upload response assetType, durationInSeconds, and hasAudioTrack=true${probe.fps ? `, fps=${probe.fps}` : ''}; then invoke transcribe_track if transcription is desired.`
+      : 'No audio track → finalize_uploaded_asset with the upload response assetType, durationInSeconds, and hasAudioTrack=false; no transcription will be started.',
   };
 }

@@ -107,7 +107,11 @@ async function postTranscription(
   });
   let response: Response;
   try {
-    response = await fetch(`/api/transcribe?${query}`, { method: 'POST', body: blob });
+    response = await fetch(`/api/transcribe?${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: blob,
+    });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new TranscriptionError('service-unavailable', detail);

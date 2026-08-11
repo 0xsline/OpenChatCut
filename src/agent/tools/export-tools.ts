@@ -2,6 +2,8 @@ export { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES } from './schemas/export-tools';
 import type { AgentContext } from '../context';
 import { recordExport, listExportHistory } from '../../persist/exportHistoryStore';
 import { isTerminal, isComplete, isFailed, type JobReportBase } from '../progress/job-model';
+import { materializeTimelineExport } from '../../export/materializeBlobMedia';
+import { exportFailureFrom } from '../../export/exportFailure';
 
 // ═════════════════════════════════════ ══════════════════════════════════════
 // Asynchronous rendering job tool
@@ -139,7 +141,15 @@ async function pollOnce(renderId: string): Promise<PollResult> {
 async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> {
   try {
     const format = args.format === 'audio' ? 'audio' : 'video';
-    const body: Record<string, unknown> = { state: ctx.getState(), format };
+    const project = ctx.getDoc();
+    const timelineId = project.activeTimelineId;
+    const snapshot = await materializeTimelineExport(project, timelineId);
+    const body: Record<string, unknown> = {
+      state: snapshot.state,
+      project: snapshot.project,
+      timelineId: snapshot.timelineId,
+      format,
+    };
     if (typeof args.resolution === 'string') body.resolution = args.resolution;
     if (typeof args.fps === 'number') body.fps = args.fps;
     if (typeof args.videoBitrate === 'number') body.videoBitrate = args.videoBitrate;
@@ -157,11 +167,17 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
     });
     const data = (await response.json().catch(() => ({}))) as { renderId?: string; error?: string };
     if (!response.ok || !data.renderId) return { error: data.error ?? `render job submit failed (${response.status})` };
-    let timelineId: string | undefined;
-    try { timelineId = ctx.getDoc().activeTimelineId; } catch { timelineId = undefined; }
     sessionJobs.push({ renderId: data.renderId, timelineId });
     return { ok: true, renderId: data.renderId, format, next: `Call track_export with renderIds=${data.renderId} and action=status or action=wait.` };
   } catch (error) {
+    const failure = exportFailureFrom(error);
+    if (failure) {
+      return {
+        error: failure.message,
+        code: failure.code,
+        retryable: failure.retryable,
+      };
+    }
     return { error: error instanceof Error ? error.message : String(error) };
   }
 }

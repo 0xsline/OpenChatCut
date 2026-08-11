@@ -10,6 +10,17 @@ export interface DesktopUpdateServiceOptions {
   readonly currentVersion: string;
 }
 
+export interface DesktopUpdateSupportContext {
+  readonly packaged: boolean;
+  readonly smoke: boolean;
+  readonly platform: NodeJS.Platform;
+}
+
+export function supportsDirectDesktopUpdates(context: DesktopUpdateSupportContext): boolean {
+  if (!context.packaged || context.smoke) return false;
+  return context.platform === 'win32' || context.platform === 'linux';
+}
+
 type UpdateStateListener = (state: DesktopUpdateState) => void;
 
 function releaseVersion(info: UpdateInfo): string {

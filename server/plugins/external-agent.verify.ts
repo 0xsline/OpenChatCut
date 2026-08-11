@@ -1,8 +1,8 @@
 // Runnable check: `npx tsx server/plugins/external-agent.verify.ts`.
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { createServer } from 'node:http';
-import { externalMcpAuthorized } from '../editor-auth.ts';
+import { createServer, type IncomingMessage } from 'node:http';
+import { externalMcpAuthorized, trustedEditorRequest } from '../editor-auth.ts';
 import { mintUploadReceipt } from '../external-agent/import-token.ts';
 import {
   handleExternalAgentBridge,
@@ -88,6 +88,17 @@ const address = server.address();
 assert(address && typeof address === 'object');
 const origin = `http://127.0.0.1:${address.port}`;
 
+function editorRequestShape(
+  remoteAddress: string,
+  requestOrigin = origin,
+  host = new URL(origin).host,
+): IncomingMessage {
+  return {
+    headers: { host, origin: requestOrigin },
+    socket: { remoteAddress },
+  } as unknown as IncomingMessage;
+}
+
 const registerRequest: RequestInit = {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -156,6 +167,21 @@ const originalToken = process.env.OPENCHATCUT_MCP_TOKEN;
 const originalEditorUrl = process.env.OPENCHATCUT_EDITOR_URL;
 try {
   process.env.OPENCHATCUT_MCP_TOKEN = 'mcp-secret';
+  delete process.env.OPENCHATCUT_EDITOR_URL;
+  assert.equal(trustedEditorRequest(editorRequestShape('127.0.0.1'), true), true,
+    'an actual IPv4 loopback socket with matching Host and Origin stays trusted');
+  assert.equal(trustedEditorRequest(editorRequestShape('::1'), true), true,
+    'an IPv6 loopback socket with matching Host and Origin stays trusted');
+  assert.equal(trustedEditorRequest(editorRequestShape('::ffff:127.0.0.1'), true), true,
+    'an IPv4-mapped loopback socket with matching Host and Origin stays trusted');
+  assert.equal(trustedEditorRequest(editorRequestShape('192.0.2.10'), true), false,
+    'matching Host and Origin cannot spoof a non-loopback socket');
+  process.env.OPENCHATCUT_EDITOR_URL = 'https://editor.example';
+  assert.equal(trustedEditorRequest(editorRequestShape(
+    '192.0.2.10',
+    'https://editor.example',
+    'editor.example',
+  ), true), false, 'a configured remote editor URL cannot authorize a non-loopback socket');
   delete process.env.OPENCHATCUT_EDITOR_URL;
 
   // The bridge is authorized purely by the loopback editor request shape:
@@ -244,21 +270,49 @@ try {
     bytes: 4,
     contentHash: 'ab'.repeat(32),
   });
-  const receiptRequest = (projectId: string): RequestInit => ({
+  const receiptRequest = (
+    projectId: string,
+    action: 'claim' | 'commit' | 'abort',
+    claimId?: unknown,
+  ): RequestInit => ({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ receipt: uploadReceipt, projectId }),
+    body: JSON.stringify({ action, receipt: uploadReceipt, projectId, claimId }),
   });
-  assert.equal((await requestBridge('/upload-receipt', receiptRequest('project-b'))).status, 409);
-  const receiptResponse = await requestBridge('/upload-receipt', receiptRequest('project-a'));
+  assert.equal((await requestBridge('/upload-receipt', receiptRequest('project-b', 'claim'))).status, 409);
+  const receiptResponse = await requestBridge('/upload-receipt', receiptRequest('project-a', 'claim'));
   assert.equal(receiptResponse.status, 200);
   const receiptValue = await receiptResponse.json() as Record<string, unknown>;
   assert.equal(receiptValue.sessionId, 'sess-receipt');
   assert.equal(receiptValue.contentHash, 'ab'.repeat(32));
   assert.equal(
-    (await requestBridge('/upload-receipt', receiptRequest('project-a'))).status,
+    (await requestBridge('/upload-receipt', receiptRequest('project-a', 'claim'))).status,
     409,
-    'receipt must not replay',
+    'receipt must deny a concurrent claim',
+  );
+  assert.equal(
+    (await requestBridge('/upload-receipt', receiptRequest(
+      'project-a',
+      'abort',
+      receiptValue.claimId,
+    ))).status,
+    200,
+  );
+  const retryReceipt = await requestBridge('/upload-receipt', receiptRequest('project-a', 'claim'));
+  assert.equal(retryReceipt.status, 200);
+  const retryValue = await retryReceipt.json() as Record<string, unknown>;
+  assert.equal(
+    (await requestBridge('/upload-receipt', receiptRequest(
+      'project-a',
+      'commit',
+      retryValue.claimId,
+    ))).status,
+    200,
+  );
+  assert.equal(
+    (await requestBridge('/upload-receipt', receiptRequest('project-a', 'claim'))).status,
+    409,
+    'receipt must not replay after commit',
   );
 
   // Registration capability semantics.

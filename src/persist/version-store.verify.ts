@@ -54,6 +54,19 @@ const afterDelete = await listVersions('p1');
 assert.strictEqual(afterDelete.length, 1);
 assert.strictEqual(afterDelete[0].id, v1.id);
 
+// Read-time migration is in-memory only; listing cannot rewrite legacy snapshot bytes.
+const legacyVersions = [{
+  id: 'legacy',
+  name: '旧版本',
+  createdAt: 1,
+  doc: { ...doc, version: 2 },
+}];
+mem.set('versions:legacy', legacyVersions);
+const legacyBytes = JSON.stringify(legacyVersions);
+const migratedLegacy = await listVersions('legacy');
+assert.strictEqual(migratedLegacy[0].doc.version, CURRENT_PROJECT_VERSION);
+assert.strictEqual(JSON.stringify(mem.get('versions:legacy')), legacyBytes);
+
 // corrupt entry dropped on load (missing name, and a doc that fails migration)
 mem.set('versions:p3', [
   { id: 'ok', name: '正常', createdAt: 1, doc },

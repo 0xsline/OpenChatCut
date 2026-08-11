@@ -27,17 +27,19 @@ resetBinding('undo');
 assert.equal(keysOf('undo'), SHORTCUT_CATALOG.find((a) => a.id === 'undo')!.keys, 'reset restores default');
 assert.equal(customizedCount(), 0, 'override cleared');
 
-// ── chordFromEvent — node reports navigator.platform "MacIntel", so this runs as Mac
-// (matching the user's darwin): Mod = Cmd (metaKey); Ctrl is a distinct modifier. ──
+// ── chordFromEvent — inject the platform so the same contracts run on every CI host. ──
 const ev = (o: Partial<KeyboardEvent>) => ({ key: 'a', metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...o }) as KeyboardEvent;
-assert.equal(chordFromEvent(ev({ key: 'z', metaKey: true })), 'Mod + Z', 'cmd+z → Mod + Z');
-assert.equal(chordFromEvent(ev({ key: 'z', metaKey: true, shiftKey: true })), 'Mod + Shift + Z', 'cmd+shift+z');
-assert.equal(chordFromEvent(ev({ key: 'z', ctrlKey: true })), 'Ctrl + Z', 'mac: ctrl is distinct from Mod');
-assert.equal(chordFromEvent(ev({ key: 'k', altKey: true })), 'Alt + K', 'alt+k');
-assert.equal(chordFromEvent(ev({ key: ' ' })), 'Space', 'space');
-assert.equal(chordFromEvent(ev({ key: 'ArrowLeft' })), '←', 'arrow');
-assert.equal(chordFromEvent(ev({ key: 'Shift', shiftKey: true })), null, 'bare modifier → null');
-assert.equal(chordFromEvent(ev({ key: 'Escape' })), null, 'escape → null');
+const macChord = (o: Partial<KeyboardEvent>) => chordFromEvent(ev(o), true);
+assert.equal(macChord({ key: 'z', metaKey: true }), 'Mod + Z', 'mac: cmd+z → Mod + Z');
+assert.equal(macChord({ key: 'z', metaKey: true, shiftKey: true }), 'Mod + Shift + Z', 'mac: cmd+shift+z');
+assert.equal(macChord({ key: 'z', ctrlKey: true }), 'Ctrl + Z', 'mac: ctrl is distinct from Mod');
+assert.equal(chordFromEvent(ev({ key: 'z', ctrlKey: true }), false), 'Mod + Z', 'non-mac: ctrl+z → Mod + Z');
+assert.equal(chordFromEvent(ev({ key: 'z', metaKey: true }), false), 'Z', 'non-mac: meta is not Mod');
+assert.equal(macChord({ key: 'k', altKey: true }), 'Alt + K', 'alt+k');
+assert.equal(macChord({ key: ' ' }), 'Space', 'space');
+assert.equal(macChord({ key: 'ArrowLeft' }), '←', 'arrow');
+assert.equal(macChord({ key: 'Shift', shiftKey: true }), null, 'bare modifier → null');
+assert.equal(macChord({ key: 'Escape' }), null, 'escape → null');
 
 // ── conflict detection: another action bound to undo's chord conflicts with undo ──
 const conflicts = findConflicts(SHORTCUT_CATALOG, 'play-pause', SHORTCUT_CATALOG.find((a) => a.id === 'undo')!.keys);

@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { TLSSocket } from 'node:tls';
 import type { EditorBootstrapInfo } from '../shared/editor-auth-transport.ts';
+import { isLoopbackAddress } from './loopback-address.ts';
 
 export const EDITOR_BOOTSTRAP_HEADER = 'x-openchatcut-editor-bootstrap';
 
@@ -63,6 +64,7 @@ function requestEditorOrigin(req: IncomingMessage): string | null {
 }
 
 export function trustedEditorRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
+  if (!isLoopbackAddress(req.socket.remoteAddress)) return false;
   const expected = requestEditorOrigin(req);
   if (!expected) return false;
   const origin = headerValue(req, 'origin');

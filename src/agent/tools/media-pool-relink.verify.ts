@@ -99,7 +99,7 @@ const nextClip = draft.getState().items.find((item) => item.id === 'clip_offline
 assert.equal(nextClip.src, '/media/uploads/talk-restored.mp4');
 assert.equal(nextClip.sourceAssetId, 'asset_offline');
 assert.equal(nextClip.transcriptStale, true);
-assert.equal(nextClip.durationInFrames, 120);
+assert.equal(nextClip.durationInFrames, 90, 'relink preserves the authored timeline slot');
 
 const mg: MediaAsset = {
   id: 'asset_mg',

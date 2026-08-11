@@ -76,36 +76,73 @@ function readJson(req: IncomingMessage, max = MAX_JSON): Promise<Record<string, 
   return promise;
 }
 
-async function modelFileVerified(path: string, file: AsrModelFile): Promise<boolean> {
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException('Native ASR request canceled', 'AbortError');
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortError(signal);
+}
+
+async function modelFileVerified(
+  path: string,
+  file: AsrModelFile,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  throwIfAborted(signal);
   try {
     if ((await stat(path)).size !== file.sizeBytes) return false;
+    throwIfAborted(signal);
     const hash = createHash('sha256');
-    for await (const chunk of createReadStream(path)) hash.update(chunk);
+    const stream = createReadStream(path);
+    const onAbort = (): void => {
+      if (signal) stream.destroy(abortError(signal));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    try {
+      for await (const chunk of stream) {
+        throwIfAborted(signal);
+        hash.update(chunk);
+      }
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
+    throwIfAborted(signal);
     return hash.digest('hex') === file.sha256;
   } catch {
+    throwIfAborted(signal);
     return false;
   }
 }
 export async function inspectAsrModel(
   entry: AsrModelEntry,
   cacheDir = modelCacheDir(),
+  signal?: AbortSignal,
 ): Promise<{ downloaded: boolean; bytes: number }> {
+  throwIfAborted(signal);
   const stats: string[] = [];
   for (const file of entry.files) {
+    throwIfAborted(signal);
     try {
       const info = await stat(join(cacheDir, entry.modelId, file.path));
+      throwIfAborted(signal);
       if (!info.isFile() || info.size !== file.sizeBytes) return { downloaded: false, bytes: 0 };
       stats.push(`${file.path}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`);
     } catch {
+      throwIfAborted(signal);
       return { downloaded: false, bytes: 0 };
     }
   }
   const key = `${cacheDir}\0${entry.modelId}`;
+  throwIfAborted(signal);
   const fingerprint = stats.join('|');
   const cached = inspections.get(key);
   if (cached?.fingerprint === fingerprint) return cached.result;
   const downloaded = (await Promise.all(entry.files.map((file) =>
-    modelFileVerified(join(cacheDir, entry.modelId, file.path), file)))).every(Boolean);
+    modelFileVerified(join(cacheDir, entry.modelId, file.path), file, signal)))).every(Boolean);
   const result = { downloaded, bytes: downloaded ? entry.files.reduce(
     (total, file) => total + file.sizeBytes, 0,
   ) : 0 };

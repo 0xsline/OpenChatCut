@@ -30,6 +30,9 @@ export interface ProjectStoreHttpOperations {
   updateAgentRunLease(
     input: Extract<ProjectStoreRequest, { operation: 'agent-run-lease' }>,
   ): Promise<ProjectStoreMutationResponse>;
+  updateExportRecoveryLease(
+    input: Extract<ProjectStoreRequest, { operation: 'export-recovery-lease' }>,
+  ): Promise<ProjectStoreMutationResponse>;
   semanticVectorsUpsert(input: Extract<ProjectStoreRequest, { operation: 'semantic-vectors-upsert' }>): unknown;
   semanticVectorsSearch(input: Extract<ProjectStoreRequest, { operation: 'semantic-vectors-search' }>): unknown;
   semanticVectorsPrune(input: Extract<ProjectStoreRequest, { operation: 'semantic-vectors-prune' }>): unknown;
@@ -124,6 +127,17 @@ async function handleAgentRunLease(
   }
   sendProjectStoreJson(res, 200, await operations.updateAgentRunLease(body));
 }
+async function handleExportRecoveryLease(
+  req: IncomingMessage,
+  res: ServerResponse,
+  operations: ProjectStoreHttpOperations,
+): Promise<void> {
+  const body = await readBody(req);
+  if (!isProjectStoreRequest(body) || body.operation !== 'export-recovery-lease') {
+    throw new Error('invalid export recovery lease request');
+  }
+  sendProjectStoreJson(res, 200, await operations.updateExportRecoveryLease(body));
+}
 
 async function handleAgentSessionRotate(
   req: IncomingMessage,
@@ -171,6 +185,7 @@ async function handlePost(
   if (req.url === '/agent-runtime/cas') await handleAgentRuntimeCas(req, res, operations);
   else if (req.url === '/project-document/cas') await handleProjectDocumentCas(req, res, operations);
   else if (req.url === '/agent-runtime/lease') await handleAgentRunLease(req, res, operations);
+  else if (req.url === '/export-recovery/lease') await handleExportRecoveryLease(req, res, operations);
   else if (req.url === '/agent-session/rotate') await handleAgentSessionRotate(req, res, operations);
   else if (req.url === '/merge') await handleMerge(req, res, operations);
   else if (req.url === '/project/purge') await handleProjectPurge(req, res, operations);

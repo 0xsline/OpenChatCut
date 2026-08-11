@@ -180,13 +180,33 @@ export interface UploadReceiptValue {
   fileKey: string; readUrl: string; size: number; type: ImportAssetType;
   contentType: string; contentHash: string;
 }
-interface ReceiptEntry extends Omit<UploadReceiptValue, 'receipt'> { expiresAt: number }
+interface ReceiptClaim { id: string; expiresAt: number }
+interface ReceiptEntry extends Omit<UploadReceiptValue, 'receipt'> {
+  expiresAt: number;
+  claim?: ReceiptClaim;
+  committedClaimId?: string;
+  committedExpiresAt?: number;
+}
+export type UploadReceiptClaimResult =
+  | {
+    status: 'accepted';
+    claimId: string;
+    claimExpiresAt: number;
+    value: UploadReceiptValue;
+  }
+  | { status: 'invalid' | 'expired' | 'mismatch' | 'claimed' | 'consumed' };
 const uploadReceipts = new Map<string, ReceiptEntry>();
 const RECEIPT_TTL_MS = 10 * 60_000;
+const RECEIPT_CLAIM_TTL_MS = 5 * 60_000;
 const RECEIPT_MAX_ENTRIES = 1_024;
 function pruneUploadReceipts(now = Date.now()): void {
   for (const [receipt, entry] of uploadReceipts) {
-    if (entry.expiresAt <= now) uploadReceipts.delete(receipt);
+    const activeClaim = entry.claim && entry.claim.expiresAt > now;
+    const activeCommitTombstone = entry.committedClaimId
+      && (entry.committedExpiresAt ?? entry.expiresAt) > now;
+    if (entry.expiresAt <= now && !activeClaim && !activeCommitTombstone) {
+      uploadReceipts.delete(receipt);
+    }
   }
 }
 export function mintUploadReceipt(
@@ -209,12 +229,113 @@ export function mintUploadReceipt(
   });
   return receipt;
 }
-export function consumeUploadReceipt(receipt: unknown, projectId: unknown): UploadReceiptValue | null {
-  if (typeof receipt !== 'string' || typeof projectId !== 'string') return null;
+
+/**
+ * Reserve a receipt while the editor validates and normalizes its media. New
+ * claims are accepted only before the original receipt expiry; an acquired
+ * claim may renew its bounded lease while it remains current, including after
+ * receipt expiry. A retry with the same caller-issued claim id is idempotent.
+ * Abort recoverable failures.
+ */
+export function claimUploadReceipt(
+  receipt: unknown,
+  projectId: unknown,
+  requestedClaimId?: unknown,
+): UploadReceiptClaimResult {
+  if (typeof receipt !== 'string' || typeof projectId !== 'string') return { status: 'invalid' };
+  if (requestedClaimId !== undefined && (
+    typeof requestedClaimId !== 'string' || !/^[A-Za-z0-9_-]{32,64}$/.test(requestedClaimId)
+  )) return { status: 'invalid' };
   const entry = uploadReceipts.get(receipt);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now() || entry.projectId !== projectId) return null;
-  uploadReceipts.delete(receipt);
-  const { expiresAt: _expiresAt, ...value } = entry;
-  return { receipt, ...value };
+  if (!entry) {
+    pruneUploadReceipts();
+    return { status: 'invalid' };
+  }
+  const now = Date.now();
+  const claimId = requestedClaimId ?? randomBytes(32).toString('base64url');
+  if (entry.projectId !== projectId) return { status: 'mismatch' };
+  if (entry.committedClaimId) {
+    if ((entry.committedExpiresAt ?? entry.expiresAt) > now) return { status: 'consumed' };
+    uploadReceipts.delete(receipt);
+    return { status: 'expired' };
+  }
+  if (entry.expiresAt <= now) {
+    if (entry.claim && entry.claim.expiresAt > now) {
+      if (entry.claim.id !== claimId) return { status: 'claimed' };
+      const claimExpiresAt = now + RECEIPT_CLAIM_TTL_MS;
+      entry.claim.expiresAt = claimExpiresAt;
+      const {
+        expiresAt: _expiresAt,
+        claim: _claim,
+        committedClaimId: _committed,
+        committedExpiresAt: _committedExpiry,
+        ...value
+      } = entry;
+      return {
+        status: 'accepted',
+        claimId,
+        claimExpiresAt,
+        value: { receipt, ...value },
+      };
+    }
+    uploadReceipts.delete(receipt);
+    return { status: 'expired' };
+  }
+  if (entry.claim && entry.claim.id !== claimId && entry.claim.expiresAt > now) {
+    return { status: 'claimed' };
+  }
+  const claimExpiresAt = now + RECEIPT_CLAIM_TTL_MS;
+  entry.claim = { id: claimId, expiresAt: claimExpiresAt };
+  const {
+    expiresAt: _expiresAt,
+    claim: _claim,
+    committedClaimId: _committed,
+    committedExpiresAt: _committedExpiry,
+    ...value
+  } = entry;
+  return {
+    status: 'accepted',
+    claimId,
+    claimExpiresAt,
+    value: { receipt, ...value },
+  };
+}
+
+/** Terminally consume a claimed receipt. Repeating the same commit is idempotent. */
+export function commitUploadReceipt(
+  receipt: unknown,
+  projectId: unknown,
+  claimId: unknown,
+): boolean {
+  if (typeof receipt !== 'string' || typeof projectId !== 'string' || typeof claimId !== 'string') {
+    return false;
+  }
+  const entry = uploadReceipts.get(receipt);
+  if (!entry || entry.projectId !== projectId) return false;
+  const now = Date.now();
+  if (entry.committedClaimId) {
+    return (entry.committedExpiresAt ?? entry.expiresAt) > now
+      && entry.committedClaimId === claimId;
+  }
+  if (entry.claim?.id !== claimId || entry.claim.expiresAt <= now) return false;
+  entry.committedClaimId = claimId;
+  entry.committedExpiresAt = Math.max(entry.expiresAt, now + RECEIPT_CLAIM_TTL_MS);
+  entry.claim = undefined;
+  return true;
+}
+
+/** Release a matching in-flight claim without consuming the receipt. */
+export function abortUploadReceipt(
+  receipt: unknown,
+  projectId: unknown,
+  claimId: unknown,
+): boolean {
+  if (typeof receipt !== 'string' || typeof projectId !== 'string' || typeof claimId !== 'string') {
+    return false;
+  }
+  const entry = uploadReceipts.get(receipt);
+  if (!entry || entry.projectId !== projectId || entry.committedClaimId
+    || entry.claim?.id !== claimId || entry.claim.expiresAt <= Date.now()) return false;
+  entry.claim = undefined;
+  return true;
 }

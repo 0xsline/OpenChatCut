@@ -19,6 +19,7 @@ import {
   rotateAgentSession,
   setStoredEntry,
   updateStoredAgentRunLease,
+  updateExportRecoveryLease,
 } from './plugins/project-store.ts';
 
 export async function executeProjectStoreRequest(
@@ -45,6 +46,8 @@ export async function executeProjectStoreRequest(
       return compareAndSwapProjectDocument(request);
     case 'agent-run-lease':
       return updateStoredAgentRunLease(request);
+    case 'export-recovery-lease':
+      return updateExportRecoveryLease(request);
     case 'agent-session-rotate':
       return rotateAgentSession(request.projectId);
     case 'set':

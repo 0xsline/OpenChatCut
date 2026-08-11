@@ -53,7 +53,7 @@ const doc = {
     assert.equal(parsed.envelope.creativeMode, 'long-video-to-shorts');
     assert.equal(parsed.envelope.doc.timelines.length, 1, 'doc 走 migrateProjectDoc 存活');
     assert.equal(parsed.envelope.doc.version, CURRENT_PROJECT_VERSION, '旧导入文件升级到当前工程版本');
-    // One progress event per migration step (v2 → v7 emits five events today).
+    // One progress event per public migration step.
     const expectedSteps = Array.from({ length: CURRENT_PROJECT_VERSION - 2 }, (_, i) => [2 + i, 3 + i]);
     assert.deepEqual(migrationProgress, expectedSteps, '导入复用统一迁移进度');
   }

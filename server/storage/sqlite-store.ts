@@ -1,18 +1,24 @@
-// SQLite-backed project store backend — phase 0 skeleton (opt-in).
+// SQLite-backed project-store lifecycle and primitives.
 //
-// OPENCHATCUT_SQLITE_STORE=1 switches the server-side project store from the
-// JSON-file store (project-store-v1/) to a single SQLite database (WAL).
-// Disabled by default: without the env var every code path behaves exactly as
-// before (zero regression — the switch lives at the file-I/O primitives only).
-//
-// Phase 0 scope: interface-parity skeleton only. The JSON→SQLite import
-// (receipt + idempotent re-import + crash recovery) is phase 1
-// (see docs/storage-sqlite-rfc.md §5).
-import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+// Backend activation requires a phase-2 marker committed in the same SQLite
+// transaction as every required import. The environment variable requests
+// migration; neither a partial database nor a phase-1 marker becomes active.
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { projectIdFromProjectStoreKey } from '../../shared/project-store-validation.ts';
 import { runtimeProfile } from '../runtime-profile.ts';
-import { ensureJsonImported, readImportReceipt, type ImportSummary } from './sqlite-migration.ts';
+import {
+  DELETED_PROJECTS_KV_KEY,
+  GENERATION_JOBS_KV_KEY,
+  RECEIPT_PHASE,
+  ensureJsonImported,
+  readAuthoritativeImportReceipt,
+  synchronizeImportReceiptSidecar,
+  type ImportReceipt,
+  type ImportSummary,
+} from './sqlite-migration.ts';
 
 export interface StoredEntryValue {
   found: boolean;
@@ -21,20 +27,34 @@ export interface StoredEntryValue {
 
 export const SQLITE_STORE_ENV = 'OPENCHATCUT_SQLITE_STORE';
 
+export type SQLiteMigrationPhase = 'legacy' | 'migrating' | 'complete' | 'failed';
+
+export interface SQLiteMigrationStatus {
+  enabled: boolean;
+  phase: SQLiteMigrationPhase;
+  receipt: { count: number; importedAt: string } | null;
+  jsonKeyCount: number;
+  sqliteKeyCount: number;
+  error?: string;
+}
+
+let database: DatabaseSync | null = null;
+let databaseHadKvTableAtOpen = false;
+let migrationTail: Promise<void> = Promise.resolve();
+let processPhase: SQLiteMigrationPhase = 'legacy';
+let migrationError: string | undefined;
+
+type MigrationBarrierRelease = () => void | Promise<void>;
+type MigrationBarrier = () => void | MigrationBarrierRelease | Promise<void | MigrationBarrierRelease>;
+const migrationBarriers = new Set<MigrationBarrier>();
+
 /**
- * Opt-in switch. Enabled when: the env var is '1', OR the user has explicitly
- * run the migration (receipt present + database file exists). An explicit
- * env value other than '1' (e.g. '0') forces the backend off — tests and
- * legacy verifiers rely on the JSON-file path. Without any env, every code
- * path behaves exactly as before the migration feature.
+ * Register persistence that must drain (and may remain locked) while the
+ * authoritative legacy snapshot is captured. Registration is process-wide.
  */
-export function sqliteStoreEnabled(): boolean {
-  const env = process.env[SQLITE_STORE_ENV];
-  if (env === '1') return true;
-  if (env !== undefined) return false; // explicit override (e.g. '0')
-  // User-initiated migration: receipt marks completion, the database file
-  // guards against a receipt left behind after the file was removed.
-  return readImportReceipt() !== null && existsSync(storePath());
+export function registerStorageMigrationBarrier(barrier: MigrationBarrier): () => void {
+  migrationBarriers.add(barrier);
+  return () => migrationBarriers.delete(barrier);
 }
 
 export function storePath(): string {
@@ -44,16 +64,18 @@ export function storePath(): string {
   return join(profile.rootDir, 'project-store-v1.sqlite3');
 }
 
-let database: DatabaseSync | null = null;
-
 function openDatabase(): DatabaseSync {
   if (database) return database;
   const path = storePath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path);
+  const existingKvTable = db.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'kv'
+  `).get() as { name?: string } | undefined;
+  databaseHadKvTableAtOpen = existingKvTable?.name === 'kv';
   db.exec(`
     PRAGMA journal_mode = WAL;
-    PRAGMA synchronous = NORMAL;
+    PRAGMA synchronous = FULL;
     PRAGMA busy_timeout = 5000;
     CREATE TABLE IF NOT EXISTS kv (
       k TEXT PRIMARY KEY,
@@ -64,12 +86,115 @@ function openDatabase(): DatabaseSync {
   return db;
 }
 
+function authoritativeReceipt(): ImportReceipt | null {
+  if (!existsSync(storePath())) return null;
+  try {
+    return readAuthoritativeImportReceipt(openDatabase());
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Run the JSON→SQLite import (user-initiated migration; see
- * StorageMigrationDialog). Idempotent and receipt-gated.
+ * Synchronous hot-path authority check. OPENCHATCUT_SQLITE_STORE=1 requests
+ * initialization but cannot expose an incomplete database.
  */
-export function sqliteImportJson(): ImportSummary {
-  return ensureJsonImported(openDatabase());
+export function sqliteStoreEnabled(): boolean {
+  const env = process.env[SQLITE_STORE_ENV];
+  if (env !== undefined && env !== '1') return false;
+  const receipt = authoritativeReceipt();
+  return receipt !== null && receipt.phase >= RECEIPT_PHASE;
+}
+
+async function withMigrationLease<T>(task: () => T | Promise<T>): Promise<T> {
+  const predecessor = migrationTail;
+  let release!: () => void;
+  migrationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await predecessor.catch(() => undefined);
+  try {
+    return await task();
+  } finally {
+    release();
+  }
+}
+
+async function migrateUnderLease(): Promise<ImportSummary> {
+  processPhase = 'migrating';
+  migrationError = undefined;
+  const releases: MigrationBarrierRelease[] = [];
+  try {
+    for (const barrier of migrationBarriers) {
+      const release = await barrier();
+      if (release) releases.push(release);
+    }
+    // Receipt-less imports re-read every live source after registered writers
+    // drain. Phase-1 authority upgrades only missing auxiliary rows and never
+    // replays project/chat JSON.
+    const db = openDatabase();
+    const summary = ensureJsonImported(db, runtimeProfile(), databaseHadKvTableAtOpen);
+    const receipt = synchronizeImportReceiptSidecar(db, runtimeProfile());
+    if (!receipt || receipt.phase < RECEIPT_PHASE) {
+      throw new Error('SQLite migration completed without a phase-2 authoritative receipt');
+    }
+    processPhase = 'complete';
+    return summary;
+  } catch (error) {
+    processPhase = 'failed';
+    migrationError = error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally {
+    for (const release of releases.reverse()) {
+      try {
+        await release();
+      } catch {
+        // The authoritative SQLite state is already decided. A release error
+        // cannot safely roll it back or switch authority.
+      }
+    }
+  }
+}
+
+/** User-initiated migration. Concurrent calls share one process-wide lease. */
+export function runStorageMigration(): Promise<ImportSummary> {
+  return withMigrationLease(migrateUnderLease);
+}
+
+/**
+ * Startup migration/recovery.
+ *
+ * A requested migration, a receipt-less interrupted database, and a phase-1
+ * authoritative database resume automatically. Explicit non-'1' values force
+ * legacy mode.
+ */
+export function initializeSqliteProjectStore(): Promise<SQLiteMigrationStatus> {
+  return withMigrationLease(async () => {
+    const env = process.env[SQLITE_STORE_ENV];
+    if (env !== undefined && env !== '1') {
+      processPhase = 'legacy';
+      migrationError = undefined;
+      return sqliteMigrationStatus();
+    }
+    const receipt = authoritativeReceipt();
+    if (receipt && receipt.phase >= RECEIPT_PHASE) {
+      processPhase = 'complete';
+      migrationError = undefined;
+      synchronizeImportReceiptSidecar(openDatabase(), runtimeProfile());
+      return sqliteMigrationStatus();
+    }
+    // Existing DB = interrupted/incomplete migration, including phase 1.
+    // Env '1' requests a first migration; a new unrequested profile stays legacy.
+    if (env === '1' || existsSync(storePath())) {
+      try {
+        await migrateUnderLease();
+      } catch {
+        // Startup recovery is fail-open to the still-authoritative legacy
+        // backend. Manual runStorageMigration continues to reject failures.
+      }
+    }
+    return sqliteMigrationStatus();
+  });
 }
 
 export interface CleanupResult {
@@ -78,63 +203,53 @@ export interface CleanupResult {
 }
 
 /**
- * Delete the legacy JSON files after the user confirms the migration.
- * Refuses when the SQLite backend is not the active one (receipt + database
- * file must both exist). Deletes only the migrated JSON keys inside
- * project-store-v1/ plus the phase-2 aux files (generation-jobs,
- * deleted-projects) — the directory itself and every non-JSON file stay.
- * Never automatic: callers must gate this behind explicit user confirmation.
+ * Delete only legacy files whose exact path and current hash match the
+ * authoritative receipt. Files created or changed after migration are retained.
  */
 export function cleanupLegacyJson(): CleanupResult {
   if (!sqliteStoreEnabled()) throw new Error('migration not completed');
+  const receipt = authoritativeReceipt();
+  if (!receipt) throw new Error('authoritative migration receipt missing');
   const profile = runtimeProfile();
-  const dir = profile.projectStore.directory;
-  let removed = 0;
-  let names: string[];
-  try {
-    names = readdirSync(dir).filter((name) => name.endsWith('.json'));
-  } catch {
-    names = [];
+  if (receipt.source !== profile.projectStore.directory) {
+    throw new Error('migration receipt belongs to a different runtime profile');
   }
-  for (const name of names) {
+
+  let removed = 0;
+  for (const [key, source] of Object.entries(receipt.sources)) {
+    let expectedPath: string | null = null;
+    if (source.kind === 'project-store-entry') {
+      expectedPath = join(profile.projectStore.directory, `${encodeURIComponent(key)}.json`);
+    } else if (source.kind === 'generation-jobs' && key === GENERATION_JOBS_KV_KEY) {
+      expectedPath = profile.generationJobStore;
+    } else if (source.kind === 'deleted-projects' && key === DELETED_PROJECTS_KV_KEY) {
+      expectedPath = profile.projectStore.tombstonePath;
+    }
+    // A receipt row is never authority to delete an arbitrary path.
+    if (!expectedPath || source.path !== expectedPath || !existsSync(expectedPath)) continue;
     try {
-      rmSync(join(dir, name), { force: true });
+      const currentHash = createHash('sha256').update(readFileSync(expectedPath)).digest('hex');
+      if (currentHash !== source.sha256) continue;
+      rmSync(expectedPath);
       removed += 1;
     } catch {
-      // best-effort per file; remaining files stay readable for rescue
+      // Best effort per verified source; unreadable/changed files remain intact.
     }
   }
-  const aux = [
-    join(profile.rootDir, 'generation-operations-v1.json'),
-    join(profile.rootDir, 'deleted-projects-v1.json'),
-  ];
-  for (const path of aux) {
-    if (existsSync(path)) {
-      try {
-        rmSync(path, { force: true });
-        removed += 1;
-      } catch {
-        // best-effort
-      }
-    }
-  }
+
   let jsonKeyCount = 0;
   try {
-    jsonKeyCount = readdirSync(dir).filter((name) => name.endsWith('.json')).length;
+    jsonKeyCount = readdirSync(profile.projectStore.directory)
+      .filter((name) => name.endsWith('.json')).length;
   } catch {
-    jsonKeyCount = 0;
+    // No legacy directory remains.
   }
   return { removed, jsonKeyCount };
 }
 
-/** Migration status for the UI (never opens or mutates the store). */
-export function sqliteMigrationStatus(): {
-  enabled: boolean;
-  receipt: { count: number; importedAt: string } | null;
-  jsonKeyCount: number;
-  sqliteKeyCount: number;
-} {
-  const receipt = readImportReceipt();
+/** Migration status for the UI. Receipt/state comes from SQLite, not sidecar. */
+export function sqliteMigrationStatus(): SQLiteMigrationStatus {
+  const receipt = authoritativeReceipt();
   const dir = runtimeProfile().projectStore.directory;
   let jsonKeyCount = 0;
   try {
@@ -151,22 +266,70 @@ export function sqliteMigrationStatus(): {
       // Read-only diagnostics; never throw for the UI.
     }
   }
+  const complete = receipt !== null && receipt.phase >= RECEIPT_PHASE;
+  const phase: SQLiteMigrationPhase = complete
+    ? 'complete'
+    : processPhase === 'migrating' || processPhase === 'failed'
+      ? processPhase
+      : 'legacy';
   return {
     enabled: sqliteStoreEnabled(),
-    receipt: receipt ? { count: receipt.count, importedAt: receipt.importedAt } : null,
+    phase,
+    receipt: complete ? { count: receipt.count, importedAt: receipt.importedAt } : null,
     jsonKeyCount,
     sqliteKeyCount,
+    ...(phase === 'failed' && migrationError ? { error: migrationError } : {}),
   };
 }
 
-/** Close the connection (verify isolation / profile switches). */
+/** Close the connection and reset process state (verifier/profile isolation). */
 export function resetSqliteStoreForTests(): void {
   database?.close();
   database = null;
+  databaseHadKvTableAtOpen = false;
+  migrationTail = Promise.resolve();
+  processPhase = 'legacy';
+  migrationError = undefined;
 }
 
 const encode = (value: unknown): string => JSON.stringify(value);
 const decode = (raw: string): unknown => JSON.parse(raw);
+
+export interface SQLiteImmediateStore {
+  readEntry(key: string): StoredEntryValue;
+  writeEntry(key: string, value: unknown): void;
+  deleteEntry(key: string): void;
+}
+
+function immediateStore(db: DatabaseSync): SQLiteImmediateStore {
+  const read = db.prepare('SELECT v FROM kv WHERE k = ?');
+  const write = db.prepare(
+    'INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v',
+  );
+  const remove = db.prepare('DELETE FROM kv WHERE k = ?');
+  return {
+    readEntry: (key) => {
+      const row = read.get(key) as { v: string } | undefined;
+      return row ? { found: true, value: decode(row.v) } : { found: false };
+    },
+    writeEntry: (key, value) => { write.run(key, encode(value)); },
+    deleteEntry: (key) => { remove.run(key); },
+  };
+}
+
+/** Execute a synchronous read/validate/write state transition under SQLite's writer lock. */
+export function sqliteImmediateTransaction<T>(work: (store: SQLiteImmediateStore) => T): T {
+  const db = openDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = work(immediateStore(db));
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 
 /** Full snapshot (equivalent of readDirectoryEntries). */
 export async function sqliteReadAll(): Promise<Record<string, unknown>> {
@@ -215,11 +378,19 @@ export async function sqliteDeleteEntry(key: string): Promise<void> {
   openDatabase().prepare('DELETE FROM kv WHERE k = ?').run(key);
 }
 
-/** Remove every key whose project id matches (equivalent of purge files). */
+/** Remove every key whose parsed owning project id matches exactly. */
 export async function sqliteDeleteProjectEntries(projectId: string): Promise<void> {
-  // Escape LIKE wildcards: '_' is a legal project-id character.
-  const escaped = projectId.replace(/[%_\\]/g, (c) => `\\${c}`);
-  openDatabase()
-    .prepare("DELETE FROM kv WHERE k LIKE ? ESCAPE '\\'")
-    .run(`%:${escaped}%`);
+  const db = openDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const rows = db.prepare('SELECT k FROM kv').all() as Array<{ k: string }>;
+    const remove = db.prepare('DELETE FROM kv WHERE k = ?');
+    for (const row of rows) {
+      if (projectIdFromProjectStoreKey(row.k) === projectId) remove.run(row.k);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }

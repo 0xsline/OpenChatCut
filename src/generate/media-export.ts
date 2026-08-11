@@ -1,5 +1,5 @@
-import { materializeBlobMedia } from '../export/materializeBlobMedia';
-import type { TimelineState } from '../editor/types';
+import { materializeTimelineExport } from '../export/materializeBlobMedia';
+import type { ProjectDoc, TimelineState } from '../editor/types';
 
 export interface SubmitMediaExportArgs {
   format: 'video' | 'audio';
@@ -58,18 +58,30 @@ export function applyExportGeometry(
   return next;
 }
 
-export async function submitMediaExport(args: SubmitMediaExportArgs, state: TimelineState): Promise<MediaExportResult> {
+export async function submitMediaExport(
+  args: SubmitMediaExportArgs,
+  project: ProjectDoc,
+  timelineId: string,
+): Promise<MediaExportResult> {
   const codec = args.codec ?? (args.format === 'video' ? 'h264' : 'mp3');
   const ext = codec === 'h264' ? 'mp4' : codec === 'vp8' ? 'webm' : codec;
-  let exportState = applyExportGeometry(state, { fps: args.fps, resolution: args.resolution });
-  // Blob placeholders cannot be read by the Node renderer — re-publish them first.
-  const materialized = await materializeBlobMedia(exportState, {});
-  exportState = materialized.snapshot;
+  const selected = project.timelines.find((timeline) => timeline.id === timelineId);
+  if (!selected) throw new Error(`timeline not found: ${timelineId}`);
+  const geometry = applyExportGeometry(selected, { fps: args.fps, resolution: args.resolution });
+  const exportProject: ProjectDoc = {
+    ...project,
+    timelines: project.timelines.map((timeline) =>
+      timeline.id === timelineId ? { ...timeline, ...geometry } : timeline),
+  };
+  const snapshot = await materializeTimelineExport(exportProject, timelineId);
+  const exportState = snapshot.state;
   const response = await fetch('/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       state: exportState,
+      project: snapshot.project,
+      timelineId: snapshot.timelineId,
       format: args.format,
       codec: args.codec,
       name: args.name,

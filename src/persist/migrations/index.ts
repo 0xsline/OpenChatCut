@@ -15,22 +15,29 @@ import {
 import type { ProjectMigrationOptions, ProjectMigrationResult, ProjectMigrationStep } from './types.js';
 import { v1ToV2 } from './v1-to-v2.js';
 import { v2ToV3 } from './v2-to-v3.js';
-import { v3ToV4 } from './v3-to-v4.js';
-import { v4ToV5 } from './v4-to-v5.js';
-import { v5ToV6 } from './v5-to-v6.js';
-import { v6ToV7 } from './v6-to-v7.js';
+import { normalizeDevelopmentBackgroundFillPresets } from './v6-to-v7.js';
 import { backfillProjectCaptionIdentity } from './captionIdentity.js';
 
-const migrations: readonly ProjectMigrationStep[] = [v1ToV2, v2ToV3, v3ToV4, v4ToV5, v5ToV6, v6ToV7];
+const migrations: readonly ProjectMigrationStep[] = [v1ToV2, v2ToV3];
 const migrationByVersion = new Map(migrations.map((migration) => [migration.fromVersion, migration]));
+const MAX_READABLE_DEVELOPMENT_VERSION = 7;
 
 function startingDocument(value: unknown): { value: unknown; version: number } | null {
   if (isTimelineState(value) && !isProjectShape(value)) return { value: timelineToV1(value), version: 1 };
   if (!isProjectShape(value)) return null;
   if (value.version === undefined) return { value: { ...value, version: 1 }, version: 1 };
   if (typeof value.version !== 'number' || !Number.isInteger(value.version)) return null;
-  if (value.version < 1 || value.version > CURRENT_PROJECT_VERSION) return null;
+  if (value.version < 1 || value.version > MAX_READABLE_DEVELOPMENT_VERSION) return null;
   return { value, version: value.version };
+}
+
+function collapseDevelopmentVersion(value: unknown, version: number): unknown {
+  if (!isProjectShape(value) || version < 4 || version > MAX_READABLE_DEVELOPMENT_VERSION) {
+    throw new Error('invalid development ProjectDoc');
+  }
+  const compatible = version >= 6 ? normalizeDevelopmentBackgroundFillPresets(value) : value;
+  if (!isProjectShape(compatible)) throw new Error('invalid development ProjectDoc');
+  return { ...compatible, version: CURRENT_PROJECT_VERSION };
 }
 
 function finalize(value: unknown): ProjectDoc | null {
@@ -50,7 +57,9 @@ function finalize(value: unknown): ProjectDoc | null {
         : { ...item, sourceRevision: sourceRevisionBySrc.get(item.src) }
     )),
   }));
-  const doc: ProjectDoc = {
+  const { designStyle: _designStyle, ...preserved } = value;
+  const doc = {
+    ...preserved,
     version: CURRENT_PROJECT_VERSION,
     assets,
     mediaFolders,
@@ -59,7 +68,7 @@ function finalize(value: unknown): ProjectDoc | null {
       ? value.activeTimelineId
       : timelines[0].id,
     ...(isDesignStyle(value.designStyle) ? { designStyle: value.designStyle } : {}),
-  };
+  } as ProjectDoc;
   const enriched = backfillProjectCaptionIdentity(doc);
   return sequenceGraphError(enriched) ? null : enriched;
 }
@@ -72,12 +81,30 @@ export function runProjectMigrations(
   const start = startingDocument(input);
   if (!start) return null;
   const sourceVersion = start.version;
-  const totalSteps = CURRENT_PROJECT_VERSION - sourceVersion;
+  const totalSteps = sourceVersion > CURRENT_PROJECT_VERSION
+    ? 1
+    : CURRENT_PROJECT_VERSION - sourceVersion;
   const appliedSteps: string[] = [];
   let value = start.value;
   let version = start.version;
 
   try {
+    if (version > CURRENT_PROJECT_VERSION) {
+      value = collapseDevelopmentVersion(value, version);
+      const fromVersion = version;
+      version = CURRENT_PROJECT_VERSION;
+      appliedSteps.push(`dev-v${fromVersion}-to-v${CURRENT_PROJECT_VERSION}`);
+      try {
+        options.onProgress?.({
+          fromVersion,
+          toVersion: CURRENT_PROJECT_VERSION,
+          completedSteps: 1,
+          totalSteps,
+        });
+      } catch {
+        // Progress observers must never make a valid document fail migration.
+      }
+    }
     while (version < CURRENT_PROJECT_VERSION) {
       const migration = migrationByVersion.get(version);
       if (!migration || migration.toVersion !== version + 1) return null;

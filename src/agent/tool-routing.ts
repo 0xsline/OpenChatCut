@@ -7,10 +7,13 @@ interface RoutingGroup {
 
 const EDIT_VERBS = [
   'edit', 'add', 'insert', 'create', 'update', 'modify', 'adjust', 'apply', 'reorder',
-  '编辑', '添加', '新增', '插入', '创建', '修改', '调整', '设置', '应用', '排列', '排序', '重排',
+  'delete', 'remove', 'trim', 'split', 'move', 'retime', 'slip',
+  '编辑', '加', '添加', '新增', '插入', '创建', '修改', '调整', '设置', '应用', '排列', '排序', '重排',
+  '删除', '移除', '裁剪', '分割', '移动', '变速', '滑动',
 ];
 const EDIT_TARGETS = [
-  'clip', 'item', 'track', 'timeline', 'sequence', '片段', '轨道', '时间线', '序列',
+  'clip', 'item', 'track', 'timeline', 'sequence', 'title', 'text',
+  '片段', '轨道', '时间线', '序列', '标题', '文字',
 ];
 const GENERATE_VERBS = [
   'generate', 'create', 'make', 'synthesize', '生成', '创建', '制作', '合成',
@@ -139,6 +142,43 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
     ],
   },
 ];
+const ROUTING_TERM_PATTERNS = new Map<string, RegExp>();
+
+function routingTermPattern(term: string): RegExp | null {
+  if (!/^[a-z][a-z -]*$/.test(term)) return null;
+  const cached = ROUTING_TERM_PATTERNS.get(term);
+  if (cached) return cached;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let body = escaped;
+  if (!term.includes(' ')) {
+    if (term.endsWith('e')) body = `${escaped.slice(0, -1)}(?:e|es|ed|ing)`;
+    else if (term.endsWith('y')) body = `${escaped.slice(0, -1)}(?:y|ies|ied|ying)`;
+    else body = `${escaped}(?:s|ed|ing)?`;
+  }
+  const pattern = new RegExp(`\\b${body}\\b`);
+  ROUTING_TERM_PATTERNS.set(term, pattern);
+  return pattern;
+}
+
+function requestHasRoutingTerm(request: string, term: string): boolean {
+  const pattern = routingTermPattern(term);
+  return pattern ? pattern.test(request) : request.includes(term);
+}
+
+function routingGroupMatches(group: RoutingGroup, request: string): boolean {
+  const direct = group.requestKeywords?.some((term) => requestHasRoutingTerm(request, term)) ?? false;
+  const contextual = group.requestContext?.every((alternatives) => (
+    alternatives.some((term) => requestHasRoutingTerm(request, term))
+  )) ?? false;
+  return direct || contextual;
+}
+
+/** Shared positive mutation matcher for routing and read-only-hint disambiguation. */
+export function hasMutationRoutingIntent(request: string): boolean {
+  const normalized = request.toLowerCase();
+  return ROUTING_GROUPS.some((group) => group.mutating && routingGroupMatches(group, normalized));
+}
+
 
 const MAX_ROUTING_GROUPS = 4;
 export interface RoutedToolSelection {
@@ -149,13 +189,10 @@ export interface RoutedToolSelection {
 
 
 export function routedToolSelection(request: string, readOnly: boolean): RoutedToolSelection {
-  const matching = ROUTING_GROUPS.filter((group) => {
-    const direct = group.requestKeywords?.some((keyword) => request.includes(keyword)) ?? false;
-    const contextual = group.requestContext?.every((alternatives) => (
-      alternatives.some((keyword) => request.includes(keyword))
-    )) ?? false;
-    return (!group.mutating || !readOnly) && (direct || contextual);
-  });
+  const normalized = request.toLowerCase();
+  const matching = ROUTING_GROUPS.filter((group) => (
+    (!group.mutating || !readOnly) && routingGroupMatches(group, normalized)
+  ));
   const selected = matching.slice(0, MAX_ROUTING_GROUPS);
   return {
     names: new Set(selected.flatMap((group) => group.tools)),

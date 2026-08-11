@@ -8,6 +8,7 @@ import { HIGH_COST_TOOLS, isHighCostTool, costCategoryForTool } from './settings
 import { shouldBlockAutoApply, isCostAllowed, rememberCostAllowed, highCostOps } from './skills/costGuard';
 import { TOOL_SCHEMAS } from './tools';
 import type { Proposal } from './proposal';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../transcript/types';
 
 // ── 1. paid surfaces must all be registered (regression for the 2026-08-05
 // gap: transcribe_track / web_* / run_code were unguarded) ──
@@ -18,7 +19,7 @@ const PAID_TOOLS = [
   'submit_shader', 'rerun_generation',
   // export
   'submit_export', 'submit_render_job', 'export_motion_graphic_prores', 'convert_motion_graphic_to_video',
-  // paid transcription (AssemblyAI)
+  // paid transcription (all providers except local)
   'transcribe_track',
   // paid web scraping (Firecrawl)
   'web_browser', 'web_search', 'web_map', 'web_crawl', 'web_batch_scrape',
@@ -74,6 +75,40 @@ for (const tool of PAID_TOOLS) {
 assert.equal(costCategoryForTool('submit_music'), 'audio-gen');
 assert.equal(costCategoryForTool('submit_export'), 'irreversible-export');
 assert.equal(costCategoryForTool('transcribe_track'), 'high-cost-operation');
+store.set('cc.transcriptionProvider', 'local');
+assert.equal(
+  costCategoryForTool('transcribe_track', { track: 'A1', provider: 'assemblyai' }),
+  'high-cost-operation',
+  'explicit paid provider overrides the saved local provider',
+);
+store.set('cc.transcriptionProvider', 'assemblyai');
+assert.equal(
+  costCategoryForTool('transcribe_track', { track: 'A1', provider: 'local' }),
+  null,
+  'explicit local provider overrides the saved cloud provider',
+);
+for (const provider of TRANSCRIPTION_PROVIDER_IDS) {
+  assert.equal(
+    costCategoryForTool('transcribe_track', { provider }),
+    provider === 'local' ? null : 'high-cost-operation',
+    `${provider} transcription cost classification`,
+  );
+}
+const localTranscriptProposal = proposal(['transcribe_track']);
+localTranscriptProposal.options[0].operations[0].args = { track: 'A1', provider: 'local' };
+assert.deepEqual(
+  highCostOps(localTranscriptProposal),
+  [],
+  'proposal cost display respects an explicit local override under cloud settings',
+);
+store.set('cc.transcriptionProvider', 'local');
+const paidTranscriptProposal = proposal(['transcribe_track']);
+paidTranscriptProposal.options[0].operations[0].args = { track: 'A1', provider: 'groq' };
+assert.deepEqual(
+  highCostOps(paidTranscriptProposal),
+  ['transcribe_track'],
+  'proposal cost display respects an explicit paid override under local settings',
+);
 assert.equal(costCategoryForTool('web_search'), 'high-cost-operation');
 assert.equal(costCategoryForTool('run_code'), 'high-cost-operation');
 assert.equal(costCategoryForTool('move_item'), null, 'free tools have no guard');

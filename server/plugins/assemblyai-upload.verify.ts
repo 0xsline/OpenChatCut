@@ -31,11 +31,13 @@ await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 assert.ok(address && typeof address === 'object');
 const endpoint = `http://127.0.0.1:${address.port}/api/assemblyai-upload`;
+const editorOrigin = new URL(endpoint).origin;
+const editorJsonHeaders = { 'content-type': 'application/json', origin: editorOrigin };
 
 try {
   const uploaded = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: editorJsonHeaders,
     body: JSON.stringify({ src: '/media/uploads/speech.wav' }),
   });
   assert.equal(uploaded.status, 200);
@@ -44,21 +46,37 @@ try {
     bytes: bytes.length,
   });
   assert.equal(upstreamCalls, 1);
+  const missingOrigin = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ src: '/media/uploads/speech.wav' }),
+  });
+  assert.equal(missingOrigin.status, 401);
+  assert.equal(upstreamCalls, 1, 'a mutation without Origin never reaches the provider');
+
   const crossOrigin = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', origin: 'https://evil.example' },
+    body: JSON.stringify({ src: '/media/uploads/speech.wav' }),
+  });
+  assert.equal(crossOrigin.status, 401);
+  assert.equal(upstreamCalls, 1, 'a cross-site simple POST never reaches the provider');
+
+  const rebound = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      origin: 'https://evil.example',
-      'sec-fetch-site': 'cross-site',
+      host: 'evil.example',
+      origin: 'http://evil.example',
     },
     body: JSON.stringify({ src: '/media/uploads/speech.wav' }),
   });
-  assert.equal(crossOrigin.status, 403);
-  assert.equal(upstreamCalls, 1, 'cross-site requests never reach the provider');
+  assert.equal(rebound.status, 401);
+  assert.equal(upstreamCalls, 1, 'attacker-controlled matching Host and Origin never reach the provider');
 
   const textPlain = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'content-type': 'text/plain' },
+    headers: { ...editorJsonHeaders, 'content-type': 'text/plain' },
     body: JSON.stringify({ src: '/media/uploads/speech.wav' }),
   });
   assert.equal(textPlain.status, 415);
@@ -67,7 +85,7 @@ try {
 
   const unsafe = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: editorJsonHeaders,
     body: JSON.stringify({ src: '/media/uploads/../secret' }),
   });
   assert.equal(unsafe.status, 400);
@@ -75,7 +93,7 @@ try {
 
   const missing = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: editorJsonHeaders,
     body: JSON.stringify({ src: '/media/uploads/missing.wav' }),
   });
   assert.equal(missing.status, 404);
@@ -83,7 +101,7 @@ try {
 
   const oversized = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: editorJsonHeaders,
     body: JSON.stringify({ src: `/media/uploads/${'a'.repeat(9_000)}` }),
   });
   assert.equal(oversized.status, 413);

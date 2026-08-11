@@ -83,6 +83,7 @@ const FIELD_DETAILS: ReadonlyArray<readonly [string, ApprovalDetailKind, string]
   ['repo', 'target', '仓库'],
   ['slug', 'target', '安装目录'],
   ['provider', 'parameter', '服务商'],
+  ['track', 'target', '轨道'],
   ['skill', 'target', '技能'],
   ['assetId', 'target', '资源 ID'],
   ['projectId', 'target', '工程 ID'],

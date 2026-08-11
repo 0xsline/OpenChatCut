@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
+import { editorCredentialAuthorized } from '../editor-auth.ts';
 import { getKey } from '../keystore.ts';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 
@@ -60,30 +61,15 @@ export async function handleAssemblyAiUpload(
     sendJson(res, 405, { error: 'method not allowed — use POST' });
     return;
   }
+  if (!editorCredentialAuthorized(req, true)) {
+    req.resume();
+    sendJson(res, 401, { error: 'editor credential required' });
+    return;
+  }
   const contentType = String(req.headers['content-type'] ?? '').split(';', 1)[0]!.trim().toLowerCase();
   if (contentType !== 'application/json') {
     sendJson(res, 415, { error: 'content-type must be application/json' });
     return;
-  }
-  const fetchSite = String(req.headers['sec-fetch-site'] ?? '').trim().toLowerCase();
-  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'same-site' && fetchSite !== 'none') {
-    sendJson(res, 403, { error: 'cross-site requests are not allowed' });
-    return;
-  }
-  const origin = String(req.headers.origin ?? '').trim();
-  if (origin) {
-    let trustedOrigin = false;
-    try {
-      const parsed = new URL(origin);
-      trustedOrigin = (parsed.protocol === 'http:' || parsed.protocol === 'https:')
-        && parsed.host === String(req.headers.host ?? '');
-    } catch {
-      trustedOrigin = false;
-    }
-    if (!trustedOrigin) {
-      sendJson(res, 403, { error: 'untrusted request origin' });
-      return;
-    }
   }
 
 

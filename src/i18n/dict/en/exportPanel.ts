@@ -179,4 +179,5 @@ export default {
   '后台导出任务': 'Background export tasks',
   '导出素材未就绪：{n} 个素材仍是未完成的上传占位（可能因磁盘满或断网上传失败），请删除或重新导入这些素材：{list}': 'Export media not ready: {n} assets are still unfinished upload placeholders (upload may have failed due to disk full or network loss). Delete or re-import them: {list}',
   '正在恢复导出…': 'Resuming export…',
+  '此导出正在由另一个窗口恢复，请稍后重试': 'This export is being recovered in another window. Please try again shortly.',
 } as Record<string, string>;

@@ -288,4 +288,20 @@ const varState: TimelineState = {
   assert.ok(e.error, 'retry with no media src errors (no network call)');
 }
 
+// transcribe_track honors the validated provider carried by the runtime boundary.
+// The fixture is already transcribed, so this exercises routing without network I/O.
+const explicitLocal = await execTranscriptTool(
+  'transcribe_track',
+  { track: 'A1', provider: 'local' },
+  ctx,
+) as { ok?: boolean; provider?: string };
+assert.strictEqual(explicitLocal.ok, true);
+assert.strictEqual(explicitLocal.provider, 'local');
+const invalidProvider = await execTranscriptTool(
+  'transcribe_track',
+  { track: 'A1', provider: 'unknown-provider' },
+  ctx,
+) as { error?: string };
+assert.match(invalidProvider.error ?? '', /unsupported transcription provider/);
+
 console.log('transcript-tools.check: ok');

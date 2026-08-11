@@ -22,8 +22,9 @@ async function main(): Promise<void> {
   process.env.OPENCHATCUT_SQLITE_STORE = '1';
 
   try {
-    const { SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
+    const { initializeSqliteProjectStore, SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
     process.env[SQLITE_STORE_ENV] = '1';
+    await initializeSqliteProjectStore();
     const {
       clearSemanticVectors,
       pruneSemanticVectors,

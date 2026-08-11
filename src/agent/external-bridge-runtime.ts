@@ -23,6 +23,7 @@ import { saveAutomaticVersion } from '../persist/versionStore';
 import { saveExternalProposal, type StoredExternalProposal } from '../persist/externalProposalStore';
 import { formatToolApprovalDetails, type ApprovalDetail } from './approval-details';
 import { redactTextForAgentRuntime } from './runtime-artifact';
+import { effectiveToolInvocationArgs } from './execution-policy';
 export interface ExternalProposalSnapshot { proposal: Proposal | null; stale: boolean }
 /** Confirmation request for a real-project tool (generation/export/import/…)
  * issued from an external session; the user decides in the OpenChatCut UI. */
@@ -96,7 +97,10 @@ export class ExternalBridgeRuntime {
     signal?: AbortSignal,
   ): Promise<unknown> {
     throwIfExternalCallCancelled(signal);
-    const invocationArgs = validateExternalInvocation(name, rawArgs);
+    const invocationArgs = effectiveToolInvocationArgs(
+      name,
+      validateExternalInvocation(name, rawArgs),
+    );
     if (name === 'begin_edit_session') {
       await this.validateBinding(binding);
       throwIfExternalCallCancelled(signal);

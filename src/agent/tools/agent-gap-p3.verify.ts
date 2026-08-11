@@ -127,4 +127,27 @@ assert.equal(relinked.src, '/media/uploads/v1-restored.mp4');
 assert.equal(relinked.name, 'v1-restored.mp4');
 assert.equal(relinked.sourceAssetId, undefined);
 
+const lockedRelinkDraft = makeDraft(docFromTimeline({
+  fps: 30,
+  width: 1920,
+  height: 1080,
+  selectedId: null,
+  assets: [],
+  items: [v1],
+  trackOrder: ['V1'],
+  tracks: { V1: { kind: 'video', locked: true } },
+}));
+const lockedRelinkPlan = validateMediaSourceUpdate(lockedRelinkDraft.getState(), {
+  operation: 'relink_media',
+  itemId: v1.id,
+  src: '/media/uploads/locked-restored.mp4',
+});
+assert.equal(lockedRelinkPlan.plan, 'relinkMedia');
+const lockedRelinkResult = applyGeneric(lockedRelinkPlan, lockedRelinkDraft.commands);
+assert.equal(lockedRelinkResult?.ok, false, JSON.stringify(lockedRelinkResult));
+assert.equal(lockedRelinkResult?.code, 'no-document-change');
+assert.match(String(lockedRelinkResult?.error), /did not change/);
+assert.equal(lockedRelinkDraft.getState().items[0]?.src, v1.src, 'locked-track Agent relink must not mutate');
+assert.equal(lockedRelinkDraft.takeActions().length, 0, 'locked-track Agent relink must not settle an edit action');
+
 console.log('agent-gap-p3.verify: ok');

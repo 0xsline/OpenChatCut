@@ -7,6 +7,7 @@ import {
 } from '../../shared/project-store-validation';
 import { mergeProjectEntries } from './project-store-entries';
 import { prepareAgentSessionMigrationEntries } from './project-store-agent-session';
+import { runtimeSidecar } from './project-store-merge.verify-support';
 
 const left = {
   projects: [{ id: 'a', name: 'Chrome 工程', updatedAt: 10 }],
@@ -82,17 +83,6 @@ assert.equal(isProjectStoreRequest({ operation: 'purge-project', projectId }), t
 assert.equal(isProjectStoreRequest({ operation: 'purge-project', projectId, extra: true }), false);
 assert.equal(isProjectStoreRequest({ operation: 'purge-project', projectId: `${projectId}:other` }), false);
 
-const runtimeSidecar = (owner: string, revision: number, updatedAt: number, marker: string) => ({
-  version: 1,
-  revision,
-  projectId: owner,
-  durability: 'local-sidecar',
-  updatedAt,
-  runs: [{ projectId: owner, runId: marker, updatedAt }],
-  approvals: [],
-  checkpoints: [],
-  artifacts: [],
-});
 const artifactRecord = (owner: string, id: string, body: string, digestChar: string) => ({
   version: 1,
   artifactId: id,
@@ -198,6 +188,35 @@ assert.equal(isProjectStoreRequest({
   key: generationKey,
   value: newerGeneration,
 }), false, 'generic writes cannot forge the server-managed generation marker');
+const recoveryKey = 'export-recovery:render-authority';
+const recoveryValue = {
+  version: 1,
+  renderId: 'render-authority',
+  projectId: 'project-authority',
+  stage: 'polling',
+};
+assert.equal(isProjectStoreRequest({
+  operation: 'set',
+  key: recoveryKey,
+  value: recoveryValue,
+}), false, 'generic writes cannot mutate export recovery authority');
+assert.equal(isProjectStoreRequest({
+  operation: 'delete',
+  key: recoveryKey,
+}), false, 'generic deletes cannot remove export recovery tombstones');
+assert.equal(isProjectStoreRequest({
+  operation: 'merge',
+  entries: { [recoveryKey]: recoveryValue },
+}), false, 'generic merges cannot reconcile export recovery snapshots');
+assert.equal(isProjectStoreRequest({
+  operation: 'export-recovery-lease',
+  key: recoveryKey,
+  renderId: 'render-authority',
+  action: 'reconcile',
+  ownerInstanceId: 'authority-migrator',
+  authorityEstablished: false,
+  value: recoveryValue,
+}), true, 'legacy promotion uses the dedicated server state machine');
 assert.equal(isProjectStoreRequest({
   operation: 'agent-session-rotate',
   projectId: 'a',

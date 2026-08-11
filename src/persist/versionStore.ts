@@ -17,39 +17,25 @@ export interface ProjectVersion {
 }
 
 // Boundary verification: Persistent data is not trustworthy and should be verified before use (id/name/createdAt + doc is regulated by migrateProjectDoc).
-function toValidVersion(v: unknown): { version: ProjectVersion; migrated: boolean } | null {
+function toValidVersion(v: unknown): ProjectVersion | null {
   if (!v || typeof v !== 'object') return null;
   const raw = v as Partial<ProjectVersion>;
   if (typeof raw.id !== 'string' || typeof raw.name !== 'string' || typeof raw.createdAt !== 'number') return null;
-  let migrated = false;
-  const doc = migrateProjectDoc(raw.doc, { onProgress: () => { migrated = true; } });
+  const doc = migrateProjectDoc(raw.doc);
   if (!doc) return null;
   return {
-    version: {
-      id: raw.id,
-      name: raw.name,
-      createdAt: raw.createdAt,
-      automatic: raw.automatic === true,
-      doc,
-    },
-    migrated,
+    id: raw.id,
+    name: raw.name,
+    createdAt: raw.createdAt,
+    automatic: raw.automatic === true,
+    doc,
   };
 }
 
 async function readAll(projectId: string): Promise<ProjectVersion[]> {
   const raw = await idbGet<unknown>(versionsKey(projectId));
   if (!Array.isArray(raw)) return [];
-  const parsed = raw.map(toValidVersion);
-  const valid = parsed.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-  const versions = valid.map((entry) => entry.version);
-  if (valid.length === raw.length && valid.some((entry) => entry.migrated)) {
-    try {
-      await idbSet(versionsKey(projectId), versions);
-    } catch {
-      // Retry persistence the next time snapshots are read.
-    }
-  }
-  return versions;
+  return raw.map(toValidVersion).filter((version): version is ProjectVersion => version !== null);
 }
 
 /** All snapshots of the project, latest first. An empty array is returned on any failure (persistent data is not trusted).*/

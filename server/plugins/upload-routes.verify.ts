@@ -214,8 +214,30 @@ try {
   assert.equal(acceptedUpload.sessionId, handoffScope.sessionId);
   assert.equal(acceptedUpload.assetId, handoffScope.assetId);
   assert.equal(acceptedUpload.contentHash, createHash('sha256').update('once').digest('hex'));
-  assert.equal(acceptedUpload.path, '/media/uploads/handoff-valid.png');
-  assert.equal(await readFile(join(directory, 'handoff-valid.png'), 'utf8'), 'once');
+  assert.equal(acceptedUpload.path, '/media/uploads/handoff-valid.sess-upload-route.png');
+  assert.equal(await readFile(join(directory, 'handoff-valid.sess-upload-route.png'), 'utf8'), 'once');
+  const overlappingScope: ImportTokenScope = {
+    ...handoffScope,
+    sessionId: 'sess-upload-route-2',
+  };
+  const overlappingHandoff = mintImportToken(overlappingScope);
+  const overlappingUpload = await globalThis.fetch(
+    `${origin}${importUploadUrl(overlappingScope, overlappingHandoff.token)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'image/png' },
+      body: 'next',
+    },
+  );
+  assert.equal(overlappingUpload.status, 200);
+  const overlappingValue = await overlappingUpload.json() as Record<string, unknown>;
+  assert.equal(overlappingValue.path, '/media/uploads/handoff-valid.sess-upload-route-2.png');
+  assert.notEqual(overlappingValue.path, acceptedUpload.path);
+  assert.equal(
+    await readFile(join(directory, 'handoff-valid.sess-upload-route.png'), 'utf8'),
+    'once',
+    'a later handoff for the same asset must not overwrite the first receipt bytes',
+  );
 
   const replay = await globalThis.fetch(`${origin}${handoffUrl}`, { method: 'POST', body: 'again' });
   const replayError = await replay.text();

@@ -384,6 +384,20 @@ export default {
   '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
     'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
   // Local ASR model management (Settings → 转写 → 本地模型)
+  '本地转写': 'Local transcription',
+  '节拍与音乐分析': 'Beat and music analysis',
+  '画面语义搜索': 'Visual semantic search',
+  '本地模型按需安装，索引、转写和分析都在本机完成。':
+    'Local models install on demand. Indexing, transcription, and analysis all run on this device.',
+  '节拍与音乐分析模型': 'Beat and music analysis models',
+  '画面语义搜索模型包': 'Visual semantic search model pack',
+  '按画面内容搜索素材的本地向量模型（约 178MB）。模型在本机运行，素材不会上传。':
+    'A local vector model for searching media by visual content (~178 MB). It runs on this device and never uploads your media.',
+  '操作失败：{err}': 'Operation failed: {err}',
+  '未检测到模型包服务。': 'The model-pack service is unavailable.',
+  '下载中…': 'Downloading…',
+  '已安装。打开媒体池 → 语义搜索面板即可索引素材并按画面搜索。':
+    'Installed. Open Media Pool → Semantic Search to index media and search by visual content.',
   '下载中 {pct}%': 'Downloading {pct}%',
   '下载失败': 'Download failed',
   '已下载': 'Downloaded',
@@ -443,6 +457,7 @@ export default {
   '迁移到 SQLite': 'Migrate to SQLite',
   '迁移中…': 'Migrating…',
   '迁移失败': 'Migration failed',
+  '迁移尚未完成，仍在使用 JSON 文件目录': 'Migration is not complete; the JSON file directory remains active',
   '已迁移 {imported} 个数据键，跳过 {skipped} 个': 'Migrated {imported} entries, skipped {skipped}',
   '，今后项目将默认使用 SQLite 存储工程数据': ', and new projects will now use SQLite by default',
   '迁移后，工程数据保存到单一 SQLite 数据库文件：写入更可靠（事务）、加载更快、支持全文搜索。原始 JSON 文件将【只读保留】，旧版本、回滚与数据救援始终可用。': 'After migration, project data lives in a single SQLite database: transactional writes, faster loads and full-text search. The original JSON files stay read-only, so older versions, rollbacks and data rescue always work.',

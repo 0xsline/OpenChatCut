@@ -17,10 +17,10 @@ import type {
   DesktopModelLoadResponse,
 } from '../shared/desktop-inference.ts';
 import {
-  isDesktopInferenceRequestId,
   parseDesktopAsrPreloadRequest,
   parseDesktopAsrRequest,
 } from '../shared/desktop-inference.ts';
+import { NativeAsrWorkerLifecycle } from './native-asr-worker-lifecycle.ts';
 
 const SAMPLE_RATE = ASR_INFERENCE_CONTRACT.sampleRate;
 const MAX_AUDIO_SECONDS = ASR_INFERENCE_CONTRACT.maxAudioSeconds;
@@ -53,18 +53,25 @@ interface LoadedPipeline {
   readonly pipeline: AutomaticSpeechRecognitionPipeline;
 }
 
+interface NativeAsrFatalWorkerResult {
+  readonly type: 'fatal';
+  readonly reason: 'model-load-timeout';
+  readonly requestId: string;
+  readonly message: string;
+}
+
+class NativeAsrModelLoadTimeoutError extends Error {
+  constructor() {
+    super('native ASR model load timed out');
+    this.name = 'NativeAsrModelLoadTimeoutError';
+  }
+}
+
 const port = process.parentPort;
 if (!port) throw new Error('native ASR process requires a parent port');
 let runtime: NativeWorkerData | null = null;
 let loaded: LoadedPipeline | null = null;
-let queue = Promise.resolve();
-const canceled = new Set<string>();
-
-function throwIfCanceled(requestId: string): void {
-  if (canceled.has(requestId)) {
-    throw new DOMException('Native ASR request canceled', 'AbortError');
-  }
-}
+const lifecycle = new NativeAsrWorkerLifecycle();
 
 function initialize(value: unknown): void {
   if (typeof value !== 'object' || value === null) throw new Error('invalid native ASR configuration');
@@ -172,13 +179,13 @@ function progressInfo(value: unknown): { progress?: number; file?: string } {
   };
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+async function withModelLoadTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+        timer = setTimeout(() => reject(new NativeAsrModelLoadTimeoutError()), timeoutMs);
       }),
     ]);
   } finally {
@@ -203,7 +210,7 @@ async function createPipeline(
   const timeoutMs = backend === 'directml'
     ? ACCELERATOR_LOAD_TIMEOUT_MS
     : CPU_LOAD_TIMEOUT_MS;
-  return (await withTimeout(attempt, timeoutMs, 'native ASR model load timed out')) as AutomaticSpeechRecognitionPipeline;
+  return (await withModelLoadTimeout(attempt, timeoutMs)) as AutomaticSpeechRecognitionPipeline;
 }
 
 async function ensurePipeline(request: AsrLoadRequest): Promise<LoadedPipeline> {
@@ -215,7 +222,7 @@ async function ensurePipeline(request: AsrLoadRequest): Promise<LoadedPipeline> 
     const next = await createPipeline(request, preferred);
     loaded = { modelId: request.modelId, revision: request.revision, backend: preferred, pipeline: next };
   } catch (error) {
-    if (preferred !== 'directml' || /timed out/i.test(error instanceof Error ? error.message : '')) throw error;
+    if (preferred !== 'directml' || error instanceof NativeAsrModelLoadTimeoutError) throw error;
     const fallback = await createPipeline(request, 'native-cpu');
     loaded = { modelId: request.modelId, revision: request.revision, backend: 'native-cpu', pipeline: fallback };
   }
@@ -263,32 +270,35 @@ async function handle(value: unknown): Promise<void> {
   const load = typeof value === 'object' && value !== null && Reflect.get(value, 'action') === 'load';
   const request = load ? parseDesktopAsrPreloadRequest(value) : parseNativeTranscriptionRequest(value);
   try {
-    throwIfCanceled(request.requestId);
     const response = load
       ? await preload(request as DesktopAsrPreloadRequest)
       : await transcribe(request as DesktopAsrRequest);
-    throwIfCanceled(request.requestId);
     port.postMessage({ type: 'result', response });
   } catch (error) {
+    if (error instanceof NativeAsrModelLoadTimeoutError) {
+      lifecycle.terminate();
+      const result: NativeAsrFatalWorkerResult = {
+        type: 'fatal',
+        reason: 'model-load-timeout',
+        requestId: request.requestId,
+        message: error.message,
+      };
+      port.postMessage(result);
+      setImmediate(() => process.exit(1));
+      return;
+    }
     const name = error instanceof Error ? error.name : 'Error';
     const message = error instanceof Error ? error.message : String(error);
     port.postMessage({ type: 'error', requestId: request.requestId, name, message });
-  } finally {
-    canceled.delete(request.requestId);
   }
 }
 
 port.on('message', (event) => {
+  if (lifecycle.isTerminal()) return;
   const value = event.data;
   if (typeof value === 'object' && value !== null && Reflect.get(value, 'type') === 'initialize') {
     initialize(Reflect.get(value, 'config'));
     return;
   }
-  if (typeof value === 'object' && value !== null && Reflect.get(value, 'type') === 'cancel') {
-    const requestId = Reflect.get(value, 'requestId');
-    if (!isDesktopInferenceRequestId(requestId)) throw new Error('invalid native ASR cancellation');
-    canceled.add(requestId);
-    return;
-  }
-  queue = queue.then(() => handle(value), () => handle(value));
+  lifecycle.enqueue(() => handle(value));
 });

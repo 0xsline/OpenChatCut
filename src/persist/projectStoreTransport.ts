@@ -149,6 +149,10 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
       path = '/agent-runtime/lease';
       init = postJson(init, headers, request);
       break;
+    case 'export-recovery-lease':
+      path = '/export-recovery/lease';
+      init = postJson(init, headers, request);
+      break;
     case 'set':
       path = '/entry';
       headers['Content-Type'] = 'application/json';

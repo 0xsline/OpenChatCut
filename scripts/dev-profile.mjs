@@ -112,6 +112,7 @@ async function ensureProfileDirectories(homeDir, profileId) {
     appRoot,
     profilesRoot,
     rootDir,
+    join(rootDir, 'electron-user-data'),
     join(rootDir, 'project-store-auth-v1'),
     join(rootDir, 'media'),
     join(rootDir, 'media', 'uploads'),

@@ -1,28 +1,37 @@
 import { createMediaSourceRevision } from '../../editor/mediaSourceRevision';
 import type { MediaAsset } from '../../editor/types';
 import { safeSourceFilename } from '../../media/sourceFilename';
-import { extractAudioForAsr } from '../../transcript/provider';
-import { enqueueTranscription, shouldTranscribe } from '../../transcript/transcribe-jobs';
-import { hasOperationalTranscript } from '../../transcript/types';
+import {
+  saveUploadFinalizeJournal,
+  type UploadFinalizeAsset,
+  type UploadFinalizeIdentity,
+  type UploadFinalizeJournal,
+} from '../../persist/uploadFinalizeStore';
 import type { AgentContext } from '../context';
 import {
   findUploadAsset,
   isUploadSourceType,
   mapUploadKind,
 } from './upload-handoff-tools';
+import {
+  applyJournalMutation,
+  confirmReceiptCommit,
+  createFinalizeJournal,
+  mutationMatchesProject,
+  postReceiptAction,
+  receiptCommitKey,
+  receiptCommitResult,
+  renewFinalizeClaim,
+  resumeReceiptCommit,
+  scheduleReceiptReconciliation,
+  settleReceipt,
+  withReceiptCommitLock,
+  type PreparedFinalize,
+} from './upload-finalize-journal';
 
 type Args = Record<string, unknown>;
 
-interface FinalizeInput {
-  sessionId: string;
-  assetId: string;
-  fileKey: string;
-  filename: string;
-  readUrl: string;
-  size: number;
-  type: string;
-  sourceContentHash?: string;
-}
+type FinalizeInput = UploadFinalizeIdentity;
 
 interface FinalizedSource {
   src: string;
@@ -38,28 +47,83 @@ interface FinalizeContext {
   input: FinalizeInput;
   kind: MediaAsset['kind'];
   source: FinalizedSource;
-  hasAudio: boolean;
-  projectId?: string;
-  asrPath: Promise<string | null>;
+  offersTranscription: boolean;
   ctx: AgentContext;
 }
 
-async function resolveFinalizeInput(args: Args, ctx: AgentContext): Promise<FinalizeInput | { error: string }> {
+function validateFinalizeArgs(args: Args): { receipt: string; error?: string } {
   const receipt = typeof args.receipt === 'string' ? args.receipt.trim() : '';
-  if (!receipt) return { error: 'receipt is required' };
-  const projectId = ctx.getProjectId?.();
-  if (!projectId) return { error: 'a persisted project is required to finalize an upload receipt' };
-  const response = await fetch('/api/external-agent/upload-receipt', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ receipt, projectId }),
-  });
+  if (!receipt) return { receipt, error: 'receipt is required' };
+  if (!isUploadSourceType(args.assetType)) {
+    return { receipt, error: 'assetType must be audio, gif, image, svg, or video' };
+  }
+  const needsDuration = args.assetType === 'audio' || args.assetType === 'gif' || args.assetType === 'video';
+  if (needsDuration && (
+    typeof args.durationInSeconds !== 'number'
+    || !Number.isFinite(args.durationInSeconds)
+    || args.durationInSeconds <= 0
+  )) {
+    return { receipt, error: 'durationInSeconds is required for audio/video/gif and must be positive' };
+  }
+  for (const field of ['durationInSeconds', 'width', 'height', 'fps'] as const) {
+    const value = args[field];
+    if (value !== undefined && (
+      typeof value !== 'number' || !Number.isFinite(value) || value <= 0
+    )) {
+      return { receipt, error: `${field} must be a positive finite number` };
+    }
+  }
+  return { receipt };
+}
+
+async function claimFinalizeInput(
+  receipt: string,
+  projectId: string,
+): Promise<FinalizeInput | { error: string }> {
+  const requestedClaimId = (
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `claim_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+  ).padEnd(32, '_').slice(0, 64);
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 2 && !response; attempt += 1) {
+    try {
+      response = await postReceiptAction({
+        action: 'claim',
+        receipt,
+        projectId,
+        claimId: requestedClaimId,
+      });
+    } catch {
+      // Retrying the same claim id is server-idempotent.
+    }
+  }
+  if (!response) {
+    await postReceiptAction({
+      action: 'abort',
+      receipt,
+      projectId,
+      claimId: requestedClaimId,
+    }).catch(() => null);
+    return { error: 'upload receipt claim request failed' };
+  }
   const value: unknown = await response.json().catch(() => null);
   if (!response.ok || !value || typeof value !== 'object' || Array.isArray(value)) {
-    return { error: 'upload receipt is invalid, expired, consumed, or outside this project' };
+    await postReceiptAction({
+      action: 'abort',
+      receipt,
+      projectId,
+      claimId: requestedClaimId,
+    }).catch(() => null);
+    const message = value && typeof value === 'object' && !Array.isArray(value)
+      && typeof (value as Record<string, unknown>).error === 'string'
+      ? (value as Record<string, unknown>).error as string
+      : 'upload receipt is invalid, expired, consumed, or outside this project';
+    return { error: message };
   }
   const record = value as Record<string, unknown>;
   const filename = safeSourceFilename(record.filename);
+  const claimId = typeof record.claimId === 'string' ? record.claimId : '';
   const sessionId = typeof record.sessionId === 'string' ? record.sessionId : '';
   const assetId = typeof record.assetId === 'string' ? record.assetId : '';
   const fileKey = typeof record.fileKey === 'string' ? record.fileKey : '';
@@ -67,15 +131,28 @@ async function resolveFinalizeInput(args: Args, ctx: AgentContext): Promise<Fina
   const size = typeof record.size === 'number' ? record.size : NaN;
   const sourceContentHash = typeof record.contentHash === 'string'
     && /^[a-f0-9]{64}$/.test(record.contentHash) ? record.contentHash : null;
-  if (!/^sess_[A-Za-z0-9_-]+$/.test(sessionId) || !assetId || !filename
+  const type = isUploadSourceType(record.type) ? record.type : null;
+  const validClaimId = /^[A-Za-z0-9_-]{32,64}$/.test(claimId) && claimId === requestedClaimId;
+  const claimExpiresAt = typeof record.claimExpiresAt === 'number' ? record.claimExpiresAt : NaN;
+  if (!validClaimId
+    || !/^sess_[A-Za-z0-9_-]+$/.test(sessionId)
+    || !/^[A-Za-z0-9_-]{1,80}$/.test(assetId)
+    || !filename || filename !== record.filename || record.projectId !== projectId
     || !/^uploads\/[A-Za-z0-9._-]+$/.test(fileKey)
     || readUrl !== `/media/${fileKey}` || !Number.isSafeInteger(size) || size <= 0
-    || !isUploadSourceType(record.type) || !sourceContentHash) {
+    || !Number.isFinite(claimExpiresAt) || claimExpiresAt <= Date.now()
+    || !type || !sourceContentHash) {
+    await postReceiptAction({
+      action: 'abort',
+      receipt,
+      projectId,
+      claimId: requestedClaimId,
+    }).catch(() => null);
     return { error: 'trusted upload receipt returned invalid media identity' };
   }
   return {
-    sessionId, assetId, fileKey, filename, readUrl, size,
-    type: record.type, sourceContentHash,
+    receipt, claimId, claimExpiresAt, projectId, sessionId, assetId, fileKey, filename, readUrl, size,
+    type, sourceContentHash,
   };
 }
 
@@ -152,122 +229,9 @@ async function finalizedSource(
   return { src, width, height, finalSize, durationInFrames, normalized, sourceRevision };
 }
 
-function enqueueFinalizeTranscription(finalize: FinalizeContext, asset: MediaAsset): void {
-  finalize.ctx.commands.setAssetTranscription(asset.id, {
-    transcribeStatus: 'running',
-    transcribeError: undefined,
-  });
-  enqueueTranscription(finalize.projectId!, asset, { asrPath: finalize.asrPath });
-}
-
-function existingFinalizeResult(
-  finalize: FinalizeContext,
-  existing: MediaAsset,
-  needsAsr: boolean,
-): Record<string, unknown> {
+function finalizeAsset(finalize: FinalizeContext, existing?: MediaAsset): UploadFinalizeAsset {
   const { input, kind, source } = finalize;
   return {
-    ok: true,
-    sessionId: input.sessionId,
-    alreadyRegistered: true,
-    replacedExistingAsset: true,
-    assetId: existing.id,
-    name: input.filename,
-    type: kind,
-    src: source.src,
-    fileKey: source.src.startsWith('/media/uploads/')
-      ? `uploads/${source.src.slice('/media/uploads/'.length)}`
-      : input.fileKey,
-    size: source.finalSize,
-    contentHash: input.sourceContentHash,
-    sourceRevision: source.sourceRevision,
-    sourceContentHash: input.sourceContentHash,
-    normalized: source.normalized || undefined,
-    durationInFrames: source.durationInFrames,
-    width: source.width ?? existing.width,
-    height: source.height ?? existing.height,
-    transcription: needsAsr ? 'started' : existing.transcribeStatus === 'done' ? 'ready' : undefined,
-    next: needsAsr
-      ? `ASR started. Call track_progress action=wait target=transcription assetIds=${existing.id} before transcript tools.`
-      : undefined,
-    note: 'Existing asset replaced from a verified import receipt.',
-  };
-}
-
-function finalizeExisting(finalize: FinalizeContext, existing: MediaAsset): Record<string, unknown> {
-  const { ctx, input, kind, source } = finalize;
-  const relink = source.src !== existing.src || source.width !== existing.width
-    || source.height !== existing.height || source.durationInFrames !== existing.durationInFrames
-    || input.filename !== existing.name || input.filename !== existing.sourceFilename
-    || existing.originalFilePath !== undefined || source.sourceRevision !== existing.sourceRevision
-    || input.sourceContentHash !== existing.sourceContentHash;
-  if (relink) {
-    ctx.commands.relinkMediaAsset(existing.id, {
-      src: source.src,
-      name: input.filename,
-      sourceFilename: input.filename,
-      originalFilePath: undefined,
-      durationInFrames: source.durationInFrames,
-      width: source.width ?? existing.width,
-      height: source.height ?? existing.height,
-      kind,
-      sourceRevision: source.sourceRevision,
-      sourceContentHash: input.sourceContentHash,
-      sourceSize: source.finalSize,
-    });
-  }
-  const needsAsr = finalize.hasAudio && (
-    source.sourceRevision !== existing.sourceRevision
-    || existing.transcribeStatus !== 'done'
-    || !hasOperationalTranscript(existing)
-  );
-  if (needsAsr) enqueueFinalizeTranscription(finalize, {
-    ...existing,
-    src: source.src,
-    name: input.filename,
-    kind,
-    sourceRevision: source.sourceRevision,
-    sourceContentHash: input.sourceContentHash,
-    sourceSize: source.finalSize,
-    durationInFrames: source.durationInFrames,
-    width: source.width,
-    height: source.height,
-  });
-  return existingFinalizeResult(finalize, existing, needsAsr);
-}
-
-function newFinalizeResult(finalize: FinalizeContext, asset: MediaAsset): Record<string, unknown> {
-  const { input, kind, source } = finalize;
-  return {
-    ok: true,
-    sessionId: input.sessionId,
-    assetId: asset.id,
-    name: asset.name,
-    type: kind,
-    sourceType: input.type,
-    src: asset.src,
-    fileKey: source.src.startsWith('/media/uploads/')
-      ? `uploads/${source.src.slice('/media/uploads/'.length)}`
-      : input.fileKey,
-    size: source.finalSize,
-    contentHash: input.sourceContentHash,
-    sourceRevision: source.sourceRevision,
-    sourceContentHash: input.sourceContentHash,
-    normalized: source.normalized || undefined,
-    durationInFrames: asset.durationInFrames,
-    width: asset.width,
-    height: asset.height,
-    transcription: finalize.hasAudio ? 'started' : undefined,
-    next: finalize.hasAudio
-      ? `ASR started (上传即转写). Call track_progress action=wait target=transcription assetIds=${asset.id} before find_transcript / clean_script / delete_text / edit_captions / apply_script.`
-      : undefined,
-    note: 'Asset registered in media pool (local-dev finalize).',
-  };
-}
-
-function finalizeNew(finalize: FinalizeContext): Record<string, unknown> {
-  const { ctx, input, kind, source } = finalize;
-  const asset: MediaAsset = {
     id: input.assetId,
     name: input.filename,
     sourceFilename: input.filename,
@@ -277,43 +241,157 @@ function finalizeNew(finalize: FinalizeContext): Record<string, unknown> {
     sourceRevision: source.sourceRevision,
     sourceContentHash: input.sourceContentHash,
     sourceSize: source.finalSize,
-    width: source.width,
-    height: source.height,
-    transcribeStatus: finalize.hasAudio ? 'running' : undefined,
+    width: source.width ?? existing?.width,
+    height: source.height ?? existing?.height,
   };
-  ctx.commands.addAsset(asset);
-  if (finalize.hasAudio) enqueueTranscription(finalize.projectId!, asset, { asrPath: finalize.asrPath });
-  return newFinalizeResult(finalize, asset);
+}
+
+function existingFinalizeResult(
+  finalize: FinalizeContext,
+  asset: UploadFinalizeAsset,
+): Record<string, unknown> {
+  const { input, source } = finalize;
+  return {
+    ok: true, sessionId: input.sessionId, alreadyRegistered: true,
+    replacedExistingAsset: true, assetId: asset.id, name: asset.name, type: asset.kind,
+    src: asset.src, fileKey: `uploads/${asset.src.slice('/media/uploads/'.length)}`,
+    size: asset.sourceSize, contentHash: input.sourceContentHash,
+    sourceRevision: asset.sourceRevision, sourceContentHash: input.sourceContentHash,
+    normalized: source.normalized || undefined, durationInFrames: asset.durationInFrames,
+    width: asset.width, height: asset.height,
+    transcription: finalize.offersTranscription ? 'not_started' : undefined,
+    next: finalize.offersTranscription
+      ? `No transcription was started. If transcription is desired, place asset ${asset.id} on an audio/video track and invoke transcribe_track for that track.`
+      : undefined,
+    note: 'Existing asset replaced from a verified import receipt.',
+  };
+}
+
+function newFinalizeResult(
+  finalize: FinalizeContext,
+  asset: UploadFinalizeAsset,
+): Record<string, unknown> {
+  const { input, source } = finalize;
+  return {
+    ok: true, sessionId: input.sessionId, assetId: asset.id, name: asset.name,
+    type: asset.kind, sourceType: input.type, src: asset.src,
+    fileKey: `uploads/${asset.src.slice('/media/uploads/'.length)}`,
+    size: asset.sourceSize, contentHash: input.sourceContentHash,
+    sourceRevision: asset.sourceRevision, sourceContentHash: input.sourceContentHash,
+    normalized: source.normalized || undefined, durationInFrames: asset.durationInFrames,
+    width: asset.width, height: asset.height,
+    transcription: finalize.offersTranscription ? 'not_started' : undefined,
+    next: finalize.offersTranscription
+      ? `No transcription was started. If transcription is desired, place asset ${asset.id} on an audio/video track and invoke transcribe_track for that track.`
+      : undefined,
+    note: 'Asset registered in media pool (local-dev finalize).',
+  };
+}
+
+function prepareFinalize(finalize: FinalizeContext, existing: MediaAsset | null): PreparedFinalize {
+  const asset = finalizeAsset(finalize, existing ?? undefined);
+  if (!existing) {
+    return { mutation: { type: 'add', asset }, result: newFinalizeResult(finalize, asset) };
+  }
+  const relink = asset.src !== existing.src || asset.width !== existing.width
+    || asset.height !== existing.height || asset.durationInFrames !== existing.durationInFrames
+    || asset.name !== existing.name || asset.sourceFilename !== existing.sourceFilename
+    || existing.originalFilePath !== undefined || asset.sourceRevision !== existing.sourceRevision
+    || asset.sourceContentHash !== existing.sourceContentHash
+    || asset.sourceSize !== existing.sourceSize || asset.kind !== existing.kind;
+  return {
+    mutation: { type: relink ? 'relink' : 'none', asset },
+    result: existingFinalizeResult(finalize, asset),
+  };
+}
+
+async function prepareClaimedFinalize(
+  args: Args,
+  ctx: AgentContext,
+  input: FinalizeInput,
+): Promise<UploadFinalizeJournal> {
+  if (args.assetType !== input.type) {
+    throw new Error(`assetType does not match the trusted upload receipt (${input.type})`);
+  }
+  const kind = mapUploadKind(input.type);
+  if (!kind) throw new Error(`unsupported type ${input.type}`);
+  const fps = ctx.getState().fps || 30;
+  const durationInFrames = durationForFinalize(args, kind, input.type, fps);
+  if (durationInFrames === null) throw new Error('durationInSeconds is required for audio/video/gif');
+  const source = await finalizedSource(input, args, kind, fps, durationInFrames);
+  const expectedRevision = createMediaSourceRevision({
+    src: input.readUrl, sourceContentHash: input.sourceContentHash,
+  });
+  if (source.sourceRevision !== expectedRevision) {
+    throw new Error('content-derived source revision changed during finalize');
+  }
+  const claimExpiresAt = await renewFinalizeClaim(input);
+  if (claimExpiresAt === null) {
+    throw new Error('upload receipt claim expired or was superseded before asset commit');
+  }
+  const renewedInput = { ...input, claimExpiresAt };
+  const offersTranscription = kind === 'audio'
+    || (kind === 'video' && args.hasAudioTrack !== false);
+  const finalize = { input: renewedInput, kind, source, offersTranscription, ctx };
+  return createFinalizeJournal(renewedInput, prepareFinalize(
+    finalize,
+    findUploadAsset(ctx, input.assetId),
+  ));
+}
+
+async function executeClaimedFinalize(
+  args: Args,
+  ctx: AgentContext,
+  input: FinalizeInput,
+): Promise<Record<string, unknown>> {
+  let journal: UploadFinalizeJournal | null = null;
+  let journalSaved = false;
+  try {
+    journal = await prepareClaimedFinalize(args, ctx, input);
+    await saveUploadFinalizeJournal(journal);
+    journalSaved = true;
+    const applied = await applyJournalMutation(journal, ctx);
+    const confirmation = await confirmReceiptCommit(applied, false);
+    if (!confirmation.committed) scheduleReceiptReconciliation(confirmation.journal, ctx);
+    return receiptCommitResult(applied.result, confirmation.committed
+      ? 'committed' : 'reconciliation_pending');
+  } catch (error) {
+    if (journalSaved && journal && mutationMatchesProject(journal.mutation, ctx)) {
+      scheduleReceiptReconciliation(journal, ctx);
+      return receiptCommitResult(journal.result, 'reconciliation_pending');
+    }
+    if (!journalSaved) await settleReceipt(input, 'abort');
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function execFinalizeUploadLocked(
+  args: Args,
+  ctx: AgentContext,
+  receipt: string,
+  projectId: string,
+): Promise<unknown> {
+  try {
+    const resumed = await resumeReceiptCommit(receipt, projectId, ctx);
+    if (resumed) return resumed;
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  const input = await claimFinalizeInput(receipt, projectId);
+  return 'error' in input ? input : executeClaimedFinalize(args, ctx, input);
 }
 
 export async function execFinalizeUpload(
   args: Args,
   ctx: AgentContext,
 ): Promise<unknown> {
-  const input = await resolveFinalizeInput(args, ctx);
-  if ('error' in input) return input;
-  const kind = mapUploadKind(input.type);
-  if (!kind) return { error: `unsupported type ${input.type}` };
-  const fps = ctx.getState().fps || 30;
-  const durationInFrames = durationForFinalize(args, kind, input.type, fps);
-  if (durationInFrames === null) return { error: 'durationInSeconds is required for audio/video/gif' };
-  const hasAudio = shouldTranscribe(
-    kind,
-    typeof args.hasAudioTrack === 'boolean' ? args.hasAudioTrack : undefined,
-  );
+  const preliminary = validateFinalizeArgs(args);
+  if (preliminary.error) return { error: preliminary.error };
   const projectId = ctx.getProjectId?.();
-  if (hasAudio && !projectId) return { error: 'transcription requires a persisted project id' };
-  const contentRevision = input.sourceContentHash
-    ? createMediaSourceRevision({ src: input.readUrl, sourceContentHash: input.sourceContentHash })
-    : undefined;
-  const asrPath = hasAudio && input.readUrl.startsWith('/media/uploads/')
-    ? extractAudioForAsr(input.readUrl).catch(() => null)
-    : Promise.resolve(null);
-  const source = await finalizedSource(input, args, kind, fps, durationInFrames);
-  if (contentRevision && source.sourceRevision !== contentRevision) {
-    throw new Error('content-derived source revision changed during finalize');
-  }
-  const finalize = { input, kind, source, hasAudio, projectId, asrPath, ctx };
-  const existing = findUploadAsset(ctx, input.assetId);
-  return existing ? finalizeExisting(finalize, existing) : finalizeNew(finalize);
+  if (!projectId) return { error: 'a persisted project is required to finalize an upload receipt' };
+  const key = receiptCommitKey({ receipt: preliminary.receipt, projectId });
+  return withReceiptCommitLock(
+    key,
+    () => execFinalizeUploadLocked(args, ctx, preliminary.receipt, projectId),
+  );
 }

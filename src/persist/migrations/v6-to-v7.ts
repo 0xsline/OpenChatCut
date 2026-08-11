@@ -1,5 +1,5 @@
 import type { TimelineItem } from '../../editor/types.js';
-import { isProjectShape } from './normalize.js';
+import { isProjectShape, type LooseProjectShape } from './normalize.js';
 import type { ProjectMigrationStep } from './types.js';
 
 const LEGACY_STRENGTH = {
@@ -23,20 +23,24 @@ function migrateItem(item: TimelineItem): TimelineItem {
   return strength === 50 ? rest : { ...rest, backgroundFillStrength: strength };
 }
 
+/** Remove unreleased preset fields while preserving every other project field. */
+export function normalizeDevelopmentBackgroundFillPresets(value: unknown): LooseProjectShape {
+  if (!isProjectShape(value)) throw new Error('invalid development ProjectDoc');
+  return {
+    ...value,
+    timelines: value.timelines.map((timeline) => ({
+      ...timeline,
+      items: timeline.items.map(migrateItem),
+    })),
+  };
+}
+
 /** V7 replaces four stored blur presets with an exact 0..100 percentage. */
 export const v6ToV7: ProjectMigrationStep = {
   id: 'v6-to-v7',
   fromVersion: 6,
   toVersion: 7,
   migrate(value: unknown): unknown {
-    if (!isProjectShape(value)) throw new Error('invalid ProjectDoc V6');
-    return {
-      ...value,
-      version: 7,
-      timelines: value.timelines.map((timeline) => ({
-        ...timeline,
-        items: timeline.items.map(migrateItem),
-      })),
-    };
+    return { ...normalizeDevelopmentBackgroundFillPresets(value), version: 7 };
   },
 };

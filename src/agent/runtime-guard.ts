@@ -77,7 +77,7 @@ export async function runtimeGuardForTool(
   args: Record<string, unknown>,
   ctx: AgentContext,
 ): Promise<RuntimeGuardRequest | null> {
-  const defaultSkill = costCategoryForTool(toolName);
+  const defaultSkill = costCategoryForTool(toolName, args);
   if (!defaultSkill) return null;
   if (toolName !== 'rerun_generation') {
     const presentation = formatToolApprovalDetails(toolName, args);
@@ -99,7 +99,7 @@ export async function runtimeGuardForTool(
   }
   const presentation = formatToolApprovalDetails(original.toolName, original.submitArgs);
   return {
-    skill: costCategoryForTool(original.toolName) ?? 'high-cost-operation',
+    skill: costCategoryForTool(original.toolName, original.submitArgs) ?? 'high-cost-operation',
     tool: original.toolName,
     requestedTool: toolName,
     operationId: original.operationId,

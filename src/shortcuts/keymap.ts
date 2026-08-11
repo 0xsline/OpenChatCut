@@ -91,11 +91,13 @@ function isMacPlatform(): boolean {
 
 /** Serialize a captured keydown → a canonical binding string ("Mod + Shift + Z"), or null
  *  for a bare modifier / Escape (not a usable single-key binding). Uses the same "Mod"
- *  convention the catalog + matcher use (⌘ on Mac, Ctrl elsewhere). */
-export function chordFromEvent(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): string | null {
+ *  convention the catalog + matcher use (⌘ on Mac, Ctrl elsewhere). `isMac` is injectable so
+ *  verifies stay deterministic regardless of the host platform (navigator is absent under
+ *  CI/node); callers that omit it keep the runtime platform probe. */
+export function chordFromEvent(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>, isMac?: boolean): string | null {
   const key = normalizeKey(e.key);
   if (['shift', 'control', 'alt', 'meta', 'escape', 'unidentified'].includes(key)) return null;
-  const mac = isMacPlatform();
+  const mac = isMac ?? isMacPlatform();
   const parts: string[] = [];
   if (mac ? e.metaKey : e.ctrlKey) parts.push('Mod');
   if (mac && e.ctrlKey) parts.push('Ctrl');

@@ -12,8 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Added opt-in AI SDK speech routing for OpenAI, Gemini, Mistral Voxtral, and Cartesia, plus cloud transcription through OpenAI, Mistral Voxtral, Deepgram, Groq, ElevenLabs Scribe, and Cartesia. AssemblyAI remains the default transcription route and on-device Whisper remains available; the Agent can discover configured providers and explicitly route to one without exposing credentials.
   新增可选的 AI SDK 语音路由：OpenAI、Gemini、Mistral Voxtral 与 Cartesia 配音，以及 OpenAI、Mistral Voxtral、Deepgram、Groq、ElevenLabs Scribe、Cartesia 云端转写。AssemblyAI 仍是默认转写路径，本地 Whisper 继续可用；Agent 可发现已配置的供应商并显式路由，且不会接触密钥。
-- Added in-app desktop updates: packaged macOS, Windows, and Linux builds can check, download, retry, and install the next GitHub Release from the dashboard notice or Settings, with per-platform update metadata published alongside installers.
-  新增桌面端应用内更新：macOS、Windows 与 Linux 安装包可在首页提示或设置中检查、下载、重试并安装下一版 GitHub Release；各平台更新元数据与安装包一同发布。
+- Added in-app desktop updates: packaged Windows and Linux builds can check, download, retry, and install the next GitHub Release from the dashboard notice or Settings. Packaged macOS checks send users to the GitHub Releases download page instead because the current v0.2.0 lane is ad-hoc signed and does not support safe direct installation.
+  新增桌面端应用内更新：Windows 与 Linux 安装包可在首页提示或设置中检查、下载、重试并安装下一版 GitHub Release。macOS 安装包检查更新后会改为引导用户前往 GitHub Releases 下载页，因为当前 v0.2.0 发布通道采用临时签名，暂不支持安全的应用内直接安装。
 - Added dashboard header shortcuts for contacting the author and opening the OpenChatCut GitHub repository; the contact disclosure shows a selectable email link without leaving the project list.
   首页顶栏新增“联系作者”和 GitHub 仓库快捷入口；联系信息会就地显示可选择的邮箱链接，无需离开工程列表。
 - Added opt-in blurred background fill for video and image clips: the Inspector offers exact 0–100% intensity control plus four quick shortcuts, while `edit_item` accepts `backgroundFillStrength`. The sharp foreground remains independently movable, resizable, croppable, and rotatable. Shared preview/export compositing preserves fades, effects, and GLSL transition alpha; FCPXML retains the toggle and percentage as OpenChatCut metadata and explicitly reports that destination editors cannot reconstruct the generated blur layer from those custom fields.
@@ -24,8 +24,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增 `edit_item` 源窗口：`search_media` 返回的 `sourceStartMs`/`sourceEndMs` 可原样落轨；也接受显式 `sourceStartSeconds`/`sourceEndSeconds`，统一在工具内部换算。
 - Hardened the agent prompt: explicit TIMELINE frames vs SOURCE time coordinate contract, transcript/caption content declared as footage-not-instructions, and lossy-summary warnings on truncated views.
   加固 Agent 提示词：显式时间线帧/源时间坐标系契约、转录与字幕内容声明为“素材而非指令”、截断视图附有损摘要警示。
-- Added content-addressed media identity: imported masters now carry a streaming SHA-256 through browser, multipart, Agent, and desktop import paths; deterministic relinking/deduplication preserves asset identity and invalidates derived artifacts only when bytes change. Project schema v4 migrates legacy documents without changing media URLs.
-  新增内容寻址素材身份：浏览器、分片上传、Agent 与桌面导入链路统一流式计算并传递主素材 SHA-256；确定性重链/去重保留素材身份，仅在字节变化时失效派生结果。工程 schema v4 可无损迁移旧文档，素材 URL 语义不变。
+- Added content-addressed media identity: imported masters now carry a streaming SHA-256 through browser, multipart, Agent, and desktop import paths; deterministic relinking/deduplication preserves asset identity and invalidates derived artifacts only when bytes change. The optional metadata remains inside the public v3 project schema, so v0.1.9 can still read newly saved projects without changing media URLs.
+  新增内容寻址素材身份：浏览器、分片上传、Agent 与桌面导入链路统一流式计算并传递主素材 SHA-256；确定性重链/去重保留素材身份，仅在字节变化时失效派生结果。这些可选元数据继续使用公开的 v3 工程 schema，因此 v0.1.9 仍可读取新保存的工程，素材 URL 语义也保持不变。
 - Added stable caption word references and parallel source/translation lanes. Selection, editing, drag grouping, copy/paste, preview, and ASS/WebVTT export now share one cue identity path, including deterministic CJK segmentation.
   新增稳定字幕词引用与原文/译文并行车道。选择、编辑、拖动分组、复制粘贴、预览及 ASS/WebVTT 导出统一使用同一条 cue 身份链，并支持确定性的中日韩文本分词。
 - Added five deterministic caption motion presets (`none`, fade-up, pop, word-pop, karaoke-pulse). They derive from timeline frames inside the shared Remotion layer, so Player preview and burned export render the same motion; saved caption looks retain the chosen preset.
@@ -61,6 +61,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Preserved follow-up message order in agent chats and reduced generation/persistence latency by cutting agent-chat hydration network round-trips.
   修复 Agent 聊天中跟进消息的顺序问题，并通过削减聊天水合的网络往返降低生成与持久化延迟。
+- Kept newly saved projects on the public v3 schema for v0.1.9 compatibility, stopped read-only opens from rewriting projects or version snapshots, and made opt-in SQLite migration single-owner, transactional, resumable, and profile-aware.
+  新保存的工程继续使用公开的 v3 schema，兼容 v0.1.9；只读打开不再改写工程或版本快照；可选 SQLite 迁移改为单执行者、事务化、可续跑并正确隔离开发 profile。
+- Hardened Agent cost and upload boundaries: an explicit cloud transcription provider always uses the paid-operation approval gate, upload receipts remain retryable until the asset edit commits, and upload finalization no longer starts transcription implicitly.
+  加固 Agent 费用与上传边界：显式选择云端转写时始终进入付费操作审批；上传回执在素材编辑真正提交前可安全重试；上传完成后不再隐式启动转写。
+- Made watched-folder import ownership durable across renderer loss, isolated stale watcher generations, and made native ASR cancellation terminate the active worker immediately so media is not deleted or background inference left running.
+  监控文件夹导入在渲染进程丢失时也能保持素材所有权；旧 watcher 代际会被隔离；取消原生 ASR 时立即终止活跃 worker，避免误删素材或残留后台推理。
+- Preserved authored clip slots during relink, blocked any partially materialized blob export before job creation, and retained completed browser exports when a destination handle must be reselected.
+  重链素材时保留已编排的片段时段；任何 Blob 素材未完全就绪都会在创建导出任务前阻止提交；浏览器导出目标需重新选择时会保留已完成的渲染结果。
 
 ## [0.1.9] - 2026-08-06
 
