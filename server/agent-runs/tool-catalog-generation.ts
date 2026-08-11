@@ -16,6 +16,9 @@ async function bundledSkillIds(): Promise<string[]> {
     }));
   return ids.filter((id): id is string => id !== null).sort();
 }
+export function normalizeToolCatalogText(value: string): string {
+  return value.replace(/\r\n?/g, '\n');
+}
 
 export async function serverToolCatalogForGeneration(
   schemas: readonly AgentToolSchema[],
