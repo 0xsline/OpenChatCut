@@ -265,6 +265,7 @@ assert.equal(readStoredServerRun(projectId), null);
 
 const source = new FakeEventSource();
 const requestQueue = new ServerRunToolRequestQueue();
+const receivedUsages: unknown[] = [];
 const firstToolRelease = Promise.withResolvers<void>();
 const bothToolsHandled = Promise.withResolvers<void>();
 const executionOrder: string[] = [];
@@ -277,6 +278,7 @@ bindServerRunEvents(source as never, runId, {
   commit: () => 'committed',
   commitTextDelta: () => 'committed',
   ensureAssistantMessage: () => undefined,
+  onContextUsage: (usage) => { receivedUsages.push(usage); },
   handleToolRequest: (
     _eventRunId, toolCallId, _name, _args, _digest, admit,
   ) => requestQueue.enqueue(runId, async () => {
@@ -300,6 +302,10 @@ bindServerRunEvents(source as never, runId, {
 });
 source.emit('max-turns', { turns: 30 });
 assert.deepEqual(appendedMessages, ['continue:30']);
+source.emit('context-usage', { usage: { inputTokens: 10, outputTokens: 20 } });
+source.emit('context-usage', { usage: 'not-an-object' });
+assert.deepEqual(receivedUsages, [{ inputTokens: 10, outputTokens: 20 }],
+  'context-usage events dispatch valid usage payloads and ignore malformed ones');
 source.emit('tool-request', {
   toolCallId: 'call-1',
   name: 'read_timeline',
@@ -336,6 +342,7 @@ bindServerRunEvents(earlySource as never, runId, {
   commit: () => 'committed',
   commitTextDelta: () => 'committed',
   ensureAssistantMessage: () => undefined,
+  onContextUsage: () => undefined,
   handleToolRequest: async () => {
     earlyExecutions += 1;
     return true;
@@ -366,6 +373,7 @@ bindServerRunEvents(failedSource as never, runId, {
   commit: () => 'failed',
   commitTextDelta: () => 'failed',
   ensureAssistantMessage: () => undefined,
+  onContextUsage: () => undefined,
   handleToolRequest: async (_id, _callId, _name, _args, _digest, admit) => {
     if (!admit()) return false;
     failedToolExecutions += 1;

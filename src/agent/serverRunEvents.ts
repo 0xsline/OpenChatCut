@@ -1,4 +1,5 @@
 import type { DisplayMessage } from './agent-session';
+import type { AgentContextUsage } from './context-compaction';
 import type { ServerRunEventStream } from './serverRunFetchEventStream';
 
 export type ServerRunTerminalStatus = 'awaiting_user' | 'completed' | 'failed' | 'cancelled';
@@ -21,6 +22,7 @@ interface ServerRunEventHandlers {
   readonly retry: (runId: string) => void;
   readonly finish: (runId: string, status: ServerRunTerminalStatus) => void;
   readonly appendMessage: (message: DisplayMessage) => void;
+  readonly onContextUsage: (usage: AgentContextUsage) => void;
   readonly transportError: (source: ServerRunEventStream, runId: string) => void;
   readonly persistenceError: (runId: string) => void;
   readonly opened: () => void;
@@ -143,6 +145,18 @@ function bindCompletionEvents(
   });
 }
 
+function bindContextUsage(
+  source: ServerRunEventStream,
+  handlers: ServerRunEventHandlers,
+): void {
+  source.addEventListener('context-usage', (event) => {
+    if (!handlers.enabled()) return;
+    const data = eventData(event);
+    if (!objectRecord(data) || !objectRecord(data.usage)) return;
+    handlers.onContextUsage(data.usage as unknown as AgentContextUsage);
+  });
+}
+
 function bindErrorEvent(
   source: ServerRunEventStream,
   runId: string,
@@ -169,6 +183,7 @@ export function bindServerRunEvents(
   bindTextEvents(source, runId, handlers);
   bindToolRequest(source, runId, handlers);
   bindCompletionEvents(source, runId, handlers);
+  bindContextUsage(source, handlers);
   bindErrorEvent(source, runId, handlers);
   source.onopen = handlers.opened;
 }

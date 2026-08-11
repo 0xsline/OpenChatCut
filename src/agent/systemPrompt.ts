@@ -1,5 +1,6 @@
 // The orchestration system prompt.
 // Authored in-house, grounded in the bundled skills + tool model.
+import { agentAutoApply } from './approval-mode';
 import { GENERATE_WORKFLOW } from './generate-workflow';
 import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../editor/types';
 import type { SkillDefinition } from './skills/skill-types';
@@ -230,7 +231,11 @@ export function buildAgentSystemPrompt(
   input?: AgentSettings | BuildAgentSystemPromptOptions,
 ): string {
   const options = promptOptions(input);
-  const mode = ctx.getApprovalMode?.() ?? 'manual';
+  // Contexts that implement getApprovalMode drive the mode directly (external
+  // bridges). In-app agents have no such accessor: the composer syncs YOLO
+  // into the approval-mode registry, so fall back to it here to keep the
+  // prompt (and the runtime guard) on the same mode.
+  const mode = ctx.getApprovalMode?.() ?? (agentAutoApply() ? 'auto' : 'manual');
   return assembleSystemPrompt([
     SYSTEM_PROMPT,
     agentLanguagePrompt(getLocale()),

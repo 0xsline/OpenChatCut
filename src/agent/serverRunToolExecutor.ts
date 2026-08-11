@@ -1,4 +1,5 @@
 import type { AgentContext } from './context';
+import { agentAutoApply } from './approval-mode';
 import { TOOL_SCHEMAS } from './tools';
 import { executeCodexTool } from './runtime';
 import { ToolActivation } from './tool-activation';
@@ -6,8 +7,8 @@ import type { AgentSettings } from './settings/agentSettings';
 import { draftContext } from './useAgentRun';
 import { makeDraft, type DraftEngine } from '../editor/store';
 import type { ProjectDoc } from '../editor/types';
-import type { DisplayMessage, PendingGuard } from './agent-session';
-import type { GuardDecision } from './skills/costGuard';
+import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
+import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
 import type { AgentEvent } from './runtime';
 import type { AgentRunRecorder } from './runtime-ledger';
 import {
@@ -55,6 +56,7 @@ export interface ServerToolExecutorCallbacks {
     update: (messages: DisplayMessage[]) => DisplayMessage[],
   ) => void;
   readonly setPendingGuard: (guard: PendingGuard | null) => void;
+  readonly setLiveTool: (tool: LiveTool | null) => void;
   readonly retryStream: (runId: string) => void;
   readonly abandonRecovery: (runId: string, error: unknown) => void;
 }
@@ -132,11 +134,11 @@ export class ServerRunToolExecutor {
     this.abort?.abort();
   }
 
-  confirmGuard(allow: boolean): void {
+  confirmGuard(decision: GuardDecision): void {
     const resolve = this.guardResolve;
     this.guardResolve = null;
     this.callbacks.setPendingGuard(null);
-    resolve?.(allow ? 'allow-once' : 'deny');
+    resolve?.(decision);
   }
 
   private async claim(
@@ -288,16 +290,26 @@ export class ServerRunToolExecutor {
   }
 
   private guardRequest(info: Omit<PendingGuard, 'resolve'>): Promise<GuardDecision> {
+    // YOLO (auto-apply) mode releases every confirmation card: the user opted
+    // into unapproved execution (sessionPrefs documents the intent). Mirrors
+    // the built-in path in useAgentRun so server runs honor the same mode.
+    if (agentAutoApply()) return Promise.resolve('allow-once');
+    const rememberable = info.approval === 'project' && info.permissionKind === 'paid_external';
+    if (rememberable && isCostAllowed(info.skill, this.projectId)) {
+      return Promise.resolve('allow-once');
+    }
     const { promise, resolve } = Promise.withResolvers<GuardDecision>();
-    this.guardResolve = resolve;
-    this.callbacks.setPendingGuard({
-      ...info,
-      resolve: (requested) => {
-        this.guardResolve = null;
-        this.callbacks.setPendingGuard(null);
-        resolve(requested === 'deny' ? 'deny' : 'allow-once');
-      },
-    });
+    // Both the UI card resolve and confirmGuard must land in the same settle
+    // closure so allow-scope memory is recorded regardless of entry point.
+    const settle = (requested: GuardDecision): void => {
+      this.guardResolve = null;
+      this.callbacks.setPendingGuard(null);
+      const decision = requested === 'allow-scope' && !rememberable ? 'allow-once' : requested;
+      if (decision === 'allow-scope') rememberCostAllowed(info.skill, this.projectId);
+      resolve(decision);
+    };
+    this.guardResolve = settle;
+    this.callbacks.setPendingGuard({ ...info, resolve: settle });
     return promise;
   }
 
@@ -376,40 +388,45 @@ export class ServerRunToolExecutor {
     request: BrowserToolRequest,
   ): Promise<boolean> {
     if (!this.draft) this.draft = makeDraft(this.baseDoc ?? this.callbacks.ctx().getDoc());
-    let update;
+    this.callbacks.setLiveTool({ name: request.name, partial: '' });
     try {
-      update = await executeCodexTool({
+      let update;
+      try {
+        update = await executeCodexTool({
+          name: request.name,
+          args: request.args,
+          activation: this.activation,
+          ctx: draftContext(this.callbacks.ctx(), this.draft),
+          onEvent: (_event: AgentEvent) => undefined,
+          settings: this.callbacks.settings(),
+          onSkillGuard: (info) => this.guardRequest(info),
+          runRecorder: this.recorder ?? undefined,
+          toolCallId,
+          signal: this.abort?.signal,
+        });
+      } catch (error) {
+        return this.reportFailure(runId, toolCallId, request, error, true);
+      }
+      this.activation = update.activation;
+      const outcome: ServerRunToolAction = {
+        runId: this.recorder?.runId ?? runId,
+        toolCallId,
+        argsDigest: request.argsDigest,
         name: request.name,
         args: request.args,
-        activation: this.activation,
-        ctx: draftContext(this.callbacks.ctx(), this.draft),
-        onEvent: (_event: AgentEvent) => undefined,
-        settings: this.callbacks.settings(),
-        onSkillGuard: (info) => this.guardRequest(info),
-        runRecorder: this.recorder ?? undefined,
-        toolCallId,
-        signal: this.abort?.signal,
-      });
-    } catch (error) {
-      return this.reportFailure(runId, toolCallId, request, error, true);
+        result: update.execution.result,
+        actions: this.draft.takeActions(),
+        baseDoc: this.baseDoc ?? this.callbacks.ctx().getDoc(),
+      };
+      try {
+        await this.callbacks.onToolAction(outcome);
+      } catch (error) {
+        return this.reportFailure(runId, toolCallId, request, error, false);
+      }
+      return this.finishExecution(runId, toolCallId, request, update.execution.result);
+    } finally {
+      this.callbacks.setLiveTool(null);
     }
-    this.activation = update.activation;
-    const outcome: ServerRunToolAction = {
-      runId: this.recorder?.runId ?? runId,
-      toolCallId,
-      argsDigest: request.argsDigest,
-      name: request.name,
-      args: request.args,
-      result: update.execution.result,
-      actions: this.draft.takeActions(),
-      baseDoc: this.baseDoc ?? this.callbacks.ctx().getDoc(),
-    };
-    try {
-      await this.callbacks.onToolAction(outcome);
-    } catch (error) {
-      return this.reportFailure(runId, toolCallId, request, error, false);
-    }
-    return this.finishExecution(runId, toolCallId, request, update.execution.result);
   }
 
   private async processLocked(

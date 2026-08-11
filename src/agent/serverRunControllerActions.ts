@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
 import type { AgentSend } from './useAgentRun';
+import type { GuardDecision } from './skills/costGuard';
 import { sendServerRun } from './serverRunSend';
 import { requestServerRunCancellation } from './serverRunProtocol';
 import { readStoredServerRun } from './serverRunSessionStorage';
@@ -8,7 +9,7 @@ import type { ServerRunStreamLifecycle } from './serverRunStreamLifecycle';
 
 export interface ServerRunControllerActions {
   readonly send: AgentSend;
-  readonly confirmGuard: (allow: boolean) => void;
+  readonly confirmGuard: (decision: GuardDecision) => void;
   readonly stop: () => void;
 }
 
@@ -43,8 +44,8 @@ export function useServerRunControllerActions(
       abandonStaleRecovery: lifecycle.abandonStaleRecovery,
     }, text, options);
   }, [projectId]);
-  const confirmGuard = useCallback((allow: boolean) => {
-    stateRef.current.toolExecutor.confirmGuard(allow);
+  const confirmGuard = useCallback((decision: GuardDecision) => {
+    stateRef.current.toolExecutor.confirmGuard(decision);
   }, []);
   const stop = useCallback(() => {
     const current = stateRef.current;

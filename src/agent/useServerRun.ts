@@ -35,6 +35,8 @@ export function useServerRun(
     send: actions.send,
     messages: state.messages,
     running: state.running,
+    liveTool: state.liveTool,
+    contextUsage: state.contextUsage,
     pendingGuard: state.pendingGuard,
     confirmGuard: actions.confirmGuard,
     stop: actions.stop,

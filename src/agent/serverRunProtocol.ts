@@ -10,7 +10,9 @@ import type { AgentCacheMode } from './settings/agentSettings';
 import type { AgentSend, AgentSendOptions } from './useAgentRun';
 import type { AnyAction } from '../editor/store';
 import type { ProjectDoc } from '../editor/types';
-import type { DisplayMessage, PendingGuard } from './agent-session';
+import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
+import type { AgentContextUsage } from './context-compaction';
+import type { GuardDecision } from './skills/costGuard';
 import type { AgentRunRecorder } from './runtime-ledger';
 
 export interface ServerRunStart {
@@ -96,8 +98,10 @@ export interface ServerRunController {
   readonly send: AgentSend;
   readonly messages: DisplayMessage[];
   readonly running: boolean;
+  readonly liveTool: LiveTool | null;
+  readonly contextUsage: AgentContextUsage | null;
   readonly pendingGuard: PendingGuard | null;
-  readonly confirmGuard: (allow: boolean) => void;
+  readonly confirmGuard: (decision: GuardDecision) => void;
   readonly stop: () => void;
 }
 

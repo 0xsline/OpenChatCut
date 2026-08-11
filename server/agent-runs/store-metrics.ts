@@ -79,6 +79,7 @@ export function recordServerContextUsage(
     cacheMissTokens: freshInputTokens,
     lastRequestAt: Date.now(),
   });
+  dependencies.pushRunEvent(run, 'context-usage', { usage });
   void dependencies.mirror(run, async () => {
     await patchAgentRun(run.projectId, run.id, { context });
   });
