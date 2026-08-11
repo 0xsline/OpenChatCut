@@ -339,9 +339,10 @@ jobs:
 
           verified=false
           for attempt in {1..8}; do
-            if release_json="$(gh api \
-              "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}")"; then
-              if [[ "$(jq -r '.draft' <<<"$release_json")" != "true" ]]; then
+            if release_json="$(gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,assets)"; then
+              if [[ "$(jq -r '.isDraft' <<<"$release_json")" != "true" ]]; then
                 echo "Release $GITHUB_REF_NAME became public before asset verification" >&2
                 exit 1
               fi

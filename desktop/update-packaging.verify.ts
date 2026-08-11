@@ -239,6 +239,11 @@ assert.match(
 assert.match(workflow, /sha256sum "\$asset"/, 'release verification must hash each local asset');
 assert.match(
   workflow,
+  /gh release view "\$GITHUB_REF_NAME"[\s\S]*?--json isDraft,assets/,
+  'draft asset verification must use the release command that can read draft releases',
+);
+assert.match(
+  workflow,
   /\.assets\[\] \| \[\.name, \(\.digest \/\/ ""\)\]/,
   'release verification must read back every remote asset name and digest',
 );
