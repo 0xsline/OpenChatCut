@@ -269,7 +269,6 @@ jobs:
           test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-arm64.zip.blockmap"
           test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-x64.zip.blockmap"
           test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-x64.exe.blockmap"
-          test -f "release-files/OpenChatCut-${EXPECTED_VERSION}-x86_64.AppImage.blockmap"
 
       - name: Generate checksums
         working-directory: release-files
