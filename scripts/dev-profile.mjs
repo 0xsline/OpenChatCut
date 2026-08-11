@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import {
-  chmod, link, lstat, mkdir, open, readFile, realpath, rm,
+  chmod, link, lstat, mkdir, open, readFile, readdir, realpath, rm, stat,
 } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -181,9 +181,66 @@ async function readProfileEnv(path) {
   }
 }
 
+/**
+ * In dev, Remotion serves headless preview/render from the local
+ * Node_modules/.remotion cache (versioned by the installed @remotion/* version).
+ * The desktop packaging path sets CC_BROWSER_EXECUTABLE explicitly so the packaged
+ * app never redownloads; dev historically left it unset, so every openBrowser()
+ * re-downloaded the pinned headless-shell and could stall preview/render.
+ *
+ * Here we behave like the packaged runtime: if the caller did not explicitly set
+ * CC_BROWSER_EXECUTABLE, resolve the installed .remotion headless-shell and pass
+ * it through. Remotion treats an explicit browserExecutable as user-defined and
+ * skips its own download checks, so dev stops re-downloading once the shell exists.
+ * Returns undefined when nothing usable is found (caller falls back to Remotion).
+ */
+export async function resolveDevHeadlessShell(root = process.cwd()) {
+  if (process.env.CC_BROWSER_EXECUTABLE) return undefined;
+  const remotionDir = join(root, 'node_modules', '.remotion', 'chrome-headless-shell');
+  let platformDirs;
+  try {
+    platformDirs = await readdir(remotionDir);
+  } catch {
+    return undefined;
+  }
+  for (const platformDir of platformDirs) {
+    if (platformDir === 'VERSION') continue;
+    const appDir = join(remotionDir, platformDir);
+    let candidates;
+    try {
+      candidates = await readdir(appDir);
+    } catch {
+      continue;
+    }
+    for (const candidate of candidates) {
+      const candidatePath = join(appDir, candidate);
+      let candidateStat;
+      try {
+        candidateStat = await stat(candidatePath);
+      } catch {
+        continue;
+      }
+      if (!candidateStat.isDirectory()) continue;
+      const exePath = join(candidatePath, 'chrome-headless-shell');
+      try {
+        const exeStat = await stat(exePath);
+        if (exeStat.isFile()) return exePath;
+      } catch {
+        // try next candidate
+      }
+    }
+  }
+  return undefined;
+}
+
 export async function profileChildEnvironment(profile, baseEnvironment = process.env) {
   const saved = await readProfileEnv(profile.keystorePath);
-  return { ...baseEnvironment, ...saved, [DEV_PROFILE_ID_ENV]: profile.id };
+  const environment = { ...baseEnvironment, ...saved, [DEV_PROFILE_ID_ENV]: profile.id };
+  if (!environment.CC_BROWSER_EXECUTABLE) {
+    const shellPath = await resolveDevHeadlessShell();
+    if (shellPath) environment.CC_BROWSER_EXECUTABLE = shellPath;
+  }
+  return environment;
 }
 
 function singleGitPath(stdout, label) {
