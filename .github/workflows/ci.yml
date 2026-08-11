@@ -28,6 +28,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --loglevel=error
+        env:
+          # onnxruntime-node@1.22.0's postinstall downloads extra platform binaries
+          # from NuGet, which misses the win-x64 CUDA .so on ubuntu CI runners and
+          # fails. CI only validates logic and doesn't load the desktop-native ORT
+          # runtime, so skip that download.
+          ONNXRUNTIME_NODE_INSTALL: 'skip'
       - name: Install ffmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Verify release version
