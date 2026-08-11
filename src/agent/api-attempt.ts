@@ -27,6 +27,24 @@ import {
 } from './api-retry';
 import { ToolFailureTracker } from './toolFailure';
 
+/**
+ * AI SDK tool-execution timeout. `toolMs` bounds a single tool call within a
+ * request round. Synchronous long-task tools (e.g. on-device transcription,
+ * which must load a model then transcribe) can exceed the default tool budget,
+ * so we grant those tool names a longer execution window. Everything else keeps
+ * the short default so a stuck tool fails fast instead of tying up the request.
+ */
+const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
+const LONG_TASK_TOOL_TIMEOUT_MS = 300_000;
+/** Tool names whose execution legitimately runs for minutes (model load + inference). */
+const LONG_TASK_TOOL_NAMES: ReadonlySet<string> = new Set(['transcribe_track']);
+
+function toolTimeoutMs(toolSchemas: readonly AgentToolSchema[]): number {
+  return toolSchemas.some((schema) => LONG_TASK_TOOL_NAMES.has(schema.name))
+    ? LONG_TASK_TOOL_TIMEOUT_MS
+    : DEFAULT_TOOL_TIMEOUT_MS;
+}
+
 export interface ApiAttemptOptions {
   readonly model: LanguageModel;
   readonly system: string;
@@ -212,7 +230,11 @@ class ApiRequestAttempt {
         maxOutputTokens: this.options.maxOutputTokens,
         maxRetries: 0,
         abortSignal: this.options.signal,
-        timeout: { stepMs: 120_000, firstChunkMs: 30_000, toolMs: 30_000 },
+        timeout: {
+          stepMs: 120_000,
+          firstChunkMs: 30_000,
+          toolMs: toolTimeoutMs(this.options.toolSchemas ?? []),
+        },
         ...(this.options.providerOptions ? { providerOptions: this.options.providerOptions } : {}),
       }));
       if (!started.ok) {
