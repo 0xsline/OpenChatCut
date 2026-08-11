@@ -248,29 +248,17 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Download installers
+        uses: actions/download-artifact@v7
+        with:
+          pattern: desktop-*
+          path: release-files
+          merge-multiple: true
+
+      - name: Validate installers
         shell: bash
         run: |
           set -euo pipefail
           EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
-          for attempt in {1..8}; do
-            rm -rf release-assets release-files
-            mkdir -p release-assets release-files
-            if gh run download "$GITHUB_RUN_ID" \
-              --repo "$GITHUB_REPOSITORY" \
-              --pattern 'desktop-*' \
-              --dir release-assets; then
-              break
-            fi
-            if [[ "$attempt" == 8 ]]; then
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
-
-          find release-assets -type f \
-            \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' \
-            -o -name '*.yml' -o -name '*.blockmap' \) \
-            -exec cp {} release-files/ \;
           test "$(find release-files -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' \) | wc -l | tr -d ' ')" = 4
           test "$(find release-files -type f -name '*.zip' | wc -l | tr -d ' ')" = 2
           test "$(find release-files -type f -name '*.yml' | wc -l | tr -d ' ')" = 4
