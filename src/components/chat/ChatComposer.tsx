@@ -9,7 +9,7 @@ import { MenuDrillHeader } from '../timeline/MenuDrillHeader';
 import { findSkill, setCustomSkills, allCreativeSkills } from '../../agent/skills/skills-catalog';
 import type { SkillDefinition } from '../../agent/skills/skill-types';
 import { loadCustomSkills } from '../../persist/skillStore';
-import { loadAgentSettings, saveAgentSettings, type AgentSettings } from '../../agent/settings/agentSettings';
+import type { AgentSettings } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import {
   ComposerMoreMenu,
@@ -41,6 +41,8 @@ interface ChatComposerProps {
   onSubmit: () => void;
   onStop: () => void;
   onEnhance: () => void;
+  agentSettings: AgentSettings;
+  patchAgent: (patch: Partial<AgentSettings>) => void;
   enhancing: boolean;
   running: boolean;
   mode: ChatMode;
@@ -178,14 +180,7 @@ export function ChatComposer(props: ChatComposerProps) {
     onCreativeModeChange(skill.id);
     taRef.current?.focus();
   };
-  const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
-  const patchAgent = (patch: Partial<AgentSettings>) => {
-    setAgentSettings((prev) => {
-      const next = { ...prev, ...patch };
-      saveAgentSettings(next);
-      return next;
-    });
-  };
+  const { agentSettings, patchAgent } = props;
   const closePop = () => { setPop(null); setPopAnchor(null); };
   const toggle = (p: ComposerPopoverName, el?: EventTarget | null) => {
     const node = el instanceof HTMLElement ? el : null;
@@ -570,6 +565,7 @@ export function ChatComposer(props: ChatComposerProps) {
         <ComposerPopover anchor={popAnchor} onClose={closePop}>
           <AgentComposerSettings
             autoApply={autoApply}
+            running={running}
             onAutoApplyChange={onAutoApplyChange}
             settings={agentSettings}
             onSettingsChange={patchAgent}

@@ -143,7 +143,10 @@ export function isValidAgentArtifactIndex(
 ): value is AgentArtifactIndexEntry {
   return isProjectStoreRecord(value) && value.projectId === projectId
     && typeof value.artifactId === 'string' && ARTIFACT_ID.test(value.artifactId)
-    && typeof value.runId === 'string' && (value.kind === 'tool-result' || value.kind === 'checkpoint-source')
+    && typeof value.runId === 'string'
+    && (value.kind === 'tool-result'
+      || value.kind === 'checkpoint-source'
+      || value.kind === 'server-run-draft')
     && typeof value.bodySha256 === 'string' && SHA256.test(value.bodySha256)
     && Number.isInteger(value.originalBytes) && finite(value.originalBytes) >= 0
     && Number.isInteger(value.originalChars) && finite(value.originalChars) >= 0

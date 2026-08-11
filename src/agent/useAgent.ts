@@ -3,7 +3,7 @@ import type { AgentContextUsage } from './context-compaction';
 import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
 import type { AgentChangeSession } from './changeLog';
 import type { Proposal } from './proposal';
-import { useAgentState } from './useAgentState';
+import { useAgentState, type AgentHookState } from './useAgentState';
 import { useAgentHydration, useAgentPersistence } from './useAgentPersistence';
 import { useAgentRun, type AgentSend } from './useAgentRun';
 import { useAgentProposalActions } from './useAgentProposalActions';
@@ -32,10 +32,13 @@ export interface AgentController {
 }
 
 /** Compose the built-in chat Agent from focused state, runtime, proposal, and history hooks. */
-export function useAgent(ctx: AgentContext, projectId: string): AgentController {
-  const state = useAgentState(ctx);
-  useAgentHydration(state, projectId);
-  useAgentPersistence(state, projectId);
+export function useAgentController(
+  state: AgentHookState,
+  projectId: string,
+  enabled = true,
+): AgentController {
+  useAgentHydration(state, projectId, enabled);
+  useAgentPersistence(state, projectId, enabled);
   const runtime = useAgentRun(state, projectId);
   const proposalActions = useAgentProposalActions(state, projectId, runtime.send);
   const historyActions = useAgentHistoryActions(state, projectId);
@@ -53,4 +56,8 @@ export function useAgent(ctx: AgentContext, projectId: string): AgentController 
     ...proposalActions,
     ...historyActions,
   };
+}
+
+export function useAgent(ctx: AgentContext, projectId: string): AgentController {
+  return useAgentController(useAgentState(ctx), projectId);
 }

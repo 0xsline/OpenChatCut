@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
+import { parse as parseDotenv } from 'dotenv';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { serverPlugins } from './server/plugins/index.ts';
@@ -8,6 +9,15 @@ import { runtimeProfile } from './server/runtime-profile.ts';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
 if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');
+export function applyAuthoritativeLocalProvider(
+  env: Record<string, string>,
+  source: string,
+): void {
+  const parsed = parseDotenv(source);
+  const fileProvider = parsed.LLM_PROVIDER;
+  if (fileProvider !== undefined) env.LLM_PROVIDER = fileProvider.trim();
+}
+
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -19,27 +29,13 @@ export default defineConfig(({ mode }) => {
       Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     )
     : loadEnv(mode, process.cwd(), '');
-  // loadEnv lets a host shell override .env files. In the default profile the
-  // checkout's explicit provider remains authoritative; isolated profiles use
-  // their wrapper-merged process environment instead.
+  // Keep the default checkout's explicit .env.local provider authoritative over
+  // unrelated host-shell values; isolated profiles remain wrapper-controlled.
   if (profile.mode !== 'isolated-dev' && existsSync('.env.local')) {
-    const fileProvider = readFileSync('.env.local', 'utf8')
-      .split('\n')
-      .find((line) => /^LLM_PROVIDER=/.test(line))
-      ?.split('=', 2)[1]?.trim();
-    if (fileProvider) env.LLM_PROVIDER = fileProvider;
-  }
-  // The default profile must honor an explicit checkout .env.local provider even
-  // when the parent shell exports a different LLM_PROVIDER. Isolated profiles
-  // remain authoritative through the wrapper-provided process environment.
-  if (profile.mode !== 'isolated-dev' && existsSync('.env.local')) {
-    const fileProvider = readFileSync('.env.local', 'utf8')
-      .split('\n')
-      .find((line) => /^LLM_PROVIDER=/.test(line))
-      ?.split('=', 2)[1]?.trim();
-    if (fileProvider) env.LLM_PROVIDER = fileProvider;
+    applyAuthoritativeLocalProvider(env, readFileSync('.env.local', 'utf8'));
   }
   if (profile.mode === 'isolated-dev') {
+    process.stdout.write(`[OpenChatCut] isolated profile ${profile.id} · ${profile.rootDir}\n`);
   }
   // Seed the runtime keystore so the settings UI (POST /api/keys) can override any key
   // live. Server plugins (assembled in server/plugins/index.ts, shared with the

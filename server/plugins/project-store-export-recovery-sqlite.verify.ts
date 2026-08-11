@@ -43,7 +43,9 @@ function runChild(): void {
 
 function waitForMessage(child: ChildProcess, expected: (value: unknown) => boolean): Promise<unknown> {
   const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const cleanup = () => {
+    if (timer) clearTimeout(timer);
     child.off('message', onMessage);
     child.off('exit', onExit);
   };
@@ -56,6 +58,10 @@ function waitForMessage(child: ChildProcess, expected: (value: unknown) => boole
     cleanup();
     reject(new Error(`race child exited before response (${code ?? 'signal'})`));
   };
+  timer = setTimeout(() => {
+    cleanup();
+    reject(new Error('race child timed out before response'));
+  }, 5_000);
   child.on('message', onMessage);
   child.once('exit', onExit);
   return promise;
@@ -89,10 +95,15 @@ async function seedRecovery(home: string): Promise<void> {
 
 async function runParent(): Promise<void> {
   const home = await mkdtemp(join(tmpdir(), 'openchatcut-export-recovery-race-'));
+  const children: ChildProcess[] = [];
   try {
     await seedRecovery(home);
-    const children = [spawnChild(home), spawnChild(home)];
-    await Promise.all(children.map((child) => waitForMessage(child, (value) => value === 'ready')));
+    const ready = Array.from({ length: 2 }, () => {
+      const child = spawnChild(home);
+      children.push(child);
+      return waitForMessage(child, (value) => value === 'ready');
+    });
+    await Promise.all(ready);
     const results = children.map((child) => waitForMessage(
       child,
       (value) => !!value && typeof value === 'object' && ('accepted' in value || 'error' in value),
@@ -102,9 +113,18 @@ async function runParent(): Promise<void> {
     assert.deepEqual(settled.map((result) => result.error), [undefined, undefined]);
     assert.equal(settled.filter((result) => result.accepted).length, 1,
       'two independent SQLite processes must accept exactly one recovery owner');
-    for (const child of children) child.disconnect();
     console.log('✓ export recovery SQLite BEGIN IMMEDIATE race accepted exactly one owner');
   } finally {
+    const exits = children.map((child) => (
+      child.exitCode !== null || child.signalCode !== null
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => child.once('exit', () => resolve()))
+    ));
+    for (const child of children) {
+      if (child.connected) child.disconnect();
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    }
+    await Promise.all(exits);
     await rm(home, { recursive: true, force: true });
   }
 }

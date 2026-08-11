@@ -257,6 +257,22 @@ export async function storeAgentArtifact(record: AgentArtifactRecord): Promise<b
     }
   }));
 }
+export async function deleteAgentArtifacts(
+  projectId: string,
+  artifactIds: readonly string[],
+): Promise<void> {
+  const removing = new Set(artifactIds.filter((artifactId) => ARTIFACT_ID.test(artifactId)));
+  if (!removing.size) return;
+  await mutate(projectId, (current) => [{
+    ...current,
+    runs: current.runs.map((run) => ({
+      ...run,
+      artifactIds: run.artifactIds.filter((artifactId) => !removing.has(artifactId)),
+    })),
+    artifacts: current.artifacts.filter((artifact) => !removing.has(artifact.artifactId)),
+  }, undefined]);
+}
+
 export async function loadAgentArtifact(projectId: string, artifactId: string): Promise<AgentArtifactRecord | null> {
   requireProjectId(projectId);
   if (!ARTIFACT_ID.test(artifactId)) return null;

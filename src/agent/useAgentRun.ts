@@ -53,7 +53,7 @@ export interface AgentTurn {
   abortController: AbortController;
 }
 
-function draftContext(ctx: AgentContext, draft: DraftEngine): AgentContext {
+export function draftContext(ctx: AgentContext, draft: DraftEngine): AgentContext {
   return {
     commands: draft.commands,
     getState: draft.getState,
@@ -322,28 +322,37 @@ export async function commitPersistentOperations(
   return true;
 }
 
-async function discardUnexposedProposal(projectId: string, proposal: Proposal): Promise<void> {
+export async function discardUnexposedProposal(projectId: string, proposal: Proposal): Promise<void> {
   await settleProposal(projectId, proposal, 'stale');
   await clearProposal(projectId, proposal.id);
 }
+export function exposePendingProposal(turn: AgentTurn, proposal: Proposal): void {
+  turn.completionStatus = 'waiting_approval';
+  turn.state.setProposalStale(false);
+  turn.state.setProposal(proposal);
+}
+
 
 export async function createPendingProposal(
   turn: AgentTurn,
   persist: typeof saveProposal = saveProposal,
-): Promise<void> {
-  if (turn.abortController.signal.aborted || turn.completionStatus === 'failed' || !turn.ops.length) return;
+  expose = true,
+): Promise<Proposal | null> {
+  if (turn.abortController.signal.aborted || turn.completionStatus === 'failed' || !turn.ops.length) {
+    return null;
+  }
   if (turn.draftInvalidated) {
     showRunError(turn, '生成期间工程发生了其他修改；素材已保存到媒体池，请重新发送落轨请求。');
-    return;
+    return null;
   }
-  if (!turn.recorder) return;
+  if (!turn.recorder) return null;
   const proposal = buildProposal(
     turn.ops, turn.assistantText, turn.proposalBaseDoc, turn.draft.getState(), turn.recorder.runId,
   );
   await persist(turn.projectId, proposal);
   if (turn.abortController.signal.aborted) {
     await discardUnexposedProposal(turn.projectId, proposal);
-    return;
+    return null;
   }
   try {
     await turn.recorder.recordProposal(proposal.id, 'created');
@@ -353,11 +362,10 @@ export async function createPendingProposal(
   }
   if (turn.abortController.signal.aborted) {
     await discardUnexposedProposal(turn.projectId, proposal);
-    return;
+    return null;
   }
-  turn.completionStatus = 'waiting_approval';
-  turn.state.setProposalStale(false);
-  turn.state.setProposal(proposal);
+  if (expose) exposePendingProposal(turn, proposal);
+  return proposal;
 }
 
 function handleRuntimeFailure(turn: AgentTurn, error: unknown): void {

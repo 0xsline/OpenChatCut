@@ -76,6 +76,7 @@ interface ProjectStreamManifest {
   chat?: PersistedChat;
   creativeMode?: string;
   proposal?: StoredProposalRecord;
+  agentRuntime?: true;
 }
 
 interface StagedProjectImport {
@@ -254,6 +255,7 @@ export async function buildProjectExport(id: string, name: string): Promise<Proj
     ...(chat ? { chat } : {}),
     ...(creativeMode ? { creativeMode } : {}),
     ...(proposal ? { proposal } : {}),
+    ...(runtime ? { agentRuntime: true as const } : {}),
   };
   const stream = streamFrom(projectExportChunks(manifest, runtime, srcs, mediaMissing));
   const blob = await new Response(stream, {
@@ -411,6 +413,7 @@ function streamManifest(
     doc,
     ...(isPersistedChat(manifest.chat) ? { chat: sanitizePortableChat(manifest.chat) } : {}),
     ...(proposal ? { proposal } : {}),
+    ...(manifest.agentRuntime === true ? { agentRuntime: true as const } : {}),
     ...(typeof manifest.creativeMode === 'string' && manifest.creativeMode
       ? { creativeMode: manifest.creativeMode }
       : {}),

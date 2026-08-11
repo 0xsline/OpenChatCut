@@ -214,7 +214,7 @@ function createContextRepreparer(
     return { messages: prepared.messages, compacted: prepared.usage.compacted };
   };
 }
-interface CodexToolRequest {
+export interface CodexToolRequest {
   readonly name: string;
   readonly args: Record<string, unknown>;
   readonly activation: ToolActivation;
@@ -229,7 +229,7 @@ interface CodexToolRequest {
   readonly onFollowup?: (text: string) => void;
 }
 
-async function executeCodexTool(request: CodexToolRequest): Promise<{
+export async function executeCodexTool(request: CodexToolRequest): Promise<{
   readonly activation: ToolActivation;
   readonly execution: CodexToolExecution;
 }> {

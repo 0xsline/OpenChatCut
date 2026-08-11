@@ -21,6 +21,8 @@ export interface AgentSettings {
   planMode: boolean;
   /** Provider prompt-cache duration: short sessions favor the default TTL; long sessions request 1h where supported. */
   cacheMode: AgentCacheMode;
+  /** Opt-in: run the Agent loop on the local server so browser refreshes do not interrupt it. */
+  serverRun: boolean;
 }
 
 const KEY = 'cc.agentSettings.v1';
@@ -29,6 +31,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   mgTier: 'balance',
   planMode: false,
   cacheMode: 'short',
+  serverRun: false,
 };
 
 export function loadAgentSettings(): AgentSettings {
@@ -42,6 +45,7 @@ export function loadAgentSettings(): AgentSettings {
       cacheMode: AGENT_CACHE_MODES.includes(parsed.cacheMode as AgentCacheMode)
         ? parsed.cacheMode as AgentCacheMode
         : DEFAULT_AGENT_SETTINGS.cacheMode,
+      serverRun: parsed.serverRun === true,
     };
   } catch {
     return { ...DEFAULT_AGENT_SETTINGS };

@@ -69,6 +69,7 @@ function openDatabase(): DatabaseSync {
   const path = storePath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path);
+  db.exec('PRAGMA busy_timeout = 5000;');
   const existingKvTable = db.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'kv'
   `).get() as { name?: string } | undefined;
@@ -76,7 +77,6 @@ function openDatabase(): DatabaseSync {
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = FULL;
-    PRAGMA busy_timeout = 5000;
     CREATE TABLE IF NOT EXISTS kv (
       k TEXT PRIMARY KEY,
       v TEXT NOT NULL

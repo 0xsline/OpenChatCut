@@ -107,8 +107,10 @@ const chatKey = (id: string, generation = 'legacy') => generation === 'legacy'
   ? `chat:${id}`
   : `agent-session-chat:${id}:${generation}`;
 const chatWriteQueues = new Map<string, Promise<void>>();
+const MAX_CHAT_SERVER_RUN_TURN_IDS = 256;
 
-function serializeChatWrite(projectId: string, work: () => Promise<void>): Promise<void> {
+
+function serializeChatWrite<T>(projectId: string, work: () => Promise<T>): Promise<T> {
   const previous = chatWriteQueues.get(projectId) ?? Promise.resolve();
   const run = previous.catch(() => undefined).then(work);
   const settled = run.then(() => undefined, () => undefined);
@@ -127,6 +129,7 @@ export interface PersistedChat {
   llmProvider?: LlmProvider;
   toolFailures?: unknown;
   sessionGeneration?: string;
+  serverRunTurnIds?: string[];
 }
 
 export function isPersistedChat(v: unknown): v is PersistedChat {
@@ -147,18 +150,49 @@ export async function loadChat(projectId: string): Promise<PersistedChat | null>
   }
 }
 
+function serverRunTurnIds(chat: unknown): string[] {
+  if (!isPersistedChat(chat) || !Array.isArray(chat.serverRunTurnIds)) return [];
+  return chat.serverRunTurnIds.filter((id): id is string => typeof id === 'string')
+    .slice(-MAX_CHAT_SERVER_RUN_TURN_IDS);
+}
+
 export function saveChat(projectId: string, chat: PersistedChat): Promise<void> {
   const generation = agentSessionWriteGeneration(projectId);
   return serializeChatWrite(projectId, async () => {
     try {
       const sessionGeneration = await generation;
-      await idbSet(chatKey(projectId, sessionGeneration), {
+      const key = chatKey(projectId, sessionGeneration);
+      const priorIds = serverRunTurnIds(await idbGetLocalFirst<unknown>(key));
+      await idbSet(key, {
         ...chat,
+        ...(priorIds.length ? { serverRunTurnIds: priorIds } : {}),
         sessionGeneration,
       });
     } catch {
       /* ignore persist failures; the session still works in-memory */
     }
+  });
+}
+
+export function saveServerRunChat(
+  projectId: string,
+  runId: string,
+  chat: PersistedChat,
+): Promise<boolean> {
+  const generation = agentSessionWriteGeneration(projectId);
+  return serializeChatWrite(projectId, async () => {
+    const sessionGeneration = await generation;
+    const key = chatKey(projectId, sessionGeneration);
+    const existing = await idbGetLocalFirst<unknown>(key);
+    const priorIds = serverRunTurnIds(existing);
+    if (priorIds.includes(runId)) return false;
+    const nextRunIds = [...priorIds, runId].slice(-MAX_CHAT_SERVER_RUN_TURN_IDS);
+    await idbSet(key, { ...chat, serverRunTurnIds: nextRunIds, sessionGeneration });
+    const stored = await idbGetLocalFirst<unknown>(key);
+    if (!serverRunTurnIds(stored).includes(runId)) {
+      throw new Error('Server run model history could not be persisted.');
+    }
+    return true;
   });
 }
 

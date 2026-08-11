@@ -3,7 +3,6 @@ import {
   tool,
   type LanguageModel,
   type ModelMessage,
-  type ToolResultPart,
   type ToolSet,
 } from 'ai';
 import type { ProviderOptions } from '@ai-sdk/provider-utils';
@@ -25,7 +24,7 @@ import {
   harnessContextForModelRound,
   type HarnessToolExecutionContext,
 } from './harness-context';
-import { compactToolResultForModel } from './tool-result-compaction';
+import { toolResultModelOutput } from './tool-result-output';
 import {
   cacheTtlMsForProvider,
   getLanguageModel,
@@ -54,38 +53,6 @@ import {
 } from './api-round';
 
 const MAX_TOOL_TURNS = 30;
-type ToolResultOutput = ToolResultPart['output'];
-
-function toolModelOutput(output: unknown, preserveExact = false): ToolResultOutput {
-  const shaped = output as {
-    denied?: boolean;
-    note?: string;
-    __images?: Array<{ frame: number; base64: string }>;
-  } | null;
-  if (shaped?.denied) {
-    return { type: 'execution-denied', reason: shaped.note ?? 'User denied tool execution.' };
-  }
-  if (Array.isArray(shaped?.__images)) {
-    const projected = compactToolResultForModel(output);
-    return {
-      type: 'content',
-      value: [
-        ...shaped.__images.map((image) => ({
-          type: 'file' as const,
-          data: { type: 'data' as const, data: image.base64 },
-          mediaType: 'image/jpeg',
-          filename: `timeline-frame-${image.frame}.jpg`,
-        })),
-        {
-          type: 'text' as const,
-          text: JSON.stringify(projected ?? shaped.note ?? `${shaped.__images.length} frames rendered`),
-        },
-      ],
-    };
-  }
-  const value = JSON.stringify((preserveExact ? output : compactToolResultForModel(output)) ?? null);
-  return { type: 'text', value };
-}
 export function apiToolExecutionOutput(execution: CodexToolExecution): unknown {
   if (!execution.success) throw new Error(toolFailureReason(execution.result));
   return execution.result;
@@ -132,7 +99,7 @@ function createAgentTools(
         setActivation(activated.activation);
         return activated.result;
       },
-      toModelOutput: ({ output }) => toolModelOutput(output, schema.name === 'load_skill'),
+      toModelOutput: ({ output }) => toolResultModelOutput(output, schema.name === 'load_skill'),
     }),
   ]));
 }

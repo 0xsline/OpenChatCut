@@ -30,6 +30,26 @@ import {
   agentSessionWriteGeneration,
   currentAgentSessionGeneration,
 } from '../persist/agentSessionGeneration';
+import {
+  readStoredServerRun,
+  saveStoredServerRun,
+} from './serverRunSessionStorage';
+
+class MemoryStorage implements Storage {
+  private readonly values = new Map<string, string>();
+  get length(): number { return this.values.size; }
+  clear(): void { this.values.clear(); }
+  getItem(key: string): string | null { return this.values.get(key) ?? null; }
+  key(index: number): string | null { return [...this.values.keys()][index] ?? null; }
+  removeItem(key: string): void { this.values.delete(key); }
+  setItem(key: string, value: string): void { this.values.set(key, value); }
+}
+
+const originalSessionStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+Object.defineProperty(globalThis, 'sessionStorage', {
+  value: new MemoryStorage(),
+  configurable: true,
+});
 
 interface FakeAgentState {
   state: AgentHookState;
@@ -104,6 +124,12 @@ const projectId = `clear-history-${crypto.randomUUID()}`;
 await seedChat(projectId, 'sensitive context');
 const staleChat = await loadChat(projectId);
 const runId = await seedRun(projectId, 'completed', 'sensitive context');
+assert(saveStoredServerRun(projectId, {
+  projectId,
+  runId,
+  activeToolNames: [],
+  attempts: [],
+}));
 const artifactBody = 'sensitive tool output';
 const artifactId = 'clear-history-art';
 await storeAgentArtifact({
@@ -163,6 +189,11 @@ assert.equal(await kvGet(agentArtifactKey(projectId, artifactId)), undefined, 'a
 assert.equal(await kvGet(`chat:${projectId}`), undefined, 'chat bytes are reclaimed');
 assert.equal(await kvGet(`proposal:${projectId}`), undefined, 'proposal bytes are reclaimed');
 assert.equal(await kvGet(`agent-runtime:${projectId}`), undefined, 'runtime bytes are reclaimed');
+assert.equal(
+  readStoredServerRun(projectId),
+  null,
+  'successful generation rotation clears this tab server-run recovery state',
+);
 assert.ok(staleChat, 'stale chat fixture captured');
 await kvSet(`chat:${projectId}`, staleChat);
 await kvSet(`agent-runtime:${projectId}`, staleRuntime);
@@ -239,5 +270,11 @@ await assert.rejects(
   /Stored Agent session generation is invalid/,
 );
 await kvDel(`agent-session-generation:${corruptProjectId}`);
+
+if (originalSessionStorage) {
+  Object.defineProperty(globalThis, 'sessionStorage', originalSessionStorage);
+} else {
+  Reflect.deleteProperty(globalThis, 'sessionStorage');
+}
 
 console.log('useAgentHistoryActions.verify: context and inspector history clear atomically');

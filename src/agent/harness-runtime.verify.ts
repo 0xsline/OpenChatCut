@@ -373,20 +373,27 @@ async function verifyProposalTerminalFence(): Promise<void> {
   assert.notEqual(proposal.id, proposal.agentRunId);
   await recorder.recordProposal(proposal.id, 'created');
   await recorder.finalize('waiting_approval');
-  assert.equal(await resumeAgentRun(projectId, recorder.runId), recorder,
-    'proposal settlement reuses the live recorder that owns the review lease');
+  const recoveryLeaseToken = recorder.recoveryLeaseToken();
+  recorder.stopLease();
+  assert.equal(await resumeAgentRun(projectId, recorder.runId, 'wrong-token'), null,
+    'refresh recovery rejects an untrusted recorder lease token');
+  const resumed = await resumeAgentRun(projectId, recorder.runId, recoveryLeaseToken);
+  assert(resumed, 'refresh recovery renews the stored recorder lease token');
+  assert.equal(resumed.recoveryLeaseToken(), recoveryLeaseToken,
+    'the recovery lease token survives the browser handoff unchanged');
   let run = (await loadAgentRuntimeSidecar(projectId)).runs.find((item) => item.runId === recorder.runId)!;
   assert.deepEqual(run.proposalIds, [proposal.id]);
   assert.equal(run.events.find((event) => event.type === 'proposal_created')?.proposalId, proposal.id);
   assert.equal(proposal.agentRunId, run.runId);
   assert.equal(run.events.filter((event) => event.type === 'final').length, 0);
-  await recorder.recordProposal(proposal.id, 'applied');
+  await resumed.confirmOwnership();
+  await resumed.recordProposal(proposal.id, 'applied');
   run = (await loadAgentRuntimeSidecar(projectId)).runs.find((item) => item.runId === recorder.runId)!;
   assert.equal(run.events.find((event) => event.type === 'proposal_applied')?.proposalId, proposal.id);
   assert.equal(run.events.filter((event) => event.type === 'final').length, 0);
-  await recorder.finalize('completed');
+  await resumed.finalize('completed');
   run = (await loadAgentRuntimeSidecar(projectId)).runs.find((item) => item.runId === recorder.runId)!;
-  await recorder.finalize('completed', 'duplicate terminal callback');
+  await resumed.finalize('completed', 'duplicate terminal callback');
   run = (await loadAgentRuntimeSidecar(projectId)).runs.find((item) => item.runId === recorder.runId)!;
   assert.equal(run.events.filter((event) => event.type === 'final').length, 1);
 }

@@ -185,15 +185,19 @@ export function buildProposal(
  * passed migrateProjectDoc (track normalization, etc.), so fall back to
  * structural equality of *normalized* docs.
  */
-export function isProposalStale(proposal: Proposal, currentDoc: ProjectDoc): boolean {
-  if (proposal.baseDoc === currentDoc) return false;
+export function projectDocsDiffer(baseDoc: ProjectDoc, currentDoc: ProjectDoc): boolean {
+  if (baseDoc === currentDoc) return false;
   try {
-    const left = migrateProjectDoc(proposal.baseDoc) ?? proposal.baseDoc;
+    const left = migrateProjectDoc(baseDoc) ?? baseDoc;
     const right = migrateProjectDoc(currentDoc) ?? currentDoc;
     return JSON.stringify(left) !== JSON.stringify(right);
   } catch {
     return true;
   }
+}
+
+export function isProposalStale(proposal: Proposal, currentDoc: ProjectDoc): boolean {
+  return projectDocsDiffer(proposal.baseDoc, currentDoc);
 }
 
 /** Generated files are durable side effects: save assets now, propose only timeline edits. */

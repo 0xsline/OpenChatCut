@@ -7,6 +7,7 @@ import { initialAgentMessages } from './agent-session';
 import { PROVIDER } from './providerConfig';
 import { canRollbackAgentChange, rollbackAgentChange } from './changeLog';
 import type { AgentHookState } from './useAgentState';
+import { clearStoredServerRun } from './serverRunSessionStorage';
 
 type ClearBlockedError = Error & {
   code?: string;
@@ -28,6 +29,7 @@ export async function clearAgentHistory(state: AgentHookState, projectId: string
       projectId,
       durableRunId ? new Set([durableRunId]) : new Set(),
     );
+    clearStoredServerRun(projectId);
   } catch (error) {
     if (state.hydrationEpochRef.current !== hydrationEpoch) return;
     state.hydratedRef.current = true;

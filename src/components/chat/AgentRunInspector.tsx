@@ -20,6 +20,7 @@ import {
   type AgentRunRecord,
   type AgentRuntimeSidecar,
 } from '../../persist/agentRuntimeStore';
+import { serverEventDetail, serverEventsForRun, serverRunTerminalReason, isServerRunRecord, type ServerRunInspectorEvent } from './serverRunInspector';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 
@@ -230,6 +231,24 @@ function outcomeLabel(event: AgentRunEvent, t: Translate): string {
   return labels[kind];
 }
 
+function ServerEventSection({ events, t }: { events: readonly ServerRunInspectorEvent[]; t: Translate }) {
+  const visible = events.slice(-12).reverse();
+  return <Section title={t('服务端运行事件')}>
+    {visible.length === 0 ? <div style={emptyLine}>{t('没有服务端事件')}</div> : visible.map((event) => {
+      const detail = serverEventDetail(event);
+      const tool = typeof event.data.name === 'string' ? event.data.name : undefined;
+      const title = tool ?? event.type;
+      return <div key={`${event.id}-${event.type}`} style={row}>
+        <span style={{ ...statusDot, background: event.type === 'error' ? theme.danger : event.type === 'done' ? theme.success : theme.accent }} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={rowTitle}><code style={mono}>{title}</code><span>{event.type}</span></div>
+          {detail && <div style={subtle}>{detail}</div>}
+        </div>
+      </div>;
+    })}
+  </Section>;
+}
+
 function ToolOutcomeSection({ events, t }: { events: unknown; t: Translate }) {
   const outcomes = validToolOutcomes(events).slice(-8).reverse();
   return <Section title={t('工具结果')} hint={t('最近调用的工具及其执行结果（只列最近 8 条）')}>
@@ -278,10 +297,7 @@ function ArtifactSection({ artifacts, t }: { artifacts: readonly AgentArtifactIn
     {artifacts.slice(0, 6).map((artifact) => (
       <div key={artifact.artifactId} style={artifactRow}>
         <div style={rowTitle}><code title={artifact.artifactId} style={mono}>{artifact.artifactId}</code><span>{textValue(artifact.toolName) ?? artifact.kind}</span></div>
-        <div style={subtle}>
-          {numberText(artifact.originalChars) ?? '—'} {t('字符')} · {numberText(artifact.originalBytes) ?? '—'} {t('字节')}
-          {artifact.redacted ? ` · ${t('已脱敏')}` : ''}{artifact.binaryOmitted ? ` · ${t('已省略二进制')}` : ''}
-        </div>
+        <div style={subtle}>{numberText(artifact.originalChars) ?? '—'} {t('字符')} · {numberText(artifact.originalBytes) ?? '—'} {t('字节')}{artifact.redacted ? ` · ${t('已脱敏')}` : ''}{artifact.binaryOmitted ? ` · ${t('已省略二进制')}` : ''}</div>
         <code title={artifact.bodySha256} style={digest}>SHA-256 {artifact.bodySha256}</code>
       </div>
     ))}
@@ -308,20 +324,26 @@ function InspectorContent({ sidecar, loading, failed, t }: {
     const value = contextMetric(item.context, 'modelRequestCount');
     return sum + (typeof value === 'number' && Number.isFinite(value) ? value : 0);
   }, 0);
+  const serverRun = isServerRunRecord(run);
+  const serverEvents = serverRun ? serverEventsForRun(run) : [];
+  const terminalReason = serverRun ? serverRunTerminalReason(run, serverEvents) : undefined;
   return <>
     <div style={runSummary}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <span style={{ ...statusDot, background: statusColor(run.status) }} />
         <strong style={{ color: theme.text, fontSize: 12.5 }}>{statusLabel(run.status, t)}</strong>
+        {serverRun && <span style={serverBadge}>{t('服务端')}</span>}
         <span style={{ marginLeft: 'auto', color: theme.textDim, fontSize: 10.5 }}>{validTime(run.updatedAt)}</span>
       </div>
       <div style={backend}>{textValue(run.backend) ?? t('未知后端')} · {textValue(run.modelId) ?? t('未知模型')}</div>
       <div style={subtle}>{t('全部对话：{runs} 轮 · 累计 {requests} 次模型请求', { runs: numberText(runCount) ?? '0', requests: numberText(totalModelRequests) ?? '0' })}</div>
       <div style={{ ...subtle, marginTop: 4 }}>{run.userInputPreview || t('未记录请求摘要')}</div>
     </div>
-    {run.status === 'interrupted' && <div role="note" style={interrupted}>{t('这次运行被意外中断，系统不会自动继续或重放副作用。请先检查外部任务状态，再决定是否重试。')}</div>}
+    {run.status === 'interrupted' && <div role="note" style={interrupted}>{t('这次运行被意外中断，系统不会自动继续或重放副作用。请先检查外部任务状态，再决定是否重试。')}{terminalReason && <div style={reason}>{terminalReason}</div>}</div>}
+    {serverRun && run.status !== 'interrupted' && terminalReason && <div role="note" style={serverReason}>{terminalReason}</div>}
     <ContextSection run={run} t={t} />
     <CheckpointSection checkpoint={checkpoint} t={t} />
+    {serverRun && <ServerEventSection events={serverEvents} t={t} />}
     <ToolOutcomeSection events={run.events} t={t} />
     <ApprovalSection approvals={approvals} t={t} />
     <ArtifactSection artifacts={artifacts} t={t} />
@@ -380,6 +402,9 @@ const runSummary: CSSProperties = { padding: '10px 12px 9px' };
 const statusDot: CSSProperties = { width: 7, height: 7, flex: '0 0 auto', borderRadius: '50%' };
 const backend: CSSProperties = { marginTop: 6, color: theme.text, fontSize: 11.5, ...mono };
 const interrupted: CSSProperties = { margin: '0 12px 8px', padding: 8, border: `0.5px solid ${theme.gold}`, borderRadius: 4, color: theme.text, background: themeAlpha.ink(0.04), fontSize: 11, lineHeight: 1.45 };
+const serverBadge: CSSProperties = { padding: '1px 4px', borderRadius: 3, color: theme.accent, background: themeAlpha.accent(0.12), fontSize: 9.5 };
+const reason: CSSProperties = { marginTop: 5, color: theme.textDim, fontSize: 10.5 };
+const serverReason: CSSProperties = { margin: '0 12px 8px', padding: 8, border: `0.5px solid ${theme.border}`, borderRadius: 4, color: theme.text, background: themeAlpha.ink(0.03), fontSize: 11, lineHeight: 1.45 };
 const section: CSSProperties = { padding: '9px 12px', borderTop: `0.5px solid ${theme.border}` };
 const sectionTitle: CSSProperties = { margin: '0 0 7px', color: theme.textMuted, fontSize: 10.5, fontWeight: 650, display: 'flex', alignItems: 'center', gap: 4 };
 const subheadInSection: CSSProperties = { margin: '6px 0 4px', color: theme.textMuted, fontSize: 9.5, fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.3 };

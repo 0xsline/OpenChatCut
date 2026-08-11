@@ -5,7 +5,6 @@
 // Falls back to serial execution on failure collection so a broken verify
 // shows its output next to its name. Usage: npm test.
 import { exec } from 'node:child_process';
-import { cpus } from 'node:os';
 import { readFileSync } from 'node:fs';
 
 // Concurrency budget: many verifies are heavyweight (model loads, vite
@@ -15,7 +14,11 @@ import { readFileSync } from 'node:fs';
 // TEST_CONCURRENCY=8 on machines with headroom (and a page file).
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-const segments = pkg.scripts['test:serial'].split('&&').map((s) => s.trim()).filter(Boolean);
+const testScript = pkg.scripts['test:serial'];
+if (typeof testScript !== 'string' || !testScript.trim()) {
+  throw new Error('package.json is missing a test:serial script');
+}
+const segments = testScript.split('&&').map((s) => s.trim()).filter(Boolean);
 const CONCURRENCY = Math.max(2, Math.min(8, Number(process.env.TEST_CONCURRENCY) || 4));
 
 const run = (command) => new Promise((resolve) => {

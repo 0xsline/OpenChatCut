@@ -16,6 +16,10 @@ import { recordProposalOutcome } from './useAgentPersistence';
 import type { AgentSend } from './useAgentRun';
 import type { AgentHookState } from './useAgentState';
 import { resumeAgentRun, type AgentRunRecorder } from './runtime-ledger';
+import {
+  clearStoredServerRun,
+  readStoredServerRun,
+} from './serverRunSessionStorage';
 
 export interface ProposalPersistence {
   readonly saveVersion: typeof saveAutomaticVersion;
@@ -64,7 +68,9 @@ async function claimProposalRun(
   proposal: Proposal,
 ): Promise<AgentRunRecorder | null> {
   if (!proposal.agentRunId || !proposal.id) return null;
-  const recorder = await resumeAgentRun(projectId, proposal.agentRunId);
+  const stored = readStoredServerRun(projectId);
+  const leaseToken = stored?.runId === proposal.agentRunId ? stored.leaseToken : undefined;
+  const recorder = await resumeAgentRun(projectId, proposal.agentRunId, leaseToken);
   if (!recorder) throw new Error('proposal run ownership is unavailable');
   return recorder;
 }
@@ -123,6 +129,7 @@ async function cleanupAppliedProposal(
     if (recorder && proposal.id) {
       await recorder.recordProposal(proposal.id, 'applied');
       await recorder.finalize('completed', `applied ${operationCount} operations`);
+      clearStoredServerRun(projectId, recorder.runId);
     }
   } catch {
     return '提案已应用，但运行记录尚未完成；重新打开工程时会继续恢复。';

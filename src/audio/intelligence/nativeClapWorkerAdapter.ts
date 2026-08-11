@@ -1,3 +1,4 @@
+import type {} from '../../../src/desktop-api';
 import {
   isDesktopClapResponse,
   isDesktopInferenceProgress,
