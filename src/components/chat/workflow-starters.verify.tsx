@@ -79,12 +79,13 @@ try {
 assert.match(pickerMarkup, /<div class="cc-creative-mode-grid">/, 'professional workflows should use the dedicated two-column grid');
 assert.equal(
   (pickerMarkup.match(/class="cc-creative-mode-row cc-creative-mode-card"/g) ?? []).length,
-  9,
+  10,
   'every built-in workflow should render as an independently bordered card',
 );
 assert.equal((pickerMarkup.match(/aria-pressed="true"/g) ?? []).length, 1, 'exactly one workflow should expose selected state');
 assert.match(pickerMarkup, /长视频转短视频/);
 assert.match(pickerMarkup, /技能创作器/);
+assert.match(pickerMarkup, /新闻智能粗剪/);
 assert.match(pendingComposerMarkup, /请等待附件导入完成。/, 'pending attachment reason should be visible');
 assert.match(pendingComposerMarkup, /aria-describedby="cc-chat-composer-import-status"/, 'textarea should describe its pending gate');
 const pendingSubmitButton = pendingComposerMarkup.match(/<button[^>]*class="cc-chat-send-btn"[^>]*>/)?.[0];
