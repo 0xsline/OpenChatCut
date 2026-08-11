@@ -194,8 +194,8 @@ async function readProfileEnv(path) {
  * skips its own download checks, so dev stops re-downloading once the shell exists.
  * Returns undefined when nothing usable is found (caller falls back to Remotion).
  */
-export async function resolveDevHeadlessShell(root = process.cwd()) {
-  if (process.env.CC_BROWSER_EXECUTABLE) return undefined;
+export async function resolveDevHeadlessShell(root = process.cwd(), environment = process.env) {
+  if (environment.CC_BROWSER_EXECUTABLE) return undefined;
   const remotionDir = join(root, 'node_modules', '.remotion', 'chrome-headless-shell');
   let platformDirs;
   try {
@@ -203,7 +203,7 @@ export async function resolveDevHeadlessShell(root = process.cwd()) {
   } catch {
     return undefined;
   }
-  for (const platformDir of platformDirs) {
+  for (const platformDir of platformDirs.sort()) {
     if (platformDir === 'VERSION') continue;
     const appDir = join(remotionDir, platformDir);
     let candidates;
@@ -212,7 +212,7 @@ export async function resolveDevHeadlessShell(root = process.cwd()) {
     } catch {
       continue;
     }
-    for (const candidate of candidates) {
+    for (const candidate of candidates.sort()) {
       const candidatePath = join(appDir, candidate);
       let candidateStat;
       try {
@@ -221,10 +221,14 @@ export async function resolveDevHeadlessShell(root = process.cwd()) {
         continue;
       }
       if (!candidateStat.isDirectory()) continue;
-      const exePath = join(candidatePath, 'chrome-headless-shell');
+      const executableName = process.platform === 'win32'
+        ? 'chrome-headless-shell.exe'
+        : 'chrome-headless-shell';
+      const exePath = join(candidatePath, executableName);
       try {
         const exeStat = await stat(exePath);
-        if (exeStat.isFile()) return exePath;
+        const executable = process.platform === 'win32' || (exeStat.mode & 0o111) !== 0;
+        if (exeStat.isFile() && executable) return exePath;
       } catch {
         // try next candidate
       }
@@ -233,11 +237,15 @@ export async function resolveDevHeadlessShell(root = process.cwd()) {
   return undefined;
 }
 
-export async function profileChildEnvironment(profile, baseEnvironment = process.env) {
+export async function profileChildEnvironment(
+  profile,
+  baseEnvironment = process.env,
+  repoRoot = process.cwd(),
+) {
   const saved = await readProfileEnv(profile.keystorePath);
   const environment = { ...baseEnvironment, ...saved, [DEV_PROFILE_ID_ENV]: profile.id };
   if (!environment.CC_BROWSER_EXECUTABLE) {
-    const shellPath = await resolveDevHeadlessShell();
+    const shellPath = await resolveDevHeadlessShell(repoRoot, environment);
     if (shellPath) environment.CC_BROWSER_EXECUTABLE = shellPath;
   }
   return environment;

@@ -39,7 +39,7 @@ const LONG_TASK_TOOL_TIMEOUT_MS = 300_000;
 /** Tool names whose execution legitimately runs for minutes (model load + inference). */
 const LONG_TASK_TOOL_NAMES: ReadonlySet<string> = new Set(['transcribe_track']);
 
-function toolTimeoutMs(toolSchemas: readonly AgentToolSchema[]): number {
+export function resolveToolTimeoutMs(toolSchemas: readonly AgentToolSchema[]): number {
   return toolSchemas.some((schema) => LONG_TASK_TOOL_NAMES.has(schema.name))
     ? LONG_TASK_TOOL_TIMEOUT_MS
     : DEFAULT_TOOL_TIMEOUT_MS;
@@ -233,7 +233,7 @@ class ApiRequestAttempt {
         timeout: {
           stepMs: 120_000,
           firstChunkMs: 30_000,
-          toolMs: toolTimeoutMs(this.options.toolSchemas ?? []),
+          toolMs: resolveToolTimeoutMs(this.options.toolSchemas ?? []),
         },
         ...(this.options.providerOptions ? { providerOptions: this.options.providerOptions } : {}),
       }));

@@ -22,7 +22,7 @@
    - 这一步产出"确定性方案"，不是让用户在每一步都拍板——方案一次成型。
 
 4. **一次性执行**
-   - 用 `edit_item` 的批量编辑把方案落成时间线：trim / ripple / split / delete / fadeInSeconds / fadeOutSeconds。
+   - 用 `edit_item` 的批量更新/删除落成 trim、ripple delete 与 fade；需要切开片段时调用 `split_item`。
    - 讲话切割必须落在完整句子边界（用词级文字稿保证）。
    - **不新增**任何 BGM / 旁白 / 音效 / 转场音效；只保留原有人声与必要的现场声。
 
@@ -44,7 +44,7 @@
 
 ## 三、与 SKILL.md 工具对应
 
-- `read_project` / `read_timeline`、`transcribe_track`、`view_timeline_frames`、`edit_item`（trim/ripple/split/delete/fade）、`split_track`。
+- `read_project` / `read_timeline`、`transcribe_track`、`view_timeline_frames`、`edit_item`（trim / ripple delete / fade）、`split_item`、`edit_track`。
 - 验收里的"无新增音频"可用 `read_project` 复查 audio 轨上是否混入了非原声片段。
 
 ## 四、失败恢复

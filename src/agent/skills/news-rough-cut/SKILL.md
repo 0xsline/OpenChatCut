@@ -109,8 +109,8 @@ This is an OpenChatCut-native workflow. Use the current project's assets, transc
 - `read_project` / `read_timeline`：先读工程与时间线状态。
 - `transcribe_track` + 文字稿词级编辑：讲话语义完整切割、删口头语/重复。
 - `view_timeline_frames`：核对画面内容与关键现场。
-- `edit_item`（trim/ripple/split/delete）：按保留/删除规则剪辑；fadeInSeconds/fadeOutSeconds 处理剪切点衔接。
-- `split_track` / 多轨：人声轨与现场声整理。
+- `edit_item`（trim / ripple delete / fade）与 `split_item`（split）：按保留/删除规则剪辑并处理剪切点衔接。
+- `edit_track`：需要多轨整理时创建、调整或收紧人声轨与现场声轨。
 - 输出前用预览/导出预检核对时长与内容完整性。
 
 ## 参考文件

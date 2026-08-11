@@ -6,6 +6,7 @@ import {
   DEV_PROFILE_METADATA,
   loadOrCreateDevProfile,
   profileChildEnvironment,
+  resolveDevHeadlessShell,
 } from './dev-profile.mjs';
 
 const UUID_A = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -62,6 +63,37 @@ try {
   assert.equal(childEnvironment.ASSEMBLYAI_API_KEY, '',
     'an isolated empty-value tombstone must suppress an inherited checkout secret');
   assert.equal(childEnvironment.OPENCHATCUT_DEV_PROFILE_ID, UUID_A);
+
+  const shellPaths = await fixturePaths('headless-shell');
+  const executableName = process.platform === 'win32'
+    ? 'chrome-headless-shell.exe'
+    : 'chrome-headless-shell';
+  const shellExecutable = join(
+    shellPaths.repoRoot,
+    'node_modules',
+    '.remotion',
+    'chrome-headless-shell',
+    'current-platform',
+    'current-version',
+    executableName,
+  );
+  await mkdir(join(shellExecutable, '..'), { recursive: true });
+  await writeFile(shellExecutable, 'test shell', { mode: 0o755 });
+  assert.equal(
+    await resolveDevHeadlessShell(shellPaths.repoRoot, {}),
+    shellExecutable,
+    'an installed executable headless shell is reused',
+  );
+  const discoveredShellEnvironment = await profileChildEnvironment(first, {}, shellPaths.repoRoot);
+  assert.equal(discoveredShellEnvironment.CC_BROWSER_EXECUTABLE, shellExecutable);
+  const explicitShellEnvironment = await profileChildEnvironment(first, {
+    CC_BROWSER_EXECUTABLE: '/explicit/headless-shell',
+  }, shellPaths.repoRoot);
+  assert.equal(
+    explicitShellEnvironment.CC_BROWSER_EXECUTABLE,
+    '/explicit/headless-shell',
+    'an explicit browser executable remains authoritative',
+  );
   if (process.platform !== 'win32') {
     assert.equal((await stat(first.metadataPath)).mode & 0o777, 0o600);
     assert.equal((await stat(first.rootDir)).mode & 0o777, 0o700);
