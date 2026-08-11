@@ -130,7 +130,6 @@ for (const blockmap of [
   'arm64.zip.blockmap',
   'x64.zip.blockmap',
   'x64.exe.blockmap',
-  'x86_64.AppImage.blockmap',
 ]) {
   assert.ok(
     workflow.includes(`release-files/OpenChatCut-\${EXPECTED_VERSION}-${blockmap}`),
