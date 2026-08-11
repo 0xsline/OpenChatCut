@@ -14,27 +14,42 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 async function verifyLongOwnershipCannotBeStolen(root: string): Promise<void> {
   const path = join(root, 'long.lock');
+  let now = 0;
   const options = {
     path,
     leaseMs: 50,
     heartbeatMs: 10,
     retries: 6,
     retryMs: 5,
+    now: () => now,
   };
   const owner = await createOwnerSafeLeaseLock(options).acquire();
-  await sleep(120);
-  await assert.rejects(
-    createOwnerSafeLeaseLock(options).acquire(),
-    /busy/,
-    'a heartbeat must keep ownership beyond the stale lease duration',
-  );
-  const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as {
-    token: string;
-    pid: number;
-  };
-  assert.equal(record.token, owner.token);
-  assert.equal(record.pid, process.pid);
-  await owner.release();
+  try {
+    now = 120;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as {
+        expiresAt: number;
+        token: string;
+        pid: number;
+      };
+      if (record.expiresAt >= now + options.leaseMs) break;
+      if (attempt === 49) assert.fail('heartbeat did not renew the owner lease');
+      await sleep(5);
+    }
+    await assert.rejects(
+      createOwnerSafeLeaseLock(options).acquire(),
+      /busy/,
+      'a heartbeat must keep ownership beyond the stale lease duration',
+    );
+    const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as {
+      token: string;
+      pid: number;
+    };
+    assert.equal(record.token, owner.token);
+    assert.equal(record.pid, process.pid);
+  } finally {
+    await owner.release();
+  }
 }
 
 async function verifyOldReleaseCannotRemoveReplacement(root: string): Promise<void> {
