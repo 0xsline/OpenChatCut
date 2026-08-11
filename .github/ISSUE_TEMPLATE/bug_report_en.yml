@@ -15,11 +15,12 @@ body:
       label: Version *
       description: |
         Pick the EXACT version — do not write "latest".
-        - Desktop: Settings → About shows e.g. v0.1.9
+        - Desktop: Settings → About shows e.g. v0.2.0
         - Web: version is shown in the footer/about area
         - From source (main): attach the commit (git log -1 --format=%h)
       options:
-        - v0.1.9 (latest Release)
+        - v0.2.0 (latest Release)
+        - v0.1.9
         - v0.1.8
         - v0.1.7
         - v0.1.6
@@ -50,6 +51,7 @@ body:
         - Timeline editing
         - AI Agent chat editing
         - Export (MP4 / audio / FCPXML / SRT)
+        - App update / installer (desktop)
         - Transcription
         - Captions
         - Media import / media pool
