@@ -1,7 +1,8 @@
-import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
+import { defineConfig, loadEnv, searchForWorkspaceRoot, type Plugin } from 'vite';
 import { parse as parseDotenv } from 'dotenv';
 import react from '@vitejs/plugin-react';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { serverPlugins } from './server/plugins/index.ts';
 import { seedKeystore, getKey } from './server/keystore.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
@@ -16,6 +17,44 @@ export function applyAuthoritativeLocalProvider(
   const parsed = parseDotenv(source);
   const fileProvider = parsed.LLM_PROVIDER;
   if (fileProvider !== undefined) env.LLM_PROVIDER = fileProvider.trim();
+}
+
+// User/runtime media (public/media/uploads) and on-device models
+// (public/media/asr-models) are served at runtime by the upload middleware and
+// media-dir resolvers, NEVER from the static `dist/` build output — Vite copies
+// the whole `public/` tree into `outDir`, which would otherwise bake gigabytes
+// of user uploads into `dist/` on every `vite build`. This plugin strips those
+// two runtime-only subtrees from the build output after the build finishes.
+// It is pure build-output hygiene: it touches no runtime path, no URL semantics,
+// and no persisted data (electron-builder's own `!media/uploads/**` filter stays
+// as a second belt-and-suspenders guard).
+const USER_MEDIA_IN_BUILD = ['media/uploads', 'media/asr-models'];
+
+function excludeUserMediaFromBuild(): Plugin {
+  let outDir = resolve(process.cwd(), 'dist');
+  return {
+    name: 'openchatcut-exclude-user-media',
+    apply: 'build',
+    configResolved(config) {
+      // Honour Vite's resolved `build.outDir` (defaults to <root>/dist), so the
+      // prune stays correct even if the build root or output dir is reconfigured.
+      outDir = config.build.outDir;
+    },
+    closeBundle() {
+      for (const rel of USER_MEDIA_IN_BUILD) {
+        const target = resolve(outDir, rel);
+        if (existsSync(target)) {
+          try {
+            rmSync(target, { recursive: true, force: true });
+            process.stdout.write(`[vite] pruned runtime media out of build output: ${rel}\n`);
+          } catch {
+            // A cleanup failure must never fail the build: the runtime already
+            // ignores `dist/media/` and electron-builder filters uploads too.
+          }
+        }
+      }
+    },
+  };
 }
 
 
@@ -84,7 +123,7 @@ export default defineConfig(({ mode }) => {
     // public/ = user runtime only (media/uploads). Product static files live in assets/
     // and are served/copied by productAssetsPlugin (URLs unchanged: /fonts, /thumbnails, …).
     publicDir: 'public',
-    plugins: [react(), productAssetsPlugin(), ...serverPlugins()],
+    plugins: [react(), productAssetsPlugin(), excludeUserMediaFromBuild(), ...serverPlugins()],
     server: {
       port: 5199,
       strictPort: true,
