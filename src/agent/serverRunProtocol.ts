@@ -143,28 +143,118 @@ function createServerRunIdentity(): Pick<ServerRunPayload, 'runId' | 'capability
 const MAX_SERVER_RUN_BODY_BYTES = 960 * 1024;
 const MAX_SERVER_RUN_HISTORY_MESSAGES = 63;
 const MAX_SERVER_RUN_HISTORY_MESSAGE_CHARS = 32_000;
+// Base64 budget for visual parts (user-pasted image attachments / rendered
+// frames) carried through the server-run payload. Text stays within its own
+// char budget; images share one byte budget so a few frames fit but the whole
+// body cannot blow past MAX_SERVER_RUN_BODY_BYTES.
+const MAX_SERVER_RUN_PROJECTED_IMAGE_BYTES = 512 * 1024;
 const utf8Encoder = new TextEncoder();
 
-function messageText(message: ModelMessage): string {
-  if (typeof message.content === 'string') return message.content.trim();
-  if (!Array.isArray(message.content)) return '';
-  return message.content
-    .flatMap((part) => (
-      part && typeof part === 'object' && 'text' in part && typeof part.text === 'string'
-        ? [part.text]
-        : []
-    ))
-    .join('\n')
-    .trim();
+interface ProjectedPart {
+  readonly type: 'text' | 'file';
+  readonly text?: string;
+  readonly rawBase64?: string;
+  readonly mediaType?: string;
+  readonly filename?: string;
 }
 
-function projectedHistory(history: readonly ModelMessage[]): ModelMessage[] {
-  return history.flatMap((message) => {
-    if (message.role !== 'user' && message.role !== 'assistant') return [];
-    const content = messageText(message).slice(0, MAX_SERVER_RUN_HISTORY_MESSAGE_CHARS);
-    return content ? [{ role: message.role, content } as ModelMessage] : [];
-  }).slice(-MAX_SERVER_RUN_HISTORY_MESSAGES);
+function serializeImagePart(part: { image: string | { data: string; mediaType?: string }; mediaType?: string }): { base64: string; mediaType: string } {
+  const source = typeof part.image === 'string'
+    ? part.image
+    : (part.image as { data?: string })?.data ?? '';
+  const mediaType = typeof part.image === 'object'
+      && 'mediaType' in part.image && typeof part.image.mediaType === 'string'
+    ? part.image.mediaType
+    : part.mediaType ?? 'image/jpeg';
+  if (source.startsWith('data:')) {
+    const comma = source.indexOf(',');
+    if (comma >= 0) {
+      const head = source.slice(5, comma);
+      const slash = head.indexOf('/');
+      const semi = head.indexOf(';');
+      const inferred = semi > 0 ? head.slice(0, semi) : (slash > 0 ? `image/${head.slice(slash + 1)}` : mediaType);
+      return { base64: source.slice(comma + 1), mediaType: inferred || mediaType };
+    }
+    return { base64: source, mediaType };
+  }
+  return { base64: source, mediaType };
 }
+
+function serializeFilePart(part: { data: string | { data?: string }; mediaType?: string; filename?: string }): { base64: string; mediaType: string; filename?: string } {
+  const data = typeof part.data === 'string' ? part.data : part.data?.data ?? '';
+  return {
+    base64: data,
+    mediaType: part.mediaType ?? 'application/octet-stream',
+    ...(typeof part.filename === 'string' ? { filename: part.filename } : {}),
+  };
+}
+
+function toProjectedParts(message: ModelMessage): ProjectedPart[] {
+  if (typeof message.content === 'string') return [{ type: 'text', text: message.content }];
+  if (!Array.isArray(message.content)) return [];
+  const parts: ProjectedPart[] = [];
+  for (const part of message.content) {
+    if (!part || typeof part !== 'object') continue;
+    if (part.type === 'text' && typeof part.text === 'string') parts.push({ type: 'text', text: part.text });
+    else if (part.type === 'image') {
+      const { base64, mediaType } = serializeImagePart(part as never);
+      parts.push({ type: 'file', rawBase64: base64, mediaType, filename: 'attachment.jpg' });
+    } else if (part.type === 'file' && part.mediaType?.toLowerCase().startsWith('image/')) {
+      const { base64, mediaType, filename } = serializeFilePart(part as never);
+      parts.push({ type: 'file', rawBase64: base64, mediaType, filename: filename ?? 'attachment' });
+    }
+  }
+  return parts;
+}
+
+/**
+ * Project run history into a serializable ModelMessage[] for the server-side
+ * executor. Keeps each user/assistant message's text (bounded) plus its image /
+ * image-file attachments (base64, bounded by one shared byte budget) so visual
+ * input is passed through instead of dropped. Non-visual non-text parts are
+ * dropped; the array is capped at MAX_SERVER_RUN_HISTORY_MESSAGES.
+ */
+export function projectedHistory(history: readonly ModelMessage[]): ModelMessage[] {
+  const out: ModelMessage[] = [];
+  let imageBudget = MAX_SERVER_RUN_PROJECTED_IMAGE_BYTES;
+  for (const message of history) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    let textLen = 0;
+    let text = '';
+    const fileParts: Array<{ data: string; mediaType: string; filename?: string }> = [];
+    for (const part of toProjectedParts(message)) {
+      if (part.type === 'text' && part.text) {
+        text += part.text;
+        textLen += part.text.length;
+      } else if (part.type === 'file' && part.rawBase64 && imageBudget > 0) {
+        const base64 = part.rawBase64.slice(0, imageBudget);
+        imageBudget = Math.max(0, imageBudget - part.rawBase64.length);
+        if (base64) fileParts.push({
+          data: base64,
+          mediaType: part.mediaType ?? 'image/jpeg',
+          ...(part.filename ? { filename: part.filename } : {}),
+        });
+      }
+    }
+    let content: ModelMessage['content'];
+    if (!fileParts.length) {
+      const trimmed = text.slice(0, MAX_SERVER_RUN_HISTORY_MESSAGE_CHARS).trim();
+      if (!trimmed) continue;
+      content = trimmed;
+    } else {
+      const parts: unknown[] = [];
+      const trimmed = text.slice(0, MAX_SERVER_RUN_HISTORY_MESSAGE_CHARS).trim();
+      if (trimmed) parts.push({ type: 'text', text: trimmed });
+      for (const file of fileParts) {
+        parts.push({ type: 'file', data: { type: 'data', data: file.data }, mediaType: file.mediaType, ...(file.filename ? { filename: file.filename } : {}) });
+      }
+      content = parts as ModelMessage['content'];
+    }
+    out.push({ role: message.role, content } as ModelMessage);
+  }
+  return out.slice(-MAX_SERVER_RUN_HISTORY_MESSAGES);
+}
+
 
 function payloadByteLength(value: unknown): number {
   return utf8Encoder.encode(JSON.stringify(value)).byteLength;

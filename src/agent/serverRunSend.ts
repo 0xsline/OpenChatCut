@@ -7,6 +7,8 @@ import { ToolActivation } from './tool-activation';
 import type { AgentSettings } from './settings/agentSettings';
 import { buildAgentSystemPrompt } from './systemPrompt';
 import { getActiveAgentModelChoice } from './model-selection';
+import { describeImagesForTextModel } from './vision';
+import { resolveVisionModel } from './visionConfig';
 import { effectiveOutputTokenBudget } from './context-compaction';
 import type { AgentSendOptions } from './useAgentRun';
 import { createAgentRetry, type DisplayMessage } from './agent-session';
@@ -113,11 +115,11 @@ interface ActiveServerRun extends PreparedServerRun {
   admission: 'not-attempted' | 'uncertain' | 'accepted' | 'rejected';
 }
 
-function prepareServerRunPayload(
+async function prepareServerRunPayload(
   environment: ServerRunSendEnvironment,
   text: string,
   sendOptions: AgentSendOptions,
-): PreparedServerRun | null {
+): Promise<PreparedServerRun | null> {
   const refs = environment.refs;
   const trimmed = text.trim();
   if (!refs.enabled.current
@@ -136,7 +138,16 @@ function prepareServerRunPayload(
   const content = entries.length
     ? `${trimmed}\n\n${JSON.stringify({ type: 'chat_context_entry', entries })}`
     : trimmed;
-  const modelMessages = options.session?.modelMessages() ?? [];
+  let modelMessages = options.session?.modelMessages() ?? [];
+  // Vision pass-through for server-run: when the active main model is text-only
+  // and a custom vision model is configured, describe image attachments in the
+  // history to text before submitting, so the server receives them as usable
+  // context instead of dropping them. A vision-capable main model keeps the
+  // raw image parts (projectedHistory carries them through).
+  const vision = resolveVisionModel(choice);
+  if (vision) {
+    modelMessages = await describeImagesForTextModel(modelMessages, vision);
+  }
   const payload = buildServerRunPayload(environment.projectId, content, sendOptions, {
     history: modelMessages,
     systemPrompt: buildAgentSystemPrompt(ctx, settings),
@@ -469,7 +480,7 @@ export async function sendServerRun(
   text: string,
   sendOptions: AgentSendOptions = {},
 ): Promise<void> {
-  const prepared = prepareServerRunPayload(environment, text, sendOptions);
+  const prepared = await prepareServerRunPayload(environment, text, sendOptions);
   if (!prepared) return;
   if (!await acquireServerRunOwnership(environment.projectId, prepared.payload.runId)) {
     environment.appendMessage({
