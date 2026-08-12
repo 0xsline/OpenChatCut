@@ -10,7 +10,6 @@ import type { AgentContext } from './context';
 import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
 import type { AgentContextUsage } from './context-compaction';
 import { appendStreamingMessage } from './serverRunRecovery';
-import type { AgentRunRecorder } from './runtime-ledger';
 import {
   loadAgentSettings,
   type AgentSettings,
@@ -38,7 +37,6 @@ export interface ServerRunRefs {
   readonly runId: MutableServerRunRef<string | null>;
   readonly capability: MutableServerRunRef<string | null>;
   readonly runProject: MutableServerRunRef<string | null>;
-  readonly recorder: MutableServerRunRef<AgentRunRecorder | null>;
   readonly cursor: MutableServerRunRef<number>;
   readonly terminalRun: MutableServerRunRef<string | null>;
   readonly finalizingRun: MutableServerRunRef<string | null>;
@@ -85,7 +83,6 @@ function useServerRunRefs(ctx: AgentContext, options: ServerRunOptions): ServerR
   const runId = useRef<string | null>(null);
   const capability = useRef<string | null>(null);
   const runProject = useRef<string | null>(null);
-  const recorder = useRef<AgentRunRecorder | null>(null);
   const cursor = useRef(0);
   const terminalRun = useRef<string | null>(null);
   const finalizingRun = useRef<string | null>(null);
@@ -102,7 +99,7 @@ function useServerRunRefs(ctx: AgentContext, options: ServerRunOptions): ServerR
   const bundle = useRef<ServerRunRefs | null>(null);
   bundle.current ??= {
     enabled, ready, running, context, settings, options: optionRef, activeOptions,
-    abort, runId, capability, runProject, recorder, cursor, terminalRun,
+    abort, runId, capability, runProject, cursor, terminalRun,
     finalizingRun, staleRecoveryRun, assistantText, subscribe, abandonRecovery,
     runExecutor,
   };

@@ -1,14 +1,10 @@
 import { loadAgentRuntimeSidecar } from '../persist/agentRuntimeStore';
-import { resumeAgentRun, type AgentRunRecorder } from './runtime-ledger';
 import {
   loadServerRunMetadata,
   restoreServerRunToolActivation,
   type ServerRunMetadata,
 } from './serverRunProtocol';
-import {
-  patchStoredServerRun,
-  type StoredServerRun,
-} from './serverRunSessionStorage';
+import type { StoredServerRun } from './serverRunSessionStorage';
 import type { ToolActivation } from './tool-activation';
 import {
   permanentServerRunRecoveryError,
@@ -30,7 +26,6 @@ export type ServerRunRecoveryPreparation =
     readonly activation: ToolActivation;
     readonly cursor: number;
     readonly metadata: ServerRunMetadata;
-    readonly recorder: AgentRunRecorder;
   };
 
 function validateCursor(metadata: ServerRunMetadata, cursor: number): void {
@@ -39,15 +34,10 @@ function validateCursor(metadata: ServerRunMetadata, cursor: number): void {
   }
 }
 
-async function claimRecorder(
-  projectId: string,
-  stored: StoredServerRun,
-): Promise<AgentRunRecorder | null> {
-  if (!await acquireServerRunOwnership(projectId, stored.runId)) return null;
-  const recorder = await resumeAgentRun(projectId, stored.runId, stored.leaseToken);
-  if (recorder) return recorder;
-  releaseServerRunOwnership(projectId, stored.runId);
-  throw new Error('Server run recorder ownership could not be recovered.');
+async function claimRecorder(projectId: string, runId: string): Promise<boolean> {
+  // The server owns the sidecar; the browser only fences its own recovery
+  // with a local lock so a second tab does not replay the same run.
+  return acquireServerRunOwnership(projectId, runId);
 }
 
 export async function prepareServerRunRecovery(
@@ -77,16 +67,10 @@ export async function prepareServerRunRecovery(
   if (['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) {
     return { kind: 'local_terminal' };
   }
-  const recorder = await claimRecorder(projectId, stored);
-  if (!recorder) return { kind: 'owned_elsewhere' };
+  if (!await claimRecorder(projectId, stored.runId)) return { kind: 'owned_elsewhere' };
   if (recoveredRunAwaitsProposal(run)) {
-    await recorder.releaseLease();
     releaseServerRunOwnership(projectId, stored.runId);
     return { kind: 'proposal' };
   }
-  if (run.status === 'waiting_approval') await recorder.cancelPendingApprovalsOnHydration();
-  if (!stored.leaseToken && !patchStoredServerRun(projectId, {
-    leaseToken: recorder.recoveryLeaseToken(),
-  })) throw new Error('Browser durable storage could not update recovery ownership.');
-  return { kind: 'active', activation, capability, cursor, metadata, recorder };
+  return { kind: 'active', activation, capability, cursor, metadata };
 }

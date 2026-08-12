@@ -65,7 +65,7 @@ async function finishLocalTerminal(context: RecoveryContext): Promise<void> {
 }
 
 function releaseInactiveRecovery(context: RecoveryContext): void {
-  context.state.refs.recorder.current = null;
+  context.state.refs.runId.current = null;
   context.state.refs.running.current = false;
   context.state.refs.runExecutor.current = null;
   context.state.setRunning(false);
@@ -107,7 +107,6 @@ async function startRecoveredBrowserRun(
       content: stored.content,
       askOnly: stored.askOnly === true,
       references: stored.references ?? [],
-      recorder: prepared.recorder,
       baseDoc,
       resumed: true,
     })
@@ -118,7 +117,7 @@ async function startRecoveredBrowserRun(
     baseDoc: recovery?.baseDoc ?? baseDoc,
     draftDoc: recovery?.draftDoc,
     activation: prepared.activation,
-    recorder: prepared.recorder,
+    runId: stored.runId,
     abort: state.refs.abort.current,
     recovered: recoveredToolMap(recovery?.tools ?? []),
   });
@@ -143,10 +142,8 @@ async function continueActiveRecovery(
   prepared: ActiveRecovery,
 ): Promise<void> {
   const { state, stored, projectId } = context;
-  state.refs.recorder.current = prepared.recorder;
   state.refs.cursor.current = prepared.cursor;
   if (!context.alive.current || !state.refs.enabled.current) {
-    await prepared.recorder.releaseLease();
     releaseServerRunOwnership(projectId, stored.runId);
     state.setRunning(false);
     state.eventSession.resetRecovery();

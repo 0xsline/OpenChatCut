@@ -13,7 +13,6 @@ import { withoutModelImages } from './messages';
 import { effectiveOutputTokenBudget } from './context-compaction';
 import type { AgentSendOptions } from './useAgentRun';
 import { createAgentRetry, type DisplayMessage } from './agent-session';
-import { resumeAgentRun, type AgentRunRecorder } from './runtime-ledger';
 import { ServerRunToolExecutor } from './serverRunToolExecutor';
 import {
   buildServerRunPayload,
@@ -59,7 +58,6 @@ export interface ServerRunSendEnvironment {
     readonly capability: MutableRef<string | null>;
     readonly cursor: MutableRef<number>;
     readonly runProject: MutableRef<string | null>;
-    readonly recorder: MutableRef<AgentRunRecorder | null>;
     readonly terminalRun: MutableRef<string | null>;
     readonly staleRecoveryRun: MutableRef<string | null>;
     readonly assistantText: MutableRef<string>;
@@ -276,10 +274,6 @@ async function admitServerRun(
 ): Promise<void> {
   const { payload, abort, options } = active;
   throwIfAborted(abort.signal);
-  const recorder = await resumeAgentRun(environment.projectId, payload.runId);
-  if (!recorder) throw new Error('Server run recorder ownership could not be claimed.');
-  throwIfAborted(abort.signal);
-  environment.refs.recorder.current = recorder;
   await options.onRunPrepare?.({
     runId: payload.runId,
     text: active.trimmed,
@@ -293,7 +287,6 @@ async function admitServerRun(
   throwIfAborted(abort.signal);
   if (!patchStoredServerRun(environment.projectId, {
     admissionPending: false,
-    leaseToken: recorder.recoveryLeaseToken(),
   })) throw new Error('Browser durable storage is unavailable.');
   throwIfAborted(abort.signal);
   const recovery = await options.onRunStart?.({
@@ -302,18 +295,16 @@ async function admitServerRun(
     content: active.content,
     askOnly: payload.askOnly,
     references: payload.references,
-    recorder,
     baseDoc: active.baseDoc,
     resumed: false,
   });
   throwIfAborted(abort.signal);
-  activateServerRunTools(environment, active, recorder, recovery);
+  activateServerRunTools(environment, active, recovery);
 }
 
 function activateServerRunTools(
   environment: ServerRunSendEnvironment,
   active: ActiveServerRun,
-  recorder: AgentRunRecorder,
   recovery: ServerRunRecovery | void,
 ): void {
   const { payload, abort } = active;
@@ -326,7 +317,7 @@ function activateServerRunTools(
       payload.messages,
       payload.tools.map((schema) => schema.name),
     ),
-    recorder,
+    runId: payload.runId,
     abort,
     recovered: recoveredToolMap(recovery?.tools ?? []),
   });
@@ -387,7 +378,6 @@ function settleUnacceptedFailure(
   releaseServerRunOwnership(environment.projectId, active.payload.runId);
   clearStoredServerRun(environment.projectId, active.payload.runId);
   if (!ownsRun) return;
-  environment.refs.recorder.current = null;
   environment.refs.runId.current = null;
   environment.refs.capability.current = null;
   environment.refs.runProject.current = null;
@@ -465,7 +455,6 @@ function settleUncertainAdmission(
   ownsRun: boolean,
 ): void {
   if (!ownsRun) return;
-  environment.refs.recorder.current = null;
   environment.scheduleAdmissionRecovery(() => { void recoverUncertainAdmission(environment, active); });
 }
 

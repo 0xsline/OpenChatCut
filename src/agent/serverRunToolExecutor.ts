@@ -10,7 +10,6 @@ import type { ProjectDoc } from '../editor/types';
 import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
 import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
 import type { AgentEvent } from './runtime';
-import type { AgentRunRecorder } from './runtime-ledger';
 import {
   SERVER_RUN_CAPABILITY_HEADER,
   type ServerRunToolAction,
@@ -66,7 +65,7 @@ export interface ServerToolExecutorStart {
   readonly baseDoc: ProjectDoc;
   readonly draftDoc?: ProjectDoc;
   readonly activation: ToolActivation;
-  readonly recorder: AgentRunRecorder;
+  readonly runId: string;
   readonly abort: AbortController;
   readonly recovered: ReadonlyMap<string, RecoveredServerTool>;
 }
@@ -83,7 +82,7 @@ export class ServerRunToolExecutor {
   private activation = new ToolActivation(TOOL_SCHEMAS, []);
   private draft: DraftEngine | null = null;
   private baseDoc: ProjectDoc | null = null;
-  private recorder: AgentRunRecorder | null = null;
+  private runId: string | null = null;
   private capability: string | null = null;
   private abort: AbortController | null = null;
   private guardResolve: ((decision: GuardDecision) => void) | null = null;
@@ -120,7 +119,7 @@ export class ServerRunToolExecutor {
     this.activation = this.recoveredActivation(input);
     this.baseDoc = input.baseDoc;
     this.draft = input.draftDoc ? makeDraft(input.draftDoc) : null;
-    this.recorder = input.recorder;
+    this.runId = input.runId;
     this.abort = input.abort;
     patchStoredServerRun(this.projectId, {
       activeToolNames: this.activation.names(),
@@ -323,7 +322,7 @@ export class ServerRunToolExecutor {
     if (this.abort?.signal.aborted) return false;
     const message = error instanceof Error ? error.message : String(error);
     const outcome: ServerRunToolAction = {
-      runId: this.recorder?.runId ?? runId,
+      runId: this.runId ?? runId,
       toolCallId,
       argsDigest: request.argsDigest,
       name: request.name,
@@ -400,7 +399,7 @@ export class ServerRunToolExecutor {
           onEvent: (_event: AgentEvent) => undefined,
           settings: this.callbacks.settings(),
           onSkillGuard: (info) => this.guardRequest(info),
-          runRecorder: this.recorder ?? undefined,
+
           toolCallId,
           signal: this.abort?.signal,
         });
@@ -409,7 +408,7 @@ export class ServerRunToolExecutor {
       }
       this.activation = update.activation;
       const outcome: ServerRunToolAction = {
-        runId: this.recorder?.runId ?? runId,
+        runId: this.runId ?? runId,
         toolCallId,
         argsDigest: request.argsDigest,
         name: request.name,

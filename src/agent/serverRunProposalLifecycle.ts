@@ -15,6 +15,7 @@ import {
   exposePendingProposal,
   type AgentTurn,
 } from './useAgentRun';
+import { settleServerRun } from './serverRunSettleClient';
 import type { AgentHookState, MutableValue } from './useAgentState';
 import { isFailedToolResult } from './toolFailure';
 import {
@@ -107,7 +108,7 @@ function createTurn(
     completionStatus: 'completed',
     runtimeErrorShown: false,
     toolCallCount: 0,
-    recorder: input.recorder,
+    runId: input.runId,
     abortController,
   };
 }
@@ -232,7 +233,7 @@ async function persistToolAction(
   ref: ProposalRunRef,
 ): Promise<void> {
   const turn = ref.current.turn;
-  if (!turn || turn.recorder?.runId !== input.runId) {
+  if (!turn || turn.runId !== input.runId) {
     throw new Error('Server run proposal state is unavailable.');
   }
   if (ref.current.seenToolCalls.has(input.toolCallId)) return;
@@ -261,40 +262,48 @@ function beginTerminal(turn: AgentTurn, input: ServerRunTerminal): void {
 async function finalizeCompletedTurn(
   turn: AgentTurn,
   input: ServerRunTerminal,
-  recorder: NonNullable<AgentTurn['recorder']>,
 ): Promise<ServerRunTerminalResolution> {
   let committed: boolean;
   try {
     committed = await commitPersistentOperations(turn);
   } catch (error) {
-    await recorder.finalize(
-      'failed',
-      error instanceof Error ? error.message : String(error),
-    );
+    await settleServerRun(turn.projectId, input.runId, {
+      status: 'failed',
+      summary: error instanceof Error ? error.message : String(error),
+    });
     return 'finalized';
   }
   if (!committed) {
-    await recorder.finalize('failed', 'server run persistent operations failed');
+    await settleServerRun(turn.projectId, input.runId, {
+      status: 'failed',
+      summary: 'server run persistent operations failed',
+    });
     return 'finalized';
   }
   turn.persistentOps = [];
   turn.persistentBeforeDoc = null;
   if (!turn.ops.length) {
-    await recorder.finalize('completed', input.assistantText || 'server run completed');
+    await settleServerRun(turn.projectId, input.runId, {
+      status: 'completed',
+      summary: input.assistantText || 'server run completed',
+    });
     return 'finalized';
   }
   let proposal;
   try {
     proposal = await createPendingProposal(turn, undefined, false);
   } catch (error) {
-    await recorder.finalize(
-      'failed',
-      error instanceof Error ? error.message : String(error),
-    );
+    await settleServerRun(turn.projectId, input.runId, {
+      status: 'failed',
+      summary: error instanceof Error ? error.message : String(error),
+    });
     return 'finalized';
   }
   if (!proposal) {
-    await recorder.finalize('aborted', 'server run proposal was not exposed');
+    await settleServerRun(turn.projectId, input.runId, {
+      status: 'aborted',
+      summary: 'server run proposal was not exposed',
+    });
     return 'finalized';
   }
   return {
@@ -307,26 +316,31 @@ async function finalizeCompletedTurn(
 async function resolveTerminalDisposition(
   turn: AgentTurn,
   input: ServerRunTerminal,
-  recorder: NonNullable<AgentTurn['recorder']>,
 ): Promise<ServerRunTerminalResolution> {
   if (turn.completionStatus === 'waiting_approval') {
-    await recorder.finalize('waiting_approval', 'server run proposal awaiting approval');
+    await settleServerRun(turn.projectId, input.runId, {
+      status: 'waiting_approval',
+      summary: 'server run proposal awaiting approval',
+    });
     return 'waiting_approval';
   }
   if (input.status === 'awaiting_user') {
     turn.completionStatus = 'awaiting_user';
-    await recorder.finalize('completed', input.assistantText || 'server run awaiting user input');
+    await settleServerRun(turn.projectId, input.runId, {
+      status: 'completed',
+      summary: input.assistantText || 'server run awaiting user input',
+    });
     return 'finalized';
   }
   if (input.status !== 'completed') {
     turn.completionStatus = input.status === 'cancelled' ? 'aborted' : 'failed';
-    await recorder.finalize(
-      turn.completionStatus,
-      input.assistantText || turn.completionStatus,
-    );
+    await settleServerRun(turn.projectId, input.runId, {
+      status: turn.completionStatus,
+      summary: input.assistantText || turn.completionStatus,
+    });
     return 'finalized';
   }
-  return finalizeCompletedTurn(turn, input, recorder);
+  return finalizeCompletedTurn(turn, input);
 }
 
 async function finishServerRun(
@@ -337,13 +351,12 @@ async function finishServerRun(
   const cached = ref.current.handoffs.get(input.runId);
   if (cached) return cached;
   const turn = ref.current.turn;
-  const recorder = turn?.recorder;
-  if (!turn || !recorder || recorder.runId !== input.runId) return false;
+  if (!turn || turn.runId !== input.runId) return false;
   beginTerminal(turn, input);
-  const disposition = await resolveTerminalDisposition(turn, input, recorder);
+  const disposition = await resolveTerminalDisposition(turn, input);
   if (typeof disposition === 'object') {
     return ref.current.handoffs.retain(input.runId, disposition, async () => {
-      if (ref.current.turn?.recorder?.runId === input.runId) ref.current.turn = null;
+      if (ref.current.turn?.runId === input.runId) ref.current.turn = null;
       await clearServerRunDraft(projectId, input.runId).catch(() => undefined);
     });
   }
@@ -368,7 +381,7 @@ export function useServerRunProposalCallbacks(
   );
   const onRunAbandon = useCallback(async (runId: string) => {
     await ref.current.handoffs.clear(runId);
-    if (ref.current.turn?.recorder?.runId === runId) ref.current.turn = null;
+    if (ref.current.turn?.runId === runId) ref.current.turn = null;
     await clearServerRunDraft(projectId, runId);
   }, [projectId]);
   const onRunStart = useCallback(

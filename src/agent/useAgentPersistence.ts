@@ -29,10 +29,10 @@ import { parseAgentChangeLog } from './changeLog';
 import { projectToolResultForPersistence } from './runtime-artifact';
 import {
   currentAgentRunOwnerInstanceId,
-  resumeAgentRun,
   stopAgentRunLeases,
   type ProposalRuntimeStatus,
 } from './runtime-ledger';
+import { settleServerRun } from './serverRunSettleClient';
 import {
   clearStoredServerRun,
   readStoredServerRun,
@@ -61,21 +61,17 @@ export async function recordProposalOutcome(
     clearStoredServerRun(projectId, proposal.agentRunId);
     return;
   }
-  const stored = readStoredServerRun(projectId);
-  const leaseToken = stored?.runId === proposal.agentRunId ? stored.leaseToken : undefined;
-  const recorder = await resumeAgentRun(projectId, proposal.agentRunId, leaseToken);
   // The proposal is already settled by the caller; the ledger entry is
-  // best-effort. If another editor holds the lease or the run was collected,
-  // leave the cleanup to the next hydration recovery instead of failing the
-  // user-facing settlement.
-  if (recorder) {
-    try {
-      await recorder.recordProposal(proposal.id, status);
-      await recorder.finalize(finalStatus, summary);
-    } catch {
-      // Ledger write contested or unavailable; hydration recovery retries.
-    }
-  }
+  // best-effort and idempotent on the server (a missing or already
+  // terminal run is not an error). Leave transport failures to the next
+  // hydration recovery instead of failing the user-facing settlement.
+  await settleServerRun(projectId, proposal.agentRunId, {
+    status: finalStatus as 'completed' | 'failed' | 'aborted' | 'interrupted'
+      | 'waiting_approval' | 'awaiting_user',
+    proposalId: proposal.id,
+    proposalRuntimeStatus: status,
+    ...(summary ? { summary } : {}),
+  });
   if (['completed', 'failed', 'aborted', 'interrupted'].includes(finalStatus)) {
     clearStoredServerRun(projectId, proposal.agentRunId);
   }
@@ -148,19 +144,13 @@ async function recoverDurableProposal(
 }
 
 async function claimRecoveredProposalRun(
-  projectId: string,
   record: StoredProposalRecord | null,
-) {
+): Promise<{ runId: string } | null> {
   const runId = record?.phase !== 'settled' ? record?.proposal.agentRunId : undefined;
   if (!runId) return null;
-  const stored = readStoredServerRun(projectId);
-  const leaseToken = stored?.runId === runId ? stored.leaseToken : undefined;
-  const recorder = await resumeAgentRun(projectId, runId, leaseToken);
-  if (recorder) return recorder;
-  // Another editor holds the run lease (or the run is no longer resumable).
-  // The proposal stays persisted and is retried on the next open; this is a
-  // concurrency condition, not an error the user can act on.
-  return null;
+  // The server owns the run; hydration only checks the record still exists
+  // so the proposal can be re-exposed. No sidecar write happens here.
+  return { runId };
 }
 
 export async function loadRecoveredAgentSession(
@@ -191,11 +181,8 @@ export async function loadRecoveredAgentSession(
     currentAgentRunOwnerInstanceId(),
   );
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
-  const proposalRecorder = await claimRecoveredProposalRun(projectId, record);
-  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) {
-    await proposalRecorder?.releaseLease().catch(() => undefined);
-    return null;
-  }
+  const proposalRecorder = await claimRecoveredProposalRun(record);
+  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   const pending = currentDoc
     ? await recoverDurableProposal(projectId, record, currentDoc)
     : record?.phase === 'prepared' ? record.proposal : null;
@@ -207,12 +194,12 @@ export async function loadRecoveredAgentSession(
       await clearProposal(projectId, pending.id);
       return null;
     }
-    await proposalRecorder.finalize('waiting_approval', 'proposal recovered awaiting approval');
+    await settleServerRun(projectId, pending.agentRunId, {
+      status: 'waiting_approval',
+      summary: 'proposal recovered awaiting approval',
+    });
   }
-  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) {
-    await proposalRecorder?.releaseLease().catch(() => undefined);
-    return null;
-  }
+  if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   return { saved, pending, generation };
 }
 

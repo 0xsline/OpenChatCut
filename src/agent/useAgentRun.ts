@@ -14,7 +14,7 @@ import { appendAgentChange, createAgentChangeSession } from './changeLog';
 import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
 import { agentAutoApply } from './approval-mode';
 import type { RuntimeGuardRequest } from './runtime-guard';
-import type { AgentRunRecorder } from './runtime-ledger';
+import { settleServerRun } from './serverRunSettleClient';
 import type { AgentRunStatus } from '../persist/agentRuntimeStore';
 import type { AgentHookState } from './useAgentState';
 
@@ -41,7 +41,7 @@ export interface AgentTurn {
   completionStatus: AgentRunStatus;
   runtimeErrorShown: boolean;
   toolCallCount: number;
-  recorder: AgentRunRecorder | null;
+  runId: string;
   abortController: AbortController;
 }
 
@@ -178,9 +178,9 @@ export async function createPendingProposal(
     showRunError(turn, '生成期间工程发生了其他修改；素材已保存到媒体池，请重新发送落轨请求。');
     return null;
   }
-  if (!turn.recorder) return null;
+  if (!turn.runId) return null;
   const proposal = buildProposal(
-    turn.ops, turn.assistantText, turn.proposalBaseDoc, turn.draft.getState(), turn.recorder.runId,
+    turn.ops, turn.assistantText, turn.proposalBaseDoc, turn.draft.getState(), turn.runId,
   );
   await persist(turn.projectId, proposal);
   if (turn.abortController.signal.aborted) {
@@ -188,7 +188,11 @@ export async function createPendingProposal(
     return null;
   }
   try {
-    await turn.recorder.recordProposal(proposal.id, 'created');
+    await settleServerRun(turn.projectId, turn.runId, {
+      status: 'waiting_approval',
+      proposalId: proposal.id,
+      proposalRuntimeStatus: 'created',
+    });
   } catch (error) {
     await discardUnexposedProposal(turn.projectId, proposal);
     throw error;

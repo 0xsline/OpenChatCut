@@ -406,22 +406,11 @@ export async function runAgent(
   try {
     assertValidAgentToolSchemas(toolCatalog);
     const validatedCheckpointId = await validateCheckpointHistory(conv, ctx.getProjectId?.());
-    await opts?.runRecorder?.configure({
-      modelId: active.id, backend: active.backend, askOnly: opts.askOnly,
-    });
     const prepared = await prepareAgentContext({
       messages: conv, system, choice: active, ctx, tools: activation.schemas(),
       previousUsage: opts?.previousContextUsage, signal: opts?.signal,
     });
-    if (prepared.checkpoint && opts?.runRecorder) {
-      await opts.runRecorder.recordCheckpoint(prepared.checkpoint);
-    }
     const checkpointId = prepared.checkpoint?.checkpointId ?? validatedCheckpointId;
-    if (opts?.runRecorder) {
-      await opts.runRecorder.recordContext(await contextRecord(
-        system, active, activation.schemas(), prepared.usage, checkpointId,
-      ));
-    }
     onEvent({ type: 'context-usage', usage: prepared.usage });
     const result = await runPreparedAgent(
       prepared, ctx, onEvent, active, system, activation, checkpointId, opts,

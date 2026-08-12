@@ -49,7 +49,6 @@ function currentOptions(state: ServerRunState): ServerRunOptions {
 
 function resetAbandonedRun(state: ServerRunState): void {
   const { refs } = state;
-  refs.recorder.current = null;
   refs.runId.current = null;
   refs.capability.current = null;
   refs.runProject.current = null;
@@ -70,13 +69,10 @@ async function settleStaleRecovery(
   state: ServerRunState,
 ): Promise<void> {
   try {
-    const stored = readStoredServerRun(projectId);
     const transportWarning = await settleAbandonedServerRun({
       projectId,
       runId,
       capability: state.refs.capability.current,
-      leaseToken: stored?.leaseToken,
-      recorder: state.refs.recorder.current,
       summary: detail || 'Server run recovery became unavailable.',
     });
     await currentOptions(state).onRunAbandon?.(runId);
@@ -109,7 +105,6 @@ function resetFinishedRun(
   const { refs } = state;
   releaseServerRunOwnership(projectId, runId);
   refs.terminalRun.current = runId;
-  refs.recorder.current = null;
   refs.runId.current = null;
   refs.capability.current = null;
   refs.runProject.current = null;
@@ -263,7 +258,6 @@ function useFinishRun(
         runId,
         status,
         assistantText: current.refs.assistantText.current,
-        recorder: current.refs.recorder.current,
         commitModelTurn: currentOptions(current).session?.commitModelTurn,
         onTerminal: currentOptions(current).onTerminal,
       });

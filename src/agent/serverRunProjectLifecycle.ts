@@ -3,7 +3,6 @@ import { settleAbandonedServerRun } from './serverRunAbandon';
 import { releaseServerRunOwnership } from './serverRunOwnership';
 import {
   clearStoredServerRun,
-  readStoredServerRun,
 } from './serverRunSessionStorage';
 import type { ServerRunState } from './serverRunState';
 
@@ -11,8 +10,6 @@ interface AbandonedProjectRun {
   readonly projectId: string;
   readonly runId: string;
   readonly capability: string | null;
-  readonly leaseToken?: string;
-  readonly recorder: ServerRunState['refs']['recorder']['current'];
   readonly onRunAbandon?: (runId: string) => void | Promise<void>;
 }
 
@@ -22,8 +19,6 @@ async function settleProjectSwitch(run: AbandonedProjectRun): Promise<void> {
       projectId: run.projectId,
       runId: run.runId,
       capability: run.capability,
-      leaseToken: run.leaseToken,
-      recorder: run.recorder,
       summary: 'Server run interrupted because the project changed.',
     });
     await run.onRunAbandon?.(run.runId);
@@ -43,7 +38,7 @@ function detachSwitchedRun(state: ServerRunState): void {
   state.refs.runId.current = null;
   state.refs.capability.current = null;
   state.refs.runProject.current = null;
-  state.refs.recorder.current = null;
+  state.refs.runId.current = null;
   state.refs.activeOptions.current = null;
   state.refs.runExecutor.current = null;
   state.refs.running.current = false;
@@ -68,8 +63,6 @@ export function useServerRunProjectSwitch(
       projectId: oldProject,
       runId,
       capability: current.refs.capability.current,
-      leaseToken: readStoredServerRun(oldProject)?.leaseToken,
-      recorder: current.refs.recorder.current,
       onRunAbandon: current.refs.activeOptions.current?.onRunAbandon,
     } : null;
     detachSwitchedRun(current);

@@ -1,6 +1,6 @@
 import type { DisplayMessage } from './agent-session';
 import type { RecoveredServerTool } from './serverRunToolExecutor';
-import type { AgentRunRecorder } from './runtime-ledger';
+import { settleServerRun } from './serverRunSettleClient';
 import type {
   ServerRunSession,
   ServerRunTerminal,
@@ -114,7 +114,6 @@ interface FinishRecoveredRunInput {
   readonly runId: string;
   readonly status: ServerRunTerminal['status'];
   readonly assistantText: string;
-  readonly recorder: AgentRunRecorder | null;
   readonly commitModelTurn?: ServerRunSession['commitModelTurn'];
   readonly onTerminal?: (
     terminal: ServerRunTerminal,
@@ -126,16 +125,19 @@ export async function finishRecoveredRun(
 ): Promise<ServerRunTerminalDisposition | false> {
   const stored = readStoredServerRun(input.projectId);
   const resolution = await input.onTerminal?.({
-    runId: input.recorder?.runId ?? input.runId,
+    runId: input.runId,
     status: input.status,
     assistantText: input.assistantText,
-    recorder: input.recorder,
   }) ?? false;
-  let disposition = resolution && typeof resolution === 'object'
-    ? resolution.disposition
-    : resolution;
-  if (!disposition && input.recorder) {
-    await input.recorder.finalize(input.status === 'cancelled' ? 'aborted' : input.status);
+  let disposition: ServerRunTerminalDisposition | false;
+  if (resolution && typeof resolution === 'object') disposition = resolution.disposition;
+  else disposition = resolution;
+  if (!disposition) {
+    await settleServerRun(input.projectId, input.runId, {
+      status: input.status === 'cancelled' ? 'aborted'
+        : input.status === 'awaiting_user' ? 'awaiting_user' : input.status,
+      summary: input.assistantText || 'server run recovered terminal',
+    });
     disposition = 'finalized';
   }
   if (disposition && stored?.content) {
@@ -149,7 +151,7 @@ export async function finishRecoveredRun(
   if (resolution && typeof resolution === 'object') {
     await resolution.afterModelCommit();
   }
-  if (disposition !== 'waiting_approval' && disposition !== false) {
+  if (disposition === 'finalized') {
     clearStoredServerRun(input.projectId, input.runId);
   }
   return disposition;

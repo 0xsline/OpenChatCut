@@ -13,7 +13,7 @@ import type { ProjectDoc } from '../editor/types';
 import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
 import type { AgentContextUsage } from './context-compaction';
 import type { GuardDecision } from './skills/costGuard';
-import type { AgentRunRecorder } from './runtime-ledger';
+
 
 export interface ServerRunStart {
   readonly runId: string;
@@ -21,7 +21,6 @@ export interface ServerRunStart {
   readonly content: string;
   readonly askOnly: boolean;
   readonly references: readonly AgentReference[];
-  readonly recorder: AgentRunRecorder;
   readonly baseDoc: ProjectDoc;
   readonly resumed: boolean;
 }
@@ -53,7 +52,6 @@ export interface ServerRunTerminal {
   readonly runId: string;
   readonly status: 'awaiting_user' | 'completed' | 'failed' | 'cancelled';
   readonly assistantText: string;
-  readonly recorder: AgentRunRecorder | null;
 }
 export type ServerRunTerminalDisposition = 'finalized' | 'waiting_approval';
 export interface ServerRunTerminalHandoff {
