@@ -112,23 +112,35 @@ function commitTrimGesture(
   if (mode === 'trim-left') {
     const target = state.items.find((item) => item.id === id);
     if (!target) return;
+    const sourceTimed = target.kind === 'video' || target.kind === 'audio' || target.kind === 'sequence';
     const wordDriven = target.kind === 'audio' && hasOperationalTranscript(target);
-    const sourceBacktrack = wordDriven
-      ? baseSrcIn
-      : sourceFramesToTimelineFrames(target, baseSrcIn);
-    const earliestDelta = Math.max(-baseStart, -Math.floor(sourceBacktrack));
+    let earliestDelta = -baseStart;
+    if (sourceTimed) {
+      const sourceBacktrack = wordDriven
+        ? baseSrcIn
+        : sourceFramesToTimelineFrames(target, baseSrcIn);
+      earliestDelta = Math.max(earliestDelta, -Math.floor(sourceBacktrack));
+    }
     const delta = Math.max(Math.min(deltaF, baseDur - 1), earliestDelta);
-    if (delta !== 0) commands.setItemTiming(id, {
+    if (delta === 0) return;
+    const timing = {
       startFrame: baseStart + delta,
       durationInFrames: baseDur - delta,
-      srcInFrame: wordDriven
-        ? sourceWindowForTimelineRange({ srcInFrame: baseSrcIn, playbackRate: 1 }, delta, baseDur - delta).startFrame
-        : sourceWindowForTimelineRange(
-            { ...target, srcInFrame: baseSrcIn },
-            delta,
-            baseDur - delta,
-          ).startFrame,
-    });
+      ...(sourceTimed ? {
+        srcInFrame: wordDriven
+          ? sourceWindowForTimelineRange(
+              { srcInFrame: baseSrcIn, playbackRate: 1 },
+              delta,
+              baseDur - delta,
+            ).startFrame
+          : sourceWindowForTimelineRange(
+              { ...target, srcInFrame: baseSrcIn },
+              delta,
+              baseDur - delta,
+            ).startFrame,
+      } : {}),
+    };
+    commands.setItemTiming(id, timing);
     return;
   }
   const durationInFrames = Math.max(1, baseDur + deltaF);
