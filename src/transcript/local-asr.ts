@@ -228,6 +228,34 @@ function reportModelProgress(
 }
 
 /** Transcribe a same-origin media path with the on-device model. */
+/**
+ * Refuse to transcribe with a partially downloaded model. A model whose
+ * files are incomplete can load into a broken state and produce hallucinated
+ * repeated text instead of failing; the server-side catalog reports the
+ * sha-verified downloaded state (ONNX tier + GGML companion), so check it
+ * before any local engine runs. Server unreachable or unknown model id does
+ * not block (the worker layer still surfaces real load errors).
+ */
+export async function assertAsrModelDownloaded(config: AsrConfig): Promise<void> {
+  try {
+    const response = await fetch('/api/asr-models', { cache: 'no-store' });
+    if (!response.ok) return;
+    const catalog = await response.json() as {
+      models?: readonly { modelId?: string; downloaded?: boolean }[];
+    };
+    const entry = catalog.models?.find((model) => model.modelId === config.modelId);
+    if (entry && entry.downloaded === false) {
+      throw new TranscriptionError(
+        'service-unavailable',
+        `本地转写模型未完整下载（${config.modelId}）。请到 设置 → 转写 → 本地模型 重新下载后再试。`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof TranscriptionError) throw error;
+    // Catalog unavailable: let the worker surface the load error.
+  }
+}
+
 export async function localTranscribePathResumable(
   path: string,
   resume: LocalAsrCheckpoint = {},
@@ -242,6 +270,7 @@ export async function localTranscribePathResumable(
 
   const profile = await detectDeviceProfile();
   const config = chooseAsrConfig(profile);
+  await assertAsrModelDownloaded(config);
   let source: string | undefined;
   if (desktopNativeInferenceEnabled()) {
     source = await transcriptionSourceForPath(path, opts);
