@@ -129,6 +129,35 @@ for (const kind of ['image', 'gif', 'svg', 'motion-graphic', 'text', 'solid'] as
   );
 }
 
+// A source-free clip must not extend past the nearest preceding same-track clip's
+// right edge: the preview and commit clamp there instead of bouncing on release
+// (an overlapping retime would be rolled back by the reducer's overlap guard).
+for (const kind of ['image', 'gif', 'svg', 'motion-graphic', 'text', 'solid'] as const) {
+  calls.length = 0;
+  const collidingState: TimelineState = {
+    ...state,
+    items: [
+      { ...state.items[0]!, kind, startFrame: 120, durationInFrames: 50, srcInFrame: undefined },
+      { id: 'prev', track: 'video-main', startFrame: 70, durationInFrames: 40, name: 'Prev', kind: kind as never },
+    ],
+  };
+  commitTimelineDragGesture(collidingState, commands, {
+    ...drag,
+    id: 'clip-a',
+    mode: 'trim-left',
+    baseStart: 120,
+    baseDur: 50,
+    baseSrcIn: 0,
+    deltaF: -120, // attempts to extend far past the predecessor
+  }, 'selection');
+  assert.equal(calls[0]?.method, 'setItemTiming', `${kind} collision commits a clamped retime`);
+  assert.deepEqual(
+    calls[0]?.args,
+    ['clip-a', { startFrame: 110, durationInFrames: 60 }],
+    `${kind} left extension clamps to the predecessor right edge (70+40) instead of overlapping`,
+  );
+}
+
 calls.length = 0;
 commitTimelineDragGesture(state, commands, {
   ...drag,

@@ -76,6 +76,22 @@ interface PointerDeps {
   onDropSelectionToChat?: (selection: TimelineMarqueeSelection) => void;
 }
 
+/**
+ * The right edge of the nearest same-track clip that ends at or before `baseStart`.
+ * Used to clamp a left-extend trim so the dragged edge never overlaps its predecessor
+ * (which would be rolled back by the overlap guard and "bounce" on release).
+ */
+function predecessorRightEdge(state: TimelineState, id: string, track: TrackId | undefined, baseStart: number): number {
+  let rightEdge = -Infinity;
+  for (const item of state.items) {
+    if (item.id === id || item.track !== track) continue;
+    const end = item.startFrame + item.durationInFrames;
+    if (end > baseStart) continue;
+    if (end > rightEdge) rightEdge = end;
+  }
+  return rightEdge;
+}
+
 function commitMoveGesture(state: TimelineState, commands: EditorCommands, drag: Drag) {
   const { id, baseStart, deltaF, targetTrack, baseTrack } = drag;
   const validTrack = !!targetTrack
@@ -125,6 +141,11 @@ function commitTrimGesture(
         : sourceFramesToTimelineFrames(target, baseSrcIn);
       earliestDelta = Math.max(earliestDelta, -Math.floor(sourceBacktrack));
     }
+    // Left-extend must stop at the nearest preceding same-track clip's right edge.
+    // Without this clamp the retime would overlap the predecessor and the reducer's
+    // overlap guard would roll the whole gesture back — dragging past it would show
+    // a preview extension but "bounce" on release.
+    earliestDelta = Math.max(earliestDelta, predecessorRightEdge(state, id, baseTrack, baseStart) - baseStart);
     const delta = Math.max(Math.min(deltaF, baseDur - 1), earliestDelta);
     if (delta === 0) return;
     const timing = {
@@ -286,6 +307,28 @@ export function useTimelinePointer(deps: PointerDeps) {
     const limit = remainingSourceFrames(it, it.srcInFrame ?? 0, state.assets);
     return limit === null ? Infinity : limit - baseDur;
   };
+  /**
+   * The minimum (most-negative) delta the left handle may reach: it cannot extend
+   * past the nearest preceding same-track clip's right edge (or timeline zero).
+   * Mirrors commitTrimGesture so the preview does not show an overlap the commit
+   * would clamp away.
+   */
+  const trimLeftFloor = (id: string, baseStart: number): number => {
+    const it = state.items.find((x) => x.id === id);
+    if (!it) return -baseStart;
+    let floor = -baseStart;
+    if (it.kind === 'video' || it.kind === 'audio' || it.kind === 'sequence') {
+      const wordDriven = it.kind === 'audio' && hasOperationalTranscript(it);
+      const sourceBacktrack = wordDriven
+        ? (it.srcInFrame ?? 0)
+        : sourceFramesToTimelineFrames(it, it.srcInFrame ?? 0);
+      floor = Math.max(floor, -Math.floor(sourceBacktrack));
+    }
+    return Math.max(
+      floor,
+      predecessorRightEdge(state, id, it.track, baseStart) - baseStart,
+    );
+  };
   const applyPointerMove = (clientX: number, clientY: number, publish = true) => {
     const currentMarquee = marqueeRef.current;
     if (currentMarquee) {
@@ -325,6 +368,9 @@ export function useTimelinePointer(deps: PointerDeps) {
     const cap = currentDrag.mode === 'trim-right'
       ? trimRightCap(currentDrag.id, currentDrag.baseDur)
       : Infinity;
+    const floor = currentDrag.mode === 'trim-left'
+      ? trimLeftFloor(currentDrag.id, currentDrag.baseStart)
+      : -Infinity;
     const selectionDelta = currentDrag.mode === 'move'
       ? clampTimelineSelectionDelta(
         state,
@@ -333,7 +379,7 @@ export function useTimelinePointer(deps: PointerDeps) {
         snapped.deltaF,
       )
       : snapped.deltaF;
-    const deltaF = Math.min(selectionDelta, cap);
+    const deltaF = Math.min(Math.max(selectionDelta, floor), cap);
     const snapAt = deltaF === snapped.deltaF ? snapped.snapAt : null;
     const targetTrack = currentDrag.mode === 'move'
       ? trackFromClientY(clientY)
