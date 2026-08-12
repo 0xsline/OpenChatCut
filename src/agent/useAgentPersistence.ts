@@ -144,12 +144,18 @@ async function recoverDurableProposal(
 }
 
 async function claimRecoveredProposalRun(
+  projectId: string,
   record: StoredProposalRecord | null,
 ): Promise<{ runId: string } | null> {
   const runId = record?.phase !== 'settled' ? record?.proposal.agentRunId : undefined;
   if (!runId) return null;
   // The server owns the run; hydration only checks the record still exists
   // so the proposal can be re-exposed. No sidecar write happens here.
+  const sidecar = await loadAgentRuntimeSidecar(projectId);
+  const run = sidecar.runs.find((candidate) => candidate.runId === runId);
+  if (!run || ['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) {
+    return null;
+  }
   return { runId };
 }
 
@@ -181,7 +187,7 @@ export async function loadRecoveredAgentSession(
     currentAgentRunOwnerInstanceId(),
   );
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
-  const proposalRecorder = await claimRecoveredProposalRun(record);
+  const proposalRecorder = await claimRecoveredProposalRun(projectId, record);
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   const pending = currentDoc
     ? await recoverDurableProposal(projectId, record, currentDoc)

@@ -18,9 +18,11 @@ export const serverRunRecoveryDelay = (attempt: number): number =>
 export function storedServerRunPreservesHydration(
   stored: StoredServerRun | null,
 ): stored is StoredServerRun {
-  return !!stored?.capability && (
-    !!stored.leaseToken || stored.admissionPending === true
-  );
+  // A stored run with a capability is a live server run: preserve it
+  // through hydration unconditionally. The browser no longer writes lease
+  // tokens (single-writer), so requiring one here would interrupt every
+  // active run on reload or second-tab open.
+  return !!stored?.capability;
 }
 
 const SERVER_RUN_ADMISSION_GRACE_MS = 30_000;
@@ -134,8 +136,11 @@ export async function finishRecoveredRun(
   else disposition = resolution;
   if (!disposition) {
     await settleServerRun(input.projectId, input.runId, {
+      // The server settle endpoint does not accept 'awaiting_user' (it is
+      // a transient end-of-turn status); a recovered run awaiting user
+      // input is final as far as the ledger is concerned.
       status: input.status === 'cancelled' ? 'aborted'
-        : input.status === 'awaiting_user' ? 'awaiting_user' : input.status,
+        : input.status === 'awaiting_user' ? 'completed' : input.status,
       summary: input.assistantText || 'server run recovered terminal',
     });
     disposition = 'finalized';

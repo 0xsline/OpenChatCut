@@ -43,7 +43,7 @@ const OUTCOME_STATUS: Record<ProposalSettlementOutcome, {
 }> = {
   applied: { runtime: 'applied', final: 'completed', summary: 'proposal applied' },
   rejected: { runtime: 'rejected', final: 'aborted', summary: 'proposal rejected' },
-  stale: { runtime: 'stale', final: 'waiting_approval', summary: 'proposal became stale' },
+  stale: { runtime: 'stale', final: 'aborted', summary: 'proposal became stale' },
   reproposed: { runtime: 'reproposed', final: 'aborted', summary: 'proposal replaced' },
 };
 

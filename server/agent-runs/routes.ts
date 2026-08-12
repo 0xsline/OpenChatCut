@@ -33,6 +33,7 @@ import {
 } from './store-settle';
 import { digestValue } from './store-values';
 import { deleteAgentArtifacts, loadAgentRuntimeSidecar, storeAgentArtifact } from '../../src/persist/agentRuntimeStore';
+import { sha256Text } from '../../src/persist/agentRuntimeStore';
 import {
   readJson,
   requestHeader,
@@ -346,7 +347,21 @@ async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: st
   const proposalRuntimeStatus = typeof body.proposalRuntimeStatus === 'string'
     ? body.proposalRuntimeStatus
     : undefined;
+  const PROPOSAL_RUNTIME_STATUSES: Record<string, true> = {
+    created: true, applied: true, rejected: true, stale: true, reproposed: true,
+  };
+  if (proposalRuntimeStatus !== undefined && !PROPOSAL_RUNTIME_STATUSES[proposalRuntimeStatus]) {
+    sendJson(res, 400, { error: 'invalid proposal runtime status' });
+    return;
+  }
   const summary = typeof body.summary === 'string' ? body.summary : undefined;
+  // The run must belong to this project with a matching capability, and a
+  // terminal settle must discard any deferred admission and stop an
+  // in-flight executor so no events land after the final event.
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
+  if (SETTLE_STATUSES[status]) discardDeferredRun(runId);
+  if (SETTLE_STATUSES[status]) await cancelRun(run).catch(() => undefined);
   const outcome = await settleServerRun(projectId, runId, {
     status: status as ServerRunSettleStatus,
     ...(proposalId ? { proposalId } : {}),
@@ -364,19 +379,21 @@ async function handleDraftStore(req: IncomingMessage, res: ServerResponse, runId
     sendJson(res, 400, { error: 'draft artifact is required' });
     return;
   }
+  const rawBody = typeof artifact.body === 'string' ? artifact.body : '';
   const accepted = await storeAgentArtifact({
     version: 1,
     artifactId: typeof artifact.artifactId === 'string' ? artifact.artifactId : '',
     projectId,
     runId,
     kind: 'server-run-draft',
-    bodySha256: typeof artifact.bodySha256 === 'string' ? artifact.bodySha256 : '',
-    originalBytes: Number(artifact.originalBytes) || 0,
-    originalChars: Number(artifact.originalChars) || 0,
+    // Recompute server-side: never trust client-claimed digests/sizes.
+    bodySha256: await sha256Text(rawBody),
+    originalBytes: new TextEncoder().encode(rawBody).byteLength,
+    originalChars: rawBody.length,
     createdAt: Date.now(),
     redacted: artifact.redacted === true,
     binaryOmitted: artifact.binaryOmitted === true,
-    body: typeof artifact.body === 'string' ? artifact.body : '',
+    body: rawBody,
     ...(typeof artifact.toolCallId === 'string' ? { toolCallId: artifact.toolCallId } : {}),
     ...(typeof artifact.toolName === 'string' ? { toolName: artifact.toolName } : {}),
   });
