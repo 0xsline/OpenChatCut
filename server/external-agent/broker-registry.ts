@@ -105,9 +105,14 @@ export class EditorConnectionRegistry {
     if (!trustedInternalCall && registrationCapability && !validRenewal) {
       throw new ExternalEditorCallError('stale', 'Editor registration capability is stale.');
     }
-    if (!trustedInternalCall && previous && !validRenewal && this.isConnected(projectId)) {
-      throw new ExternalEditorCallError('rejected', 'Project already has an active editor registration.');
-    }
+    // A different browser window may take over the active connection for the
+    // same project. Single-window desktop users never open one project in two
+    // windows, but a reloaded/fresh window (a new random editor id) must be able
+    // to (re)connect without a persistent "already has an active editor"
+    // rejection. The old entry is replaced below by this.editors.set, and the
+    // persisted ownership claim (validated at validateOwnershipClaim) still
+    // fences stale takeovers. Offline/multi-writer safety comes from the
+    // withProjectStoreLock serialization and the ownership epoch checks.
     validateOwnershipClaim(ownership, { projectId, editorInstanceId, baseRevision });
     const ownershipEpoch = ownership?.epoch;
     if (previous && bindingChanged(previous, editorInstanceId, baseRevision, ownershipEpoch)) {
