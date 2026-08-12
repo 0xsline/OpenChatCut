@@ -39,15 +39,15 @@ Object.defineProperty(globalThis, 'localStorage', {
 saveAgentSettings({ mgTier: 'quality', planMode: true, cacheMode: 'long', serverRun: false });
 assert.deepStrictEqual(
   loadAgentSettings(),
-  { mgTier: 'quality', planMode: true, cacheMode: 'long', serverRun: false },
-  'save→load roundtrip 保真',
+  { mgTier: 'quality', planMode: true, cacheMode: 'long', serverRun: true },
+  'save→load roundtrip 保真(server-side execution is always on)',
 );
 // Removed settings from older storage must not leak back into the active settings shape.
 store.set('cc.agentSettings.v1', JSON.stringify({ skillGuard: true, thinkingEnabled: true, mgTier: 'speed', planMode: false }));
 assert.deepStrictEqual(
   loadAgentSettings(),
-  { mgTier: 'speed', planMode: false, cacheMode: 'short', serverRun: false },
-  '旧 thinkingEnabled 字段被忽略且新缓存字段安全回退',
+  { mgTier: 'speed', planMode: false, cacheMode: 'short', serverRun: true },
+  '旧 thinkingEnabled 字段被忽略且新缓存字段安全回退(server-side execution stays on)',
 );
 // Illegal tier / Missing fields fall back to default
 store.set('cc.agentSettings.v1', JSON.stringify({ mgTier: 'ludicrous' }));

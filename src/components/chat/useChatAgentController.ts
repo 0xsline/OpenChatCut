@@ -1,7 +1,8 @@
 import { useRef } from 'react';
 import type { AgentContext } from '../../agent/context';
-import { useAgentController, type AgentController } from '../../agent/useAgent';
+import type { AgentController } from '../../agent/useAgent';
 import { useAgentState } from '../../agent/useAgentState';
+import { enhanceAgentPrompt } from '../../agent/agent-session';
 import { useServerRun } from '../../agent/useServerRun';
 import type { ServerRunController } from '../../agent/serverRunProtocol';
 import {
@@ -9,10 +10,15 @@ import {
   type ServerRunProposalBridge,
 } from '../../agent/serverRunProposalBridge';
 
+/**
+ * Adapt the server-side run controller + its proposal bridge into the chat
+ * panel's AgentController surface. Server-side execution is now the only Agent
+ * run path (the browser-side runAgent loop was removed); this adapter covers
+ * every controller field without a fallback to browser execution.
+ */
 function serverRunAdapter(
   run: ServerRunController,
   bridge: ServerRunProposalBridge,
-  enhance: AgentController['enhance'],
 ): AgentController {
   return {
     messages: run.messages,
@@ -31,7 +37,9 @@ function serverRunAdapter(
     changeLog: bridge.changeLog,
     send: run.send,
     stop: run.stop,
-    enhance,
+    // Prompt enhancement is a single, stateless model call (a short text
+    // rewrite), not the Agent run loop; it stays a direct model invocation.
+    enhance: enhanceAgentPrompt,
     clearHistory: bridge.clearHistory,
     applyProposal: bridge.applyProposal,
     forceApplyProposal: bridge.forceApplyProposal,
@@ -42,27 +50,28 @@ function serverRunAdapter(
   };
 }
 
+/**
+ * Chat-panel Agent controller. `serverRunEnabled` is accepted for signature
+ * compatibility but is deliberately ignored: server-side execution is the only
+ * Agent path, so the panel always drives useServerRun and never a browser-side
+ * runAgent loop.
+ */
 export function useChatAgentController(
   ctx: AgentContext,
   projectId: string,
-  serverRunEnabled: boolean,
+  _serverRunEnabled = true,
 ): AgentController {
   const state = useAgentState(ctx);
-  const backend = useRef({ mode: serverRunEnabled, running: false });
-  const effectiveServerRun = backend.current.running
-    ? backend.current.mode
-    : serverRunEnabled;
-  const builtInAgent = useAgentController(state, projectId, !effectiveServerRun);
   const serverRunRef = useRef<AgentController['send']>(() => Promise.resolve());
   const bridge = useServerRunProposalBridge(
     state,
     ctx,
     projectId,
-    effectiveServerRun,
+    true,
     (text, options) => { void serverRunRef.current(text, options); },
   );
   const run = useServerRun(ctx, projectId, {
-    enabled: effectiveServerRun,
+    enabled: true,
     session: bridge.session,
     onRunPrepare: bridge.onRunPrepare,
     onRunAbandon: bridge.onRunAbandon,
@@ -71,9 +80,5 @@ export function useChatAgentController(
     onTerminal: bridge.onTerminal,
   });
   serverRunRef.current = run.send;
-  const running = state.running || builtInAgent.running || run.running;
-  backend.current = { mode: effectiveServerRun, running };
-  return effectiveServerRun
-    ? serverRunAdapter(run, bridge, builtInAgent.enhance)
-    : builtInAgent;
+  return serverRunAdapter(run, bridge);
 }

@@ -31,7 +31,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   mgTier: 'balance',
   planMode: false,
   cacheMode: 'short',
-  serverRun: false,
+  serverRun: true,
 };
 
 export function loadAgentSettings(): AgentSettings {
@@ -45,7 +45,7 @@ export function loadAgentSettings(): AgentSettings {
       cacheMode: AGENT_CACHE_MODES.includes(parsed.cacheMode as AgentCacheMode)
         ? parsed.cacheMode as AgentCacheMode
         : DEFAULT_AGENT_SETTINGS.cacheMode,
-      serverRun: parsed.serverRun === true,
+      serverRun: true, // server-side execution is the only Agent path (issue-less refactor); stored/old false is ignored.
     };
   } catch {
     return { ...DEFAULT_AGENT_SETTINGS };
