@@ -107,9 +107,11 @@ try {
 
   globalThis.fetch = (async () => new Response(new Uint8Array([1]))) as typeof fetch;
   decoded = { ...decoded, duration: 3_601 };
-  await assert.rejects(
-    decodeAudioSource('/too-long.wav', 22_050),
-    /exceeds 60-minute analysis limit/,
+  // Long-form audio is accepted: there is no fixed analysis duration cap.
+  await assert.deepEqual(
+    [...await decodeAudioSource('/long.wav', 22_050)],
+    [0.5, 0, 0, 0],
+    'audio longer than one hour decodes without a duration cap',
   );
   await assert.rejects(decodeAudioSource('', 22_050), /source URL is empty/);
   await assert.rejects(decodeAudioSource('/test.wav', 1), /Invalid audio sample rate/);

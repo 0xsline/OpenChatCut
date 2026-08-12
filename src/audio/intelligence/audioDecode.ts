@@ -1,4 +1,3 @@
-const MAX_AUDIO_DURATION_SECONDS = 60 * 60;
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 3 * 60_000;
 const METADATA_TIMEOUT_MS = 30_000;
@@ -91,8 +90,11 @@ async function assertSourceDuration(src: string, signal?: AbortSignal): Promise<
   };
   const onAbort = () => reject(signal ? abortError(signal) : new Error('Audio analysis aborted'));
   media.onloadedmetadata = () => {
-    if (!Number.isFinite(media.duration) || media.duration <= MAX_AUDIO_DURATION_SECONDS) resolve();
-    else reject(new Error(`Audio exceeds ${MAX_AUDIO_DURATION_SECONDS / 60}-minute analysis limit`));
+    // No fixed analysis duration cap: long-form audio (podcasts, meetings,
+    // lectures) is a legitimate input. The browser still has to hold the whole
+    // decoded PCM in memory, so an oversized/failed decode is reported with a
+    // friendly message rather than crashing the tab (see decodeBytes).
+    resolve();
   };
   media.onerror = () => reject(new Error('Unable to read audio duration metadata'));
   signal?.addEventListener('abort', onAbort, { once: true });
@@ -160,7 +162,14 @@ async function decodeBytes(
     ]);
   } catch (error) {
     if (signal?.aborted) throw abortError(signal);
-    throw new Error(`Unable to decode audio source: ${error instanceof Error ? error.message : String(error)}`);
+    if (error instanceof Error && /audio decoding timed out/i.test(error.message)) throw error;
+    // No fixed duration cap, but the browser must hold the whole decoded PCM in
+    // memory, so an oversized or un-decodable long audio surfaces here instead
+    // of crashing the tab. Tell the user it is a size/resource limit, not a bug.
+    throw new Error(
+      '无法分析的音频：文件过大或浏览器内存不足。请裁剪为较短的片段后再分析。'
+      + ` (${error instanceof Error ? error.message : String(error)})`,
+    );
   } finally {
     clearTimeout(timer);
     if (onAbort) signal?.removeEventListener('abort', onAbort);
@@ -169,9 +178,6 @@ async function decodeBytes(
 
 function mixToMono(audio: AudioBuffer): Float32Array {
   if (audio.numberOfChannels < 1 || audio.length < 1) throw new Error('Decoded audio contains no samples');
-  if (!Number.isFinite(audio.duration) || audio.duration > MAX_AUDIO_DURATION_SECONDS) {
-    throw new Error(`Audio exceeds ${MAX_AUDIO_DURATION_SECONDS / 60}-minute analysis limit`);
-  }
   const mono = new Float32Array(audio.length);
   for (let channel = 0; channel < audio.numberOfChannels; channel += 1) {
     const source = audio.getChannelData(channel);
@@ -225,9 +231,6 @@ export async function resampleMonoSamples(
   assertSampleRate(sourceRate);
   assertSampleRate(targetRate);
   if (!(samples instanceof Float32Array) || samples.length === 0) throw new Error('Audio samples are empty');
-  if (samples.length / sourceRate > MAX_AUDIO_DURATION_SECONDS) {
-    throw new Error(`Audio exceeds ${MAX_AUDIO_DURATION_SECONDS / 60}-minute analysis limit`);
-  }
   if (sourceRate === targetRate) return samples.slice();
   if (typeof OfflineAudioContext === 'undefined') return linearResample(samples, sourceRate, targetRate);
   try {
