@@ -38,7 +38,19 @@ export function useComposerModelView(
     getAgentModelSnapshot,
   );
   const activeModel = modelState.choices.find((choice) => choice.id === modelState.activeId);
-  const usageMatchesModel = contextUsage?.modelId === activeModel?.id;
+  // Match a usage record to the active model across execution endpoints.
+  // Client-side runs stamp contextUsage.modelId with the AgentModelChoice.id
+  // ("provider:model"); serverRun echoes model only ("claude-fable-5") because
+  // its payload carries `model` (serverRunSend.ts) and the server stamps it
+  // verbatim (server/agent-runs/context.ts). Compare identity leniently so the
+  // "used / window" readout is correct whether the run executed in the browser
+  // or on the server, without ever attributing another model's usage here.
+  const usageModelId = contextUsage?.modelId ?? '';
+  const usageMatchesModel = !!activeModel && (
+    usageModelId === activeModel.id
+    || usageModelId === `${activeModel.provider}:${activeModel.model}`
+    || usageModelId === activeModel.model
+  );
   const used = contextUsage && usageMatchesModel ? contextUsage.inputTokens : 0;
   const resolvedContext = activeModel?.capabilities.contextWindowTokens;
   const limit = contextUsage && usageMatchesModel
