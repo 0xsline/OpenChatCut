@@ -179,13 +179,23 @@ export async function loadRecoveredAgentSession(
   if (storedServerRunPreservesHydration(storedServerRun)) {
     preservedRunIds.add(storedServerRun.runId);
   }
-  await recover(
-    projectId,
-    Date.now(),
-    preservedRunIds,
-    externalRunIds,
-    currentAgentRunOwnerInstanceId(),
-  );
+  // Fast path: only write (mutate) when there is an interrupted run that
+  // actually needs recovery. A plain reopen with no active runs must not
+  // bump the sidecar revision or serialize a write per navigation.
+  const sidecarBefore = await loadAgentRuntimeSidecar(projectId);
+  const needsRecovery = sidecarBefore.runs.some((run) =>
+    !['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)
+    && !preservedRunIds.has(run.runId)
+    && (!run.ownerInstanceId || !run.leaseExpiresAt || run.leaseExpiresAt <= Date.now()));
+  if (needsRecovery) {
+    await recover(
+      projectId,
+      Date.now(),
+      preservedRunIds,
+      externalRunIds,
+      currentAgentRunOwnerInstanceId(),
+    );
+  }
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;
   const proposalRecorder = await claimRecoveredProposalRun(projectId, record);
   if (!alive() || await currentAgentSessionGeneration(projectId) !== generation) return null;

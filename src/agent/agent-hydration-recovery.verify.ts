@@ -169,6 +169,17 @@ assert.equal(
 );
 
 
+const activeRecoverableRun = await startAgentRun({
+  projectId,
+  userInput: 'unmount-probe',
+  askOnly: false,
+});
+await patchAgentRun(projectId, activeRecoverableRun.runId, {
+  status: 'running',
+  ownerInstanceId: undefined,
+  leaseExpiresAt: undefined,
+});
+activeRecoverableRun.stopLease();
 let alive = true;
 const cancelled = loadRecoveredAgentSession(projectId, () => alive, async () => {
   alive = false;
@@ -193,6 +204,17 @@ assert.equal(
   'generation rotation invalidates an in-flight hydration before it can restore old context',
 );
 const authoritativeGeneration = await rotateAgentSessionGeneration(projectId);
+const currentGenRun = await startAgentRun({
+  projectId,
+  userInput: 'adopt-probe',
+  askOnly: false,
+});
+await patchAgentRun(projectId, currentGenRun.runId, {
+  status: 'running',
+  ownerInstanceId: undefined,
+  leaseExpiresAt: undefined,
+});
+currentGenRun.stopLease();
 adoptAgentSessionWriteGeneration(projectId, 'stale-tab-generation');
 let recoveryWriteGeneration = '';
 await loadRecoveredAgentSession(projectId, () => true, async () => {
