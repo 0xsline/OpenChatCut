@@ -3,6 +3,7 @@ import type { Timeline, TimelineState } from './types';
 import { collectExportMediaPlan } from '../export/exportMediaPlan';
 import { removeItemsWithGroups } from './linkGroups';
 import { removeAssetFromTimeline } from './mediaAssetUsage';
+import { applyOverwriteLaneAction } from './reducerOverwrite';
 import { reduce } from './reducerTimeline';
 
 const staleEntries = Array.from({ length: 3 }, (_, index) => ({
@@ -66,5 +67,17 @@ const afterAssetRemoval = removeAssetFromTimeline(
   [asset],
 );
 assert.equal(collectExportMediaPlan(afterAssetRemoval).issues.length, 0, 'removing a pool asset must reconcile caption bindings');
+
+const afterOverwriteRemoval = applyOverwriteLaneAction(
+  timelineWithAsset,
+  'V1',
+  { type: 'remove', id: 'clip-to-remove' },
+);
+assert.ok(afterOverwriteRemoval, 'overwrite removal should produce a timeline');
+assert.equal(
+  collectExportMediaPlan(afterOverwriteRemoval!).issues.length,
+  0,
+  'overwrite removal must reconcile caption bindings',
+);
 
 console.log('caption references verify: removed-item bindings are reconciled');
