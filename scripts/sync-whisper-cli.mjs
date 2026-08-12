@@ -63,6 +63,23 @@ function sha256Of(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+async function buildFromSource(srcDir, buildDir, platformKey) {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  const binName = `whisper-cli${process.platform === 'win32' ? '.exe' : ''}`;
+  const builtCli = join(buildDir, 'build', 'bin', binName);
+  if (existsSync(builtCli)) return builtCli;
+  if (!existsSync(join(srcDir, 'CMakeLists.txt'))) {
+    await rm(srcDir, { recursive: true, force: true });
+    await run('git', ['clone', '--depth', '1', '--branch', VERSION, 'https://github.com/ggml-org/whisper.cpp.git', srcDir]);
+  }
+  const metalFlag = process.platform === 'darwin' ? ['-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON'] : [];
+  await run('cmake', ['-B', join(buildDir, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...metalFlag, srcDir]);
+  await run('cmake', ['--build', join(buildDir, 'build'), '--config', 'Release', '-j', '--target', 'whisper-cli', 'whisper-server']);
+  return builtCli;
+}
+
 async function main() {
   const platformKey = `${process.platform}-${process.arch}`;
   const spec = PLATFORMS[platformKey];
@@ -95,7 +112,21 @@ async function main() {
     return;
   }
   if (!spec.asset) {
-    console.log(`[whisper-cli] no official asset for ${platformKey}; set OPENCHATCUT_WHISPER_CLI to a compiled binary`);
+    // macOS has no official release asset: build from source (local or CI).
+    // OPENCHATCUT_WHISPER_CLI still wins when set.
+    const buildDir = join(OUT_DIR, 'build-src');
+    const srcDir = join(buildDir, 'whisper.cpp');
+    const cli = await buildFromSource(srcDir, buildDir, platformKey);
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(binPath, await readFile(cli));
+    await rm(binPath + '.sha256', { force: true });
+    await writeFile(binPath + '.sha256', sha256Of(await readFile(binPath)));
+    const serverBin = join(dirname(cli), `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
+    const serverDst = join(targetDir, `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
+    if (existsSync(serverBin)) {
+      await writeFile(serverDst, await readFile(serverBin));
+    }
+    console.log(`[whisper-cli] built ${platformKey} from source -> ${binPath}`);
     return;
   }
   const archive = join(OUT_DIR, `${platform}.${spec.asset.split('.').slice(-1)[0] === 'zip' ? 'zip' : 'tar.gz'}`);

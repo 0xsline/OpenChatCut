@@ -22,7 +22,7 @@
     "dev:isolated": "node scripts/dev-profile.mjs",
     "predev:shared": "npm run sync:mediapipe && npm run verify:server-tool-catalog",
     "dev:shared": "vite",
-    "prebuild": "npm run sync:mediapipe && npm run verify:server-tool-catalog",
+    "prebuild": "npm run sync:mediapipe && npm run sync:whisper-cli && npm run verify:server-tool-catalog",
     "build": "tsc -b && vite build",
     "update:model-capabilities": "node --use-env-proxy scripts/update-llm-model-capabilities.mjs",
     "verify:affected": "node scripts/run-affected-verifies.mjs",
