@@ -434,7 +434,7 @@ async function routeAgentRunRequest(
 ): Promise<void> {
   const pathname = url.pathname;
   if (req.method === 'POST' && pathname === '/') return handleCreate(req, res);
-  const match = /^\/([0-9a-f-]{36})(?:\/(start|events|tool-claim|tool-result|cancel))?$/.exec(pathname);
+  const match = /^\/([0-9a-f-]{36})(?:\/(start|events|tool-claim|tool-result|cancel|settle|draft|draft\/clear))?$/.exec(pathname);
   if (!match) return sendJson(res, 404, { error: 'not found' });
   const runId = match[1]!;
   const action = match[2];
