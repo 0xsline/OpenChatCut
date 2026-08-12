@@ -3,7 +3,6 @@ import {
   kvCompareAndSwapAgentRuntime,
   kvDel,
   kvGet,
-  kvGetLocalFirst,
   kvKeys,
   kvSet,
   resetSharedKvMemory,
@@ -132,7 +131,9 @@ export async function mutate<T>(projectId: string, change: (current: AgentRuntim
 export async function loadAgentRuntimeSidecar(projectId: string): Promise<AgentRuntimeSidecar> {
   requireProjectId(projectId);
   const generation = await currentAgentSessionGeneration(projectId);
-  const raw = await kvGetLocalFirst<unknown>(runtimeKey(projectId, generation));
+  // The server store is authoritative after serverization (the browser no
+  // longer writes the sidecar); kvGet falls back to local IndexedDB offline.
+  const raw = await kvGet<unknown>(runtimeKey(projectId, generation));
   return scopeAgentRuntimeSidecar(normalizeSidecar(projectId, raw), generation);
 }
 export function subscribeAgentRuntime(projectId: string, listener: () => void): () => void {

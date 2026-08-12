@@ -3,9 +3,10 @@ import type { LlmProvider } from '../../shared/llm-providers';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import {
   kvDel as idbDel,
+  kvGet,
   kvGet as idbGet,
-  kvGetLocalFirst as idbGetLocalFirst,
   kvKeys as idbKeys,
+  kvSet,
   kvSet as idbSet,
   kvPurgeProject,
   resetSharedKvMemory,
@@ -142,7 +143,9 @@ export async function loadChat(projectId: string): Promise<PersistedChat | null>
   try {
     await chatWriteQueues.get(projectId);
     const generation = await currentAgentSessionGeneration(projectId);
-    const raw = await idbGetLocalFirst<unknown>(chatKey(projectId, generation));
+    // The server store is authoritative after serverization (chat survives
+    // origin/browser changes); kvGet falls back to local IndexedDB offline.
+    const raw = await kvGet<unknown>(chatKey(projectId, generation));
     return isPersistedChat(raw)
       && agentSessionGenerationMatches(raw.sessionGeneration, generation) ? raw : null;
   } catch {
@@ -162,14 +165,16 @@ export function saveChat(projectId: string, chat: PersistedChat): Promise<void> 
     try {
       const sessionGeneration = await generation;
       const key = chatKey(projectId, sessionGeneration);
-      const priorIds = serverRunTurnIds(await idbGetLocalFirst<unknown>(key));
-      await idbSet(key, {
+      const priorIds = serverRunTurnIds(await kvGet<unknown>(key));
+      await kvSet(key, {
         ...chat,
         ...(priorIds.length ? { serverRunTurnIds: priorIds } : {}),
         sessionGeneration,
       });
     } catch {
-      /* ignore persist failures; the session still works in-memory */
+      // Remote write failed (read-only/offline): the session still works
+      // in-memory and the local IndexedDB fallback inside kvSet covers
+      // single-origin offline use.
     }
   });
 }
@@ -183,12 +188,12 @@ export function saveServerRunChat(
   return serializeChatWrite(projectId, async () => {
     const sessionGeneration = await generation;
     const key = chatKey(projectId, sessionGeneration);
-    const existing = await idbGetLocalFirst<unknown>(key);
+    const existing = await kvGet<unknown>(key);
     const priorIds = serverRunTurnIds(existing);
     if (priorIds.includes(runId)) return false;
     const nextRunIds = [...priorIds, runId].slice(-MAX_CHAT_SERVER_RUN_TURN_IDS);
-    await idbSet(key, { ...chat, serverRunTurnIds: nextRunIds, sessionGeneration });
-    const stored = await idbGetLocalFirst<unknown>(key);
+    await kvSet(key, { ...chat, serverRunTurnIds: nextRunIds, sessionGeneration });
+    const stored = await kvGet<unknown>(key);
     if (!serverRunTurnIds(stored).includes(runId)) {
       throw new Error('Server run model history could not be persisted.');
     }

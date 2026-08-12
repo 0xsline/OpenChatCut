@@ -239,33 +239,41 @@ export async function kvUpdateAgentRunLease(
 
 async function bootstrap(): Promise<void> {
   if (!canSync()) return;
+  let projects: EntryResponse;
   try {
     const migrated = await localGet<boolean>(MIGRATION_KEY);
-    let projects = await requestEntry('projects');
+    projects = await requestEntry('projects');
     const canWrite = projectStoreWriteCredential();
     projectMigrationPending = !canWrite
       && (!projects.found || (Array.isArray(projects.value) && projects.value.length === 0));
     if ((!migrated || !projects.found) && canWrite) {
-      const local = await localEntries();
-      const snapshot = await requestMerge(local);
-      projects = 'projects' in snapshot.entries
-        ? { found: true, value: snapshot.entries.projects }
-        : { found: false };
+      try {
+        const local = await localEntries();
+        const snapshot = await requestMerge(local);
+        projects = 'projects' in snapshot.entries
+          ? { found: true, value: snapshot.entries.projects }
+          : { found: false };
+      } catch {
+        // Merge contention (another origin/instance holds the write lease):
+        // keep the remote cache usable for reads; the local backlog can be
+        // merged on a later load when the lease is free.
+      }
     }
-    remoteCache = {};
-    remoteKnown.clear();
-    cacheEntry('projects', projects);
-    if (projectMigrationPending) {
-      await localDel(MIGRATION_KEY);
-      return;
-    }
-    if (projects.found) await localSet('projects', projects.value);
-    else await localDel('projects');
-    await localSet(MIGRATION_KEY, true);
   } catch {
     remoteCache = null;
     remoteKnown.clear();
+    return;
   }
+  remoteCache = {};
+  remoteKnown.clear();
+  cacheEntry('projects', projects);
+  if (projectMigrationPending) {
+    await localDel(MIGRATION_KEY);
+    return;
+  }
+  if (projects.found) await localSet('projects', projects.value);
+  else await localDel('projects');
+  await localSet(MIGRATION_KEY, true);
 }
 
 async function ready(): Promise<void> {

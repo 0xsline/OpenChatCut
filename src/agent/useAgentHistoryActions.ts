@@ -15,7 +15,14 @@ type ClearBlockedError = Error & {
 };
 
 export async function clearAgentHistory(state: AgentHookState, projectId: string): Promise<void> {
-  if (state.runningRef.current) return;
+  if (state.runningRef.current) {
+    // Do not fail silently: the user clicked clear and nothing happened.
+    state.setMessages((current) => [...current, {
+      role: 'error',
+      text: t('Agent 仍在运行中，无法清空对话。请先等待运行结束或停止当前运行，再试一次。'),
+    }]);
+    return;
+  }
   const hydrationEpoch = ++state.hydrationEpochRef.current;
   state.hydratedRef.current = false;
   state.setHydrated(false);
