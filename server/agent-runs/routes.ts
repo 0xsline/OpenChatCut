@@ -26,6 +26,11 @@ import {
   type ToolClaimOutcome,
   type ToolResultOutcome,
 } from './store';
+import {
+  settleServerRun,
+  type ProposalRuntimeStatus,
+  type ServerRunSettleStatus,
+} from './store-settle';
 import { digestValue } from './store-values';
 import {
   readJson,
@@ -325,6 +330,31 @@ async function handleCancel(req: IncomingMessage, res: ServerResponse, runId: st
   sendJson(res, 200, { ok: true, status: run.status });
 }
 
+async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+  const body = await readJson(req);
+  const projectId = requireProjectId(body.projectId);
+  const status = typeof body.status === 'string' ? body.status : '';
+  const SETTLE_STATUSES: Record<string, true> = {
+    completed: true, failed: true, aborted: true, interrupted: true, waiting_approval: true,
+  };
+  if (!SETTLE_STATUSES[status]) {
+    sendJson(res, 400, { error: 'invalid settle status' });
+    return;
+  }
+  const proposalId = typeof body.proposalId === 'string' ? body.proposalId.trim() : undefined;
+  const proposalRuntimeStatus = typeof body.proposalRuntimeStatus === 'string'
+    ? body.proposalRuntimeStatus
+    : undefined;
+  const summary = typeof body.summary === 'string' ? body.summary : undefined;
+  const outcome = await settleServerRun(projectId, runId, {
+    status: status as ServerRunSettleStatus,
+    ...(proposalId ? { proposalId } : {}),
+    ...(proposalRuntimeStatus ? { proposalRuntimeStatus: proposalRuntimeStatus as ProposalRuntimeStatus } : {}),
+    ...(summary !== undefined ? { summary } : {}),
+  });
+  sendJson(res, 200, { ok: outcome === 'ok', already: outcome === 'already', gone: outcome === 'gone' });
+}
+
 async function handleMetadata(
   req: IncomingMessage,
   res: ServerResponse,
@@ -370,6 +400,7 @@ async function routeAgentRunRequest(
   if (req.method === 'POST' && action === 'tool-claim') return handleToolClaim(req, res, runId);
   if (req.method === 'POST' && action === 'tool-result') return handleToolResult(req, res, runId);
   if (req.method === 'POST' && action === 'cancel') return handleCancel(req, res, runId);
+  if (req.method === 'POST' && action === 'settle') return handleSettle(req, res, runId);
   if (req.method === 'GET' && !action) return handleMetadata(req, res, url, runId);
   sendJson(res, 404, { error: 'not found' });
 }

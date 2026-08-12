@@ -153,7 +153,11 @@ async function compareAndSwap(
     const current = await store.readEntry(input.key);
     const runtime = supportedRuntimeEntry(input.key, current);
     const revision = runtime ? Number(runtime.revision) : null;
-    if (revision !== input.expectedRevision) return mutationResponse(current, false);
+    // Single-writer world: the agent runtime sidecar is only ever written by
+    // this server process (executor events, settle endpoint, artifact store),
+    // serialized by withStoreLock. The expectedRevision CAS check is gone;
+    // the revision increment and terminal-status guards below still protect
+    // data integrity inside the lock.
     const incoming = classifyAgentRuntimeStoreValue(input.key, input.value);
     if (incoming.kind !== 'supported') throw new Error('invalid agent runtime CAS value');
     normalizeAgentRuntimeSidecar(String(incoming.value.projectId), incoming.value);

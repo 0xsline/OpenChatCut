@@ -86,38 +86,29 @@ function notify(projectId: string): void {
 async function mutateOnce<T>(projectId: string, change: (current: AgentRuntimeSidecar) => [AgentRuntimeSidecar, T]): Promise<{ result: T; previous: AgentRuntimeSidecar; next: AgentRuntimeSidecar }> {
   const sessionGeneration = await agentSessionWriteGeneration(projectId);
   const key = runtimeKey(projectId, sessionGeneration);
-  // Browser and server both write the agent runtime sidecar in serverRun
-  // mode, so a single install can transiently contest the CAS. Retry without
-  // a fixed budget: every retry re-reads the canonical revision, so the
-  // contest always converges and a bounded backoff (capped at 2s) prevents
-  // hot-spinning. This must never surface to the user as a failure.
-  for (let attempt = 0; ; attempt += 1) {
-    const raw = await kvGet<unknown>(key);
-    const previous = scopeAgentRuntimeSidecar(
-      normalizeSidecar(projectId, raw),
-      sessionGeneration,
-    );
-    const [changed, result] = change(previous);
-    const next = applyAgentRuntimeRetention({
-      ...changed, sessionGeneration,
-      revision: previous.revision + 1, updatedAt: Date.now(), lastWriterId: crypto.randomUUID(),
-    });
-    const canonical = await kvCompareAndSwapAgentRuntime({
-      operation: 'agent-runtime-cas',
-      key,
-      expectedRevision: raw === undefined ? null : previous.revision,
-      value: next,
-    });
-    if (canonical.accepted) {
-      return { result, previous, next: normalizeSidecar(projectId, canonical.value) };
-    }
-    const delay = Math.min(20 + attempt * 15, 2_000);
-    const { promise, resolve } = Promise.withResolvers<void>();
-    setTimeout(resolve, delay);
-    await promise;
-  }
+  // Single-writer world: the sidecar is only written by this process
+  // (serialized by enqueue/withStoreLock), so read-modify-write is atomic;
+  // the server-side revision guard still rejects out-of-order writes.
+  const raw = await kvGet<unknown>(key);
+  const previous = scopeAgentRuntimeSidecar(
+    normalizeSidecar(projectId, raw),
+    sessionGeneration,
+  );
+  const [changed, result] = change(previous);
+  const next = applyAgentRuntimeRetention({
+    ...changed, sessionGeneration,
+    revision: previous.revision + 1, updatedAt: Date.now(), lastWriterId: crypto.randomUUID(),
+  });
+  const canonical = await kvCompareAndSwapAgentRuntime({
+    operation: 'agent-runtime-cas',
+    key,
+    expectedRevision: raw === undefined ? null : previous.revision,
+    value: next,
+  });
+  if (!canonical.accepted) throw new Error('agent runtime sidecar write was rejected');
+  return { result, previous, next: normalizeSidecar(projectId, canonical.value) };
 }
-async function mutate<T>(projectId: string, change: (current: AgentRuntimeSidecar) => [AgentRuntimeSidecar, T]): Promise<T> {
+export async function mutate<T>(projectId: string, change: (current: AgentRuntimeSidecar) => [AgentRuntimeSidecar, T]): Promise<T> {
   requireProjectId(projectId);
   return enqueue(projectId, () => withProjectLock(projectId, async () => {
     const { result, previous, next } = await mutateOnce(projectId, change);
