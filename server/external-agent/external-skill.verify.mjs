@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const skillRoot = resolve(root, 'skills/openchatcut');
 const skillPath = resolve(skillRoot, 'SKILL.md');
-const skill = readFileSync(skillPath, 'utf8');
+const skill = readFileSync(skillPath, 'utf8').replace(/\r\n?/g, '\n');
 
 assert.match(skill, /^---\nname: openchatcut\ndescription: .+\n---/);
 assert.ok(skill.split('\n').length <= 500, 'SKILL.md must stay within 500 lines');
