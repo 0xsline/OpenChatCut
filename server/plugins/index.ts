@@ -50,10 +50,12 @@ import { resourcePreviewPlugin } from "./resource-preview.ts";
 import { getKey } from "../keystore.ts";
 
 import { installSystemProxy } from '../net.ts';
+import { requestShapeGatePlugin } from './request-shape-gate';
 
 export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
   installSystemProxy();
   return [
+    requestShapeGatePlugin(),
     crossOriginIsolationPlugin(),
     storageLifecyclePlugin(),
     llmProxyPlugin(),
