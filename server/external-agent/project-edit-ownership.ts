@@ -59,7 +59,7 @@ export async function claimBrowserProjectOwnership(
   projectId: string,
   ownerId: string,
   expectedRevision: string,
-  allowExistingBrowserOwner = false,
+  _allowExistingBrowserOwner = false,
 ): Promise<BrowserOwnershipClaimResult> {
   if (!validProjectEditOwnershipIdentity(projectId, ownerId) || !expectedRevision) {
     return { status: 'blocked' };
@@ -76,20 +76,22 @@ export async function claimBrowserProjectOwnership(
     const sameOwner = current?.ownerKind === 'browser'
       && current.ownerId === ownerId
       && current.leaseExpiresAt > Date.now();
-    // Keep the anti-spoof gate: a window that already owns this project must not
-    // renew it without the registry-authorized capability (a reloaded tab loses
-    // its in-memory capability and its registration must come back through the
-    // authorized Renewal path, not a forged repeat claim).
-    if (sameOwner && !allowExistingBrowserOwner) return { status: 'blocked' };
-    // A genuinely DIFFERENT browser window that holds the expected revision may
-    // take over from a previously registered browser window. Single-window
+    // A browser window that already owns this project (the same ownerId, still a
+    // live lease) may re-claim it even without its in-memory capability. In
+    // normal single-window use the bridge occasionally tears down and reconnects
+    // with the same editor id but no capability; blocking that re-claim produced
+    // a spurious 409 that flashed "close the other window" during routine use.
+    // Genuine anti-spoof is enforced at the registration-route capability layer
+    // (broker capabilityMatches / the route's renewing check), so this claim
+    // gate only needs to fence cross-layer writes, not same-owner recovery.
+    // A genuinely DIFFERENT browser window that holds the expected revision also
+    // takes over from a previously registered browser window. Single-window
     // desktop users never open the same project in two windows, so there is no
-    // cross-browser exclusivity to enforce; keeping that gate only produced a
-    // persistent "close the other window" 409 for a stale/forgotten tab. We still
-    // refuse to steal from a live OFFLINE writer (external MCP / a serialized
-    // offline commit) or an epoch-pinned owner, so the browser cannot clobber a
-    // non-browser write in flight. Lost-update protection additionally holds via
-    // the CAS revision match in createProjectDocumentStoreOperation.
+    // cross-browser exclusivity to enforce. We still refuse to steal from a live
+    // OFFLINE writer (external MCP / a serialized offline commit) or an
+    // epoch-pinned owner, so the browser cannot clobber a non-browser write in
+    // flight. Lost-update protection additionally holds via the CAS revision
+    // match in createProjectDocumentStoreOperation.
     if (current && current.leaseExpiresAt > Date.now() && current.ownerKind !== 'browser') {
       return { status: 'blocked' };
     }

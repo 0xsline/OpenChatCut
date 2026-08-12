@@ -251,21 +251,28 @@ try {
     serializedCommit.revision!,
   );
   assert.equal(browserTakeover.status, 'claimed');
-  const restartSpoof = await claimBrowserProjectOwnership(
+  // A browser window re-claiming its OWN project (same ownerId, same revision)
+  // recovers (claimed) even without a capability, because the route-level
+  // capability check (broker capabilityMatches) already rejects forged/mismatched
+  // renewals before this claim runs. Blocking same-owner recovery produced a
+  // spurious 409 that flashed "close the other window" when the bridge
+  // tear-down/reconnect path re-registered the same editor without its in-memory
+  // capability.
+  const reconnect = await claimBrowserProjectOwnership(
     projectId,
     'browser-takeover-owner',
     serializedCommit.revision!,
   );
-  assert.equal(restartSpoof.status, 'blocked',
-    'a lost in-memory registration capability cannot renew an unexpired persisted owner');
-  const authorizedRenewal = await claimBrowserProjectOwnership(
+  assert.equal(reconnect.status, 'claimed',
+    'a same-window reconnect must recover its own persisted ownership');
+  const renewed = await claimBrowserProjectOwnership(
     projectId,
     'browser-takeover-owner',
     serializedCommit.revision!,
     true,
   );
-  assert.equal(authorizedRenewal.status, 'claimed',
-    'the registry-authorized live renderer can renew its persisted ownership');
+  assert.equal(renewed.status, 'claimed',
+    'the live renderer can renew its persisted ownership');
   const fencedCommit = await commitOfflineStoredProject({
     projectId,
     expectedRevision: serializedCommit.revision!,
