@@ -199,7 +199,12 @@ async function settleToolResult(
     toolCallId: state.toolCallId, toolName: schema.name, result: enriched,
   });
   throwIfToolAborted(execution.signal, state);
-  if (requiresArchive && !ref) {
+  // Server-run executions have no browser recorder: their results travel the
+  // server settle channel, which enforces its own event-size cap with an
+  // omitted+digest fallback (store-values durableEventData). The archive
+  // requirement only applies when a recorder is wired and the result would
+  // otherwise be dropped from the model context.
+  if (requiresArchive && execution.runRecorder && !ref) {
     throw new Error('tool_result_archive: oversized result could not be archived safely');
   }
   const result = ref && (!enriched || typeof enriched !== 'object')
