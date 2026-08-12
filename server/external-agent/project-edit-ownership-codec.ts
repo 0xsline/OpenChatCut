@@ -73,10 +73,12 @@ export function projectEditOwnershipMatches(
   now = Date.now(),
 ): boolean {
   const row = parseProjectEditOwnership(value, claim.projectId);
+  // CAS removed: the base revision is no longer compared (a concurrent save
+  // must not fail with a revision mismatch); ownership still gates on
+  // owner identity, epoch and lease so writes stay fenced to the editor.
   return Boolean(row
     && row.ownerKind === claim.ownerKind
     && row.ownerId === claim.ownerId
     && row.epoch === claim.epoch
-    && row.baseRevision === claim.baseRevision
     && row.leaseExpiresAt > now);
 }

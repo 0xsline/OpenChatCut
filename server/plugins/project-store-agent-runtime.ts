@@ -152,7 +152,6 @@ async function compareAndSwap(
   return withStoreLock(async (store) => {
     const current = await store.readEntry(input.key);
     const runtime = supportedRuntimeEntry(input.key, current);
-    const revision = runtime ? Number(runtime.revision) : null;
     // Single-writer world: the agent runtime sidecar is only ever written by
     // this server process (executor events, settle endpoint, artifact store),
     // serialized by withStoreLock. The expectedRevision CAS check is gone;
@@ -161,12 +160,6 @@ async function compareAndSwap(
     const incoming = classifyAgentRuntimeStoreValue(input.key, input.value);
     if (incoming.kind !== 'supported') throw new Error('invalid agent runtime CAS value');
     normalizeAgentRuntimeSidecar(String(incoming.value.projectId), incoming.value);
-    if (incoming.value.revision !== (revision ?? 0) + 1) {
-      // Reject (not throw) so the client retry loop re-reads and converges;
-      // a throw here would hard-fail a transient contest between the server
-      // executor and browser-originated external-session writes.
-      return mutationResponse(current, false);
-    }
     if (!preservesTerminalStatuses(runtime, incoming.value)) {
       return mutationResponse(current, false);
     }

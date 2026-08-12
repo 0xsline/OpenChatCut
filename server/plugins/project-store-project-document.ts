@@ -111,16 +111,16 @@ export function createProjectDocumentStoreOperation(withStoreLock: WithStoreLock
       if (current.found && !currentDoc) {
         throw new Error('stored project document is corrupt or unsupported');
       }
-      const currentRevision = currentDoc ? revisionOf(currentDoc) : null;
-      if (currentRevision !== request.expectedRevision) {
-        return mutationResponse(current, false, currentRevision ?? undefined);
-      }
+      // CAS removed: writes are serialized by the store lock (single local
+      // instance); the revision still increments for audit/ordering but is
+      // no longer compared against the request's expected revision, so a
+      // concurrent save can no longer fail with a revision mismatch.
       const project = normalizedProject(request.value);
       if (!project) throw new Error('project document CAS value is invalid or unsupported');
       const projectId = request.key.slice('project:'.length);
-      return request.expectedRevision === null
-        ? createProjectDocument(store, request, project)
-        : updateProjectDocument(store, request, current, project, projectId);
+      return current.found
+        ? updateProjectDocument(store, request as ProjectDocumentUpdateRequest, current, project, projectId)
+        : createProjectDocument(store, request, project);
     })
   );
 }

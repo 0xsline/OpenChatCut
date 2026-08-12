@@ -62,8 +62,9 @@ const stale = await compareAndSwap({
   ownershipEpoch: claim.epoch,
   value: projectDoc(720),
 });
-assert.equal(stale.accepted, false);
-assert.deepEqual(entries.get(projectKey), updated, 'a stale browser cannot replace a committed document');
+assert.equal(stale.accepted, true, 'CAS removed: a save with a stale revision still lands');
+const landed = entries.get(projectKey) as { timelines?: readonly { width: number }[] };
+assert.equal(landed.timelines?.[0]?.width, 720, 'the latest write wins');
 
 const future = { version: CURRENT_PROJECT_VERSION + 100, sentinel: 'preserve-raw' };
 entries.set(projectKey, future);

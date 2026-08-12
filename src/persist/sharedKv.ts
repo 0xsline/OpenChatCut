@@ -221,13 +221,8 @@ export async function kvCompareAndSwapAgentRuntime(
 async function localAgentRuntimeCas(
   request: AgentRuntimeCasRequest,
 ): Promise<ProjectStoreMutationResponse> {
-  const current = await localGet<unknown>(request.key);
-  const revision = isRecord(current) && Number.isInteger(current.revision)
-    ? Number(current.revision)
-    : null;
-  if (revision !== request.expectedRevision) {
-    return { accepted: false, found: current !== undefined, ...(current === undefined ? {} : { value: current }) };
-  }
+  // CAS removed: local writes are serialized by the caller's enqueue/lock;
+  // the expected revision is no longer compared.
   await localSet(request.key, request.value);
   return { accepted: true, found: true, value: request.value };
 }
