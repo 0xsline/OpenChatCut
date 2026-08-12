@@ -26,8 +26,14 @@ const PLATFORMS = {
     executable: 'whisper-cli',
     note: 'compile from source; OPENCHATCUT_WHISPER_CLI overrides',
   },
-  'darwin-x64': { asset: 'whisper-bin-x64.zip', executable: 'whisper-cli' },
-  'win32-x64': { asset: 'whisper-bin-Win32.zip', executable: 'whisper-cli.exe' },
+  // No official darwin-x64 release asset exists; compile from source (or run
+  // the arm64 build under Rosetta where available).
+  'darwin-x64': {
+    asset: null,
+    executable: 'whisper-cli',
+    note: 'no official darwin-x64 asset; compile from source',
+  },
+  'win32-x64': { asset: 'whisper-bin-x64.zip', executable: 'whisper-cli.exe' },
   'linux-x64': { asset: 'whisper-bin-ubuntu-x64.tar.gz', executable: 'whisper-cli' },
   'linux-arm64': { asset: 'whisper-bin-ubuntu-arm64.tar.gz', executable: 'whisper-cli' },
 };
