@@ -36,6 +36,8 @@ import {
   waitForToolResult,
   type ServerRun,
 } from './store';
+import { classifyLlmFailure, runServerTurnWithRetry } from './llm-retry';
+import { toolExecutionMode } from '../../src/agent/tools/execution-modes';
 
 const TEXT_EVENT_CHARS = 8_192;
 export function resolveServerRunMaxOutputTokens(
@@ -112,10 +114,15 @@ export async function executeBrowserTool(
   toolCallId: string,
   activation: ActivationState,
 ): Promise<unknown> {
-  const previous = activation.tail;
-  const { promise: next, resolve: release } = Promise.withResolvers<void>();
-  activation.tail = next;
-  await previous;
+  const parallel = toolExecutionMode(schema.name) === 'parallel';
+  let release: (() => void) | undefined;
+  if (!parallel) {
+    const previous = activation.tail;
+    const { promise: next, resolve } = Promise.withResolvers<void>();
+    activation.tail = next;
+    release = resolve;
+    await previous;
+  }
   try {
     assertCanonicalToolInvocation(schema, args, activation.current.schemas());
     const argsDigest = digestToolArgs(args);
@@ -141,7 +148,7 @@ export async function executeBrowserTool(
     activation.current = shaped.activation;
     return shaped.result;
   } finally {
-    release();
+    release?.();
   }
 }
 
@@ -214,6 +221,32 @@ export async function collectServerText(
 }
 
 async function executeServerTurn(
+  input: ServerTurnInput,
+): Promise<{
+  messages: ModelMessage[];
+  text: string;
+  continued: boolean;
+  followupText: string | null;
+  hitMaxTokens: boolean;
+}> {
+  try {
+    return await runServerTurnOnce(input);
+  } catch (error) {
+    // A context overflow means the estimate undershot the real tokenizer.
+    // Compress once, regardless of the estimated pressure, then retry the
+    // exact same turn. Deterministic retries for other failures live in
+    // llm-retry.ts; this one must change the request before it can succeed.
+    if (input.signal.aborted
+      || input.forceCompact
+      || classifyLlmFailure(error).code !== 'CONTEXT_WINDOW_EXCEEDED') {
+      throw error;
+    }
+    pushRunEvent(input.run, 'context-overflow-retry', { requestIndex: input.requestIndex });
+    return runServerTurnOnce({ ...input, forceCompact: true });
+  }
+}
+
+async function runServerTurnOnce(
   input: ServerTurnInput,
 ): Promise<{
   messages: ModelMessage[];
@@ -338,39 +371,41 @@ async function executeRunTurns(
   // stop beside "no more tool calls" is an output-token cutoff, which would
   // otherwise feed truncated text back into the loop.
   for (let turn = 0; ; turn += 1) {
-    const outcome = plan.backend === 'codex'
-      ? await (await import('./codex-turn')).executeServerCodexTurn({
-        run,
-        messages,
-        instructions: plan.prompt.instructions,
-        schemas: plan.activation.current.schemas(),
-        model: input.model,
-        askOnly: run.askOnly,
-        projectId: run.projectId,
-        maxInputTokens: plan.maxInputTokens,
-        maxOutputTokens: plan.maxOutputTokens,
-        contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-        contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-        signal,
-        activation: plan.activation,
-        requestIndex: turn + 1,
-      })
-      : await executeServerTurn({
-        run,
-        messages,
-        instructions: plan.prompt.instructions,
-        model: plan.model!,
-        provider: plan.provider,
-        apiMode: plan.apiMode,
-        cacheMode: input.cacheMode,
-        contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-        contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-        maxInputTokens: plan.maxInputTokens,
-        maxOutputTokens: plan.maxOutputTokens,
-        signal,
-        activation: plan.activation,
-        requestIndex: turn + 1,
-      });
+    const outcome = await runServerTurnWithRetry(run, turn + 1, signal, () =>
+      plan.backend === 'codex'
+        ? (async () => (await import('./codex-turn')).executeServerCodexTurn({
+          run,
+          messages,
+          instructions: plan.prompt.instructions,
+          schemas: plan.activation.current.schemas(),
+          model: input.model,
+          askOnly: run.askOnly,
+          projectId: run.projectId,
+          maxInputTokens: plan.maxInputTokens,
+          maxOutputTokens: plan.maxOutputTokens,
+          contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+          contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+          signal,
+          activation: plan.activation,
+          requestIndex: turn + 1,
+        }))()
+        : executeServerTurn({
+          run,
+          messages,
+          instructions: plan.prompt.instructions,
+          model: plan.model!,
+          provider: plan.provider,
+          apiMode: plan.apiMode,
+          cacheMode: input.cacheMode,
+          contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+          contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+          maxInputTokens: plan.maxInputTokens,
+          maxOutputTokens: plan.maxOutputTokens,
+          signal,
+          activation: plan.activation,
+          requestIndex: turn + 1,
+        }),
+    );
     if (outcome.followupText) {
       pushRunEvent(run, 'text-delta', { text: outcome.followupText });
       pushRunEvent(run, 'text-end', serverRunTextMetadata(outcome.followupText));

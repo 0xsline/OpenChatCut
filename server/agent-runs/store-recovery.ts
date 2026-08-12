@@ -50,6 +50,47 @@ function serverEvents(record: AgentRunRecord): ServerRunEvent[] {
   }).sort((a, b) => a.id - b.id);
 }
 
+const INTERRUPTED_TOOL_ERROR = 'The agent run was interrupted before this tool returned a result.';
+
+/**
+ * Recovered runs carry tool-request events whose results never arrived (the
+ * server died mid-flight). Synthesize an in-memory tool-result closer for
+ * each so inspectors and any future resume path see a complete pairing
+ * instead of a dangling request. Synthetic events are not persisted: the
+ * run is already terminal and the sidecar is authoritative for replays.
+ */
+function closeInterruptedToolRequests(events: ServerRunEvent[]): ServerRunEvent[] {
+  const settled = new Set<string>();
+  for (const event of events) {
+    if (event.type !== 'tool-result') continue;
+    const data = event.data as { toolCallId?: unknown } | null;
+    if (typeof data?.toolCallId === 'string') settled.add(data.toolCallId);
+  }
+  const pending = events.filter((event) => {
+    if (event.type !== 'tool-request') return false;
+    const data = event.data as { toolCallId?: unknown } | null;
+    return typeof data?.toolCallId === 'string' && !settled.has(data.toolCallId);
+  });
+  if (pending.length === 0) return events;
+  let nextId = events.length > 0 ? events[events.length - 1]!.id + 1 : 1;
+  const now = Date.now();
+  const closers = pending.map((event) => {
+    const data = event.data as { toolCallId: string; name?: unknown; argsDigest?: unknown };
+    return {
+      id: nextId++,
+      type: 'tool-result',
+      data: {
+        toolCallId: data.toolCallId,
+        ...(typeof data.name === 'string' ? { toolName: data.name } : {}),
+        ...(typeof data.argsDigest === 'string' ? { argsDigest: data.argsDigest } : {}),
+        error: INTERRUPTED_TOOL_ERROR,
+      },
+      at: now,
+    };
+  });
+  return [...events, ...closers];
+}
+
 function terminalTransportEvidence(
   events: readonly ServerRunEvent[],
   doneOnly: boolean,
@@ -80,7 +121,7 @@ function restoredRun(
   record: AgentRunRecord,
   capabilityVerifier: string,
 ): ServerRun {
-  const events = serverEvents(record);
+  const events = closeInterruptedToolRequests(serverEvents(record));
   const status = terminalTransportEvidence(events, true)?.status ?? 'failed';
   const runtimeContext: AgentRunContext = record.context ?? {
     requestShapeHash: record.userInputDigest,

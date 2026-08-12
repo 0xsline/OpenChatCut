@@ -68,6 +68,9 @@ export interface AgentContextCheckpoint extends ContextCheckpointLinkage {
   readonly sourceMessageCount: number;
   /** Creation-time provenance; replay validation requires the archived sourceText. */
   readonly createdAt: number;
+  /** Model and window used when this checkpoint was produced. */
+  readonly modelId?: string;
+  readonly contextWindowTokens?: number;
 }
 
 
@@ -87,6 +90,8 @@ export interface ContextPreparationOptions {
   readonly maxOutputTokens: number;
   readonly requestOverheadTokens?: number;
   readonly previousUsage?: AgentContextUsage;
+  /** Skip the pressure fast-path and compact even when estimates are under the trigger. */
+  readonly forceCompact?: boolean;
   readonly checkpointProviderOptions?: (
     messages: readonly ModelMessage[],
   ) => ProviderOptions | undefined;
@@ -449,7 +454,7 @@ export async function prepareContext(
     availableMessageTokens,
     recentTarget,
   } = compactionBudget(options);
-  if (currentTokens <= triggerTokens) {
+  if (currentTokens <= triggerTokens && !options.forceCompact) {
     return { messages: [...options.messages], usage: usage(currentTokens, options, false) };
   }
   const start = recentMessageStart(options.messages, recentTarget, availableMessageTokens);
@@ -466,7 +471,11 @@ export async function prepareContext(
     summarizedMessages,
     sourceText,
   );
-  const checkpoint = await createCheckpoint(summary, sourceText, summarizedMessages.length);
+  const checkpoint = {
+    ...(await createCheckpoint(summary, sourceText, summarizedMessages.length)),
+    modelId: options.modelId,
+    contextWindowTokens: options.contextWindowTokens,
+  };
   const messages = [
     checkpointMessage(checkpoint, options.checkpointProviderOptions?.(summarizedMessages)),
     ...options.messages.slice(start),

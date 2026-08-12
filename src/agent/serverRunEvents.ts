@@ -28,16 +28,47 @@ interface ServerRunEventHandlers {
   readonly opened: () => void;
 }
 
-/** Serializes browser tool requests across fetch-stream reconnects for each run. */
+/**
+ * Browser-side tool execution scheduling for one run.
+ *
+ * Exclusive tools (mutable state) serialize against everything: each one
+ * waits for the exclusive chain and for every in-flight parallel tool before
+ * executing. Parallel tools (pure reads) only wait for the exclusive chain,
+ * then execute concurrently with each other. The chain survives fetch-stream
+ * reconnects per run.
+ */
 export class ServerRunToolRequestQueue {
-  private readonly tails = new Map<string, Promise<void>>();
+  private readonly exclusiveTails = new Map<string, Promise<void>>();
+  private readonly parallelFlights = new Map<string, Set<Promise<void>>>();
 
-  enqueue<T>(runId: string, request: () => Promise<T>): Promise<T> {
-    const pending = (this.tails.get(runId) ?? Promise.resolve()).then(request);
+  enqueueExclusive<T>(runId: string, request: () => Promise<T>): Promise<T> {
+    const previous = this.exclusiveTails.get(runId) ?? Promise.resolve();
+    const pending = previous.then(async () => {
+      const flights = this.parallelFlights.get(runId);
+      if (flights) await Promise.all([...flights]);
+      return request();
+    });
     const tail = pending.then(() => undefined, () => undefined);
-    this.tails.set(runId, tail);
+    this.exclusiveTails.set(runId, tail);
     void tail.then(() => {
-      if (this.tails.get(runId) === tail) this.tails.delete(runId);
+      if (this.exclusiveTails.get(runId) === tail) this.exclusiveTails.delete(runId);
+    });
+    return pending;
+  }
+
+  enqueueParallel<T>(runId: string, request: () => Promise<T>): Promise<T> {
+    const previous = this.exclusiveTails.get(runId);
+    const pending = (previous ?? Promise.resolve()).then(request);
+    const flight = pending.then(() => undefined, () => undefined);
+    let group = this.parallelFlights.get(runId);
+    if (!group) {
+      group = new Set();
+      this.parallelFlights.set(runId, group);
+    }
+    group.add(flight);
+    void flight.then(() => {
+      group.delete(flight);
+      if (group.size === 0) this.parallelFlights.delete(runId);
     });
     return pending;
   }

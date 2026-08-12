@@ -280,7 +280,7 @@ bindServerRunEvents(source as never, runId, {
   onContextUsage: (usage) => { receivedUsages.push(usage); },
   handleToolRequest: (
     _eventRunId, toolCallId, _name, _args, _digest, admit,
-  ) => requestQueue.enqueue(runId, async () => {
+  ) => requestQueue.enqueueExclusive(runId, async () => {
       if (!admit()) return false;
       executionOrder.push(`start:${toolCallId}`);
       const actions = [`action:${toolCallId}`];
@@ -331,6 +331,37 @@ assert.deepEqual(attributedActions, [
   { toolCallId: 'call-1', actions: ['action:call-1'] },
   { toolCallId: 'call-2', actions: ['action:call-2'] },
 ]);
+
+// Parallel queue semantics: pure-read tools overlap; exclusive tools still
+// form a barrier against both the exclusive chain and in-flight reads.
+const parallelOrder: string[] = [];
+const p1Started = Promise.withResolvers<void>();
+const p1Release = Promise.withResolvers<void>();
+const p1 = requestQueue.enqueueParallel(runId, async () => {
+  parallelOrder.push('start:p1');
+  p1Started.resolve();
+  await p1Release.promise;
+  parallelOrder.push('end:p1');
+});
+const p2 = requestQueue.enqueueParallel(runId, async () => {
+  parallelOrder.push('start:p2');
+  parallelOrder.push('end:p2');
+});
+await p1Started.promise;
+assert.ok(
+  parallelOrder.includes('start:p2') && !parallelOrder.includes('end:p1'),
+  'parallel reads overlap before the first one finishes',
+);
+// An exclusive tool waits for in-flight parallel work.
+const eOrder: string[] = [];
+const e1 = requestQueue.enqueueExclusive(runId, async () => { eOrder.push('e1'); });
+await Promise.resolve();
+assert.deepEqual(eOrder, [], 'exclusive waits for in-flight parallel');
+p1Release.resolve();
+await p1;
+await p2;
+await e1;
+assert.deepEqual(parallelOrder, ['start:p1', 'start:p2', 'end:p2', 'end:p1']);
 
 const earlySource = new FakeEventSource();
 let earlyRetries = 0;

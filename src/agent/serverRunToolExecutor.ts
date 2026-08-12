@@ -16,6 +16,7 @@ import {
 } from './serverRunProtocol';
 import { permanentServerRunRecoveryError } from './serverRunRecovery';
 import { ServerRunToolRequestQueue } from './serverRunEvents';
+import { toolExecutionMode } from './tools/execution-modes';
 import {
   beginStoredToolAttempt,
   captureStoredToolResult,
@@ -517,11 +518,14 @@ export class ServerRunToolExecutor {
     admit: () => boolean,
   ): Promise<boolean> {
     const sessionAbort = this.abort;
-    return this.requestQueue.enqueue(runId, async () => {
+    const run = async (): Promise<boolean> => {
       if (!sessionAbort
         || sessionAbort !== this.abort
         || sessionAbort.signal.aborted) return false;
       return this.process(runId, toolCallId, name, args, argsDigest, admit);
-    });
+    };
+    return toolExecutionMode(name) === 'parallel'
+      ? this.requestQueue.enqueueParallel(runId, run)
+      : this.requestQueue.enqueueExclusive(runId, run);
   }
 }

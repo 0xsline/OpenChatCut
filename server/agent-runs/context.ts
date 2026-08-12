@@ -90,6 +90,8 @@ export interface ServerContextInput {
   readonly maxInputTokens: number;
   readonly maxOutputTokens: number;
   readonly signal: AbortSignal;
+  /** Force compaction even when estimates sit under the pressure trigger. */
+  readonly forceCompact?: boolean;
   /** Optional override for the context-summary model call (Codex backend uses a Codex turn). */
   readonly summarize?: (messages: readonly ModelMessage[]) => Promise<string>;
 }
@@ -128,6 +130,7 @@ export async function prepareServerContext(
     maxInputTokens: input.maxInputTokens,
     maxOutputTokens: input.maxOutputTokens,
     requestOverheadTokens: estimateTextTokens(JSON.stringify(input.schemas)),
+    ...(input.forceCompact ? { forceCompact: true } : {}),
     summarize,
   });
   if (prepared.checkpoint) {

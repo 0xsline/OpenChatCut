@@ -152,6 +152,37 @@ assert.equal(interruptedRecord?.status, 'running');
 assert.equal(interruptedRecord?.context?.transportStatus, 'failed');
 assert.equal(interruptedRecord?.context?.transportError, recoveredInterrupted?.error);
 resetServerRunStoreForTest();
+// A tool request whose result never arrived gets an in-memory closer on
+// recovery so inspectors see a complete pairing.
+const danglingTool = run('server-run-dangling-tool-recovery');
+await setRunStatus(danglingTool, 'running');
+pushRunEvent(danglingTool, 'tool-request', {
+  toolCallId: 'call-dangling',
+  name: 'read_timeline',
+  args: {},
+  argsDigest: 'digest-dangling',
+});
+await flushRunPersistence(danglingTool);
+resetServerRunStoreForTest();
+const recoveredDangling = await recoverServerRun(
+  danglingTool.projectId,
+  danglingTool.id,
+);
+const danglingResults = recoveredDangling?.events.filter(
+  (event) => event.type === 'tool-result',
+) ?? [];
+assert.equal(danglingResults.length, 1, 'one synthetic tool-result for the dangling request');
+assert.deepEqual(
+  danglingResults[0]?.data,
+  {
+    toolCallId: 'call-dangling',
+    toolName: 'read_timeline',
+    argsDigest: 'digest-dangling',
+    error: 'The agent run was interrupted before this tool returned a result.',
+  },
+);
+resetServerRunStoreForTest();
+
 const terminalStatusOnly = run('server-run-status-only-recovery');
 pushRunEvent(terminalStatusOnly, 'status', {
   status: 'completed',
