@@ -56,7 +56,11 @@ Object.defineProperty(globalThis, 'window', {
 
 try {
   const { createNativeSemanticWorkerAdapter } = await import('./nativeSemanticWorkerAdapter');
-  assert.equal(createNativeSemanticWorkerAdapter(), null, 'native semantic routing must default off');
+  // Auto mode: a desktop inference bridge enables native routing by default
+  // (matching the ASR preference contract); an explicit opt-out disables it.
+  const autoWorker = createNativeSemanticWorkerAdapter();
+  assert.ok(autoWorker, 'native semantic routing defaults on with a desktop bridge');
+  autoWorker?.terminate();
   storage.setItem(DESKTOP_NATIVE_INFERENCE_KEY, '1');
   const disabledWorker = createNativeSemanticWorkerAdapter();
   assert.ok(disabledWorker);

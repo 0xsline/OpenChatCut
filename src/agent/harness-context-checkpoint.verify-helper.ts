@@ -89,7 +89,7 @@ assert.equal(checkpoint.summaryDigest, await sha256(summary));
 assert.ok(checkpoint.createdAt >= before && checkpoint.createdAt <= after);
 assert.deepEqual(
   Object.keys(checkpoint).sort(),
-  ['checkpointId', 'createdAt', 'sourceDigest', 'sourceMessageCount', 'sourceText', 'summary', 'summaryDigest'].sort(),
+  ['checkpointId', 'contextWindowTokens', 'createdAt', 'modelId', 'sourceDigest', 'sourceMessageCount', 'sourceText', 'summary', 'summaryDigest'].sort(),
   'checkpoint provenance does not fabricate source message IDs',
 );
 const repeated = await prepareContext(contextOptions(history, summary));

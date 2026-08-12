@@ -84,8 +84,11 @@ Object.defineProperty(globalThis, 'window', {
 
 try {
   const { createBeatThisWorker } = await import('./nativeBeatThisWorkerAdapter');
+  // Auto mode with a desktop bridge: native routing defaults on, matching
+  // the ASR preference contract (opt-out via the inference preference).
   const defaultWorker = createBeatThisWorker();
-  assert.ok(defaultWorker instanceof FakeBrowserWorker, 'native rhythm routing must default off');
+  assert.ok(!(defaultWorker instanceof FakeBrowserWorker),
+    'native rhythm routing defaults on with a desktop bridge');
   defaultWorker.terminate();
 
   storageValues.set(DESKTOP_NATIVE_INFERENCE_KEY, '1');
