@@ -195,7 +195,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
           style={{ marginTop: 2 }}
         />
         <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>{t('WebGPU 转写加速（实验）')}</span>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>{t('WebGPU 转写加速')}</span>
           <span style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.45 }}>
             {t('启用后，本地转写尝试用 WebGPU 运行（编码器 fp32 + 解码器 fp16 混合精度，规避 WebGPU 幻觉输出）；首次产生空结果会自动回退 WASM 并记住。需要 WebGPU 浏览器与已下载的模型。')}
           </span>
