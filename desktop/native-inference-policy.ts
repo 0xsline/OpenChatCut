@@ -18,8 +18,10 @@ export interface NativeInferenceRuntimeProbe {
 }
 
 export function preferredNativeInferenceBackend(platform: NodeJS.Platform): DesktopAsrBackend | null {
-  if (platform === 'win32') return 'directml';
-  if (platform === 'darwin') return 'native-cpu';
+  // Desktop ASR runs whisper.cpp: Metal on macOS, CPU elsewhere (whisper.cpp
+  // has no DirectML backend; NVIDIA users can opt into the cuBLAS build).
+  if (platform === 'darwin') return 'native-metal';
+  if (platform === 'win32' || platform === 'linux') return 'native-cpu';
   return null;
 }
 
@@ -36,7 +38,7 @@ export function resolveDesktopInferenceCapabilities(
 ): DesktopInferenceCapabilities {
   const preferredBackend = preferredNativeInferenceBackend(probe.platform);
   const preferredRhythmBackend = preferredNativeRhythmBackend(probe.platform);
-  const platform = probe.platform === 'darwin' || probe.platform === 'win32'
+  const platform = probe.platform === 'darwin' || probe.platform === 'win32' || probe.platform === 'linux'
     ? probe.platform
     : 'unsupported';
   const modelMissing = [
@@ -44,7 +46,7 @@ export function resolveDesktopInferenceCapabilities(
     !probe.transformerRuntime ? 'native ONNX runtime unavailable' : '',
   ].filter(Boolean);
   const asrMissing = [
-    ...modelMissing,
+    !preferredBackend ? 'unsupported platform' : '',
     !probe.ffmpegRuntime ? 'FFmpeg runtime unavailable' : '',
   ].filter(Boolean);
   const rhythmMissing = [

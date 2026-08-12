@@ -29,7 +29,7 @@ interface DesktopModelCapability<ContractId extends string> {
 
 export interface DesktopInferenceCapabilities {
   readonly version: 3;
-  readonly platform: 'darwin' | 'win32' | 'unsupported';
+  readonly platform: 'darwin' | 'win32' | 'linux' | 'unsupported';
   readonly asr: DesktopModelCapability<typeof ASR_INFERENCE_CONTRACT.id>;
   readonly semantic: DesktopModelCapability<typeof SEMANTIC_INFERENCE_CONTRACT.id>;
   readonly clap: DesktopModelCapability<typeof CLAP_INFERENCE_CONTRACT.id>;

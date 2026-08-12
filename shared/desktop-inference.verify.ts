@@ -136,9 +136,9 @@ assert.throws(() => parseDesktopRhythmRequest({
   modelPath: '/tmp/beat_this.onnx',
 }));
 
-assert.equal(preferredNativeInferenceBackend('win32'), 'directml');
-assert.equal(preferredNativeInferenceBackend('darwin'), 'native-cpu');
-assert.equal(preferredNativeInferenceBackend('linux'), null);
+assert.equal(preferredNativeInferenceBackend('win32'), 'native-cpu');
+assert.equal(preferredNativeInferenceBackend('darwin'), 'native-metal');
+assert.equal(preferredNativeInferenceBackend('linux'), 'native-cpu');
 assert.equal(preferredNativeRhythmBackend('win32'), 'directml');
 assert.equal(preferredNativeRhythmBackend('darwin'), 'coreml');
 assert.equal(preferredNativeRhythmBackend('linux'), null);
@@ -147,7 +147,7 @@ const windows = resolveDesktopInferenceCapabilities({
   transformerRuntime: true,
   ffmpegRuntime: true,
 });
-assert.equal(windows.asr.preferredBackend, 'directml');
+assert.equal(windows.asr.preferredBackend, 'native-cpu');
 assert.equal(windows.semantic.contractId, SEMANTIC_INFERENCE_CONTRACT.id);
 assert.equal(windows.clap.contractId, CLAP_INFERENCE_CONTRACT.id);
 assert.equal(windows.rhythm.contractId, RHYTHM_INFERENCE_CONTRACT.id);

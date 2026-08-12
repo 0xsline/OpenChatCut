@@ -32,7 +32,7 @@ function isRequestId(value: unknown): value is string {
 }
 
 function isBackend(value: unknown): value is DesktopInferenceBackend {
-  return value === 'coreml' || value === 'directml' || value === 'native-cpu';
+  return value === 'coreml' || value === 'directml' || value === 'native-cpu' || value === 'native-metal';
 }
 
 function isModelCapability(value: unknown, contractId: string): boolean {
