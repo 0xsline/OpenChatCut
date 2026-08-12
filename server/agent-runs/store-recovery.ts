@@ -88,7 +88,13 @@ function closeInterruptedToolRequests(events: ServerRunEvent[]): ServerRunEvent[
       at: now,
     };
   });
-  return [...events, ...closers];
+  // Closers belong before the terminal events, not after them: the done
+  // event must stay the final entry of a recovered run.
+  const terminalIndex = events.findIndex((event) => event.type === 'done'
+    || event.type === 'finish');
+  return terminalIndex < 0
+    ? [...events, ...closers]
+    : [...events.slice(0, terminalIndex), ...closers, ...events.slice(terminalIndex)];
 }
 
 function terminalTransportEvidence(

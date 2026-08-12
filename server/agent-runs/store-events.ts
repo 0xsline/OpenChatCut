@@ -10,6 +10,7 @@ import {
   MAX_SERVER_RUN_BYTES,
   MAX_SERVER_TOOL_REQUEST_EVENT_BYTES,
   MAX_SERVER_RUN_EVENTS,
+  MAX_SERVER_RUN_EVENTS_HARD,
   RunStoreLimitError,
   type ServerRun,
   type ServerRunStatus,
@@ -54,6 +55,38 @@ function dropOldest(run: ServerRun): void {
   updateReplayStart(run);
 }
 
+/** Events that may roll off the replay window of a long-running run. */
+const ROLLABLE_EVENT: ReadonlySet<string> = new Set([
+  'diagnostic',
+  'configured',
+  'text-start',
+  'text-delta',
+  'text-end',
+  'context-usage',
+]);
+
+/**
+ * Long runs (no turn cap) would otherwise die on the event count/byte caps.
+ * Make room by dropping the oldest rollable events; requests, results,
+ * status, retries and terminal events always stay.
+ */
+function dropRollableForSpace(
+  run: ServerRun,
+  incomingBytes: number,
+): void {
+  let guard = run.events.length + 1;
+  while (guard > 0
+    && (run.events.length + 1 > MAX_SERVER_RUN_EVENTS
+      || run.retainedEventBytes + incomingBytes > MAX_SERVER_RUN_BYTES)) {
+    guard -= 1;
+    const index = run.events.findIndex((event) => ROLLABLE_EVENT.has(event.type));
+    if (index < 0) break;
+    const [removed] = run.events.splice(index, 1);
+    run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed!));
+  }
+  updateReplayStart(run);
+}
+
 function appendEvent(
   dependencies: StoreEventDependencies,
   run: ServerRun,
@@ -69,8 +102,14 @@ function appendEvent(
     throw new RunStoreLimitError(`Agent run event exceeds ${maxBytes} bytes.`);
   }
   if (
-    run.events.length + run.pendingEventCount >= MAX_SERVER_RUN_EVENTS
-    || run.retainedEventBytes + run.pendingEventBytes + bytes > MAX_SERVER_RUN_BYTES
+    run.events.length + 1 > MAX_SERVER_RUN_EVENTS
+    || run.retainedEventBytes + bytes > MAX_SERVER_RUN_BYTES
+  ) {
+    dropRollableForSpace(run, bytes);
+  }
+  if (
+    run.events.length + 1 > MAX_SERVER_RUN_EVENTS_HARD
+    || run.retainedEventBytes + bytes > MAX_SERVER_RUN_BYTES * 4
   ) {
     throw new RunStoreLimitError('Agent run event limit/replay retention limit reached.');
   }
@@ -82,6 +121,15 @@ function appendEvent(
       await appendAgentRunEvent(run.projectId, run.id, runtimeEvent(event));
       run.retainedEventBytes += bytes;
       run.events.push(event);
+      // In-flight mirrors from a synchronous burst settle one by one; roll
+      // the window again after each commit so bursts cannot overflow it.
+      while (run.events.length > MAX_SERVER_RUN_EVENTS
+        || run.retainedEventBytes > MAX_SERVER_RUN_BYTES) {
+        const index = run.events.findIndex((item) => ROLLABLE_EVENT.has(item.type));
+        if (index < 0) break;
+        const [removed] = run.events.splice(index, 1);
+        run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed!));
+      }
       updateReplayStart(run);
       wakeSubscribers(run);
     } finally {

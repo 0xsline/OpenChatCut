@@ -203,21 +203,70 @@ assert.equal(recoveredStatusOnly?.error, null);
 assert.equal(recoveredStatusOnly?.events.at(-1)?.type, 'done');
 
 
-// Event cap failure is terminal but must retain replayable status and done events.
+// Long runs roll off oldest non-critical events instead of dying on the cap.
+const rolling = run('server-run-rolling-window');
+await setRunStatus(rolling, 'running');
+pushRunEvent(rolling, 'tool-request', {
+  toolCallId: 'call-keep',
+  name: 'read_timeline',
+  args: {},
+  argsDigest: 'digest-keep',
+});
+for (let index = 0; index < MAX_SERVER_RUN_EVENTS + 8; index += 1) {
+  pushRunEvent(rolling, 'diagnostic', { index });
+}
+pushRunEvent(rolling, 'tool-result', {
+  toolCallId: 'call-keep',
+  toolName: 'read_timeline',
+  argsDigest: 'digest-keep',
+  result: { items: [] },
+});
+await flushRunPersistence(rolling);
+assert.ok(rolling.events.length <= MAX_SERVER_RUN_EVENTS, 'rolling window stays under the cap');
+assert.equal(
+  rolling.events.find((event) => event.type === 'tool-result')?.type,
+  'tool-result',
+  'critical events survive the rolling window',
+);
+assert.ok(
+  rolling.events.some((event) => event.type === 'tool-request'),
+  'tool requests survive the rolling window',
+);
+assert.equal(
+  rolling.events[0]?.type,
+  'status',
+  'critical events anchor the replay window',
+);
+resetServerRunStoreForTest();
+
+// Diagnostic bursts roll off; only an all-critical window still hits the hard cap.
 const capped = run('server-run-cap');
 for (let index = 0; index < MAX_SERVER_RUN_EVENTS; index += 1) pushRunEvent(capped, 'diagnostic', { index });
-assert.throws(() => pushRunEvent(capped, 'overflow', {}), /event limit/i);
-await capped.terminalPromise;
-assert.equal(capped.status, 'failed');
-assert.equal(capped.events.at(-2)?.type, 'status');
-assert.equal(capped.events.at(-1)?.type, 'done');
-const cappedDone = capped.events.at(-1)?.data;
-assert(cappedDone && typeof cappedDone === 'object' && 'status' in cappedDone);
-assert.equal(cappedDone.status, 'failed');
-await flushServerRunPersistence(capped);
+pushRunEvent(capped, 'tool-request', {
+  toolCallId: 'cap-tool',
+  name: 'read_timeline',
+  args: {},
+  argsDigest: 'cap-digest',
+});
+assert.ok(capped.events.length <= MAX_SERVER_RUN_EVENTS, 'diagnostics rolled off instead of failing');
+// The hard ceiling only engages once the mirror queue drains (real LLM turns
+// arrive with inter-turn latency, so the committed-window check is accurate
+// there). Cover it directly: a synchronous burst of critical events beyond the
+// hard cap still fails the run.
+const critical = run('server-run-critical-cap');
+for (let index = 0; index < MAX_SERVER_RUN_EVENTS * 4 + 2; index += 1) {
+  pushRunEvent(critical, 'tool-request', {
+    toolCallId: `cap-${index}`,
+    name: 'read_timeline',
+    args: {},
+    argsDigest: `cap-${index}`,
+  });
+}
+await flushRunPersistence(critical);
 resetServerRunStoreForTest();
-const recovered = await recoverServerRuns('server-run-cap');
-assert.equal(recovered.find((item) => item.id === capped.id)?.events.at(-1)?.type, 'done', 'terminal done event replays after recovery');
+const criticalRecovered = await recoverServerRun(critical.projectId, critical.id);
+assert.equal(criticalRecovered?.status, 'failed', 'beyond the hard ceiling the run fails');
+assert.equal(criticalRecovered?.events.at(-1)?.type, 'done', 'terminal done event replays after recovery');
 
 // A tool result is a one-shot settlement. Re-delivery after a reconnect is a
 // duplicate, not a second execution or a replacement of the accepted result.
