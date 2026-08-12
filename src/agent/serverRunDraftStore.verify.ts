@@ -3,9 +3,47 @@ import {
   loadAgentArtifact,
   loadAgentRuntimeSidecar,
   resetAgentRuntimeStoreMemory,
+  storeAgentArtifact,
 } from '../persist/agentRuntimeStore.ts';
 import { startAgentRun } from './runtime-ledger.ts';
 import { saveServerRunDraftTool } from './serverRunDraftStore.ts';
+
+// The draft endpoint is server-side; emulate it with a local artifact write.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input);
+  if (url.includes('/draft/clear') && init?.method === 'POST') {
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (url.includes('/draft') && init?.method === 'POST') {
+    const body = JSON.parse(String(init.body)) as {
+      projectId: string; artifact: Record<string, unknown>;
+    };
+    const a = body.artifact;
+    await storeAgentArtifact({
+      version: 1,
+      artifactId: String(a.artifactId),
+      projectId: body.projectId,
+      runId: String(url).split('/').filter(Boolean).at(-2) ?? '',
+      kind: 'server-run-draft',
+      bodySha256: String(a.bodySha256),
+      originalBytes: Number(a.originalBytes),
+      originalChars: Number(a.originalChars),
+      createdAt: Date.now(),
+      redacted: a.redacted === true,
+      binaryOmitted: a.binaryOmitted === true,
+      body: String(a.body),
+      ...(typeof a.toolCallId === 'string' ? { toolCallId: a.toolCallId } : {}),
+      ...(typeof a.toolName === 'string' ? { toolName: a.toolName } : {}),
+    });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return originalFetch(input, init);
+}) as typeof fetch;
 
 const projectId = `server-run-draft-privacy-${Date.now()}`;
 resetAgentRuntimeStoreMemory();

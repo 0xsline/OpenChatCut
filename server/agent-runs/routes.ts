@@ -32,6 +32,7 @@ import {
   type ServerRunSettleStatus,
 } from './store-settle';
 import { digestValue } from './store-values';
+import { deleteAgentArtifacts, loadAgentRuntimeSidecar, storeAgentArtifact } from '../../src/persist/agentRuntimeStore';
 import {
   readJson,
   requestHeader,
@@ -355,6 +356,48 @@ async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: st
   sendJson(res, 200, { ok: outcome === 'ok', already: outcome === 'already', gone: outcome === 'gone' });
 }
 
+async function handleDraftStore(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+  const body = await readJson(req);
+  const projectId = requireProjectId(body.projectId);
+  const artifact = body.artifact as Record<string, unknown> | undefined;
+  if (!artifact || typeof artifact !== 'object') {
+    sendJson(res, 400, { error: 'draft artifact is required' });
+    return;
+  }
+  const accepted = await storeAgentArtifact({
+    version: 1,
+    artifactId: typeof artifact.artifactId === 'string' ? artifact.artifactId : '',
+    projectId,
+    runId,
+    kind: 'server-run-draft',
+    bodySha256: typeof artifact.bodySha256 === 'string' ? artifact.bodySha256 : '',
+    originalBytes: Number(artifact.originalBytes) || 0,
+    originalChars: Number(artifact.originalChars) || 0,
+    createdAt: Date.now(),
+    redacted: artifact.redacted === true,
+    binaryOmitted: artifact.binaryOmitted === true,
+    body: typeof artifact.body === 'string' ? artifact.body : '',
+    ...(typeof artifact.toolCallId === 'string' ? { toolCallId: artifact.toolCallId } : {}),
+    ...(typeof artifact.toolName === 'string' ? { toolName: artifact.toolName } : {}),
+  });
+  if (!accepted) {
+    sendJson(res, 409, { error: 'draft artifact was rejected (invalid, duplicate, or over the limit)' });
+    return;
+  }
+  sendJson(res, 200, { ok: true });
+}
+
+async function handleDraftClear(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+  const body = await readJson(req);
+  const projectId = requireProjectId(body.projectId);
+  const sidecar = await loadAgentRuntimeSidecar(projectId);
+  const artifactIds = sidecar.artifacts
+    .filter((artifact) => artifact.runId === runId && artifact.kind === 'server-run-draft')
+    .map((artifact) => artifact.artifactId);
+  await deleteAgentArtifacts(projectId, artifactIds);
+  sendJson(res, 200, { ok: true });
+}
+
 async function handleMetadata(
   req: IncomingMessage,
   res: ServerResponse,
@@ -401,6 +444,8 @@ async function routeAgentRunRequest(
   if (req.method === 'POST' && action === 'tool-result') return handleToolResult(req, res, runId);
   if (req.method === 'POST' && action === 'cancel') return handleCancel(req, res, runId);
   if (req.method === 'POST' && action === 'settle') return handleSettle(req, res, runId);
+  if (req.method === 'POST' && action === 'draft') return handleDraftStore(req, res, runId);
+  if (req.method === 'POST' && action === 'draft/clear') return handleDraftClear(req, res, runId);
   if (req.method === 'GET' && !action) return handleMetadata(req, res, url, runId);
   sendJson(res, 404, { error: 'not found' });
 }

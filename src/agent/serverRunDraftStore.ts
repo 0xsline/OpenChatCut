@@ -4,12 +4,10 @@ import { replayActions } from '../editor/store';
 import type { ProjectDoc } from '../editor/types';
 import { migrateProjectDoc } from '../persist/projectStore';
 import {
-  deleteAgentArtifacts,
   loadAgentArtifact,
   loadAgentRuntimeSidecar,
   MAX_ARTIFACT_BYTES,
   sha256Text,
-  storeAgentArtifact,
 } from '../persist/agentRuntimeStore';
 import {
   projectToolResultForPersistence,
@@ -114,25 +112,26 @@ async function storeBody(
   if (sanitized.storedBytes > MAX_ARTIFACT_BYTES) {
     throw new Error('Server run draft exceeds the durable artifact limit.');
   }
-  const id = artifactId();
-  const stored = await storeAgentArtifact({
-    version: 1,
-    artifactId: id,
-    projectId,
-    runId,
-    kind: 'server-run-draft',
-    bodySha256: await sha256Text(sanitized.body),
-    originalBytes: sanitized.storedBytes,
-    originalChars: sanitized.originalChars,
-    createdAt: Date.now(),
-    redacted: sanitized.redacted,
-    binaryOmitted: sanitized.binaryOmitted,
-    body: sanitized.body,
-    ...(body.kind === 'tool'
-      ? { toolCallId: body.toolCallId, toolName: body.name }
-      : { toolName: 'server_run_draft_base' }),
+  const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}/draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectId,
+      artifact: {
+        artifactId: artifactId(),
+        bodySha256: await sha256Text(sanitized.body),
+        originalBytes: sanitized.storedBytes,
+        originalChars: sanitized.originalChars,
+        redacted: sanitized.redacted,
+        binaryOmitted: sanitized.binaryOmitted,
+        body: sanitized.body,
+        ...(body.kind === 'tool'
+          ? { toolCallId: body.toolCallId, toolName: body.name }
+          : { toolName: 'server_run_draft_base' }),
+      },
+    }),
   });
-  if (!stored) throw new Error('Server run draft could not be persisted.');
+  if (!response.ok) throw new Error('Server run draft could not be persisted.');
 }
 
 export function saveServerRunDraftBase(
@@ -160,11 +159,16 @@ export function saveServerRunDraftTool(
   });
 }
 export async function clearServerRunDraft(projectId: string, runId: string): Promise<void> {
-  const sidecar = await loadAgentRuntimeSidecar(projectId);
-  const artifactIds = sidecar.artifacts
-    .filter((artifact) => artifact.runId === runId && artifact.kind === 'server-run-draft')
-    .map((artifact) => artifact.artifactId);
-  await deleteAgentArtifacts(projectId, artifactIds);
+  try {
+    const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}/draft/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId }),
+    });
+    if (!response.ok) throw new Error('draft clear rejected');
+  } catch {
+    // Best-effort cleanup; stale drafts are pruned by retention on the next write.
+  }
 }
 
 
