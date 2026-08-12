@@ -11,6 +11,7 @@ import {
   flushServerRunPersistence,
   MAX_SERVER_RUN_EVENTS,
   pushRunEvent,
+  recoverServerRun,
   resetServerRunStoreForTest,
   setRunStatus,
   waitForToolResult,
@@ -319,10 +320,18 @@ try {
   assert.equal(deliveredResult.image.length, acceptedPayload.length);
 
   const { run: capRun, capability: capCapability } = createRunWithCapability({ id: '22222222-2222-4222-8222-222222222222', projectId: 'project-cap', sessionGeneration: 'legacy', provider: 'deepseek', model: 'test' });
-  for (let index = 0; index < MAX_SERVER_RUN_EVENTS; index += 1) pushRunEvent(capRun, 'text-delta', { index });
-  assert.throws(() => pushRunEvent(capRun, 'text-delta', { index: MAX_SERVER_RUN_EVENTS }), /event limit/);
-  await capRun.terminalPromise;
-  assert.equal(capRun.status, 'failed');
+  for (let index = 0; index < MAX_SERVER_RUN_EVENTS * 4 + 2; index += 1) {
+    pushRunEvent(capRun, 'tool-request', {
+      toolCallId: `cap-${index}`,
+      name: 'read_timeline',
+      args: {},
+      argsDigest: `cap-${index}`,
+    });
+  }
+  await flushServerRunPersistence(capRun);
+  resetServerRunStoreForTest();
+  const capRecovered = await recoverServerRun(capRun.projectId, capRun.id);
+  assert.equal(capRecovered?.status, 'failed', 'beyond the hard ceiling the run fails on recovery');
   const cappedResponse = await fetch(
     `${origin}/api/agent-runs/${capRun.id}/events?projectId=${capRun.projectId}&after=0`,
     {
@@ -335,7 +344,7 @@ try {
   );
   assert.equal(cappedResponse.status, 410, 'a cursor before the bounded replay window is explicit');
   const capped = await readSse(
-    `/api/agent-runs/${capRun.id}/events?projectId=${capRun.projectId}&after=${capRun.replayStart - 1}`,
+    `/api/agent-runs/${capRun.id}/events?projectId=${capRun.projectId}&after=${capRecovered?.replayStart ? capRecovered.replayStart - 1 : 0}`,
     { 'X-OpenChatCut-Run-Capability': capCapability },
   );
   assert.deepEqual(capped.events.map((event) => event.id), [...new Set(capped.events.map((event) => event.id))]);

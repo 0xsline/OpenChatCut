@@ -130,6 +130,11 @@ function appendEvent(
         const [removed] = run.events.splice(index, 1);
         run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed!));
       }
+      if (run.events.length > MAX_SERVER_RUN_EVENTS_HARD
+        || run.retainedEventBytes > MAX_SERVER_RUN_BYTES * 4) {
+        run.error = 'Agent run event limit/replay retention limit reached.';
+        run.abort?.abort(new Error(run.error));
+      }
       updateReplayStart(run);
       wakeSubscribers(run);
     } finally {
