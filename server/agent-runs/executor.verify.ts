@@ -110,7 +110,7 @@ assert.throws(
   /cacheMode/,
 );
 assert.throws(
-  () => validateCreateInput({ ...validRequest, maxOutputTokens: 64_001 }),
+  () => validateCreateInput({ ...validRequest, maxOutputTokens: 512_001 }),
   /maxOutputTokens/,
 );
 assert.throws(
