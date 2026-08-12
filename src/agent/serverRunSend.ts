@@ -9,6 +9,7 @@ import { buildAgentSystemPrompt } from './systemPrompt';
 import { getActiveAgentModelChoice } from './model-selection';
 import { describeImagesForTextModel } from './vision';
 import { resolveVisionModel } from './visionConfig';
+import { withoutModelImages } from './messages';
 import { effectiveOutputTokenBudget } from './context-compaction';
 import type { AgentSendOptions } from './useAgentRun';
 import { createAgentRetry, type DisplayMessage } from './agent-session';
@@ -144,11 +145,16 @@ async function prepareServerRunPayload(
   // history to text before submitting, so the server receives them as usable
   // context instead of dropping them. A vision-capable main model keeps the
   // raw image parts (projectedHistory carries them through) so it can see the
-  // actual pixels instead of a lossy description.
+  // actual pixels instead of a lossy description. A text-only main model
+  // without a vision model gets images stripped with a visible omission note
+  // (matching the browser path) instead of sending them to a model that
+  // cannot read them.
   const supportsImages = choice.capabilities.supportsImages.value;
   const vision = resolveVisionModel(choice);
   if (!supportsImages && vision) {
     modelMessages = await describeImagesForTextModel(modelMessages, vision);
+  } else if (!supportsImages) {
+    modelMessages = withoutModelImages(modelMessages);
   }
   const payload = buildServerRunPayload(environment.projectId, content, sendOptions, {
     history: modelMessages,
