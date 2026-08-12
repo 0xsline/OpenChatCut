@@ -250,8 +250,17 @@ async function submitServerRun(active: ActiveServerRun): Promise<void> {
     signal: active.abort.signal,
   });
   if (!response.ok) {
-    if (isDefiniteAdmissionRejection(response.status)) active.admission = 'rejected';
-    throw new Error(`agent run failed: HTTP ${response.status}`);
+    try {
+      const body = await response.json() as { error?: string };
+      if (isDefiniteAdmissionRejection(response.status)) active.admission = 'rejected';
+      throw new Error(body?.error
+        ? `agent run failed: HTTP ${response.status} (${body.error})`
+        : `agent run failed: HTTP ${response.status}`);
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith('agent run failed')) throw e;
+      if (isDefiniteAdmissionRejection(response.status)) active.admission = 'rejected';
+      throw new Error(`agent run failed: HTTP ${response.status}`);
+    }
   }
   const value = await response.json() as CreatedServerRunResponse;
   if (value.id !== active.payload.runId
