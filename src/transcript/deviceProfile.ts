@@ -6,7 +6,6 @@ import { asrModelEntry } from '../../shared/asr-models';
 import type { AsrConfig, AsrDevice, AsrModelTier, DeviceProfile } from './local-asr-types';
 
 const DEFAULT_MEMORY_GB = 8;
-const SMALL_TIER_MIN_GB = 6;
 
 function platformOf(): DeviceProfile['platform'] {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -49,8 +48,12 @@ export async function detectDeviceProfile(): Promise<DeviceProfile> {
   };
 }
 
-/** Backend + model tier. User's explicit setting (settings → 本地模型 → 默认模型,
- *  synced to localStorage 'cc.asrModel') wins; otherwise auto by device memory.
+/**
+ * Backend + model tier. User's explicit setting (settings → 本地模型 → 默认模型,
+ *  synced to localStorage 'cc.asrModel') wins; otherwise base. Measured:
+ *  wasm small runs at RTF ~0.9 (a 10-min clip takes ~9 min) while base is
+ *  ~2.5x faster with comparable quality for typical speech, so the auto
+ *  default stays on base and small/medium are explicit choices.
  *  NOTE: onnxruntime-web's webgpu EP produces hallucinated output for these
  *  quantized whisper models on both software renderers and real Metal (verified
  *  M5/Chrome); wasm is the reliable default. */
@@ -64,7 +67,7 @@ export function chooseAsrConfig(profile: DeviceProfile): AsrConfig {
   const tier: AsrModelTier = preferred === 'tiny' || preferred === 'base'
     || preferred === 'small' || preferred === 'medium'
     ? preferred
-    : profile.deviceMemoryGB >= SMALL_TIER_MIN_GB ? 'small' : 'base';
+    : 'base';
   const model = asrModelEntry(tier);
   if (!model) throw new Error(`Unsupported local ASR model tier: ${tier}`);
   // WebGPU is an explicit opt-in (settings → 本地模型 → WebGPU 加速) and only

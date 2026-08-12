@@ -33,7 +33,7 @@ const projectId = 'harness-runtime-verify';
 const aspectSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'set_aspect_ratio')!;
 const installSkillSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'install_skill')!;
 assert.equal(AGENT_TOOL_TIMEOUTS.toolMs, 30_000);
-assert.equal(AGENT_TOOL_TIMEOUTS.tools.transcribe_trackMs, 300_000);
+assert.equal(AGENT_TOOL_TIMEOUTS.tools.transcribe_trackMs, 900_000);
 const ctx = {
   getProjectId: () => projectId,
   getState: () => ({ items: [], transitions: [] }),
