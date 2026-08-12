@@ -109,4 +109,5 @@ assert.throws(
 );
 
 await import('./mcp.verify.ts');
+await import('./broker-poll-refresh.verify.ts');
 console.log('external-agent broker check passed');
