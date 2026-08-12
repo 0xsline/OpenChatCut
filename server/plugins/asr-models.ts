@@ -127,10 +127,17 @@ export async function inspectAsrModel(
   const ggmlPath = entry.ggmlFile
     ? join(cacheDir, 'ggml', entry.ggmlFile.fileName)
     : undefined;
-  const ggmlFile = entry.ggmlFile
-    ? [{ path: ggmlPath!, sizeBytes: entry.ggmlFile.sizeBytes, sha256: entry.ggmlFile.sha256 }]
-    : [];
-  for (const file of [...entry.files, ...ggmlFile]) {
+  const checkedFiles: Array<{ path: string; sizeBytes: number; sha256: string }> = [
+    ...entry.files.map((file) => ({
+      path: join(cacheDir, entry.modelId, file.path),
+      sizeBytes: file.sizeBytes,
+      sha256: file.sha256,
+    })),
+    ...(entry.ggmlFile && ggmlPath
+      ? [{ path: ggmlPath, sizeBytes: entry.ggmlFile.sizeBytes, sha256: entry.ggmlFile.sha256 }]
+      : []),
+  ];
+  for (const file of checkedFiles) {
     throwIfAborted(signal);
     try {
       const info = await stat(file.path);
@@ -147,11 +154,11 @@ export async function inspectAsrModel(
   const fingerprint = stats.join('|');
   const cached = inspections.get(key);
   if (cached?.fingerprint === fingerprint) return cached.result;
-  const downloaded = (await Promise.all([...entry.files, ...ggmlFile].map((file) =>
+  const downloaded = (await Promise.all(checkedFiles.map((file) =>
     modelFileVerified(file.path, file, signal)))).every(Boolean);
   const result = { downloaded, bytes: downloaded ? entry.files.reduce(
     (total, file) => total + file.sizeBytes, 0,
-  ) + (ggmlFile.length ? ggmlFile[0]!.sizeBytes : 0) : 0 };
+  ) + (entry.ggmlFile ? entry.ggmlFile.sizeBytes : 0) : 0 };
   inspections.set(key, { fingerprint, result });
   return result;
 }

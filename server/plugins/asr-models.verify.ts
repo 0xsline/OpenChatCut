@@ -106,8 +106,7 @@ try {
   await writeFile(join(modelRoot, entry.files[0]!.path), expectedContent);
   __resetAsrTasks();
   assert.deepEqual(await inspectAsrModel(entry, root), { downloaded: true, bytes: expectedContent.length });
-  const canceledInspection = new AbortController();
-  canceledInspection.abort(new DOMException('canceled', 'AbortError'));
+  const canceledInspection = new AbortController();  canceledInspection.abort(new DOMException('canceled', 'AbortError'));
   await assert.rejects(
     inspectAsrModel(entry, root, canceledInspection.signal),
     (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
@@ -115,6 +114,32 @@ try {
   );
 } finally {
   await rm(root, { recursive: true, force: true });
+}
+
+// GGML companion files participate in the downloaded state: missing ggml
+// keeps the tier not-downloaded even when every ONNX file is present.
+{
+  const ggmlRoot = join(root, 'ggml');
+  const ggmlBytes = Buffer.from('ggml');
+  const ggmlEntry: AsrModelEntry = {
+    ...entry,
+    ggmlFile: {
+      fileName: 'ggml-test.bin',
+      sizeBytes: ggmlBytes.length,
+      sha256: createHash('sha256').update(ggmlBytes).digest('hex'),
+      revision: 'b'.repeat(40),
+    },
+  };
+  // The previous block removed the temp root; restore the ONNX file.
+  await mkdir(join(root, ggmlEntry.modelId), { recursive: true });
+  await writeFile(join(root, ggmlEntry.modelId, ggmlEntry.files[0]!.path), expectedContent);
+  const onnxOnly = await inspectAsrModel(ggmlEntry, root);
+  assert.equal(onnxOnly.downloaded, false, 'missing ggml file keeps the tier not downloaded');
+  await mkdir(ggmlRoot, { recursive: true });
+  await writeFile(join(ggmlRoot, ggmlEntry.ggmlFile!.fileName), ggmlBytes);
+  const complete = await inspectAsrModel(ggmlEntry, root);
+  assert.equal(complete.downloaded, true, 'onnx + ggml present counts as downloaded');
+  assert.equal(complete.bytes, expectedContent.length + ggmlBytes.length, 'bytes include the ggml file');
 }
 
 console.log('asr-models.verify: mutation authorization and JSON contract OK');
