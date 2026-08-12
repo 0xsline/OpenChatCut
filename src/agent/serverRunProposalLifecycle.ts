@@ -68,6 +68,8 @@ function turnContext(ctx: AgentContext, doc: ProjectDoc) {
       onProjectRenamed: ctx.onProjectRenamed,
       getUndoTarget: ctx.getUndoTarget,
       getRedoTarget: ctx.getRedoTarget,
+      getApprovalMode: ctx.getApprovalMode,
+      getOfflineMediaSrcs: ctx.getOfflineMediaSrcs,
     },
   };
 }

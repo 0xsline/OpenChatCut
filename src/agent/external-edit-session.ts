@@ -152,7 +152,9 @@ export function restoreDraftingExternalEditSession(
   };
 }
 
-/** Draft contexts deliberately omit live project navigation/rename callbacks. */
+/** Draft contexts deliberately omit live project navigation/rename callbacks.
+ *  The session's approvalMode still reaches the tool gate, so auto (YOLO)
+ *  sessions release paid/persistent tools the same way the built-in path does. */
 export function externalDraftContext(session: ExternalEditSession, live: AgentContext): AgentContext {
   if (!session.draft) throw new Error(`Edit session ${session.id} is no longer writable.`);
   return {
@@ -160,9 +162,12 @@ export function externalDraftContext(session: ExternalEditSession, live: AgentCo
     getState: session.draft.getState,
     getDoc: session.draft.getDoc,
     getCreativeMode: live.getCreativeMode,
+    setCreativeMode: live.setCreativeMode,
     templates: live.templates,
     audio: live.audio,
     getProjectId: live.getProjectId,
+    getOfflineMediaSrcs: live.getOfflineMediaSrcs,
+    getApprovalMode: () => session.approvalMode,
   };
 }
 
