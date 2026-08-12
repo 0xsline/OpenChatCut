@@ -86,11 +86,12 @@ function notify(projectId: string): void {
 async function mutateOnce<T>(projectId: string, change: (current: AgentRuntimeSidecar) => [AgentRuntimeSidecar, T]): Promise<{ result: T; previous: AgentRuntimeSidecar; next: AgentRuntimeSidecar }> {
   const sessionGeneration = await agentSessionWriteGeneration(projectId);
   const key = runtimeKey(projectId, sessionGeneration);
-  // Browser and server both write the agent runtime sidecar in serverRun mode,
-  // so a single install can transiently contest the CAS. Retry with a short
-  // backoff instead of failing hard after 4 immediate attempts.
-  const MUTATE_CAS_ATTEMPTS = 60;
-  for (let attempt = 0; attempt < MUTATE_CAS_ATTEMPTS; attempt += 1) {
+  // Browser and server both write the agent runtime sidecar in serverRun
+  // mode, so a single install can transiently contest the CAS. Retry without
+  // a fixed budget: every retry re-reads the canonical revision, so the
+  // contest always converges and a bounded backoff (capped at 2s) prevents
+  // hot-spinning. This must never surface to the user as a failure.
+  for (let attempt = 0; ; attempt += 1) {
     const raw = await kvGet<unknown>(key);
     const previous = scopeAgentRuntimeSidecar(
       normalizeSidecar(projectId, raw),
@@ -110,11 +111,11 @@ async function mutateOnce<T>(projectId: string, change: (current: AgentRuntimeSi
     if (canonical.accepted) {
       return { result, previous, next: normalizeSidecar(projectId, canonical.value) };
     }
-    if (attempt < MUTATE_CAS_ATTEMPTS - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 20 + attempt * 15));
-    }
+    const delay = Math.min(20 + attempt * 15, 2_000);
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, delay);
+    await promise;
   }
-  throw new Error('Concurrent agent runtime update could not be serialized.');
 }
 async function mutate<T>(projectId: string, change: (current: AgentRuntimeSidecar) => [AgentRuntimeSidecar, T]): Promise<T> {
   requireProjectId(projectId);
