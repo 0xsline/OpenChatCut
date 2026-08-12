@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { whisperTokensToChunks } from './native-asr-utils';
+import { whisperTokensToChunks, whisperWordsToChunks } from './native-asr-utils';
 
 // Language mapping and token->chunk projection are pure; the real whisper-cli
 // invocation is exercised by the desktop smoke (native-asr-service).
@@ -44,3 +44,21 @@ assert.equal(noisy.text, '', 'empty and special tokens produce no text');
 assert.equal(noisy.chunks.length, 0, 'no chunks from special tokens');
 
 console.log('native-asr-worker.verify: whisper token projection OK');
+
+// whisper-server verbose_json words projection (seconds -> ms).
+const serverWords = whisperWordsToChunks([
+  { word: ' 大家好', start: 0.01, end: 0.73 },
+  { word: ',', start: 1.13, end: 1.22 },
+  { word: '歡迎', start: 1.22, end: 1.64 },
+] as never);
+assert.deepEqual(
+  serverWords,
+  [
+    { text: '大家好', start: 10, end: 730 },
+    { text: '歡迎', start: 1220, end: 1640 },
+  ],
+  'server words project to ms chunks with punctuation dropped',
+);
+assert.equal(whisperWordsToChunks(undefined).length, 0, 'missing words yield no chunks');
+
+console.log('native-asr-worker.verify: whisper server words projection OK');

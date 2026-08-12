@@ -52,6 +52,21 @@ export function whisperTokensToChunks(
   return { text, chunks };
 }
 
+/** Project whisper.cpp server verbose_json words into the chunk contract. */
+export function whisperWordsToChunks(
+  words: readonly { word?: string; start?: number; end?: number }[] | undefined,
+): DesktopAsrChunk[] {
+  const chunks: DesktopAsrChunk[] = [];
+  for (const word of words ?? []) {
+    const text = (word.word ?? '').trim();
+    if (!text || typeof word.start !== 'number' || typeof word.end !== 'number') continue;
+    if (/[<>,_.!?。，、！？；：""''《》\s]+$/.test(text)) continue;
+    if (text.startsWith('[') || text.endsWith(']')) continue;
+    chunks.push({ text, start: Math.round(word.start * 1000), end: Math.round(word.end * 1000) });
+  }
+  return chunks;
+}
+
 export async function writeWav(samples: Float32Array, path: string): Promise<void> {
   const header = Buffer.alloc(44);
   header.write('RIFF', 0);

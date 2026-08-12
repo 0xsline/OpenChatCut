@@ -1,13 +1,16 @@
-// Desktop native-ASR worker: whisper.cpp (ggml) via whisper-cli with Metal
-// acceleration, CPU fallback. Replaces the transformers.js ONNX pipeline on
-// the desktop path; the browser path keeps transformers.js.
+// Desktop native-ASR worker: whisper.cpp (ggml) via a persistent
+// whisper-server (model loaded once) with whisper-cli spawn as fallback.
+// Replaces the transformers.js ONNX pipeline on the desktop path; the
+// browser path keeps transformers.js.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
+import { createServer } from 'node:net';
 import type {
   DesktopAsrBackend,
+  DesktopAsrChunk,
   DesktopAsrRequest,
   DesktopAsrResponse,
   DesktopModelLoadResponse,
@@ -22,6 +25,7 @@ import { NativeAsrWorkerLifecycle } from './native-asr-worker-lifecycle.ts';
 import {
   whisperLanguage,
   whisperTokensToChunks,
+  whisperWordsToChunks,
   writeWav,
   type WhisperJson,
 } from './native-asr-utils.ts';
@@ -45,6 +49,8 @@ const GGML_MODELS: Record<string, { fileName: string }> = {
   'Xenova/whisper-medium': { fileName: 'ggml-medium-q5_1.bin' },
 };
 
+const SERVER_READY_TIMEOUT_MS = 20_000;
+
 interface LoadedEngine {
   readonly modelId: string;
   readonly revision: string;
@@ -56,6 +62,7 @@ const port = process.parentPort;
 if (!port) throw new Error('native ASR process requires a parent port');
 let runtime: NativeWorkerData | null = null;
 let loaded: LoadedEngine | null = null;
+let whisperServer: { child: ChildProcess; port: number; ggmlPath: string } | null = null;
 const lifecycle = new NativeAsrWorkerLifecycle();
 
 function initialize(value: unknown): void {
@@ -193,6 +200,93 @@ function runWhisperCli(
   });
 }
 
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const address = srv.address() as { port: number };
+      srv.close(() => resolve(address.port));
+    });
+  });
+}
+
+function serverBinaryPath(): string {
+  const cli = requireRuntime().whisperCliPath;
+  const suffix = process.platform === 'win32' ? '.exe' : '';
+  return join(cli.slice(0, Math.max(cli.lastIndexOf('/'), cli.lastIndexOf('\\')) + 1), `whisper-server${suffix}`);
+}
+
+async function stopWhisperServer(): Promise<void> {
+  if (whisperServer) {
+    whisperServer.child.kill();
+    whisperServer = null;
+  }
+}
+
+async function ensureWhisperServer(ggmlPath: string): Promise<{ child: ChildProcess; port: number; ggmlPath: string }> {
+  if (whisperServer && !whisperServer.child.killed && whisperServer.ggmlPath === ggmlPath) {
+    return whisperServer;
+  }
+  await stopWhisperServer();
+  const bin = serverBinaryPath();
+  if (!existsSync(bin)) throw new Error('whisper-server is unavailable; falling back to whisper-cli.');
+  const serverPort = await freePort();
+  const child = spawn(bin, [
+    '-m', ggmlPath,
+    '--host', '127.0.0.1',
+    '--port', String(serverPort),
+    '-t', '8',
+  ], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+  child.stderr?.resume();
+  const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${serverPort}/health`);
+      if (response.ok) {
+        whisperServer = { child, port: serverPort, ggmlPath };
+        return whisperServer;
+      }
+    } catch {
+      // not ready yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  child.kill();
+  throw new Error('whisper-server failed to become ready.');
+}
+
+async function transcribeViaServer(
+  ggmlPath: string,
+  wavPath: string,
+  language: string,
+  signal?: AbortSignal,
+): Promise<{ text: string; chunks: DesktopAsrChunk[] }> {
+  const srv = await ensureWhisperServer(ggmlPath);
+  const form = new FormData();
+  form.append('file', new Blob([await readFile(wavPath)], { type: 'audio/wav' }), 'input.wav');
+  form.append('response_format', 'verbose_json');
+  if (language !== 'auto') form.append('language', language);
+  const response = await fetch(`http://127.0.0.1:${srv.port}/inference`, {
+    method: 'POST',
+    body: form,
+    signal,
+  });
+  if (!response.ok) throw new Error(`whisper-server inference failed (${response.status})`);
+  const json = await response.json() as {
+    segments?: readonly {
+      text?: string;
+      words?: readonly { word?: string; start?: number; end?: number }[];
+    }[];
+  };
+  const text = (json.segments ?? [])
+    .map((segment) => (segment.text ?? '').trim())
+    .filter(Boolean)
+    .join('\n');
+  const chunks = whisperWordsToChunks(json.segments?.flatMap((segment) => segment.words ?? []));
+  return { text, chunks };
+}
+
 async function transcribeWithEngine(
   request: DesktopAsrRequest,
   engine: LoadedEngine,
@@ -203,28 +297,42 @@ async function transcribeWithEngine(
   const wavPath = join(dir, 'input.wav');
   try {
     await writeWav(samples, wavPath);
-    let json: WhisperJson;
-    let backend: DesktopAsrBackend = engine.backend;
+    // 1. Persistent whisper-server: model loaded once, Metal by default.
     try {
-      const { jsonPath } = await runWhisperCli(
-        engine.ggmlPath, wavPath, whisperLanguage(request.language), true, signal,
+      const { text, chunks } = await transcribeViaServer(
+        engine.ggmlPath, wavPath, whisperLanguage(request.language), signal,
       );
-      json = JSON.parse(await readFile(jsonPath, 'utf8')) as WhisperJson;
-    } catch (gpuError) {
-      if (engine.backend === 'native-cpu') throw gpuError;
-      const { jsonPath } = await runWhisperCli(
-        engine.ggmlPath, wavPath, whisperLanguage(request.language), false, signal,
-      );
-      json = JSON.parse(await readFile(jsonPath, 'utf8')) as WhisperJson;
-      backend = 'native-cpu';
+      return {
+        requestId: request.requestId,
+        backend: engine.backend,
+        text,
+        chunks,
+      };
+    } catch {
+      // 2. whisper-cli spawn fallback (Metal, then CPU).
+      let json: WhisperJson;
+      let backend: DesktopAsrBackend = engine.backend;
+      try {
+        const { jsonPath } = await runWhisperCli(
+          engine.ggmlPath, wavPath, whisperLanguage(request.language), true, signal,
+        );
+        json = JSON.parse(await readFile(jsonPath, 'utf8')) as WhisperJson;
+      } catch (gpuError) {
+        if (engine.backend === 'native-cpu') throw gpuError;
+        const { jsonPath } = await runWhisperCli(
+          engine.ggmlPath, wavPath, whisperLanguage(request.language), false, signal,
+        );
+        json = JSON.parse(await readFile(jsonPath, 'utf8')) as WhisperJson;
+        backend = 'native-cpu';
+      }
+      const { text, chunks } = whisperTokensToChunks(json.transcription);
+      return {
+        requestId: request.requestId,
+        backend,
+        text,
+        chunks,
+      };
     }
-    const { text, chunks } = whisperTokensToChunks(json.transcription);
-    return {
-      requestId: request.requestId,
-      backend,
-      text,
-      chunks,
-    };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -288,4 +396,8 @@ port.on('message', (event) => {
     return;
   }
   lifecycle.enqueue(() => handle(value));
+});
+
+process.once('exit', () => {
+  whisperServer?.child.kill();
 });

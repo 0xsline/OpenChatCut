@@ -77,6 +77,15 @@ async function main() {
       sha256Of(await readFile(binPath)),
     );
     console.log(`[whisper-cli] copied ${override} -> ${binPath}`);
+    // The persistent whisper-server binary lives next to the CLI; ship it
+    // when present (locally compiled builds provide it).
+    const serverSrc = join(dirname(override), `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
+    const serverDst = join(targetDir, `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
+    if (existsSync(serverSrc)) {
+      await rm(serverDst, { force: true });
+      await writeFile(serverDst, await readFile(serverSrc));
+      console.log(`[whisper-cli] copied ${serverSrc} -> ${serverDst}`);
+    }
     return;
   }
   if (!spec.asset) {
