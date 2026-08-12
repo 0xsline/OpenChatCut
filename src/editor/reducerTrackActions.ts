@@ -1,5 +1,6 @@
 import type { TimelineItem, TimelineState, TrackFlags, TransitionItem } from './types';
 import { captionTrackEntries, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, timelineTrackIds, trackEnd, trackKind } from './types';
+import { reconcileTimelineCaptionReferences } from '../captions/reconcileSources.js';
 import type { Action } from './reducerActions';
 import { placeTrack, withTrackCaptions } from './reducerTimelineHelpers';
 
@@ -71,14 +72,14 @@ export function applyTrackAction(
       return { ...s, items: [...s.items, copy], selectedId: copy.id, selectedIds: [copy.id] };
     }
     case 'clear':
-      return {
+      return reconcileTimelineCaptionReferences({
         ...s,
         items: [],
         selectedId: null,
         selectedIds: [],
         linkGroups: undefined,
         multicamGroups: undefined,
-      };
+      });
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'toggleTrack': {
