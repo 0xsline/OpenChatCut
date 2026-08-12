@@ -1,6 +1,12 @@
-/* Self-hosted Geist + Geist Mono (OFL-1.1, Vercel) — UI brand typeface.
- * Chinese glyphs are not covered by Geist and fall back to the system UI
- * stack (PingFang / Microsoft YaHei) via the trailing system-ui entries. */
+/* Self-hosted UI typefaces (both OFL-1.1):
+ * - 'Geist' — the UI brand sans (OFL-1.1, Vercel).
+ * - 'Geist Mono' — the monospace slot; the family NAME stays 'Geist Mono'
+ *   (so the many `font-family:'Geist Mono, …'` references and trailing
+ *   ui-monospace/SFMono/Menlo/monospace fallback stack work unchanged), but
+ *   its glyphs are now provided by IoskeleyMono (OFL-1.1, a Berkeley Mono
+ *   look-alike built by configuring Iosevka — https://github.com/ahatem/IoskeleyMono).
+ * Chinese glyphs are not covered and fall back to the system UI stack
+ * (PingFang / Microsoft YaHei) via the trailing system-ui entries. */
 @font-face {
   font-family: 'Geist';
   src: url('/fonts/Geist-Regular.woff2') format('woff2');
@@ -31,28 +37,28 @@
 }
 @font-face {
   font-family: 'Geist Mono';
-  src: url('/fonts/GeistMono-Regular.woff2') format('woff2');
+  src: url('/fonts/IoskeleyMono-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'Geist Mono';
-  src: url('/fonts/GeistMono-Medium.woff2') format('woff2');
+  src: url('/fonts/IoskeleyMono-Medium.woff2') format('woff2');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'Geist Mono';
-  src: url('/fonts/GeistMono-SemiBold.woff2') format('woff2');
+  src: url('/fonts/IoskeleyMono-SemiBold.woff2') format('woff2');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'Geist Mono';
-  src: url('/fonts/GeistMono-Bold.woff2') format('woff2');
+  src: url('/fonts/IoskeleyMono-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
