@@ -10,7 +10,7 @@
 //
 // Output: public/whisper-cli/<platform>/whisper-cli[.exe]
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,10 +90,9 @@ async function main() {
   if (override) {
     console.log(`[whisper-cli] using override ${override}`);
     await mkdir(targetDir, { recursive: true });
-    await rename(override, binPath).catch(async () => {
-      await rm(binPath, { force: true });
-      await writeFile(binPath, await readFile(override));
-    });
+    await rm(binPath, { force: true });
+    await writeFile(binPath, await readFile(override));
+    await chmod(binPath, 0o755);
     await rm(binPath + '.sha256', { force: true });
     await writeFile(
       binPath + '.sha256',
@@ -107,6 +106,7 @@ async function main() {
     if (existsSync(serverSrc)) {
       await rm(serverDst, { force: true });
       await writeFile(serverDst, await readFile(serverSrc));
+      await chmod(serverDst, 0o755);
       console.log(`[whisper-cli] copied ${serverSrc} -> ${serverDst}`);
     }
     return;
@@ -119,12 +119,14 @@ async function main() {
     const cli = await buildFromSource(srcDir, buildDir, platformKey);
     await mkdir(targetDir, { recursive: true });
     await writeFile(binPath, await readFile(cli));
+    await chmod(binPath, 0o755);
     await rm(binPath + '.sha256', { force: true });
     await writeFile(binPath + '.sha256', sha256Of(await readFile(binPath)));
     const serverBin = join(dirname(cli), `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
     const serverDst = join(targetDir, `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
     if (existsSync(serverBin)) {
       await writeFile(serverDst, await readFile(serverBin));
+      await chmod(serverDst, 0o755);
     }
     console.log(`[whisper-cli] built ${platformKey} from source -> ${binPath}`);
     return;
