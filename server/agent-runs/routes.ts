@@ -365,7 +365,19 @@ async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: st
   if (status !== 'waiting_approval') {
     discardDeferredRun(runId);
     const live = getRun(runId);
-    if (live && live.projectId === projectId) await cancelRun(live).catch(() => undefined);
+    // A completed settle that arrives while the model finished naturally
+    // (no pending tool, finish event already emitted) must not flip the
+    // run to cancelled: the server's own terminal write is in flight.
+    const naturallyFinished = status === 'completed'
+      && live !== undefined
+      && live.projectId === projectId
+      && live.events.some((event) => event.type === 'finish')
+      && [...live.toolRequests.values()].every((request) => request.status !== 'pending');
+    if (live
+      && live.projectId === projectId
+      && !naturallyFinished) {
+      await cancelRun(live).catch(() => undefined);
+    }
   }
   const outcome = await settleServerRun(projectId, runId, {
     status: status as ServerRunSettleStatus,
