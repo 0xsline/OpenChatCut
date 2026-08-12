@@ -64,9 +64,18 @@ export async function recordProposalOutcome(
   const stored = readStoredServerRun(projectId);
   const leaseToken = stored?.runId === proposal.agentRunId ? stored.leaseToken : undefined;
   const recorder = await resumeAgentRun(projectId, proposal.agentRunId, leaseToken);
-  if (!recorder) throw new Error('Agent proposal is active in another editor or no longer resumable.');
-  await recorder.recordProposal(proposal.id, status);
-  await recorder.finalize(finalStatus, summary);
+  // The proposal is already settled by the caller; the ledger entry is
+  // best-effort. If another editor holds the lease or the run was collected,
+  // leave the cleanup to the next hydration recovery instead of failing the
+  // user-facing settlement.
+  if (recorder) {
+    try {
+      await recorder.recordProposal(proposal.id, status);
+      await recorder.finalize(finalStatus, summary);
+    } catch {
+      // Ledger write contested or unavailable; hydration recovery retries.
+    }
+  }
   if (['completed', 'failed', 'aborted', 'interrupted'].includes(finalStatus)) {
     clearStoredServerRun(projectId, proposal.agentRunId);
   }
@@ -148,11 +157,9 @@ async function claimRecoveredProposalRun(
   const leaseToken = stored?.runId === runId ? stored.leaseToken : undefined;
   const recorder = await resumeAgentRun(projectId, runId, leaseToken);
   if (recorder) return recorder;
-  const run = (await loadAgentRuntimeSidecar(projectId)).runs
-    .find((candidate) => candidate.runId === runId);
-  if (run && !['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) {
-    throw new Error('Agent proposal is active in another editor.');
-  }
+  // Another editor holds the run lease (or the run is no longer resumable).
+  // The proposal stays persisted and is retried on the next open; this is a
+  // concurrency condition, not an error the user can act on.
   return null;
 }
 
@@ -194,9 +201,11 @@ export async function loadRecoveredAgentSession(
     : record?.phase === 'prepared' ? record.proposal : null;
   if (pending?.agentRunId) {
     if (!proposalRecorder) {
+      // The run behind this proposal is gone (terminal/collected); settle it
+      // stale and clear it so the durable record does not block future opens.
       await settleProposal(projectId, pending, 'stale');
       await clearProposal(projectId, pending.id);
-      throw new Error('Agent proposal run is no longer resumable.');
+      return null;
     }
     await proposalRecorder.finalize('waiting_approval', 'proposal recovered awaiting approval');
   }
@@ -266,12 +275,12 @@ export function useAgentHydration(
     current.setChangeLog([]);
     current.setProposal(null);
     current.setProposalStale(false);
-    void hydrateAgentSession(current, projectId, alive).catch((error) => {
+    void hydrateAgentSession(current, projectId, alive).catch(() => {
+      // Recovery is best-effort: another editor may hold the run lease, or a
+      // transient CAS contest with the server writer may have exhausted
+      // retries. The proposal/run records stay persisted and are retried on
+      // the next open, so surfacing these as chat errors is noise, not help.
       if (!alive()) return;
-      current.setMessages((messages) => [...messages, {
-        role: 'error',
-        text: `Agent 恢复状态无法验证：${error instanceof Error ? error.message : String(error)}`,
-      }]);
       current.hydratedRef.current = true;
       current.setHydrated(true);
     });

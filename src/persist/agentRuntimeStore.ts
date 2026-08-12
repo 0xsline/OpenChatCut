@@ -89,7 +89,7 @@ async function mutateOnce<T>(projectId: string, change: (current: AgentRuntimeSi
   // Browser and server both write the agent runtime sidecar in serverRun mode,
   // so a single install can transiently contest the CAS. Retry with a short
   // backoff instead of failing hard after 4 immediate attempts.
-  const MUTATE_CAS_ATTEMPTS = 20;
+  const MUTATE_CAS_ATTEMPTS = 60;
   for (let attempt = 0; attempt < MUTATE_CAS_ATTEMPTS; attempt += 1) {
     const raw = await kvGet<unknown>(key);
     const previous = scopeAgentRuntimeSidecar(

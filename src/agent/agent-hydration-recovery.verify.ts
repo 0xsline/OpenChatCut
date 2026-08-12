@@ -227,5 +227,29 @@ cleanupAgentHydration(immediateGuardState, projectId, async () => undefined);
 assert.equal(await immediateDecision, 'deny',
   'unmount before the pending-guard render still denies the waiting tool');
 assert.equal(immediateGuardRef.current, null, 'resolving the guard synchronously clears its ref');
+// A proposal whose run is still leased by another editor must hydrate
+// silently (no throw): the proposal is settled stale and cleared so the
+// next open starts clean instead of surfacing a recovery error.
+const contestedProject = `hydrate-contested-${crypto.randomUUID()}`;
+const contestedRecorder = await startAgentRun({ projectId: contestedProject, userInput: 'other-editor', askOnly: false });
+contestedRecorder.stopLease();
+await patchAgentRun(contestedProject, contestedRecorder.runId, {
+  status: 'waiting_approval',
+  ownerInstanceId: 'another-editor-instance',
+  leaseExpiresAt: Date.now() + 60_000,
+});
+const contestedProposal = buildProposal(
+  [operation],
+  'contested proposal',
+  base,
+  proposalDraft.getState(),
+  contestedRecorder.runId,
+);
+await saveProposal(contestedProject, contestedProposal);
+const contestedHydration = await loadRecoveredAgentSession(contestedProject, () => true);
+assert.equal(contestedHydration, null,
+  'a lease held by another editor yields a clean no-op hydration instead of an error');
+assert.equal(await loadProposalRecord(contestedProject), null,
+  'the contested proposal is settled stale and cleared instead of blocking future opens');
 await stopAgentRunLeases(projectId);
 resetAgentRuntimeStoreMemory();
