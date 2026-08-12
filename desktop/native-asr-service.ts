@@ -5,7 +5,7 @@ import { isAbsolute } from 'node:path';
 import type { UtilityProcess } from 'electron';
 import { ASR_MODELS } from '../shared/asr-models.ts';
 import { inspectAsrModel } from '../server/plugins/asr-models.ts';
-import { ffmpegBin } from '../server/media-binaries.ts';
+import { ffmpegBin, whisperCliBin } from '../server/media-binaries.ts';
 import { resolveUploadFile } from '../server/media-dir.ts';
 import {
   isDesktopAsrResponse,
@@ -45,6 +45,7 @@ export interface NativeAsrServiceOptions {
   readonly cacheDir: string;
   readonly platform?: NodeJS.Platform;
   readonly ffmpegPath?: string;
+  readonly whisperCliPath?: string;
   readonly transformerRuntime?: boolean;
 }
 
@@ -143,6 +144,7 @@ function isNativeAsrFatalWorkerResult(value: unknown): value is NativeAsrFatalWo
 export class NativeAsrService {
   private readonly platform: NodeJS.Platform;
   private readonly ffmpegPath: string;
+  private readonly whisperCliPath: string;
   private readonly cacheDir: string;
   private readonly capabilities: DesktopInferenceCapabilities;
   private readonly inspectModel: typeof inspectAsrModel;
@@ -164,6 +166,7 @@ export class NativeAsrService {
     this.cacheDir = options.cacheDir;
     this.platform = options.platform ?? process.platform;
     this.ffmpegPath = options.ffmpegPath ?? ffmpegBin();
+    this.whisperCliPath = options.whisperCliPath ?? whisperCliBin();
     this.capabilities = resolveDesktopInferenceCapabilities({
       platform: this.platform,
       transformerRuntime: options.transformerRuntime ?? transformerRuntimeAvailable(),
@@ -294,6 +297,7 @@ export class NativeAsrService {
           cacheDir: this.cacheDir,
           platform: this.platform,
           ffmpegPath: this.ffmpegPath,
+          whisperCliPath: this.whisperCliPath,
         },
       });
     } catch (error) {

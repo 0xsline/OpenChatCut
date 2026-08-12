@@ -85,3 +85,4 @@ MODEL-OPT-PLAN.md
 .pi-*
 node_modules
 public/mediapipe/
+public/whisper-cli/

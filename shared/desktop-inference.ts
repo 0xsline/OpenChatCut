@@ -17,8 +17,8 @@ export const DESKTOP_INFERENCE_CHANNELS = {
   progress: 'openchatcut:inference-progress',
 } as const;
 
-export type DesktopInferenceBackend = 'coreml' | 'directml' | 'native-cpu';
-export type DesktopAsrBackend = 'directml' | 'native-cpu';
+export type DesktopInferenceBackend = 'coreml' | 'directml' | 'native-cpu' | 'native-metal';
+export type DesktopAsrBackend = 'directml' | 'native-cpu' | 'native-metal';
 
 interface DesktopModelCapability<ContractId extends string> {
   readonly available: boolean;

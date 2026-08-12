@@ -124,10 +124,16 @@ export async function inspectAsrModel(
 ): Promise<{ downloaded: boolean; bytes: number }> {
   throwIfAborted(signal);
   const stats: string[] = [];
-  for (const file of entry.files) {
+  const ggmlPath = entry.ggmlFile
+    ? join(cacheDir, 'ggml', entry.ggmlFile.fileName)
+    : undefined;
+  const ggmlFile = entry.ggmlFile
+    ? [{ path: ggmlPath!, sizeBytes: entry.ggmlFile.sizeBytes, sha256: entry.ggmlFile.sha256 }]
+    : [];
+  for (const file of [...entry.files, ...ggmlFile]) {
     throwIfAborted(signal);
     try {
-      const info = await stat(join(cacheDir, entry.modelId, file.path));
+      const info = await stat(file.path);
       throwIfAborted(signal);
       if (!info.isFile() || info.size !== file.sizeBytes) return { downloaded: false, bytes: 0 };
       stats.push(`${file.path}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`);
@@ -141,11 +147,11 @@ export async function inspectAsrModel(
   const fingerprint = stats.join('|');
   const cached = inspections.get(key);
   if (cached?.fingerprint === fingerprint) return cached.result;
-  const downloaded = (await Promise.all(entry.files.map((file) =>
-    modelFileVerified(join(cacheDir, entry.modelId, file.path), file, signal)))).every(Boolean);
+  const downloaded = (await Promise.all([...entry.files, ...ggmlFile].map((file) =>
+    modelFileVerified(file.path, file, signal)))).every(Boolean);
   const result = { downloaded, bytes: downloaded ? entry.files.reduce(
     (total, file) => total + file.sizeBytes, 0,
-  ) : 0 };
+  ) + (ggmlFile.length ? ggmlFile[0]!.sizeBytes : 0) : 0 };
   inspections.set(key, { fingerprint, result });
   return result;
 }
@@ -174,13 +180,15 @@ async function startDownload(id: string): Promise<AsrDownloadTask> {
   if (!entry) throw new Error(`unknown model ${id}`);
   const existing = tasks.get(id);
   if (existing && existing.status === 'downloading') return existing;
+  const ggml = entry.ggmlFile;
   const task: AsrDownloadTask = {
     id,
     status: 'downloading',
     bytesDone: 0,
-    bytesTotal: entry.files.reduce((total, file) => total + file.sizeBytes, 0),
+    bytesTotal: entry.files.reduce((total, file) => total + file.sizeBytes, 0)
+      + (ggml ? ggml.sizeBytes : 0),
     filesDone: 0,
-    filesTotal: entry.files.length,
+    filesTotal: entry.files.length + (ggml ? 1 : 0),
   };
   inspections.delete(`${modelCacheDir()}\0${entry.modelId}`);
   tasks.set(id, task);
@@ -202,6 +210,20 @@ async function startDownload(id: string): Promise<AsrDownloadTask> {
         task.filesDone += 1;
         task.bytesDone += file.sizeBytes;
       }
+      if (ggml) {
+        const ggmlPath = join(modelCacheDir(), 'ggml', ggml.fileName);
+        const ggmlFile = { path: ggmlPath, sizeBytes: ggml.sizeBytes, sha256: ggml.sha256 };
+        if (!(await modelFileVerified(ggmlPath, ggmlFile))) {
+          await rm(ggmlPath, { force: true });
+          await downloadModelFile(
+            { modelId: 'ggerganov/whisper.cpp', revision: ggml.revision, filePath: ggml.fileName },
+            undefined,
+            { expectedBytes: ggml.sizeBytes, expectedSha256: ggml.sha256 },
+          );
+        }
+        task.filesDone += 1;
+        task.bytesDone += ggml.sizeBytes;
+      }
       task.status = 'done';
     } catch (error) {
       task.status = 'error';
@@ -217,6 +239,9 @@ async function deleteModel(id: string): Promise<boolean> {
   const task = tasks.get(id);
   if (task?.status === 'downloading') throw new Error(`model ${id} is downloading`);
   await rm(join(modelCacheDir(), entry.modelId), { recursive: true, force: true });
+  if (entry.ggmlFile) {
+    await rm(join(modelCacheDir(), 'ggml', entry.ggmlFile.fileName), { force: true });
+  }
   tasks.delete(id);
   inspections.delete(`${modelCacheDir()}\0${entry.modelId}`);
   return true;

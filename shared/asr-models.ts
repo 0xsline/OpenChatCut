@@ -19,11 +19,25 @@ export interface AsrModelFile {
   readonly sha256: string;
 }
 
+/**
+ * Desktop-only whisper.cpp model (GGML format) paired with an ONNX tier.
+ * The desktop native-ASR worker runs whisper-cli with this file while the
+ * browser path keeps the ONNX graph; both are downloaded and verified through
+ * the same server-side hf-proxy channel.
+ */
+export interface GgmlAsrModelFile {
+  readonly fileName: string;
+  readonly sizeBytes: number;
+  readonly sha256: string;
+  readonly revision: string;
+}
+
 export interface AsrModelEntry {
   readonly id: 'tiny' | 'base' | 'small' | 'medium';
   readonly modelId: string;
   readonly revision: string;
   readonly files: readonly AsrModelFile[];
+  readonly ggmlFile?: GgmlAsrModelFile;
   readonly label: string;
   readonly sizeLabel: string;
   readonly language: string;
@@ -46,6 +60,11 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 59603028, sha256: 'b5b6e3f37071723df3f47cf1b448a9672780b015846886336a5e712f02813541' },
       { path: 'onnx/encoder_model.onnx', sizeBytes: 32909539, sha256: '39e81b6c86a5b2b4beda1bb3145486a769d594801f780a66cad1ae72c7ad2c5e' },
     ],
+    ggmlFile: {
+      fileName: 'ggml-tiny-q5_1.bin', sizeBytes: 32152673,
+      sha256: '818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7',
+      revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
+    },
     label: 'Whisper Tiny', sizeLabel: '约 100MB', language: '中 / 英', note: '最快最省，适合低配置设备；识别精度一般。',
   },
   {
@@ -63,6 +82,11 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 104701989, sha256: 'e6770b411d380038c3d69e9196aaf3bc9d72d848c809a24919d9a4adccb534ee' },
       { path: 'onnx/encoder_model.onnx', sizeBytes: 82451730, sha256: '7fcea817bb2be4d86729b521e5a7fcbec28fa743edfed67e882b33ff15852540' },
     ],
+    ggmlFile: {
+      fileName: 'ggml-base-q5_1.bin', sizeBytes: 59707625,
+      sha256: '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898',
+      revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
+    },
     label: 'Whisper Base', sizeLabel: '约 80MB', language: '中 / 英', note: '轻量均衡，日常口播可用；timestamped 转写更快。',
   },
   {
