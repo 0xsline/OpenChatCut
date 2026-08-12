@@ -1,5 +1,6 @@
 import type { TimelineItem, TimelineState } from './types';
 import { trackEnd } from './types';
+import { hasOperationalTranscript } from '../transcript/types';
 import { capFade } from './clipFit';
 import { scaleItemKeyframes, upsertKeyframe } from './keyframes';
 import { timelineFramesToSourceFrames } from './sourceLimit';
@@ -206,6 +207,10 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
       if (lockedItem(s, a.id)) return s;
       const target = s.items.find((it) => it.id === a.id);
       if (!target) return s;
+      // Word-driven audio is rate-free by design: the kept-segment stream is
+      // rendered without playbackRate, so changing it would desync duration
+      // vs rendered audio and captions (audio overruns the clip end).
+      if (target.kind === 'audio' && hasOperationalTranscript(target)) return s;
       const rate = Math.max(0.1, Math.min(8, a.rate));
       // preserve the source span: newDuration = sourceSpan / rate
       const sourceSpan = timelineFramesToSourceFrames(target, target.durationInFrames);

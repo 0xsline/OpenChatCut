@@ -1,4 +1,5 @@
 import type { CodexAgentModel, CodexAgentStatus } from '../../shared/codex-agent';
+import { loadAgentModelPref, saveAgentModelPref } from '../persist/sessionPrefs';
 import {
   LLM_PROVIDER_PRESETS,
   defaultModelForProvider,
@@ -153,7 +154,9 @@ export function applyAgentModelStatus(
   rebuildCodexChoices();
   const choices = allChoices();
   const initialApiId = chooseInitialApiId(apiModelChoices, models);
-  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
+  const preffered = loadAgentModelPref();
+  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId
+    : choices.some((choice) => choice.id === preffered) ? preffered : '';
   commitChoices(choices, preserved || initialApiId || choices[0]?.id || '', true,
     apiModelChoices.find((choice) => choice.id === initialApiId));
 }
@@ -208,4 +211,5 @@ export function selectAgentModel(id: string): void {
   const choice = snapshot.choices.find((candidate) => candidate.id === id);
   if (!choice) return;
   commitChoices(snapshot.choices, choice.id);
+  saveAgentModelPref(id);
 }

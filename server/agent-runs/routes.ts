@@ -374,6 +374,8 @@ async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: st
 async function handleDraftStore(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
   const body = await readJson(req);
   const projectId = requireProjectId(body.projectId);
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
   const artifact = body.artifact as Record<string, unknown> | undefined;
   if (!artifact || typeof artifact !== 'object') {
     sendJson(res, 400, { error: 'draft artifact is required' });
@@ -407,6 +409,8 @@ async function handleDraftStore(req: IncomingMessage, res: ServerResponse, runId
 async function handleDraftClear(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
   const body = await readJson(req);
   const projectId = requireProjectId(body.projectId);
+  const run = await boundRun(req, res, projectId, runId);
+  if (!run) return;
   const sidecar = await loadAgentRuntimeSidecar(projectId);
   const artifactIds = sidecar.artifacts
     .filter((artifact) => artifact.runId === runId && artifact.kind === 'server-run-draft')

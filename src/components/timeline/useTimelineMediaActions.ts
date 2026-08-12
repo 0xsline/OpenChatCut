@@ -4,6 +4,7 @@ import { timelineItemAssetId } from '../../editor/mediaAssetUsage';
 import { trackKind, type TimelineItem, type TimelineState, type TrackId } from '../../editor/types';
 import { exportClipMov, bakeClipToVideo } from '../../media/clipExport';
 import { importMedia } from '../../media/upload';
+import { kindOf } from '../../media/mediaProbe';
 import { mediaAssetRelinkPatch } from '../../media/mediaAssetRelink';
 import type { LibraryDragPayload } from '../../library/drag';
 import { t as translate } from '../../i18n/locale';
@@ -44,14 +45,17 @@ export function useTimelineMediaActions({
     relinkItemRef.current = null;
     if (relinkInputRef.current) relinkInputRef.current.value = '';
     if (!file || !item) return;
+    const liveState = liveStateRef.current;
+    const liveItem = liveState.items.find((candidate) => candidate.id === item.id);
+    if (!liveItem) return;
+    if (liveState.tracks?.[liveItem.track]?.locked) throw new Error(t('轨道已锁定'));
+    // Validate against the picked file BEFORE importing it into the media
+    // pool, otherwise a failed relink leaves an orphan duplicate asset.
+    const relinkKind = kindOf(file);
+    if (relinkKind !== liveItem.kind) throw new Error(t('请重新选择同类型文件'));
     try {
       const media = await importMedia(file, state.fps);
-      const liveState = liveStateRef.current;
-      const liveItem = liveState.items.find((candidate) => candidate.id === item.id);
-      if (!liveItem) return;
-      if (liveState.tracks?.[liveItem.track]?.locked) throw new Error(t('轨道已锁定'));
       const liveAssets = liveState.assets ?? [];
-      if (media.kind !== liveItem.kind) throw new Error(t('请重新选择同类型文件'));
       const poolAssetId = timelineItemAssetId(liveItem, liveAssets);
       const result = poolAssetId
         ? commands.relinkMediaAsset(poolAssetId, mediaAssetRelinkPatch(media))

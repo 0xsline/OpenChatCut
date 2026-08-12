@@ -70,8 +70,8 @@ export function ChatMessage({ msg, streaming, retry, onRetry, onWidgetSubmit, on
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', margin: '16px 0' }}>
         <div style={{ maxWidth: '86%', background: theme.hover, color: theme.text, borderRadius: 6, padding: '9px 14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{msg.text}</div>
         {retry && onRetry && (
-          <button type="button" onClick={() => onRetry(retry)} title={t('重试请求')}
-            style={{ marginTop: 5, border: 'none', background: 'transparent', color: theme.textDim, borderRadius: 6, padding: '3px 6px', fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" onClick={() => onRetry(retry)} title={t('重试请求')} disabled={streaming}
+            style={{ marginTop: 5, border: 'none', background: 'transparent', color: theme.textDim, borderRadius: 6, padding: '3px 6px', fontSize: 12, cursor: streaming ? 'default' : 'pointer', opacity: streaming ? 0.4 : 1, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <span aria-hidden="true">↻</span>{t('重试')}
           </button>
         )}

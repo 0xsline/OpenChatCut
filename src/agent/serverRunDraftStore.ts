@@ -13,6 +13,14 @@ import {
   projectToolResultForPersistence,
   sanitizeJsonForArtifact,
 } from './runtime-artifact';
+import { SERVER_RUN_CAPABILITY_HEADER } from './serverRunProtocol';
+import { readStoredServerRun } from './serverRunSessionStorage';
+
+function storedRunCapabilityHeader(projectId: string, runId: string): Record<string, string> {
+  const stored = readStoredServerRun(projectId);
+  const capability = stored?.runId === runId ? stored.capability : undefined;
+  return capability ? { [SERVER_RUN_CAPABILITY_HEADER]: capability } : {};
+}
 
 interface ServerRunDraftBaseBody {
   readonly version: 1;
@@ -114,7 +122,10 @@ async function storeBody(
   }
   const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}/draft`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...storedRunCapabilityHeader(projectId, runId),
+    },
     body: JSON.stringify({
       projectId,
       artifact: {
@@ -162,7 +173,10 @@ export async function clearServerRunDraft(projectId: string, runId: string): Pro
   try {
     const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}/draft/clear`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...storedRunCapabilityHeader(projectId, runId),
+      },
       body: JSON.stringify({ projectId }),
     });
     if (!response.ok) throw new Error('draft clear rejected');

@@ -281,7 +281,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <VendorPane page={page} hint={group.hint} ctx={ctx} />
         </div>
         <FooterBar reveal={reveal} onReveal={setReveal} message={message}
-          dirty={dirty} saving={saving} onClose={onClose} onSave={() => { void save(); }} />
+          dirty={dirty} saving={saving} onClose={requestClose} onSave={() => { void save(); }} />
       </div>
     </div>
   );

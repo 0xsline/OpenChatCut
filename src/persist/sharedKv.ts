@@ -38,6 +38,10 @@ interface EntryResponse {
   value?: unknown;
 }
 let remoteCache: Record<string, unknown> | null = null;
+// Keys whose last write could not reach the server (offline/read-only):
+// remote reads must never purge their local copy, or the only data copy
+// is silently deleted on the next load.
+const locallyPendingKeys = new Set<string>();
 const remoteKnown = new Set<string>();
 let readyPromise: Promise<void> | undefined;
 let projectMigrationPending = false;
@@ -154,8 +158,12 @@ async function fetchRemoteEntry(key: string): Promise<void> {
   const entry = await requestEntry(key);
   cacheEntry(key, entry);
   if (key === 'projects' && projectMigrationPending) return;
-  if (entry.found) await localSet(key, entry.value);
-  else await localDel(key);
+  if (entry.found) {
+    await localSet(key, entry.value);
+    locallyPendingKeys.delete(key);
+  } else if (!locallyPendingKeys.has(key)) {
+    await localDel(key);
+  }
 }
 function validMutationResponse(value: unknown): value is ProjectStoreMutationResponse {
   return isRecord(value)
@@ -435,9 +443,11 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
     }
     await disableRemote();
     await localSet(key, value);
+    locallyPendingKeys.add(key);
     return;
   }
   await localSet(key, value);
+  locallyPendingKeys.delete(key);
   remoteKnown.add(key);
   remoteCache = { ...remoteCache, [key]: value };
 }

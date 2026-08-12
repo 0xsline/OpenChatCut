@@ -92,10 +92,19 @@ function ChatOnboarding({ controller }: { controller: ChatPanelController }) {
 }
 
 function EarlierMessagesButton({ controller }: { controller: ChatPanelController }) {
-  const { visibleFrom, composer, t } = controller;
+  const { visibleFrom, composer, t, scroll } = controller;
   if (visibleFrom === 0) return null;
   return <button type="button"
-    onClick={() => composer.setVisibleMessageCount((count) => count + MESSAGE_WINDOW_SIZE)}
+    onClick={() => {
+      // Keep the current viewport anchored: the newly loaded history is
+      // inserted above, so restore the previous bottom offset after render.
+      const node = scroll.scrollRef.current;
+      const bottomBefore = node ? node.scrollHeight - node.scrollTop : 0;
+      composer.setVisibleMessageCount((count) => count + MESSAGE_WINDOW_SIZE);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (node) node.scrollTop = node.scrollHeight - bottomBefore;
+      }));
+    }}
     style={{ display: 'block', margin: '4px auto 12px', padding: '5px 10px', border: `0.5px solid ${theme.border}`, borderRadius: 6, background: 'transparent', color: theme.textDim, cursor: 'pointer', fontSize: 12 }}>
     {t('加载更早消息')}（{visibleFrom}）
   </button>;

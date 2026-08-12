@@ -419,8 +419,15 @@ export class ServerRunToolExecutor {
       };
       try {
         await this.callbacks.onToolAction(outcome);
-      } catch (error) {
-        return this.reportFailure(runId, toolCallId, request, error, false);
+      } catch {
+        // The tool already executed; retry the durable draft write once so
+        // its actions are not lost (reportFailure with persist=false would
+        // drop them and a model-side retry could double-execute).
+        try {
+          await this.callbacks.onToolAction(outcome);
+        } catch (retryError) {
+          return this.reportFailure(runId, toolCallId, request, retryError, false);
+        }
       }
       return this.finishExecution(runId, toolCallId, request, update.execution.result);
     } finally {

@@ -15,6 +15,7 @@ const draftKey = (projectId: string) => `cc.composerDraft.${projectId}`;
 const modeKey = (projectId: string) => `cc.chatMode.${projectId}`;
 const autoApplyKey = (projectId: string) => `cc.chatAutoApply.${projectId}`;
 const playheadKey = (projectId: string) => `cc.playhead.${projectId}`;
+const AGENT_MODEL_KEY = 'cc.agentModelActiveId';
 const RECENT_TEMPLATES_KEY = 'cc.recentTemplates';
 const MAX_RECENT = 16;
 
@@ -74,6 +75,15 @@ export function loadChatAutoApply(projectId: string): boolean {
   // it off. In YOLO mode the preference also releases the paid/external
   // runtime confirmation cards (user opted into unapproved execution).
   return readRaw(autoApplyKey(projectId)) !== '0';
+}
+
+export function loadAgentModelPref(): string {
+  return readRaw(AGENT_MODEL_KEY) ?? '';
+}
+
+export function saveAgentModelPref(id: string): void {
+  if (!id) return;
+  writeRaw(AGENT_MODEL_KEY, id);
 }
 
 export function saveChatAutoApply(projectId: string, on: boolean): void {

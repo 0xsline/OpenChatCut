@@ -490,9 +490,12 @@ export function ChatComposer(props: ChatComposerProps) {
               setSlashIndex((i) => (i <= 0 ? slashMatches.length - 1 : i - 1));
               return;
             }
-            if ((event.key === 'Enter' || event.key === 'Tab') && slashMatches.length) {
+            if ((event.key === 'Enter' || event.key === 'Tab') && slashOpen) {
+              // With the slash menu open, Enter/Tab must never fall through to
+              // submitting the raw command text, even when there are zero
+              // matches (e.g. a typo'ed skill name).
               event.preventDefault();
-              activateSlash(slashMatches[Math.max(0, slashIndex)]);
+              if (slashMatches.length) activateSlash(slashMatches[Math.max(0, slashIndex)]);
               return;
             }
             if (event.key === 'Escape') {

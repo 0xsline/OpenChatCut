@@ -1,7 +1,7 @@
 import type { TimelineItem, TimelineState } from './types';
 import { hasOperationalTranscript } from '../transcript/types';
 import { newTranscriptGeneration } from '../transcript/identity';
-import { editedFrames, fillerIndices } from '../transcript/edit';
+import { fillerIndices } from '../transcript/edit';
 import type { Action } from './reducerActions';
 import { editedDuration } from './reducerTimelineHelpers';
 
@@ -162,7 +162,7 @@ export function applyTranscriptAction(s: TimelineState, a: Action): TimelineStat
       return {
         ...s,
         items: s.items.map((it) =>
-          it.id === a.id ? { ...it, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined, transcriptPlayOrder: undefined, durationInFrames: editedFrames(it.transcript!, new Set(), s.fps) } : it,
+          it.id === a.id ? { ...it, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined, transcriptPlayOrder: undefined, durationInFrames: editedDuration(it, new Set(), s.fps) } : it,
         ),
       };
     }
