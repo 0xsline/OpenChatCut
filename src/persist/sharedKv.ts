@@ -304,6 +304,12 @@ async function disableRemote(): Promise<void> {
 // loadChat, the runtime sidecar and the recovery chain).
 const FRESH_CACHE_TTL_MS = 2_000;
 const freshCache = new Map<string, { value: unknown; at: number }>();
+// kvGet serves known keys from the in-memory remote cache; re-verify them
+// against the server on a short TTL so a second port/instance that wrote
+// newer data is not hidden forever (read-modify-write flows would then
+// overwrite the newer remote value).
+const KV_REMOTE_VERIFY_TTL_MS = 5_000;
+const remoteVerifiedAt = new Map<string, number>();
 
 export async function kvGetFresh<T>(key: string): Promise<T | undefined> {
   await ready();
@@ -367,7 +373,12 @@ export async function kvGet<T>(key: string): Promise<T | undefined> {
   await ready();
   if (remoteCache) {
     try {
-      if (key === 'projects' || !remoteKnown.has(key)) await fetchRemoteEntry(key);
+      const lastVerified = remoteVerifiedAt.get(key) ?? 0;
+      if (key === 'projects' || !remoteKnown.has(key)
+        || Date.now() - lastVerified > KV_REMOTE_VERIFY_TTL_MS) {
+        await fetchRemoteEntry(key);
+        remoteVerifiedAt.set(key, Date.now());
+      }
     } catch {
       await disableRemote();
     }

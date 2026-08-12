@@ -125,6 +125,7 @@ export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, 
       <Sequence key={`${item.id}_${index}`} from={segment.fromFrame} durationInFrames={segment.durFrames} premountFor={premountFor} name={item.name}>
         <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={segment.srcStartFrame} trimAfter={segment.srcEndFrame}
           volume={(frame) => volumeAt(segment.fromFrame - item.startFrame + frame) * gainAt(segment.fromFrame + frame)
+            * clipFadeFactor(segment.fromFrame - item.startFrame + frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)
             * audioCrossfadeMultiplier(item, segment.fromFrame - item.startFrame + frame, transitions)} />
       </Sequence>
     ))}</>;

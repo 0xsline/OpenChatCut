@@ -8,6 +8,7 @@
 import type { TranscriptResult } from './types';
 import { getMediaBlob } from '../persist/mediaBlobStore';
 
+const ASSEMBLYAI_POLL_DEADLINE_MS = 30 * 60 * 1000;
 const BASE = '/assemblyai/v2';
 
 /** Prefer extract for these (video always; large pure-audio too). */
@@ -139,7 +140,13 @@ async function poll(
   onCheckpoint?: AssemblyAiCheckpointWriter,
   resume: AssemblyAiResumeCheckpoint = {},
 ): Promise<TranscriptResult> {
+  // A provider job stuck in queued/processing must not poll forever (and
+  // re-enter the same loop on every reload via the resume checkpoint).
+  const deadline = Date.now() + ASSEMBLYAI_POLL_DEADLINE_MS;
   for (;;) {
+    if (Date.now() > deadline) {
+      throw new Error('transcription timed out while waiting for the provider; please retry');
+    }
     const r = await serviceFetch(`${BASE}/transcript/${id}`);
     if (!r.ok) throw new Error(`poll failed: HTTP ${r.status}`);
     const d = await r.json();

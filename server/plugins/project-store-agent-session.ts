@@ -159,6 +159,29 @@ export function prepareAgentSessionMigrationEntries(
     const artifactKeys = Object.keys(prepared).filter((key) => key.startsWith(oldArtifactPrefix));
     if (Object.hasOwn(base, markerKey)) {
       for (const key of [...sessionKeys, ...artifactKeys]) delete prepared[key];
+      // A browser backlog that never migrated (legacy chat:/proposal:/
+      // agent-runtime: keys) would otherwise stay invisible once the store
+      // has a generation marker: remap it into the current generation so
+      // old history is still readable (and not retained forever).
+      const currentGeneration = parseAgentSessionGenerationRecord(base[markerKey])?.generation;
+      if (currentGeneration && currentGeneration !== LEGACY_AGENT_SESSION_GENERATION) {
+        const legacyPairs: ReadonlyArray<[string, () => string]> = [
+          [`chat:${projectId}`, () => agentSessionChatKey(projectId, currentGeneration)],
+          [`proposal:${projectId}`, () => agentSessionProposalKey(projectId, currentGeneration)],
+          [`agent-runtime:${projectId}`, () => agentSessionRuntimeKey(projectId, currentGeneration)],
+        ];
+        for (const [legacyKey, targetOf] of legacyPairs) {
+          if (!Object.hasOwn(prepared, legacyKey)) continue;
+          const target = targetOf();
+          if (Object.hasOwn(prepared, target) || Object.hasOwn(base, target)) {
+            delete prepared[legacyKey];
+            continue;
+          }
+          const legacyValue = prepared[legacyKey];
+          delete prepared[legacyKey];
+          prepared[target] = scopedValue(legacyValue, currentGeneration);
+        }
+      }
       continue;
     }
     const generation = randomUUID();

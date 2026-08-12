@@ -17,6 +17,7 @@ import { desktopNativeInferenceEnabled } from './desktop-inference-preference';
 const TARGET_SR = ASR_INFERENCE_CONTRACT.sampleRate;
 /** WebGPU load can hang on software renderers (headless/SwiftShader); force-fail
  *  so ensureLoaded falls back to wasm instead of stalling transcription forever. */
+const WASM_LOAD_TIMEOUT_MS = 120_000;
 const WEBGPU_LOAD_TIMEOUT_MS = 90_000;
 
 type Pending = {
@@ -116,7 +117,8 @@ export class LocalAsrClient {
             modelId: config.modelId,
             revision: config.revision,
           },
-          config.device === 'webgpu' ? WEBGPU_LOAD_TIMEOUT_MS : undefined,
+          config.device === 'webgpu' ? WEBGPU_LOAD_TIMEOUT_MS
+            : config.device === 'wasm' ? WASM_LOAD_TIMEOUT_MS : undefined,
         );
         this.config = config;
       } catch (webgpuError) {
