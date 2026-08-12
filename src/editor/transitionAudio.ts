@@ -39,3 +39,29 @@ export function continuousVideoAudioGroups(
   }
   return groups.filter((group) => group.length > 1);
 }
+
+/** Whether a clip can join a shared-visual group: one decoder element plays
+ *  the consecutive same-source run. Any per-clip rendering concern (GL effect,
+ *  background fill, transition extension/entrance, denoise, animated
+ *  transform/keyframes/zoom, filters) keeps the clip on its own element. */
+export function shareableVisualItem(input: {
+  item: TimelineItem;
+  hasBackgroundFill: boolean;
+  hasExtendBefore: boolean;
+  hasExtendAfter: boolean;
+  hasEntrance: boolean;
+  hasGlEffect: boolean;
+}): boolean {
+  const { item } = input;
+  return item.kind === 'video'
+    && !!item.src
+    && !item.denoisedSrc
+    && !input.hasGlEffect
+    && !input.hasBackgroundFill
+    && !input.hasExtendBefore
+    && !input.hasExtendAfter
+    && !input.hasEntrance
+    && !item.transform
+    && !item.keyframes
+    && !item.filters;
+}

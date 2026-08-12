@@ -13,6 +13,8 @@ import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
 import { voiceIsolationMix } from '../audio/voiceMix';
 import { backgroundFillAppearanceFor, backgroundFillFilter } from './backgroundFill';
+import { appearanceAt } from './clipFade';
+import { zoomAt } from './zoom';
 import { clipFadeFactor, clipOpacityAt } from './clipFade';
 import { volumeAtFrame } from './keyframes';
 import { sourceFrameAt } from './sourceLimit';
@@ -164,6 +166,69 @@ export function ContinuousVideoAudio({ items, muted, gainAt, premountFor, browse
     <Sequence from={first.startFrame} durationInFrames={duration} premountFor={premountFor} name={`${first.name}:audio`}>
       <MixedRuntimeAudio item={first} browserRenderer={browserRenderer} trimBefore={first.srcInFrame ?? 0}
         playbackRate={first.playbackRate ?? 1} volume={volume} />
+    </Sequence>
+  );
+}
+
+export function SharedVideoVisualGroup({ group, fit, muted, canvasW, canvasH, premountFor, browserRenderer }: {
+  group: TimelineItem[];
+  fit: AspectFit;
+  muted: boolean;
+  canvasW: number;
+  canvasH: number;
+  premountFor: number;
+  browserRenderer: boolean;
+}) {
+  const frame = useCurrentFrame();
+  const first = group[0];
+  const last = group.at(-1);
+  if (!first || !last || !first.src) return null;
+  const duration = last.startFrame + last.durationInFrames - first.startFrame;
+  const timelineFrame = first.startFrame + frame;
+  const item = group.find((candidate) => timelineFrame >= candidate.startFrame
+    && timelineFrame < candidate.startFrame + candidate.durationInFrames) ?? first;
+  const localFrame = timelineFrame - item.startFrame;
+  const appearance = appearanceAt(item, localFrame, false);
+  const sourceWidth = item.width ?? canvasW;
+  const sourceHeight = item.height ?? canvasH;
+  const rect = visibleVisualFrameRect(
+    { width: canvasW, height: canvasH },
+    { width: sourceWidth, height: sourceHeight },
+    fit,
+  );
+  const resolvedRadius = clampVisualBorderRadius(appearance.borderRadius, rect);
+  const style: CSSProperties = {
+    width: '100%',
+    height: '100%',
+    objectFit: fit === 'cover' ? 'cover' : 'contain',
+    ...appearance.foregroundStyle,
+  };
+  let visual = (
+    <RuntimeVideo browserRenderer={browserRenderer} src={first.src} trimBefore={first.srcInFrame ?? 0}
+      playbackRate={first.playbackRate ?? 1} volume={0} muted={muted} style={style} />
+  );
+  if (item.zoom) {
+    const zoom = zoomAt(item.zoom, localFrame, item.durationInFrames);
+    visual = (
+      <AbsoluteFill style={{ transform: `scale(${zoom.magnification})`, transformOrigin: `${zoom.focalX * 100}% ${zoom.focalY * 100}%` }}>
+        {visual}
+      </AbsoluteFill>
+    );
+  }
+  return (
+    <Sequence from={first.startFrame} durationInFrames={duration} premountFor={premountFor} name={`${first.name}:visual`}>
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', opacity: appearance.opacity }}>
+        <div style={{
+          position: 'relative',
+          width: rect.width,
+          height: rect.height,
+          flexShrink: 0,
+          overflow: resolvedRadius ? 'hidden' : undefined,
+          borderRadius: resolvedRadius,
+        }}>
+          {visual}
+        </div>
+      </AbsoluteFill>
     </Sequence>
   );
 }
