@@ -417,17 +417,39 @@ export async function getStoredEntry(key: string): Promise<StoredEntryValue> {
 }
 
 
+/**
+ * Process-local serialization for project-store operations.
+ *
+ * The owner-safe cross-process file lease was removed (it caused "guard
+ * busy" stalls and is unnecessary for a single-instance app). Within a single
+ * process, multi-step store operations (project-document CAS, offline commits,
+ * agent-runtime CAS, export-recovery) must still be mutually exclusive so their
+ * read-modify-write steps do not interleave: e.g. a browser editor registered
+ * while an offline commit is in flight must observe the post-commit revision
+ * (reload) rather than claim a stale frame. This chained promise serializes
+ * concurrent withProjectStoreLock callers in this process. Cross-process
+ * safety on SQLite continues to come from WAL + busy_timeout.
+ */
+let projectStoreTail = Promise.resolve();
+function serializeProjectStore<T>(task: () => Promise<T>): Promise<T> {
+  const result = projectStoreTail.then(task, task);
+  projectStoreTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 export async function withProjectStoreLock<T>(
   work: (store: LockedProjectStore) => Promise<T>,
 ): Promise<T> {
-  await ensureStoreReady();
-  const release = await acquireLock();
-  try {
-    const deletedIds = new Set(Object.keys(await readDeletedProjects()));
-    return await work(createLockedProjectStore(deletedIds));
-  } finally {
-    await release();
-  }
+  return serializeProjectStore(async () => {
+    await ensureStoreReady();
+    try {
+      const deletedIds = new Set(Object.keys(await readDeletedProjects()));
+      return await work(createLockedProjectStore(deletedIds));
+    } finally {
+      // No per-operation release is needed: the promise chain above already
+      // guarantees the next caller starts only after this one settles.
+    }
+  });
 }
 
 export const {

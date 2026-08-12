@@ -118,29 +118,32 @@ async function registerBridgeEditor(
 ): Promise<void> {
   const input = registrationInput(await readBridgeJson(req));
   const capability = registrationCapability(req, false);
+  // A matching registration capability marks a legitimate renewal from the
+  // currently owned window (e.g. a page reload keeps its capability). A
+  // missing/mismatched capability on a DIFFERENT window is no longer blocked —
+  // that window simply takes over (single-window desktop has no cross-window
+  // exclusivity). Stale-revision protection below still prevents clobbering.
   const renewing = capability !== null && operations.editorRegistrationMatches(
     input.projectId,
     input.editorId,
     capability,
   );
-  if (capability && !renewing) {
-    sendBridgeJson(res, 409, { error: 'editor registration is stale or owned by another session' });
-    return;
-  }
   const claimed = await operations.claimBrowserOwnership(
     input.projectId,
     input.editorId,
     input.baseRevision,
     renewing,
   );
+  if (claimed.status === 'stale') {
+    sendBridgeJson(res, 409, {
+      error: 'project changed after the browser loaded it',
+      currentRevision: claimed.currentRevision,
+      reloadRequired: true,
+    });
+    return;
+  }
   if (claimed.status !== 'claimed') {
-    sendBridgeJson(res, 409, claimed.status === 'stale'
-      ? {
-        error: 'project changed after the browser loaded it',
-        currentRevision: claimed.currentRevision,
-        reloadRequired: true,
-      }
-      : { error: 'project is already owned or its ownership record is invalid' });
+    sendBridgeJson(res, 409, { error: 'project is already owned or its ownership record is invalid' });
     return;
   }
   const issuedCapability = operations.registerEditor(
