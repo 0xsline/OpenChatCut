@@ -109,7 +109,7 @@ const sessionEntries = mergeProjectEntries({}, {
 assert.equal((sessionEntries[shortSessionRuntimeKey] as { revision: number }).revision, 1);
 assert.equal((sessionEntries[shortSessionArtifactKey] as { body: string }).body, 'body');
 assert.equal(isProjectStoreRequest({
-  operation: 'agent-runtime-cas',
+  operation: 'agent-runtime-write',
   key: shortSessionRuntimeKey,
   expectedRevision: null,
   value: {

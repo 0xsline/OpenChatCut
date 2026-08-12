@@ -38,8 +38,8 @@ import {
 } from '../storage/sqlite-store.ts';
 import { AgentSessionClearBlockedError } from './project-store-agent-session.ts';
 import {
-  compareAndSwapAgentRuntime,
-  compareAndSwapProjectDocument,
+  writeAgentRuntime,
+  writeProjectDocument,
   deleteStoredEntry,
   getStoredEntry,
   mergeStoredEntries,
@@ -51,8 +51,8 @@ import {
 } from './project-store.ts';
 
 const HTTP_OPERATIONS = {
-  compareAndSwapAgentRuntime,
-  compareAndSwapProjectDocument,
+  writeAgentRuntime,
+  writeProjectDocument,
   deleteEntry: deleteStoredEntry,
   getEntry: getStoredEntry,
   purgeProject: (projectId: string) => deleteStoredEntry(`project:${projectId}`),

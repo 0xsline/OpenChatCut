@@ -1,6 +1,6 @@
 import type { AgentRunLeaseState } from '../../shared/project-store-transport';
 import {
-  kvCompareAndSwapAgentRuntime,
+  kvWriteAgentRuntime,
   kvDel,
   kvGet,
   kvKeys,
@@ -100,8 +100,8 @@ async function mutateOnce<T>(projectId: string, change: (current: AgentRuntimeSi
       ...changed, sessionGeneration,
       revision: previous.revision + 1, updatedAt: Date.now(), lastWriterId: crypto.randomUUID(),
     });
-    const canonical = await kvCompareAndSwapAgentRuntime({
-      operation: 'agent-runtime-cas',
+    const canonical = await kvWriteAgentRuntime({
+      operation: 'agent-runtime-write',
       key,
       expectedRevision: raw === undefined ? null : previous.revision,
       value: next,

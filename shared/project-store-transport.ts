@@ -41,7 +41,7 @@ export type ProjectStoreRequest =
   | { operation: 'delete'; key: string }
   | { operation: 'purge-project'; projectId: string }
   | {
-    operation: 'agent-runtime-cas';
+    operation: 'agent-runtime-write';
     key: string;
     expectedRevision: number | null;
     value: unknown;
@@ -51,13 +51,13 @@ export type ProjectStoreRequest =
     projectId: string;
   }
   | {
-    operation: 'project-document-cas';
+    operation: 'project-document-write';
     key: string;
     expectedRevision: null;
     value: unknown;
   }
   | {
-    operation: 'project-document-cas';
+    operation: 'project-document-write';
     key: string;
     expectedRevision: string;
     ownerId: string;

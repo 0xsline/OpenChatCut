@@ -74,7 +74,7 @@ export async function recordProposalOutcome(
   // hydration recovery instead of failing the user-facing settlement.
   await settleServerRun(projectId, proposal.agentRunId, {
     status: finalStatus as 'completed' | 'failed' | 'aborted' | 'interrupted'
-      | 'waiting_approval' | 'awaiting_user',
+      | 'waiting_approval',
     proposalId: proposal.id,
     proposalRuntimeStatus: status,
     ...(summary ? { summary } : {}),
@@ -188,12 +188,19 @@ export async function loadRecoveredAgentSession(
   }
   // Fast path: only write (mutate) when there is an interrupted run that
   // actually needs recovery. A plain reopen with no active runs must not
-  // bump the sidecar revision or serialize a write per navigation.
+  // bump the sidecar revision or serialize a write per navigation. Also
+  // covers recover()'s approval-cancellation branch: a stale external
+  // record whose run is preserved must still cancel its pending approvals.
   const sidecarBefore = await loadAgentRuntimeSidecar(projectId);
-  const needsRecovery = sidecarBefore.runs.some((run) =>
-    !['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)
-    && !preservedRunIds.has(run.runId)
-    && (!run.ownerInstanceId || !run.leaseExpiresAt || run.leaseExpiresAt <= Date.now()));
+  const now = Date.now();
+  const needsRecovery = sidecarBefore.runs.some((run) => {
+    if (['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) return false;
+    if (preservedRunIds.has(run.runId)) {
+      return externalRunIds.has(run.runId)
+        && (!run.ownerInstanceId || !run.leaseExpiresAt || run.leaseExpiresAt <= now);
+    }
+    return !run.ownerInstanceId || !run.leaseExpiresAt || run.leaseExpiresAt <= now;
+  });
   if (needsRecovery) {
     await recover(
       projectId,

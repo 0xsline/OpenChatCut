@@ -133,16 +133,16 @@ async function requestHttp(request: ProjectStoreRequest): Promise<ProjectStoreRe
       path = '/merge';
       init = postJson(init, headers, { entries: request.entries });
       break;
-    case 'agent-runtime-cas':
-      path = '/agent-runtime/cas';
+    case 'agent-runtime-write':
+      path = '/agent-runtime/write';
       init = postJson(init, headers, request);
       break;
     case 'agent-session-rotate':
       path = '/agent-session/rotate';
       init = postJson(init, headers, request);
       break;
-    case 'project-document-cas':
-      path = '/project-document/cas';
+    case 'project-document-write':
+      path = '/project-document/write';
       init = postJson(init, headers, request);
       break;
     case 'agent-run-lease':

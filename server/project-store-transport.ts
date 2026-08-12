@@ -10,8 +10,8 @@ import {
   upsertSemanticVectors,
 } from './storage/semantic-vectors.ts';
 import {
-  compareAndSwapAgentRuntime,
-  compareAndSwapProjectDocument,
+  writeAgentRuntime,
+  writeProjectDocument,
   deleteStoredEntry,
   getStoredEntry,
   mergeStoredEntries,
@@ -40,10 +40,10 @@ export async function executeProjectStoreRequest(
         entries: projects === undefined ? {} : { projects },
       };
     }
-    case 'agent-runtime-cas':
-      return compareAndSwapAgentRuntime(request);
-    case 'project-document-cas':
-      return compareAndSwapProjectDocument(request);
+    case 'agent-runtime-write':
+      return writeAgentRuntime(request);
+    case 'project-document-write':
+      return writeProjectDocument(request);
     case 'agent-run-lease':
       return updateStoredAgentRunLease(request);
     case 'export-recovery-lease':

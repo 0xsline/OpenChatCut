@@ -355,13 +355,18 @@ async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: st
     return;
   }
   const summary = typeof body.summary === 'string' ? body.summary : undefined;
-  // The run must belong to this project with a matching capability, and a
-  // terminal settle must discard any deferred admission and stop an
-  // in-flight executor so no events land after the final event.
-  const run = await boundRun(req, res, projectId, runId);
-  if (!run) return;
-  if (SETTLE_STATUSES[status]) discardDeferredRun(runId);
-  if (SETTLE_STATUSES[status]) await cancelRun(run).catch(() => undefined);
+  // Settlement is idempotent and only writes terminal/proposal state, so it
+  // deliberately does not require the run-capability handshake: a tab that
+  // lost its stored capability (crash, second tab) must still be able to
+  // settle, and the request-shape gate already fences this endpoint to
+  // same-origin pages. A terminal settle discards any deferred admission
+  // and stops an in-flight executor so no events land after the final
+  // event; a waiting_approval settle must not cancel a live model stream.
+  if (status !== 'waiting_approval') {
+    discardDeferredRun(runId);
+    const live = getRun(runId);
+    if (live && live.projectId === projectId) await cancelRun(live).catch(() => undefined);
+  }
   const outcome = await settleServerRun(projectId, runId, {
     status: status as ServerRunSettleStatus,
     ...(proposalId ? { proposalId } : {}),

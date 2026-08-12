@@ -14,7 +14,7 @@ import type {
   StoredEntryValue,
 } from './project-store.ts';
 
-export interface AgentRuntimeCasInput {
+export interface AgentRuntimeWriteInput {
   key: string;
   expectedRevision: number | null;
   value: unknown;
@@ -145,9 +145,9 @@ function supportedRuntimeEntry(key: string, entry: StoredEntryValue): Record<str
   throw new Error('agent runtime entry is corrupt');
 }
 
-async function compareAndSwap(
+async function writeAgentRuntime(
   withStoreLock: WithStoreLock,
-  input: AgentRuntimeCasInput,
+  input: AgentRuntimeWriteInput,
 ): Promise<ProjectStoreMutationResponse> {
   return withStoreLock(async (store) => {
     const current = await store.readEntry(input.key);
@@ -235,11 +235,11 @@ async function updateLease(
 }
 
 export function createAgentRuntimeStoreOperations(withStoreLock: WithStoreLock): {
-  compareAndSwapAgentRuntime: (input: AgentRuntimeCasInput) => Promise<ProjectStoreMutationResponse>;
+  writeAgentRuntime: (input: AgentRuntimeWriteInput) => Promise<ProjectStoreMutationResponse>;
   updateStoredAgentRunLease: (input: AgentRunLeaseInput) => Promise<ProjectStoreMutationResponse>;
 } {
   return {
-    compareAndSwapAgentRuntime: (input) => compareAndSwap(withStoreLock, input),
+    writeAgentRuntime: (input) => writeAgentRuntime(withStoreLock, input),
     updateStoredAgentRunLease: (input) => updateLease(withStoreLock, input),
   };
 }

@@ -3,7 +3,7 @@ import {
   type SharedKvBackend,
 } from '../../src/persist/sharedKv.ts';
 import {
-  compareAndSwapAgentRuntime,
+  writeAgentRuntime,
   deleteStoredEntry,
   getStoredEntry,
   readStore,
@@ -21,7 +21,7 @@ const PROJECT_STORE_AGENT_RUNTIME_BACKEND: SharedKvBackend = {
   async keys(): Promise<string[]> {
     return Object.keys((await readStore()).entries);
   },
-  compareAndSwapAgentRuntime,
+  writeAgentRuntime,
   updateAgentRunLease: (input) => updateStoredAgentRunLease({
     ...input,
     allowOfflineServerTakeover: true,

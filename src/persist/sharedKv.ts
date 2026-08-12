@@ -13,15 +13,15 @@ import type {
   ProjectStoreRequest,
 } from '../../shared/project-store-transport';
 import { projectIdFromProjectStoreKey } from '../../shared/project-store-validation';
-type AgentRuntimeCasRequest = Extract<ProjectStoreRequest, { operation: 'agent-runtime-cas' }>;
+type AgentRuntimeWriteRequest = Extract<ProjectStoreRequest, { operation: 'agent-runtime-write' }>;
 type AgentRunLeaseRequest = Extract<ProjectStoreRequest, { operation: 'agent-run-lease' }>;
-type ProjectDocumentCasRequest = Extract<ProjectStoreRequest, { operation: 'project-document-cas' }>;
+type ProjectDocumentWriteRequest = Extract<ProjectStoreRequest, { operation: 'project-document-write' }>;
 export interface SharedKvBackend {
   get<T>(key: string): Promise<T | undefined>;
   set(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<void>;
   keys(): Promise<string[]>;
-  compareAndSwapAgentRuntime(input: AgentRuntimeCasRequest): Promise<ProjectStoreMutationResponse>;
+  writeAgentRuntime(input: AgentRuntimeWriteRequest): Promise<ProjectStoreMutationResponse>;
   updateAgentRunLease(input: AgentRunLeaseRequest): Promise<ProjectStoreMutationResponse>;
 }
 const DB_NAME = 'openchatcut';
@@ -158,10 +158,13 @@ async function fetchRemoteEntry(key: string): Promise<void> {
   const entry = await requestEntry(key);
   cacheEntry(key, entry);
   if (key === 'projects' && projectMigrationPending) return;
-  if (entry.found) {
+  if (entry.found && !locallyPendingKeys.has(key)) {
+    // Never overwrite a locally-pending (offline-written) newer value with
+    // the server's older copy; the pending key is only cleared once a
+    // writable bootstrap genuinely merges it.
     await localSet(key, entry.value);
     locallyPendingKeys.delete(key);
-  } else if (!locallyPendingKeys.has(key)) {
+  } else if (!entry.found && !locallyPendingKeys.has(key)) {
     await localDel(key);
   }
 }
@@ -184,7 +187,7 @@ function validProjectDocumentMutation(
         && ownershipEpoch >= 1));
 }
 async function requestProjectDocumentMutation(
-  request: ProjectDocumentCasRequest,
+  request: ProjectDocumentWriteRequest,
 ): Promise<ProjectDocumentMutationResponse> {
   const value = await requestProjectStore(request);
   if (!validProjectDocumentMutation(value)) {
@@ -193,7 +196,7 @@ async function requestProjectDocumentMutation(
   return value;
 }
 async function requestMutation(
-  request: AgentRuntimeCasRequest | AgentRunLeaseRequest,
+  request: AgentRuntimeWriteRequest | AgentRunLeaseRequest,
 ): Promise<ProjectStoreMutationResponse> {
   const value = await requestProjectStore(request);
   if (!validMutationResponse(value)) throw new Error('invalid project store mutation response');
@@ -204,22 +207,22 @@ async function cacheMutation(key: string, result: ProjectStoreMutationResponse):
   if (result.found) await localSet(key, result.value);
   else await localDel(key);
 }
-export async function kvCompareAndSwapAgentRuntime(
-  request: AgentRuntimeCasRequest,
+export async function kvWriteAgentRuntime(
+  request: AgentRuntimeWriteRequest,
 ): Promise<ProjectStoreMutationResponse> {
   await ready();
   const remote = !injectedBackend && canSync();
   const result = injectedBackend
-    ? await injectedBackend.compareAndSwapAgentRuntime(request)
+    ? await injectedBackend.writeAgentRuntime(request)
     : remote
       ? await requestMutation(request)
-      : await localAgentRuntimeCas(request);
+      : await localAgentRuntimeWrite(request);
   if (!validMutationResponse(result)) throw new Error('invalid agent runtime CAS response');
   if (remote) await cacheMutation(request.key, result);
   return result;
 }
-async function localAgentRuntimeCas(
-  request: AgentRuntimeCasRequest,
+async function localAgentRuntimeWrite(
+  request: AgentRuntimeWriteRequest,
 ): Promise<ProjectStoreMutationResponse> {
   // CAS removed: local writes are serialized by the caller's enqueue/lock;
   // the expected revision is no longer compared.
@@ -395,16 +398,16 @@ async function setProjectDocument(key: string, value: unknown): Promise<void> {
     ownership = await waitForBrowserProjectOwnership(projectId);
     if (!ownership) throw new Error('工程编辑权尚未注册，工程未保存');
   }
-  const request: ProjectDocumentCasRequest = ownership
+  const request: ProjectDocumentWriteRequest = ownership
     ? {
-      operation: 'project-document-cas',
+      operation: 'project-document-write',
       key,
       expectedRevision: ownership.baseRevision,
       ownerId: ownership.ownerId,
       ownershipEpoch: ownership.epoch,
       value,
     }
-    : { operation: 'project-document-cas', key, expectedRevision: null, value };
+    : { operation: 'project-document-write', key, expectedRevision: null, value };
   let result: ProjectDocumentMutationResponse;
   try {
     result = await requestProjectDocumentMutation(request);

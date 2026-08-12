@@ -14,11 +14,11 @@ import type {
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
 
 export interface ProjectStoreHttpOperations {
-  compareAndSwapAgentRuntime(
-    input: Extract<ProjectStoreRequest, { operation: 'agent-runtime-cas' }>,
+  writeAgentRuntime(
+    input: Extract<ProjectStoreRequest, { operation: 'agent-runtime-write' }>,
   ): Promise<ProjectStoreMutationResponse>;
-  compareAndSwapProjectDocument(
-    input: Extract<ProjectStoreRequest, { operation: 'project-document-cas' }>,
+  writeProjectDocument(
+    input: Extract<ProjectStoreRequest, { operation: 'project-document-write' }>,
   ): Promise<ProjectDocumentMutationResponse>;
   deleteEntry(key: string): Promise<void>;
   getEntry(key: string): Promise<ProjectStoreResponse>;
@@ -92,28 +92,28 @@ async function handleGet(
   return true;
 }
 
-async function handleAgentRuntimeCas(
+async function handleAgentRuntimeWrite(
   req: IncomingMessage,
   res: ServerResponse,
   operations: ProjectStoreHttpOperations,
 ): Promise<void> {
   const body = await readBody(req);
-  if (!isProjectStoreRequest(body) || body.operation !== 'agent-runtime-cas') {
-    throw new Error('invalid agent runtime CAS request');
+  if (!isProjectStoreRequest(body) || body.operation !== 'agent-runtime-write') {
+    throw new Error('invalid agent runtime write request');
   }
-  sendProjectStoreJson(res, 200, await operations.compareAndSwapAgentRuntime(body));
+  sendProjectStoreJson(res, 200, await operations.writeAgentRuntime(body));
 }
 
-async function handleProjectDocumentCas(
+async function handleProjectDocumentWrite(
   req: IncomingMessage,
   res: ServerResponse,
   operations: ProjectStoreHttpOperations,
 ): Promise<void> {
   const body = await readBody(req);
-  if (!isProjectStoreRequest(body) || body.operation !== 'project-document-cas') {
-    throw new Error('invalid project document CAS request');
+  if (!isProjectStoreRequest(body) || body.operation !== 'project-document-write') {
+    throw new Error('invalid project document write request');
   }
-  sendProjectStoreJson(res, 200, await operations.compareAndSwapProjectDocument(body));
+  sendProjectStoreJson(res, 200, await operations.writeProjectDocument(body));
 }
 
 async function handleAgentRunLease(
@@ -182,8 +182,8 @@ async function handlePost(
   operations: ProjectStoreHttpOperations,
 ): Promise<boolean> {
   if (req.method !== 'POST') return false;
-  if (req.url === '/agent-runtime/cas') await handleAgentRuntimeCas(req, res, operations);
-  else if (req.url === '/project-document/cas') await handleProjectDocumentCas(req, res, operations);
+  if (req.url === '/agent-runtime/write') await handleAgentRuntimeWrite(req, res, operations);
+  else if (req.url === '/project-document/write') await handleProjectDocumentWrite(req, res, operations);
   else if (req.url === '/agent-runtime/lease') await handleAgentRunLease(req, res, operations);
   else if (req.url === '/export-recovery/lease') await handleExportRecoveryLease(req, res, operations);
   else if (req.url === '/agent-session/rotate') await handleAgentSessionRotate(req, res, operations);
@@ -206,7 +206,7 @@ async function handleEntryMutation(
     const body = await readBody(req);
     if (!isProjectStoreKey(body.key) || !Object.hasOwn(body, 'value')) throw new Error('invalid entry');
     if (isProjectDocumentKey(body.key)) {
-      throw new Error('project document writes require authoritative ownership CAS');
+      throw new Error('project document writes require authoritative ownership');
     }
     await operations.setEntry(body.key, body.value);
     sendProjectStoreJson(res, 200, { ok: true });

@@ -13,12 +13,12 @@ import {
 } from '../external-agent/project-edit-ownership-codec.ts';
 import type { LockedProjectStore, StoredEntryValue } from './project-store.ts';
 
-type ProjectDocumentCasRequest = Extract<
+type ProjectDocumentWriteRequest = Extract<
   ProjectStoreRequest,
-  { operation: 'project-document-cas' }
+  { operation: 'project-document-write' }
 >;
 type ProjectDocumentUpdateRequest = Extract<
-  ProjectDocumentCasRequest,
+  ProjectDocumentWriteRequest,
   { expectedRevision: string }
 >;
 type WithStoreLock = <T>(
@@ -54,7 +54,7 @@ async function restoreEntry(
 
 async function createProjectDocument(
   store: LockedProjectStore,
-  request: ProjectDocumentCasRequest,
+  request: ProjectDocumentWriteRequest,
   project: ProjectDoc,
 ): Promise<ProjectDocumentMutationResponse> {
   const projectId = request.key.slice('project:'.length);
@@ -104,7 +104,7 @@ async function updateProjectDocument(
 }
 
 export function createProjectDocumentStoreOperation(withStoreLock: WithStoreLock) {
-  return async (request: ProjectDocumentCasRequest): Promise<ProjectDocumentMutationResponse> => (
+  return async (request: ProjectDocumentWriteRequest): Promise<ProjectDocumentMutationResponse> => (
     withStoreLock(async (store) => {
       const current = await store.readEntry(request.key);
       const currentDoc = current.found ? normalizedProject(current.value) : null;

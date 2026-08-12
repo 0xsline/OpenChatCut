@@ -244,7 +244,7 @@ const EXPORT_RECOVERY_LEASE_KEYS: Record<string, true> = {
   authorityEstablished: true,
 };
 
-function isAgentRuntimeCasRequest(value: Record<string, unknown>): boolean {
+function isAgentRuntimeWriteRequest(value: Record<string, unknown>): boolean {
   const expectedRevision = value.expectedRevision;
   const validRevision = expectedRevision === null
     || (typeof expectedRevision === 'number'
@@ -257,7 +257,7 @@ function isAgentRuntimeCasRequest(value: Record<string, unknown>): boolean {
     && isAgentRuntimeStoreValue(value.key, value.value);
 }
 
-function isProjectDocumentCasRequest(value: Record<string, unknown>): boolean {
+function isProjectDocumentWriteRequest(value: Record<string, unknown>): boolean {
   if (typeof value.key !== 'string'
     || !PROJECT_DOCUMENT_CAS_KEY.test(value.key)
     || !Object.hasOwn(value, 'value')) return false;
@@ -360,8 +360,8 @@ export function isProjectStoreRequest(value: unknown): value is ProjectStoreRequ
       && !value.key.startsWith('export-recovery:')
       && Object.hasOwn(value, 'value');
   }
-  if (value.operation === 'agent-runtime-cas') return isAgentRuntimeCasRequest(value);
-  if (value.operation === 'project-document-cas') return isProjectDocumentCasRequest(value);
+  if (value.operation === 'agent-runtime-write') return isAgentRuntimeWriteRequest(value);
+  if (value.operation === 'project-document-write') return isProjectDocumentWriteRequest(value);
   if (value.operation === 'agent-run-lease') return isAgentRunLeaseRequest(value);
   if (value.operation === 'export-recovery-lease') return isExportRecoveryLeaseRequest(value);
   if (value.operation === 'semantic-vectors-upsert') {

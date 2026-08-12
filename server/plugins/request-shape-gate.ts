@@ -29,7 +29,10 @@ export function requestShapeGatePlugin(): Plugin {
   return {
     name: 'openchatcut-request-shape-gate',
     configureServer(server) {
-      server.middlewares.use('/api', (req: IncomingMessage, res: ServerResponse, next) => {
+      // Cover every write mount, not only /api: /llm, /e2b, /generate,
+      // /render-*, /export, /settings etc. are all CSRF-able via CORS
+      // safelisted text/plain POSTs if left ungated.
+      server.middlewares.use('/', (req: IncomingMessage, res: ServerResponse, next) => {
         if (requestShapeAllowed(req)) {
           next();
           return;

@@ -453,7 +453,7 @@ export async function withProjectStoreLock<T>(
 }
 
 export const {
-  compareAndSwapAgentRuntime,
+  writeAgentRuntime,
   updateStoredAgentRunLease,
 } = createAgentRuntimeStoreOperations(withProjectStoreLock);
 const updateLegacyExportRecovery =
@@ -474,7 +474,7 @@ export async function updateExportRecoveryLease(
   }
 }
 
-export const compareAndSwapProjectDocument =
+export const writeProjectDocument =
   createProjectDocumentStoreOperation(withProjectStoreLock);
 
 export const rotateAgentSession = createAgentSessionStoreOperation(withProjectStoreLock);

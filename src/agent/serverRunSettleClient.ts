@@ -4,7 +4,7 @@ import { readStoredServerRun } from './serverRunSessionStorage';
 
 export interface ServerRunSettleClientInput {
   readonly status: 'completed' | 'failed' | 'aborted' | 'interrupted'
-    | 'waiting_approval' | 'awaiting_user';
+    | 'waiting_approval';
   readonly proposalId?: string;
   readonly proposalRuntimeStatus?: ProposalRuntimeStatus;
   readonly summary?: string;
