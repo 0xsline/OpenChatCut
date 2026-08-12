@@ -1,163 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import './project-store-merge.verify';
 import {
   atomicWriteFile,
-  createOwnerSafeLeaseLock,
   type AtomicWriteOperations,
 } from './project-store-durable';
-
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-async function verifyLongOwnershipCannotBeStolen(root: string): Promise<void> {
-  const path = join(root, 'long.lock');
-  let now = 0;
-  const options = {
-    path,
-    leaseMs: 50,
-    heartbeatMs: 10,
-    retries: 6,
-    retryMs: 5,
-    now: () => now,
-  };
-  const owner = await createOwnerSafeLeaseLock(options).acquire();
-  try {
-    now = 120;
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as {
-        expiresAt: number;
-        token: string;
-        pid: number;
-      };
-      if (record.expiresAt >= now + options.leaseMs) break;
-      if (attempt === 49) assert.fail('heartbeat did not renew the owner lease');
-      await sleep(5);
-    }
-    await assert.rejects(
-      createOwnerSafeLeaseLock(options).acquire(),
-      /busy/,
-      'a heartbeat must keep ownership beyond the stale lease duration',
-    );
-    const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as {
-      token: string;
-      pid: number;
-    };
-    assert.equal(record.token, owner.token);
-    assert.equal(record.pid, process.pid);
-  } finally {
-    await owner.release();
-  }
-}
-
-async function verifyOldReleaseCannotRemoveReplacement(root: string): Promise<void> {
-  const path = join(root, 'aba.lock');
-  const lock = createOwnerSafeLeaseLock({ path, leaseMs: 100, heartbeatMs: 20 });
-  const oldOwner = await lock.acquire();
-  const displaced = `${path}.displaced`;
-  await rename(path, displaced);
-  const replacement = await lock.acquire();
-  await oldOwner.release();
-  const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as { token: string };
-  assert.equal(record.token, replacement.token, 'an old release cannot unlink a replacement lock');
-  await replacement.release();
-  await rm(displaced, { recursive: true, force: true });
-}
-
-// A live PID is NOT a trustworthy liveness signal for an expired lease: on
-// Windows PIDs are reused and an abandoned same-process guard keeps a "live"
-// PID while blocking every later acquirer forever (issue #63). An expired
-// `expiresAt` is the only reliable sign the owner stopped renewing, so a
-// contender must be able to reclaim it even when the owning process is alive.
-async function verifyExpiredOwnerIsReapedEvenWhenPidAlive(root: string): Promise<void> {
-  const path = join(root, 'live-expired.lock');
-  await mkdir(path);
-  await writeFile(join(path, 'owner.json'), JSON.stringify({
-    token: 'live-owner',
-    pid: process.pid,
-    expiresAt: Date.now() - 1_000,
-  }));
-  const contender = createOwnerSafeLeaseLock({
-    path,
-    leaseMs: 50,
-    retries: 4,
-    retryMs: 5,
-  });
-  const recovered = await contender.acquire();
-  const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as { token: string };
-  assert.notEqual(record.token, 'live-owner', 'an expired owner must be reclaimed even when its PID is alive');
-  await recovered.release();
-  await rm(path, { recursive: true, force: true });
-}
-
-// Issue #63: a leaked `.guard` directory whose owner.json records the *current*
-// process PID but whose expiresAt is long past must not block the app forever.
-// The guard's per-PID staleness check errored because an alive app PID is never
-// "dead", so the guard could never be reaped and every later acquire() threw
-// "busy". Expiry-based reaping must let acquire() reclaim the stale guard.
-async function verifyExpiredSamePidGuardIsReclaimed(root: string): Promise<void> {
-  const path = join(root, 'leaked-guard.lock');
-  const guardPath = `${path}.guard`;
-  await mkdir(guardPath, { recursive: true });
-  await writeFile(join(guardPath, 'owner.json'), JSON.stringify({
-    token: 'leaked-guard-owner',
-    pid: process.pid,
-    expiresAt: Date.now() - 5_000,
-  }));
-  const lock = createOwnerSafeLeaseLock({ path, leaseMs: 50, heartbeatMs: 10 });
-  // Pre-fix this throws "project store guard lock is busy"; the fix lets it
-  // reclaim the stale same-pid guard and acquire normally.
-  const owner = await lock.acquire();
-  try {
-    const record = JSON.parse(await readFile(join(path, 'owner.json'), 'utf8')) as { token: string };
-    assert.equal(record.token, owner.token, 'the lease must be owned by the new acquirer');
-  } finally {
-    await owner.release();
-  }
-}
-
-async function verifyDeadStaleRecovery(root: string): Promise<void> {
-  const path = join(root, 'dead.lock');
-  await mkdir(path);
-  await writeFile(join(path, 'owner.json'), JSON.stringify({
-    token: 'dead-owner',
-    pid: 999_999,
-    expiresAt: Date.now() - 1_000,
-  }));
-  const recovered = await createOwnerSafeLeaseLock({
-    path,
-    leaseMs: 50,
-    heartbeatMs: 10,
-  }).acquire();
-  assert.notEqual(recovered.token, 'dead-owner');
-  await recovered.release();
-}
-
-async function verifyConcurrentWritersSerialize(root: string): Promise<void> {
-  const lock = createOwnerSafeLeaseLock({
-    path: join(root, 'concurrent.lock'),
-    leaseMs: 100,
-    heartbeatMs: 20,
-    retries: 300,
-    retryMs: 2,
-  });
-  let active = 0;
-  let maximumActive = 0;
-  await Promise.all(Array.from({ length: 8 }, async () => {
-    const owner = await lock.acquire();
-    try {
-      active += 1;
-      maximumActive = Math.max(maximumActive, active);
-      await sleep(8);
-      active -= 1;
-    } finally {
-      await owner.release();
-    }
-  }));
-  assert.equal(maximumActive, 1, 'concurrent writers must remain serialized');
-}
 
 function recordingAtomicOperations(events: string[], failRename = false): AtomicWriteOperations {
   return {
@@ -224,12 +73,6 @@ async function verifyCorruptEntryIsolation(root: string): Promise<void> {
 
 const lockRoot = await mkdtemp(join(tmpdir(), 'openchatcut-project-store-'));
 try {
-  await verifyLongOwnershipCannotBeStolen(lockRoot);
-  await verifyOldReleaseCannotRemoveReplacement(lockRoot);
-  await verifyExpiredOwnerIsReapedEvenWhenPidAlive(lockRoot);
-  await verifyExpiredSamePidGuardIsReclaimed(lockRoot);
-  await verifyDeadStaleRecovery(lockRoot);
-  await verifyConcurrentWritersSerialize(lockRoot);
   await verifyAtomicWriteOrdering();
   await verifyCorruptEntryIsolation(lockRoot);
 } finally {

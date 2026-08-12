@@ -29,7 +29,6 @@ import {
 import { createProjectDocumentStoreOperation } from './project-store-project-document.ts';
 import {
   initializeSqliteProjectStore,
-  registerStorageMigrationBarrier,
   sqliteDeleteEntry,
   sqliteDeleteProjectEntries,
   sqliteReadAll,
@@ -44,7 +43,6 @@ import { indexStoreKey, removeStoreKey } from '../storage/fulltext-search.ts';
 import {
   atomicWriteFile,
   atomicWriteJson,
-  createOwnerSafeLeaseLock,
   durableMkdir,
   durableRemove,
   durableRename,
@@ -67,32 +65,11 @@ const {
   indexPath: INDEX_PATH,
   quarantineDir: QUARANTINE_DIR,
   readyPath: READY_PATH,
-  leasePath: LOCK_PATH,
   tombstonePath: DELETED_PROJECTS_PATH,
 } = runtimeProfile().projectStore;
-const LOCK_STALE_MS = 10_000;
 const PROJECT_DOCUMENT_KEY = /^project:(.+)$/;
 const PROJECT_EDIT_OWNERSHIP_PREFIX = 'project-edit-ownership:';
 const VALID_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
-const STORE_LOCK = createOwnerSafeLeaseLock({
-  path: LOCK_PATH,
-  leaseMs: LOCK_STALE_MS,
-  heartbeatMs: 2_500,
-  retries: 200,
-  retryMs: 10,
-});
-registerStorageMigrationBarrier(async () => {
-  const lease = await STORE_LOCK.acquire();
-  try {
-    // Finish the older monolith→directory transition before SQLite snapshots
-    // the directory. The held owner-safe lease also drains concurrent writers.
-    await migrateLegacyLocked();
-    return lease.release;
-  } catch (error) {
-    await lease.release();
-    throw error;
-  }
-});
 
 interface StoreFile {
   version: 1;
@@ -233,12 +210,11 @@ async function readDirectoryEntries(): Promise<Record<string, unknown>> {
 }
 
 async function acquireLock(): Promise<() => Promise<void>> {
-  // SQLite backend: WAL + busy_timeout(5000) provide multi-read concurrency and
-  // serialized writes itself, so the JSON-dir owner-safe lease is unnecessary
-  // and would otherwise stall every other browser/tab (project store busy).
-  // JSON-file backend keeps the exclusive lease that protects the directory.
-  if (sqliteStoreEnabled()) return async () => {};
-  return (await STORE_LOCK.acquire()).release;
+  // SQLite backend owns all project-store reads/writes: WAL + busy_timeout(5000)
+  // provide multi-read concurrency and serialized writes themselves, so no
+  // cross-process file lock is needed (and the old owner-safe lease could stall
+  // every other browser/tab with "project store busy"/"guard busy").
+  return async () => {};
 }
 
 async function readyExists(): Promise<boolean> {

@@ -12,7 +12,6 @@ export interface ProjectStoreProfilePaths {
   readonly indexPath: string;
   readonly quarantineDir: string;
   readonly readyPath: string;
-  readonly leasePath: string;
   readonly tombstonePath: string;
 }
 
@@ -54,7 +53,6 @@ function projectStorePaths(rootDir: string): ProjectStoreProfilePaths {
     indexPath: join(directory, 'projects.json'),
     quarantineDir: join(directory, '.quarantine'),
     readyPath: join(directory, '.ready'),
-    leasePath: join(rootDir, 'project-store-v1.lock'),
     tombstonePath: join(rootDir, 'deleted-projects-v1.json'),
   });
 }

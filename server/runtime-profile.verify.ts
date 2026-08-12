@@ -23,7 +23,6 @@ assert.deepEqual(defaultProfile, {
     indexPath: join(globalRoot, 'project-store-v1', 'projects.json'),
     quarantineDir: join(globalRoot, 'project-store-v1', '.quarantine'),
     readyPath: join(globalRoot, 'project-store-v1', '.ready'),
-    leasePath: join(globalRoot, 'project-store-v1.lock'),
     tombstonePath: join(globalRoot, 'deleted-projects-v1.json'),
   },
 });
@@ -62,7 +61,6 @@ assert.equal(isolatedA.generationJobStore, join(isolatedRoot, 'generation-operat
 assert.equal(isolatedA.keystorePath, join(isolatedRoot, 'settings.env'));
 assert.equal(isolatedA.projectStore.directory, join(isolatedRoot, 'project-store-v1'));
 assert.equal(isolatedA.projectStore.indexPath, join(isolatedRoot, 'project-store-v1', 'projects.json'));
-assert.equal(isolatedA.projectStore.leasePath, join(isolatedRoot, 'project-store-v1.lock'));
 assert.equal(isolatedA.projectStore.tombstonePath, join(isolatedRoot, 'deleted-projects-v1.json'));
 assert.notEqual(isolatedA.projectStore.directory, defaultProfile.projectStore.directory);
 assert.notEqual(isolatedA.projectStore.directory, isolatedB.projectStore.directory);

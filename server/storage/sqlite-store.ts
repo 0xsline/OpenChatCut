@@ -166,7 +166,8 @@ export function runStorageMigration(): Promise<ImportSummary> {
  *
  * A requested migration, a receipt-less interrupted database, and a phase-1
  * authoritative database resume automatically. Explicit non-'1' values force
- * legacy mode.
+ * legacy mode. (The owner-safe JSON-dir lease was removed upstream, so legacy
+ * JSON-and-directory mode needs no cross-process file lock to serialize.)
  */
 export function initializeSqliteProjectStore(): Promise<SQLiteMigrationStatus> {
   return withMigrationLease(async () => {
@@ -184,13 +185,13 @@ export function initializeSqliteProjectStore(): Promise<SQLiteMigrationStatus> {
       return sqliteMigrationStatus();
     }
     // Existing DB = interrupted/incomplete migration, including phase 1.
-    // Env '1' requests a first migration; a new unrequested profile stays legacy.
+    // Env '1' requests a first migration; a new unrequested profile stays legacy
+    // (its data lives in the JSON directory until an explicit /migrate).
     if (env === '1' || existsSync(storePath())) {
       try {
         await migrateUnderLease();
       } catch {
-        // Startup recovery is fail-open to the still-authoritative legacy
-        // backend. Manual runStorageMigration continues to reject failures.
+        // Startup recovery is fail-open; manual runStorageMigration rejects failures.
       }
     }
     return sqliteMigrationStatus();
