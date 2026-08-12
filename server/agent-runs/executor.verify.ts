@@ -10,6 +10,7 @@ import {
   collectServerText,
   resolveServerRunMaxOutputTokens,
   serverRunTextMetadata,
+  turnDisposition,
 } from './executor.ts';
 import {
   createRun,
@@ -236,3 +237,13 @@ assert.equal(
 resetServerRunStoreForTest();
 
 console.log('server agent executor message verification passed');
+
+// Turn disposition: the unbounded loop keeps going while the model requests
+// tools, completes when it stops, and cuts off on an output-token ceiling
+// instead of feeding truncated text back into the next turn.
+assert.equal(turnDisposition(false, true), 'continue');
+assert.equal(turnDisposition(false, false), 'completed');
+assert.equal(turnDisposition(true, true), 'max-tokens', 'output cutoff wins over pending tool calls');
+assert.equal(turnDisposition(true, false), 'max-tokens');
+
+console.log('server executor turn-disposition checks passed');

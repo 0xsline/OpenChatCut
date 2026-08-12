@@ -36,7 +36,6 @@ import {
   waitForToolResult,
   type ServerRun,
 } from './store';
-const MAX_TOOL_TURNS = 30;
 
 const TEXT_EVENT_CHARS = 8_192;
 export function resolveServerRunMaxOutputTokens(
@@ -221,6 +220,7 @@ async function executeServerTurn(
   text: string;
   continued: boolean;
   followupText: string | null;
+  hitMaxTokens: boolean;
 }> {
   const schemas = input.activation.current.schemas();
   const prepared = await prepareServerContext({ ...input, schemas });
@@ -263,6 +263,7 @@ async function executeServerTurn(
     text,
     followupText: input.activation.followupText,
     continued,
+    hitMaxTokens: (await result.finishReason) === 'length',
   };
 }
 
@@ -319,6 +320,13 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   };
 }
 
+/** What the loop does after one turn, extracted for deterministic checks. */
+export type TurnDisposition = 'continue' | 'completed' | 'max-tokens';
+export function turnDisposition(hitMaxTokens: boolean, continued: boolean): TurnDisposition {
+  if (hitMaxTokens) return 'max-tokens';
+  return continued ? 'continue' : 'completed';
+}
+
 async function executeRunTurns(
   run: ServerRun,
   input: ServerRunInput,
@@ -326,7 +334,10 @@ async function executeRunTurns(
 ): Promise<void> {
   const plan = createExecutionPlan(run, input);
   let messages = plan.prompt.messages;
-  for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
+  // No turn cap: the model decides when the task is done. The only automatic
+  // stop beside "no more tool calls" is an output-token cutoff, which would
+  // otherwise feed truncated text back into the loop.
+  for (let turn = 0; ; turn += 1) {
     const outcome = plan.backend === 'codex'
       ? await (await import('./codex-turn')).executeServerCodexTurn({
         run,
@@ -368,14 +379,15 @@ async function executeRunTurns(
       return;
     }
     messages = outcome.messages;
-    if (outcome.continued) continue;
+    const disposition = turnDisposition(outcome.hitMaxTokens, outcome.continued);
+    if (disposition === 'continue') continue;
+    if (disposition === 'max-tokens') {
+      pushRunEvent(run, 'max-tokens', { turn: turn + 1 });
+    }
     pushRunEvent(run, 'finish', serverRunTextMetadata(outcome.text));
     await setRunStatus(run, 'completed');
     return;
   }
-  pushRunEvent(run, 'max-turns', { turns: MAX_TOOL_TURNS });
-  pushRunEvent(run, 'finish', serverRunTextMetadata(''));
-  await setRunStatus(run, 'awaiting-user');
 }
 
 async function settleRunFailure(

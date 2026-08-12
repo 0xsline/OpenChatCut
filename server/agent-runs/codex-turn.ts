@@ -145,6 +145,7 @@ export async function executeServerCodexTurn(
   text: string;
   continued: boolean;
   followupText: string | null;
+  hitMaxTokens: boolean;
 }> {
   const prepared = await prepareCodexContext(input);
   const schemas = input.activation.current.schemas();
@@ -270,6 +271,7 @@ export async function executeServerCodexTurn(
     text,
     continued: toolHistory.length > 0,
     followupText: input.activation.followupText,
+    hitMaxTokens: false,
   };
 }
 
