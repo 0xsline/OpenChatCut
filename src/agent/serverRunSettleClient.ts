@@ -1,4 +1,6 @@
 import type { ProposalRuntimeStatus } from './runtime-ledger';
+import { SERVER_RUN_CAPABILITY_HEADER } from './serverRunProtocol';
+import { readStoredServerRun } from './serverRunSessionStorage';
 
 export interface ServerRunSettleClientInput {
   readonly status: 'completed' | 'failed' | 'aborted' | 'interrupted'
@@ -19,10 +21,18 @@ export async function settleServerRun(
   runId: string,
   input: ServerRunSettleClientInput,
 ): Promise<void> {
+  // The settle endpoint requires the run-capability handshake; send it when
+  // the browser still holds the stored run record. Without it the server
+  // 403s and hydration recovery settles the run on the next open.
+  const stored = readStoredServerRun(projectId);
+  const capability = stored?.runId === runId ? stored.capability : undefined;
   try {
     const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}/settle`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(capability ? { [SERVER_RUN_CAPABILITY_HEADER]: capability } : {}),
+      },
       body: JSON.stringify({ projectId, ...input }),
     });
     if (response.ok) return;

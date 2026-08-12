@@ -162,7 +162,10 @@ async function compareAndSwap(
     if (incoming.kind !== 'supported') throw new Error('invalid agent runtime CAS value');
     normalizeAgentRuntimeSidecar(String(incoming.value.projectId), incoming.value);
     if (incoming.value.revision !== (revision ?? 0) + 1) {
-      throw new Error('invalid agent runtime CAS revision');
+      // Reject (not throw) so the client retry loop re-reads and converges;
+      // a throw here would hard-fail a transient contest between the server
+      // executor and browser-originated external-session writes.
+      return mutationResponse(current, false);
     }
     if (!preservesTerminalStatuses(runtime, incoming.value)) {
       return mutationResponse(current, false);

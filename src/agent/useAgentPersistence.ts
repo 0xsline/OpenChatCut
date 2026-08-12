@@ -56,7 +56,14 @@ export async function recordProposalOutcome(
   if (!proposal.agentRunId || !proposal.id) return;
   const sidecar = await loadAgentRuntimeSidecar(projectId);
   const run = sidecar.runs.find((candidate) => candidate.runId === proposal.agentRunId);
-  if (!run) throw new Error('Agent proposal run is missing.');
+  if (!run) {
+    // The run was pruned by retention or never persisted; the proposal is
+    // already settled by the caller, so this is a no-op cleanup, not an
+    // error that should block future hydration (it previously threw and
+    // permanently broke chat loading for the project).
+    clearStoredServerRun(projectId, proposal.agentRunId);
+    return;
+  }
   if (['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) {
     clearStoredServerRun(projectId, proposal.agentRunId);
     return;
