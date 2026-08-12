@@ -90,11 +90,30 @@ const config = {
   modelId: 'onnx-community/whisper-base',
   revision: 'a'.repeat(40),
 };
-assert.equal(desktopNativeInferenceEnabled(), false, 'native routing must default off');
+const windowWithBridge = globalThis.window;
+// Simulate a plain browser (no desktop bridge): native routing stays off
+// and the desktop IPC is never entered.
+// @ts-expect-error temporarily removing the mocked window
+delete globalThis.window;
+assert.equal(desktopNativeInferenceEnabled(), false, 'native routing must default off without a desktop bridge');
 assert.equal(await tryDesktopNativeAsr({
   sourcePath: '/media/uploads/example.mp4', config, language: 'zh',
 }), null);
 assert.equal(transcribeCalls, 0, 'disabled native routing must not enter desktop IPC');
+globalThis.window = windowWithBridge;
+// In the desktop shell (bridge present) native routing is auto-enabled.
+const originalWindow = globalThis.window;
+globalThis.window = {
+  openChatCutDesktop: { inference: { getCapabilities: async () => null } },
+} as unknown as Window & typeof globalThis;
+assert.equal(desktopNativeInferenceEnabled(), true, 'desktop shell auto-enables native routing');
+const disabledStorage = new Map<string, string>([['cc.desktopNativeInference', '0']]);
+assert.equal(
+  desktopNativeInferenceEnabled({ getItem: (k) => disabledStorage.get(k) ?? null, setItem: () => undefined }),
+  false,
+  'explicit opt-out still wins in the desktop shell',
+);
+globalThis.window = originalWindow;
 
 await setDesktopNativeInferenceEnabled(true);
 assert.equal(values.get(DESKTOP_NATIVE_INFERENCE_KEY), '1');
@@ -127,4 +146,4 @@ assert.equal(await tryDesktopNativeAsr({
   sourcePath: 'blob:untrusted', config, language: 'zh',
 }), null, 'non-media paths must stay on the browser path');
 
-console.log('desktop-native-asr.verify: opt-in success and browser fallback contracts OK');
+console.log('desktop-native-asr.verify: auto-enable, opt-out, and browser fallback contracts OK');

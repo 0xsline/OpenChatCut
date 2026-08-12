@@ -18,11 +18,13 @@ function preferenceStorage(): InferencePreferenceStorage | undefined {
 export function desktopNativeInferenceEnabled(
   storage: InferencePreferenceStorage | undefined = preferenceStorage(),
 ): boolean {
-  try {
-    return storage?.getItem(DESKTOP_NATIVE_INFERENCE_KEY) === '1';
-  } catch {
-    return false;
-  }
+  const stored = storage?.getItem(DESKTOP_NATIVE_INFERENCE_KEY);
+  if (stored === '0') return false;
+  if (stored === '1') return true;
+  // Auto: the desktop shell enables whisper.cpp (Metal) by default because
+  // it is ~60x faster than the browser wasm path and every failure falls
+  // back to the browser engine; plain browsers have no native bridge.
+  return typeof window !== 'undefined' && Boolean(window.openChatCutDesktop?.inference);
 }
 
 async function applyDesktopNativeInferenceEnabled(enabled: boolean): Promise<void> {

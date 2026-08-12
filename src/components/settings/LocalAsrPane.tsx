@@ -177,7 +177,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
             style={{ marginTop: 2 }}
           />
           <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <span style={{ fontSize: 12, fontWeight: 600 }}>{t('桌面原生推理加速（实验）')}</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{t('桌面原生推理加速')}</span>
             <span style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.45 }}>
               {t('启用后，转写、画面语义、节拍与音乐语义模型自动选择 Windows DirectML 或 macOS CoreML/原生 CPU；转写模型在编辑器打开后后台预热，其他模型首次使用时按需加载；失败时回退浏览器引擎。')}
             </span>
