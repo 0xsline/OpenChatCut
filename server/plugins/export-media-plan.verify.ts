@@ -81,6 +81,28 @@ try {
     (error: unknown) => error instanceof ExportFailureError
       && error.failure.mediaIssues?.[0]?.code === 'unsupported_source',
   );
+
+  // Issue #55: a clip whose `src` is a raw local filesystem path (not a mapped
+  // /media/uploads/… reference) must fail identically on every host OS. The
+  // detector is cross-platform: a Windows drive path is recognized even on
+  // macOS/Linux (where node's path.isAbsolute returns false for it), and a
+  // POSIX absolute path on Windows. The error is actionable (unsupported_source).
+  for (const src of [
+    'D:\\Fun\\Music\\小城夏天.mp3',   // Windows drive path, backslashes
+    'D:/Fun/Music/another.mp3',        // Windows drive path, forward slashes
+    '/Users/editor/Masters/clip.mov',  // POSIX absolute path
+    'file:///Users/editor/Masters/clip.mov', // file: URL
+  ]) {
+    await assert.rejects(
+      () => validateServerExportMedia({
+        items: [{ id: 'local-src', kind: 'video', src }],
+      }, options),
+      (error: unknown) => error instanceof ExportFailureError
+        && error.failure.mediaIssues?.[0]?.code === 'unsupported_source'
+        && error.failure.mediaIssues[0].itemId === 'local-src',
+      `local filesystem src must be rejected as unsupported_source (${src})`,
+    );
+  }
   const htmlFallback = {
     items: [
       { id: 'remote-html-200', kind: 'video', src: 'https://cdn.example.test/html-200.mp4' },

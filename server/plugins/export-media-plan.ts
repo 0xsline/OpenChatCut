@@ -224,8 +224,25 @@ async function checkLocalReference(
   if (reference.source.startsWith('blob:')) {
     return issueFor(reference, 'unsupported_source', `Blob URL is not readable by the export server: ${reference.source}`);
   }
-  if (reference.source.startsWith('file:') || isAbsolute(reference.source) && !reference.source.startsWith('/')) {
-    return issueFor(reference, 'unsupported_source', `Local file source is not mapped for export: ${reference.source}`);
+  // Local filesystem paths are NOT renderable media sources.
+  //
+  // node:path.isAbsolute is platform-scoped, so a single window can't classify
+  // both a Windows drive path ("D:\Music\a.mp3") and a POSIX absolute path
+  // ("/Users/me/a.mp3") — on macOS `isAbsolute("D:\\...")` is false and on
+  // Windows `isAbsolute("/Users/...")` is true. Detect each form explicitly so
+  // a project authored on one OS fails identically on the other (issue #55).
+  // "/media/uploads/..." is the library-mapped source we DO render; all other
+  // absolute paths are treated as local files that were never imported/mapped.
+  const isLocalFileUrl = reference.source.startsWith('file:');
+  const isWindowsDrivePath = /^[A-Za-z]:[\\/]/.test(reference.source); // C:\… | D:/…
+  const isOtherPosixAbsolute = reference.source.startsWith('/')
+    && !reference.source.startsWith('/media/uploads/');
+  if (isLocalFileUrl || isWindowsDrivePath || isOtherPosixAbsolute) {
+    return issueFor(
+      reference,
+      'unsupported_source',
+      `Local file source is not mapped for export: ${reference.source}. This is a file path on disk, not a library media reference — render and export only accept the media pool (/media/uploads/…) or a materialized same-origin URL. Please re-import the asset into the media pool or relink the clip to its pool asset so the src is a /media/uploads/… path.`,
+    );
   }
 
   let pathname: string;
