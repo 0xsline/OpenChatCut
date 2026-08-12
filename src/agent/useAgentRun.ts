@@ -59,6 +59,11 @@ export function draftContext(ctx: AgentContext, draft: DraftEngine): AgentContex
     onProjectRenamed: ctx.onProjectRenamed,
     getUndoTarget: ctx.getUndoTarget,
     getRedoTarget: ctx.getRedoTarget,
+    // Approval mode drives the tool gate (YOLO/auto must reach the draft
+    // context or paid/persistent tools are denied); offline media sources keep
+    // pool reachability checks accurate while drafting.
+    getApprovalMode: ctx.getApprovalMode,
+    getOfflineMediaSrcs: ctx.getOfflineMediaSrcs,
   };
 }
 export function statusAfterMaxToolTurns(status: AgentRunStatus): AgentRunStatus {
