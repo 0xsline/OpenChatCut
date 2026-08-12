@@ -27,7 +27,6 @@ const DEFAULT_COMPACTION_TRIGGER_FRACTION = 0.7;
 const CACHE_FRIENDLY_TRIGGER_FRACTION = 0.8;
 const CACHE_MISS_TRIGGER_FRACTION = 0.65;
 const CONTEXT_FRACTION = 0.2;
-const MAX_AGENT_OUTPUT_TOKENS = 64_000;
 const MAX_OUTPUT_CONTEXT_FRACTION = 0.5;
 const SUMMARY_VALUE_MAX_CHARS = 12_000;
 
@@ -176,12 +175,20 @@ export function remainingInputBudgetTokens(input: ActiveModelRoundBudgetInput): 
   const occupied = estimateContextTokens(input.messages, input.system, schemaTokens);
   return Math.max(0, inputCeiling - occupied);
 }
+/**
+ * Output token budget for the currently selected provider/model. No fixed
+ * ceiling here: the budget follows the model's own maxOutputTokens
+ * (capabilityLimit) and is only bounded by reserving half the context window
+ * for the reply (so the model never tries to stream more than half its input
+ * window). Removing the previous hard 64k cap lets e.g. a 128k/256k-output
+ * model actually emit that much instead of being truncated.
+ */
 export function effectiveOutputTokenBudget(
   capabilityLimit: number,
   contextWindowTokens: number,
 ): number {
   const contextLimit = Math.max(1, Math.floor(contextWindowTokens * MAX_OUTPUT_CONTEXT_FRACTION));
-  return Math.max(1, Math.min(capabilityLimit, MAX_AGENT_OUTPUT_TOKENS, contextLimit));
+  return Math.max(1, Math.min(capabilityLimit, contextLimit));
 }
 
 

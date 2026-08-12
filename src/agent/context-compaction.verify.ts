@@ -372,8 +372,8 @@ assert.deepEqual(
 );
 assert.equal(effectiveOutputTokenBudget(32_768, 32_768), 16_384,
   'output reservation cannot consume an entire small context window');
-assert.equal(effectiveOutputTokenBudget(128_000, 400_000), 64_000,
-  'turn output stays within the application request ceiling');
+assert.equal(effectiveOutputTokenBudget(128_000, 400_000), 128_000,
+  'turn output follows the model ceiling (128k) and is not capped at a fixed 64k');
 assert.equal(effectiveOutputTokenBudget(4_096, 400_000), 4_096,
   'lower exact model output ceilings remain authoritative');
 assert.ok(truncatedToolResult.length < 13_000, 'large tool payloads cannot overflow the summary request');
