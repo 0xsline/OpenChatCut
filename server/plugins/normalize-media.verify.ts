@@ -51,11 +51,13 @@ assert.equal(
   'the published target always uses the normalized .mp4 extension',
 );
 
+const canonicalTestPath = (path: string): string => path.replaceAll('\\', '/');
 const missingTargetRealpath = async (path: string): Promise<string> => {
-  if (path.startsWith('/alias/')) {
+  const canonicalPath = canonicalTestPath(path);
+  if (canonicalPath.startsWith('/alias/')) {
     throw Object.assign(new Error(`missing: ${path}`), { code: 'ENOENT' });
   }
-  assert.equal(path, '/alias');
+  assert.equal(canonicalPath, '/alias');
   return '/Volumes/Me\u0301dia';
 };
 assert.equal(
@@ -79,7 +81,7 @@ assert.notEqual(linuxNfcKey, linuxNfdKey, 'Linux preserves normalization-distinc
 let existingTargetRealpathCalls = 0;
 const existingTargetKey = await resolveNormalizeTargetKey('/alias/Clip.mp4', 'darwin', async (path) => {
   existingTargetRealpathCalls += 1;
-  assert.equal(path, '/alias/Clip.mp4');
+  assert.equal(canonicalTestPath(path), '/alias/Clip.mp4');
   return '/Actual/Caf\u00e9.mp4';
 });
 assert.equal(existingTargetKey, '/actual/caf\u00e9.mp4');
