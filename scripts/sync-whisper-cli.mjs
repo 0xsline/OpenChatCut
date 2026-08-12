@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT_DIR = join(ROOT, 'public', 'whisper-cli');
+const BUILD_CACHE = join(ROOT, '.cache', 'whisper-cli');
 const VERSION = 'v1.9.2';
 const BASE = `https://github.com/ggml-org/whisper.cpp/releases/download/${VERSION}`;
 
@@ -75,6 +76,11 @@ async function buildFromSource(srcDir, buildDir, platformKey) {
     await run('git', ['clone', '--depth', '1', '--branch', VERSION, 'https://github.com/ggml-org/whisper.cpp.git', srcDir]);
   }
   const metalFlag = process.platform === 'darwin' ? ['-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON'] : [];
+  try {
+    await run('cmake', ['--version']);
+  } catch {
+    throw new Error('cmake is required to build whisper.cpp on this platform (brew install cmake); or set OPENCHATCUT_WHISPER_CLI to a prebuilt binary');
+  }
   await run('cmake', ['-B', join(buildDir, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...metalFlag, srcDir]);
   await run('cmake', ['--build', join(buildDir, 'build'), '--config', 'Release', '-j', '--target', 'whisper-cli', 'whisper-server']);
   return builtCli;
@@ -114,7 +120,7 @@ async function main() {
   if (!spec.asset) {
     // macOS has no official release asset: build from source (local or CI).
     // OPENCHATCUT_WHISPER_CLI still wins when set.
-    const buildDir = join(OUT_DIR, 'build-src');
+    const buildDir = BUILD_CACHE;
     const srcDir = join(buildDir, 'whisper.cpp');
     const cli = await buildFromSource(srcDir, buildDir, platformKey);
     await mkdir(targetDir, { recursive: true });
