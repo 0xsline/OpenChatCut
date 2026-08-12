@@ -364,6 +364,32 @@ try {
   assert.equal(rejectedSubscription.headers.get('retry-after'), '1');
   await Promise.all(subscriptions.map((response) => response.body?.cancel()));
   await flushServerRunPersistence();
+
+  // Codex backend admission: no LLM key is required (Codex uses the local CLI
+  // login), the run is created with backend 'codex', and provider defaults to
+  // openai.
+  const codexRunId = crypto.randomUUID();
+  const codexCapability = 'd'.repeat(43);
+  const codexCreate = await fetch(`${origin}/api/agent-runs/`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectId: 'project-codex-admission',
+      runId: codexRunId,
+      capability: codexCapability,
+      backend: 'codex',
+      provider: 'openai',
+      model: 'codex-mini-latest',
+      messages: [{ role: 'user', content: 'run' }],
+      cacheMode: 'short',
+      maxOutputTokens: 4_096,
+      askOnly: true,
+    }),
+  });
+  assert.equal(codexCreate.status, 201, 'codex backend is admitted without an LLM API key');
+  const codexRun = getRun(codexRunId);
+  assert.equal(codexRun?.backend, 'codex', 'run records the codex backend');
+  assert.equal(codexRun?.provider, 'openai', 'codex runs are normalized to the openai provider');
 } finally {
   resetServerRunStoreForTest();
   server.close();
