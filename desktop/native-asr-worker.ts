@@ -363,6 +363,10 @@ async function ensureEngine(request: DesktopAsrRequest | DesktopAsrPreloadReques
 
 async function preload(request: DesktopAsrPreloadRequest): Promise<DesktopModelLoadResponse> {
   const engine = await ensureEngine(request);
+  // Warm the persistent server so the first transcription does not pay the
+  // cold model-load cost; failure is non-fatal (transcribe falls back to
+  // whisper-cli spawn).
+  await ensureWhisperServer(engine.ggmlPath).catch(() => undefined);
   return {
     requestId: request.requestId,
     backend: engine.backend,
