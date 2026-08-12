@@ -292,6 +292,19 @@ export class ExternalBridgeRuntime {
     if (warning) this.sessionWarnings.set(session.id, warning);
   }
 
+  /** Discard the edit sessions orphaned by a disconnected MCP transport. */
+  async discardOwnerSessions(sessionIds: readonly string[]): Promise<void> {
+    for (const sessionId of sessionIds) {
+      const session = this.sessions.get(sessionId);
+      if (!session || !EXTERNAL_ACTIVE_STATUSES.has(session.status)) continue;
+      try {
+        await this.discard(session);
+      } catch {
+        // Best-effort: the store record is terminal; an orphan must never wedge begin_edit_session.
+      }
+    }
+  }
+
   async reject(): Promise<void> {
     const session = this.currentProposalSession();
     if (!session) return;

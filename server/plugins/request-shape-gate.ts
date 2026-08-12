@@ -21,7 +21,17 @@ export function requestShapeAllowed(req: IncomingMessage): boolean {
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
   const authorization = header(req, 'authorization') ?? '';
   if (authorization.startsWith('Bearer ')) return true;
+  // Upload slots carry a single-use, short-lived handoff token that the
+  // /upload endpoint verifies itself (scope-bound filename/size/content-type);
+  // external MCP clients upload without an Origin header, so the token is
+  // their only credential and must pass the shape gate to reach that check.
+  if (isHandoffUpload(req)) return true;
   return projectStoreHttpAuthorized(req);
+}
+
+function isHandoffUpload(req: IncomingMessage): boolean {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  return url.pathname === '/upload' && url.searchParams.has('handoff');
 }
 
 /** Global request-shape gate for every /api write mount (CSRF surface). */

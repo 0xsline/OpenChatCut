@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { TLSSocket } from 'node:tls';
 import type { Plugin } from 'vite';
 import {
+  editorCallBinding,
+  touchEditor,
   editorRegistrationMatches,
   nextEditorCall,
   nextEditorCancellation,
@@ -38,6 +40,8 @@ const bridgeOperations: BridgeOperations = {
   nextEditorCall,
   nextEditorCancellation,
   settleEditorCall,
+  editorCallBinding,
+  touchEditor,
   mcpTools,
 };
 

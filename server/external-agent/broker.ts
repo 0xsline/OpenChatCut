@@ -48,6 +48,8 @@ export interface ExternalEditorCancellation {
   id: string;
   outcome: Exclude<ExternalCallTerminalOutcome, 'applied'>;
   message: string;
+  /** Edit sessions orphaned by the owner transport disconnect; the editor discards them. */
+  ownerGone?: string[];
 }
 
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -312,13 +314,29 @@ function requireOwnedEditSession(
   );
 }
 
-function requireCurrentBinding(binding: EditorBinding, allowRevisionDrift: boolean): void {
+function requireCurrentBinding(
+  binding: EditorBinding,
+  allowRevisionDrift: boolean,
+  allowAdopt: boolean,
+): EditorBinding {
   // Terminal status reads may use the original editor identity after apply
   // advances the revision; every mutation remains pinned to the exact binding.
   const matches = allowRevisionDrift
     ? editorBindingIdentityMatches(binding)
     : editorBindingMatches(binding);
-  if (matches) return;
+  if (matches) return binding;
+  // A same-editor revision advance between bind and invoke (an autosave landing
+  // or a settle syncing the registry) is legitimate progression, not a stale
+  // takeover: adopt the registry's current snapshot for calls that carry no
+  // edit-session ownership (begin_edit_session / sessionless reads). Calls
+  // pinned to an edit session stay strict — the session snapshot is the guard.
+  const current = editorBinding(binding.projectId);
+  if (allowAdopt
+    && current
+    && sameEditorIdentity(current, binding)
+    && editorBindingMatches(current)) {
+    return current;
+  }
   throw new ExternalEditorCallError(
     'stale',
     `MCP session binding for project ${binding.projectId} is stale. Re-initialize the MCP session.`,
@@ -333,16 +351,17 @@ export function invokeEditorTool(
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<unknown> {
   const allowRevisionDrift = name === 'get_edit_session';
-  if (name !== 'begin_edit_session' && 'editSessionId' in args) {
+  const ownsSession = name !== 'begin_edit_session' && 'editSessionId' in args;
+  if (ownsSession) {
     requireOwnedEditSession(ownerId, binding, args);
   }
-  requireCurrentBinding(binding, allowRevisionDrift);
+  const currentBinding = requireCurrentBinding(binding, allowRevisionDrift, !ownsSession);
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + Math.min(MAX_TIMEOUT_MS, Math.max(1_000, timeoutMs));
     const call: QueuedCall = {
       id: randomUUID(),
       ownerId,
-      binding: { ...binding },
+      binding: { ...currentBinding },
       name,
       arguments: args,
       state: 'queued',
@@ -451,6 +470,12 @@ export async function nextEditorCancellation(
   return cancellation ?? null;
 }
 
+/** Binding of a pending editor call, read before settle for revision sync. */
+export function editorCallBinding(id: string): EditorBinding | null {
+  const call = pending.get(id);
+  return call ? { ...call.binding } : null;
+}
+
 export function settleEditorCall(
   id: string,
   outcome: ExternalCallTerminalOutcome,
@@ -473,8 +498,27 @@ export function cancelEditorCallsForOwner(
   outcome: Extract<ExternalCallTerminalOutcome, 'cancelled' | 'stale' | 'failed'> = 'cancelled',
   message = 'MCP transport session closed before the editor call completed.',
 ): number {
+  const orphanedByEditor = new Map<string, string[]>();
   for (const [sessionId, owner] of editSessionOwners) {
-    if (owner.ownerId === ownerId) editSessionOwners.delete(sessionId);
+    if (owner.ownerId !== ownerId) continue;
+    editSessionOwners.delete(sessionId);
+    const key = editorKey(owner.binding.projectId, owner.binding.editorInstanceId);
+    const list = orphanedByEditor.get(key) ?? [];
+    list.push(sessionId);
+    orphanedByEditor.set(key, list);
+  }
+  // Let each connected editor discard the sessions its transport orphaned, so a
+  // crashed or closed MCP client cannot leave a drafting session wedged forever.
+  for (const [key, sessionIds] of orphanedByEditor) {
+    const queue = cancellationQueues.get(key) ?? [];
+    queue.push({
+      id: '',
+      outcome,
+      message: `MCP transport session closed; ${sessionIds.length} edit session(s) orphaned.`,
+      ownerGone: sessionIds,
+    });
+    cancellationQueues.set(key, queue);
+    wake(cancellationWaiters, key);
   }
   return cancelCalls((call) => call.ownerId === ownerId, outcome, message);
 }

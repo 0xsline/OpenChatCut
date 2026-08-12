@@ -17,6 +17,8 @@ const calls: Record<keyof BridgeOperations, number> = {
   nextEditorCall: 0,
   nextEditorCancellation: 0,
   settleEditorCall: 0,
+  editorCallBinding: 0,
+  touchEditor: 0,
   mcpTools: 0,
 };
 
@@ -62,6 +64,14 @@ const operations = {
   settleEditorCall: (_id, _outcome, _value, capability) => {
     calls.settleEditorCall += 1;
     assert.equal(capability, registrationCapability);
+    return true;
+  },
+  editorCallBinding: (_id) => {
+    calls.editorCallBinding += 1;
+    return { projectId: 'project-a', editorInstanceId: 'editor-a', baseRevision: 'rev-a', ownershipEpoch: 1 };
+  },
+  touchEditor: async () => {
+    calls.touchEditor += 1;
     return true;
   },
   mcpTools: () => {
@@ -336,6 +346,9 @@ try {
   const wrongCapabilityHeaders = {
     'X-OpenChatCut-Editor-Registration': 'w'.repeat(43),
   };
+  // A different window without the live capability may still re-claim a
+  // same-revision project (claim gate re-issues ownership); capability-based
+  // anti-spoof lives at the poll/call layer below.
   const claimCount = calls.claimBrowserOwnership;
   assert.equal((await requestBridge('/register', {
     ...registerRequest,
@@ -343,9 +356,9 @@ try {
       ...Object.fromEntries(new Headers(registerRequest.headers)),
       ...wrongCapabilityHeaders,
     },
-  })).status, 409);
-  assert.equal(calls.claimBrowserOwnership, claimCount,
-    'a wrong registration capability cannot renew persisted browser ownership');
+  })).status, 200);
+  assert.equal(calls.claimBrowserOwnership, claimCount + 1,
+    'a capability-less browser re-claims ownership through the normal gate');
   assert.equal((await requestBridge(
     '/poll?projectId=project-a&editorId=editor-a&baseRevision=rev-a',
     { headers: wrongCapabilityHeaders },

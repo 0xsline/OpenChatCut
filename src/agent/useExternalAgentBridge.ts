@@ -39,6 +39,8 @@ export type { ExternalCall } from './externalBridgePayload';
 
 interface ExternalCallRuntime {
   execute: ExternalBridgeRuntime['execute'];
+  binding?: ExternalBridgeRuntime['binding'];
+  discardOwnerSessions?: (sessionIds: string[]) => Promise<void>;
 }
 
 export type ExternalResultSender = (
@@ -46,6 +48,7 @@ export type ExternalResultSender = (
   outcome: ExternalEditSessionTerminalStatus,
   value: unknown,
   signal: AbortSignal,
+  baseRevision?: string,
 ) => Promise<void>;
 
 interface ExternalBridgeRuntimeSlot extends ExternalBridgeReadinessToken {
@@ -129,12 +132,22 @@ export async function executeExternalCall(
       value = projectExternalReply(
         await runtime.execute(call.name, call.arguments, call.binding, controller.signal),
       );
+      // Flush pending project saves before reporting the result: the settle
+      // syncs the registry to the committed store revision, and a follow-up MCP
+      // session binding against a pre-autosave revision would be rejected as
+      // stale by the ownership renew check.
+      try {
+        const { flushProjectSaves } = await import('../persist/projectStore');
+        await flushProjectSaves(call.binding.projectId);
+      } catch {
+        // Save flushing is best-effort; the poll loop still converges afterwards.
+      }
     } catch (error) {
       const failed = failedOutcome(error, controller.signal);
       outcome = failed.outcome;
       value = projectExternalReply(failed.message);
     }
-    await deliverResult(call.id, outcome, value, bridgeSignal);
+    await deliverResult(call.id, outcome, value, bridgeSignal, runtime.binding?.().baseRevision);
   } finally {
     cancellations.release(call.id);
     bridgeSignal.removeEventListener('abort', cancel);
@@ -166,12 +179,13 @@ async function pollEditor(
       runtime,
       signal,
       cancellations,
-      (id, outcome, value, resultSignal) => sendEditorBridgeResult(
+      (id, outcome, value, resultSignal, baseRevision) => sendEditorBridgeResult(
         id,
         outcome,
         value,
         resultSignal,
         ownership.registrationCapability,
+        baseRevision,
       ),
     );
   }
@@ -180,6 +194,7 @@ async function pollEditor(
 async function pollCancellations(
   projectId: string,
   editorInstanceId: string,
+  runtime: ExternalCallRuntime,
   cancellations: ExternalCallCancellationRegistry,
   registrationCapability: string,
   signal: AbortSignal,
@@ -193,6 +208,10 @@ async function pollCancellations(
     if (response.status === 204) continue;
     if (!response.ok) throw new EditorBridgeRequestError('cancellation poll', response.status);
     const cancellation = parseCancellation(await response.json());
+    if (cancellation.ownerGone?.length) {
+      await runtime.discardOwnerSessions?.(cancellation.ownerGone);
+      continue;
+    }
     cancellations.cancel(cancellation.id, cancellation.message);
   }
 }
@@ -211,6 +230,7 @@ async function pollRegisteredBridge(
     pollCancellations(
       projectId,
       editorInstanceId,
+      runtime,
       cancellations,
       ownership.registrationCapability,
       signal,

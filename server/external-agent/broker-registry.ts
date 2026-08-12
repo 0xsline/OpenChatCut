@@ -173,13 +173,16 @@ export class EditorConnectionRegistry {
       }
       editor.ownership = renewed.claim;
       editor.ownershipEpoch = renewed.claim.epoch;
-    }
-    if (baseRevision && editor.baseRevision !== baseRevision) {
+      // The store is the authority for the committed revision: a tool result may
+      // settle before autosave lands, so the browser-reported doc revision can
+      // run ahead of the store. Adopting the renewed claim's store revision keeps
+      // the registry consistent with what a follow-up MCP session will bind to.
+      editor.baseRevision = renewed.claim.baseRevision;
+    } else if (baseRevision && editor.baseRevision !== baseRevision) {
       const previous = bindingOf(editor);
       editor.baseRevision = baseRevision;
       this.hooks.revisionChanged(previous);
     }
-    editor.lastSeen = Date.now();
     return true;
   }
 

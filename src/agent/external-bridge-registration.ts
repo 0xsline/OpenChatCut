@@ -34,11 +34,12 @@ export async function sendEditorBridgeResult(
   value: unknown,
   signal: AbortSignal,
   registrationCapability: string,
+  baseRevision?: string,
 ): Promise<void> {
   const response = await fetch('/api/external-agent/result', {
     method: 'POST',
     headers: editorBridgeHeaders(true, registrationCapability),
-    body: JSON.stringify({ id, outcome, value }),
+    body: JSON.stringify({ id, outcome, value, ...(baseRevision ? { baseRevision } : {}) }),
     signal,
   });
   if (!response.ok && response.status !== 404) {

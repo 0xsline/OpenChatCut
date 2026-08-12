@@ -103,10 +103,14 @@ const stalePromise = invokeEditorTool('owner-stale', staleBinding, 'read_timelin
 registerEditor(projectId, editorId, 'v2-project-check', tools, undefined, registrationCapability);
 await assert.rejects(stalePromise, hasOutcome('stale'));
 assert.equal(pendingEditorCallsForTest().length, 0, 'revision changes remove stale calls from the dequeue path');
-assert.throws(
-  () => invokeEditorTool('owner-old-binding', staleBinding, 'read_timeline', {}),
-  hasOutcome('stale'),
-);
+// Same-editor revision advance now adopts the registry's current binding
+// instead of rejecting the call (autosave/registry-sync progression is
+// legitimate, not a stale takeover). The adopted call runs normally.
+const adoptedPromise = invokeEditorTool('owner-old-binding', staleBinding, 'read_timeline', {});
+adoptedPromise.catch(() => undefined);
+assert.equal(pendingEditorCallsForTest().length, 1, 'adopted call is queued');
+const adopted = pendingEditorCallsForTest()[0];
+assert.notEqual(adopted, undefined);
 
 await import('./mcp.verify.ts');
 console.log('external-agent broker check passed');

@@ -2,9 +2,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type {
   nextEditorCall,
   nextEditorCancellation,
+  editorCallBinding,
   editorRegistrationMatches,
   registerEditor,
   settleEditorCall,
+  touchEditor,
   unregisterEditor,
   ExternalCallTerminalOutcome,
   ExternalToolSchema,
@@ -42,6 +44,8 @@ export interface BridgeOperations {
   nextEditorCall: typeof nextEditorCall;
   nextEditorCancellation: typeof nextEditorCancellation;
   settleEditorCall: typeof settleEditorCall;
+  editorCallBinding: typeof editorCallBinding;
+  touchEditor: typeof touchEditor;
   mcpTools: typeof mcpTools;
 }
 
@@ -254,12 +258,25 @@ async function settleBridgeCall(
         ? 'failed'
         : null;
   if (!outcome) throw new Error('invalid tool result outcome');
+  const capability = registrationCapability(req, true);
+  const binding = operations.editorCallBinding(body.id);
   const settled = operations.settleEditorCall(
     body.id,
     outcome,
     body.value,
-    registrationCapability(req, true),
+    capability,
   );
+  if (settled && binding && typeof body.baseRevision === 'string' && body.baseRevision) {
+    // The editor just committed the tool's mutation; sync the registry to the
+    // post-tool revision so a follow-up MCP session binds to the current
+    // snapshot instead of being rejected as stale by the previous one.
+    await operations.touchEditor(
+      binding.projectId,
+      binding.editorInstanceId,
+      body.baseRevision,
+      capability,
+    ).catch(() => undefined);
+  }
   sendBridgeJson(res, settled ? 200 : 404, settled
     ? { ok: true }
     : { error: 'editor call is unavailable' });

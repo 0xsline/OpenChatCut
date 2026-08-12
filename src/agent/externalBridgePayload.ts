@@ -12,6 +12,7 @@ export interface ExternalCancellation {
   id: string;
   outcome: Exclude<ExternalEditSessionTerminalStatus, 'applied'>;
   message: string;
+  ownerGone?: string[];
 }
 
 function isFailureOutcome(
@@ -76,5 +77,8 @@ export function parseExternalCancellation(value: unknown): ExternalCancellation 
   ) {
     throw new Error('invalid external editor cancellation');
   }
-  return { id: value.id, outcome: value.outcome, message: value.message };
+  const ownerGone = 'ownerGone' in value && Array.isArray(value.ownerGone)
+    ? value.ownerGone.filter((entry): entry is string => typeof entry === 'string')
+    : undefined;
+  return { id: value.id, outcome: value.outcome, message: value.message, ownerGone };
 }

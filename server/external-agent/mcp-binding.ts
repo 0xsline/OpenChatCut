@@ -7,6 +7,7 @@ import {
   ExternalEditorCallError,
   type EditorBinding,
 } from './broker.ts';
+import { sameEditorIdentity } from './broker-registry.ts';
 import { OfflineExternalEditRuntime, type OfflineEditorBinding } from './offline-runtime.ts';
 
 const VALID_STORED_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
@@ -57,6 +58,7 @@ export function markMcpSessionStale(session: McpBindingSession, message: string)
 export function validateBrowserBinding(
   session: McpBindingSession,
   allowRevisionDrift = false,
+  adoptSameIdentity = true,
 ): EditorBinding | null {
   if (session.staleReason) throw new ExternalEditorCallError('stale', session.staleReason);
   if (!session.binding) return null;
@@ -64,6 +66,19 @@ export function validateBrowserBinding(
     ? editorBindingIdentityMatches(session.binding)
     : editorBindingMatches(session.binding);
   if (matches) return session.binding;
+  // A same-editor revision advance between bind and an editor tool call (an
+  // autosave landing, a tool settle syncing the registry) is a legitimate
+  // progression, not a stale takeover: re-bind to the registry's current
+  // snapshot instead of poisoning the whole session. Control/status tools keep
+  // the strict check so a replaced binding is still reported as stale there.
+  const current = editorBinding(session.binding.projectId);
+  if (adoptSameIdentity
+    && current
+    && sameEditorIdentity(current, session.binding)
+    && editorBindingMatches(current)) {
+    session.binding = current;
+    return current;
+  }
   const message = `MCP session binding for project ${session.binding.projectId} is stale. Re-initialize the MCP session.`;
   markMcpSessionStale(session, message);
   throw new ExternalEditorCallError('stale', message);

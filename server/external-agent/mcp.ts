@@ -200,7 +200,12 @@ async function callTool(
     delete args.editorProjectId;
     return session.offline.execute(name, args);
   }
-  validateBrowserBinding(session, allowRevisionDrift);
+  const carriesSession = 'editSessionId' in args;
+  validateBrowserBinding(
+    session,
+    allowRevisionDrift,
+    MCP_CONTROL_TOOL_NAMES[name] !== true && !carriesSession,
+  );
   const control = await callControlTool(session, name, args, baseUrl);
   if (control !== undefined) return control;
   if (!session.id) throw new ExternalEditorCallError('failed', 'MCP session initialization is incomplete.');
