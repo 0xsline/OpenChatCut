@@ -252,6 +252,7 @@ async function executeServerTurn(
     input.run,
     measuredContextUsage(prepared, totalUsage, text, input.requestIndex),
     schemas.length,
+    JSON.stringify(schemas).length,
   );
   const continued = toolCalls.length > 0
     || responseMessages.some((message) => message.role === 'tool');

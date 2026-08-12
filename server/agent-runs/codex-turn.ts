@@ -218,6 +218,7 @@ export async function executeServerCodexTurn(
           input.run,
           usageFromCodexEvent(event, prepared, input.requestIndex),
           schemas.length,
+          JSON.stringify(schemas).length,
         );
         break;
       case 'error':

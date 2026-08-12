@@ -1,6 +1,7 @@
 import { generateText, type LanguageModel, type ModelMessage } from 'ai';
 import type { LlmProvider, OpenAiApiMode } from '../../shared/llm-providers';
 import {
+  estimateContextTokens,
   estimateTextTokens,
   prepareContext,
   type ContextPreparation,
@@ -132,5 +133,15 @@ export async function prepareServerContext(
   if (prepared.checkpoint) {
     await persistServerCheckpoint(input.run, prepared.checkpoint);
   }
-  return prepared;
+  const schemaText = JSON.stringify(input.schemas);
+  return {
+    ...prepared,
+    usage: {
+      ...prepared.usage,
+      systemTokens: estimateTextTokens(input.instructions),
+      historyTokens: estimateContextTokens(input.messages),
+      toolSchemaTokens: estimateTextTokens(schemaText),
+      toolCount: input.schemas.length,
+    },
+  };
 }

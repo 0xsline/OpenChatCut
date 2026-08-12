@@ -39,6 +39,7 @@ export function recordServerContextUsage(
   run: ServerRun,
   usage: AgentContextUsage,
   activeToolCount: number,
+  toolSchemaChars: number,
 ): void {
   const metrics = runMetrics(run);
   const cacheReadTokens = usage.cacheReadTokens ?? 0;
@@ -58,7 +59,8 @@ export function recordServerContextUsage(
     systemTokens: usage.systemTokens,
     historyTokens: usage.historyTokens,
     activeToolCount,
-    toolSchemaCount: usage.toolCount,
+    toolSchemaCount: usage.toolCount ?? activeToolCount,
+    toolSchemaChars,
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     reasoningTokens: usage.reasoningTokens,

@@ -385,12 +385,14 @@ export function recordServerContextUsage(
   run: ServerRun,
   usage: AgentContextUsage,
   activeToolCount: number,
+  toolSchemaChars = 0,
 ): void {
   recordServerContextUsageInternal(
     STORE_METRICS_DEPENDENCIES,
     run,
     usage,
     activeToolCount,
+    toolSchemaChars,
   );
 }
 
