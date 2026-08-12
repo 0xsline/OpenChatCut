@@ -91,14 +91,15 @@ async function createLeaseRace(): Promise<LeaseFixture> {
     ownerInstanceId,
     leaseMs: 1_000,
   });
-  const [left, right] = await Promise.all([
-    store.lease(request('owner-left')),
-    store.lease(request('owner-right')),
-  ]);
-  assert.equal(Number(left.accepted) + Number(right.accepted), 1);
-  const winner = left.accepted ? left : right;
-  const loserOwner = left.accepted ? 'owner-right' : 'owner-left';
-  assert(winner.lease);
+  const [left, right] = [await store.lease(request('owner-left')), await store.lease(request('owner-right'))];
+  // A claim always wins (single-window users must be able to resume a run even
+  // while a previous session still holds the short-lived lease), so the second
+  // claim takes over and becomes the current owner.
+  assert.equal(left.accepted, true, 'a fresh claim always acquires the lease');
+  assert.equal(right.accepted, true, 'a later claim takes over the lease');
+  assert(left.lease && right.lease);
+  const winner = right as LeasedResponse;
+  const loserOwner = 'owner-left';
   now += 1_001;
   return { projectId, runId, store, request, winner: winner as LeasedResponse, loserOwner };
 }

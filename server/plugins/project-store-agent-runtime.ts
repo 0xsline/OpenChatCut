@@ -192,12 +192,8 @@ function acceptedLease(
   if (input.action === 'release') {
     return exact ? { ownerInstanceId: owner, leaseToken: token, leaseExpiresAt: expiresAt } : null;
   }
-  const serverRestart = input.allowOfflineServerTakeover === true
-    && run.backend === 'external-offline'
-    && !!owner;
-  const available = !owner || expiresAt <= now || exact
-    || (owner === input.ownerInstanceId && !token) || serverRestart;
-  if (!available) return null;
+  // A claim always wins: single-window users must be able to resume an agent run
+  // immediately even if a previous session still holds the (2-minute) lease.
   return {
     ownerInstanceId: input.ownerInstanceId,
     leaseToken: exact ? token : randomUUID(),
