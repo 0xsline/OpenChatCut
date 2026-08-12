@@ -131,7 +131,7 @@ export class LocalAsrClient {
           device: 'wasm',
           modelId: fallback.modelId,
           revision: fallback.revision,
-        });
+        }, WASM_LOAD_TIMEOUT_MS);
         this.config = config;
       }
     })();

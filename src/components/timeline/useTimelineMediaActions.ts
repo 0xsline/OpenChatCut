@@ -48,12 +48,12 @@ export function useTimelineMediaActions({
     const liveState = liveStateRef.current;
     const liveItem = liveState.items.find((candidate) => candidate.id === item.id);
     if (!liveItem) return;
-    if (liveState.tracks?.[liveItem.track]?.locked) throw new Error(t('轨道已锁定'));
-    // Validate against the picked file BEFORE importing it into the media
-    // pool, otherwise a failed relink leaves an orphan duplicate asset.
-    const relinkKind = kindOf(file);
-    if (relinkKind !== liveItem.kind) throw new Error(t('请重新选择同类型文件'));
     try {
+      if (liveState.tracks?.[liveItem.track]?.locked) throw new Error(t('轨道已锁定'));
+      // Validate against the picked file BEFORE importing it into the media
+      // pool, otherwise a failed relink leaves an orphan duplicate asset.
+      const relinkKind = kindOf(file);
+      if (relinkKind !== liveItem.kind) throw new Error(t('请重新选择同类型文件'));
       const media = await importMedia(file, state.fps);
       const liveAssets = liveState.assets ?? [];
       const poolAssetId = timelineItemAssetId(liveItem, liveAssets);

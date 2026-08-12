@@ -49,6 +49,8 @@ interface ChatMessageProps {
   msg: DisplayMessage;
   /** the actively-streaming assistant turn hides the copy button until done */
   streaming?: boolean;
+  /** true while any agent run is in flight; disables the retry button */
+  running?: boolean;
   /** A resend action for this user turn, shown below the user's message. */
   retry?: AgentRetry;
   onRetry?: ((retry: AgentRetry) => void) | null;
@@ -58,7 +60,7 @@ interface ChatMessageProps {
   onContinue?: (() => void) | null;
 }
 
-export function ChatMessage({ msg, streaming, retry, onRetry, onWidgetSubmit, onContinue }: ChatMessageProps) {
+export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, onContinue }: ChatMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -70,8 +72,8 @@ export function ChatMessage({ msg, streaming, retry, onRetry, onWidgetSubmit, on
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', margin: '16px 0' }}>
         <div style={{ maxWidth: '86%', background: theme.hover, color: theme.text, borderRadius: 6, padding: '9px 14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{msg.text}</div>
         {retry && onRetry && (
-          <button type="button" onClick={() => onRetry(retry)} title={t('重试请求')} disabled={streaming}
-            style={{ marginTop: 5, border: 'none', background: 'transparent', color: theme.textDim, borderRadius: 6, padding: '3px 6px', fontSize: 12, cursor: streaming ? 'default' : 'pointer', opacity: streaming ? 0.4 : 1, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" onClick={() => onRetry(retry)} title={t('重试请求')} disabled={running}
+            style={{ marginTop: 5, border: 'none', background: 'transparent', color: theme.textDim, borderRadius: 6, padding: '3px 6px', fontSize: 12, cursor: running ? 'default' : 'pointer', opacity: running ? 0.4 : 1, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <span aria-hidden="true">↻</span>{t('重试')}
           </button>
         )}

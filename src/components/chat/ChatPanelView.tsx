@@ -122,7 +122,7 @@ function MessageEntries({ controller }: { controller: ChatPanelController }) {
     {groupMessages(visibleMessages, visibleFrom).map((item) => item.kind === 'toolgroup' ? (
       <ToolGroupRow key={item.index} name={item.name} items={item.items} />
     ) : (
-      <ChatMessage key={item.index} msg={item.msg}
+      <ChatMessage key={item.index} msg={item.msg} running={agent.running}
         retry={item.msg.role === 'user' ? item.msg.retry : undefined}
         streaming={agent.running && item.index === agent.messages.length - 1 && item.msg.role === 'assistant'}
         onRetry={onRetry}

@@ -154,9 +154,9 @@ export function applyAgentModelStatus(
   rebuildCodexChoices();
   const choices = allChoices();
   const initialApiId = chooseInitialApiId(apiModelChoices, models);
-  const preffered = loadAgentModelPref();
+  const preferred = loadAgentModelPref();
   const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId
-    : choices.some((choice) => choice.id === preffered) ? preffered : '';
+    : choices.some((choice) => choice.id === preferred) ? preferred : '';
   commitChoices(choices, preserved || initialApiId || choices[0]?.id || '', true,
     apiModelChoices.find((choice) => choice.id === initialApiId));
 }
@@ -184,7 +184,9 @@ export function applyCodexAgentStatus(
   if (discoveredModels) codexDiscoveredModels = discoveredModels;
   rebuildCodexChoices();
   const choices = allChoices();
-  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
+  const preffered = loadAgentModelPref();
+  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId
+    : choices.some((choice) => choice.id === preffered) ? preffered : '';
   commitChoices(choices, preserved || choices[0]?.id || '', true);
 }
 
