@@ -1,11 +1,9 @@
 import type { CSSProperties } from 'react';
 import {
   Audio as BrowserAudio,
-  Video as BrowserVideo,
   type AudioProps as BrowserAudioProps,
-  type VideoProps as BrowserVideoProps,
 } from '@remotion/media';
-import { AbsoluteFill, Audio as ServerAudio, Img, OffthreadVideo, Sequence, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Audio as ServerAudio, Img, Sequence, useCurrentFrame } from 'remotion';
 import { ClipFx } from '../gl/ClipFx';
 import { firstGlEffect } from '../gl/clipEffects';
 import { selectEffectPreviewAdapter, type SelectedPreviewStatusListener } from '../gl/previewAdapter';
@@ -19,21 +17,12 @@ import { sourceFrameAt } from './sourceLimit';
 import type { AspectFit, TimelineItem, TransitionItem } from './types';
 import { isAudioTransition } from './types';
 import { clampVisualBorderRadius, visibleVisualFrameRect } from './visualFrameGeometry';
-
-type RuntimeVideoProps = Pick<BrowserVideoProps, 'src' | 'trimBefore' | 'trimAfter' | 'playbackRate' | 'volume' | 'style' | 'muted'> & {
-  browserRenderer: boolean;
-};
+import { RuntimeVideo } from './RuntimeVideo';
 
 function RuntimeAudio({ browserRenderer, ...props }: BrowserAudioProps & { browserRenderer: boolean }) {
   return browserRenderer
     ? <BrowserAudio {...props} />
     : <ServerAudio {...props} preservePitch />;
-}
-
-function RuntimeVideo({ browserRenderer, ...props }: RuntimeVideoProps) {
-  return browserRenderer
-    ? <BrowserVideo {...props} />
-    : <OffthreadVideo {...props} preservePitch />;
 }
 
 function MixedRuntimeAudio({ item, browserRenderer, volume, ...props }: Omit<BrowserAudioProps, 'src'> & {
