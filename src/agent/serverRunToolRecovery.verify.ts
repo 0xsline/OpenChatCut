@@ -81,7 +81,7 @@ try {
     capability: 'cursor-recovery-capability',
     baseDoc: {} as never,
     activation: new ToolActivation(TOOL_SCHEMAS, []),
-    recorder: { runId } as never,
+    runId,
     abort: new AbortController(),
     recovered: new Map(),
   });

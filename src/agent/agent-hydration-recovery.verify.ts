@@ -29,6 +29,28 @@ import { buildOperation, buildProposal } from './proposal';
 import { cleanupAgentHydration, loadRecoveredAgentSession } from './useAgentPersistence';
 import type { AgentHookState } from './useAgentState';
 import { requestRuntimeGuard } from './useAgentRun';
+// The settle endpoint is server-side; emulate its effect locally (patch the
+// sidecar) so verifies exercise the full settlement path without a server.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input);
+  if (url.includes('/settle') && init?.method === 'POST') {
+    const body = JSON.parse(String(init.body)) as {
+      projectId: string; status: string;
+      proposalId?: string; summary?: string;
+    };
+    const settleRunId = String(url).split('/').filter(Boolean).at(-2) ?? '';
+    await patchAgentRun(body.projectId, settleRunId, {
+      status: body.status as 'completed' | 'failed' | 'aborted' | 'interrupted'
+        | 'waiting_approval' | 'awaiting_user',
+      ...(body.summary ? { finalSummary: body.summary } : {}),
+    });
+    return new Response(JSON.stringify({ ok: true, already: false, gone: false }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return originalFetch(input, init);
+}) as typeof fetch;
 
 const projectId = `hydrate-recovery-${crypto.randomUUID()}`;
 resetAgentRuntimeStoreMemory();
@@ -247,9 +269,12 @@ const contestedProposal = buildProposal(
 );
 await saveProposal(contestedProject, contestedProposal);
 const contestedHydration = await loadRecoveredAgentSession(contestedProject, () => true);
-assert.equal(contestedHydration, null,
-  'a lease held by another editor yields a clean no-op hydration instead of an error');
-assert.equal(await loadProposalRecord(contestedProject), null,
-  'the contested proposal is settled stale and cleared instead of blocking future opens');
+assert.equal(contestedHydration?.pending?.id, contestedProposal.id,
+  'a proposal whose run is owned elsewhere still hydrates (server-side settle is idempotent)');
+assert.equal(
+  (await loadAgentRuntimeSidecar(contestedProject)).runs
+    .find((run) => run.runId === contestedRecorder.runId)?.status,
+  'waiting_approval',
+  'the contested run stays waiting_approval after hydration (no ownership handshake in the browser)');
 await stopAgentRunLeases(projectId);
 resetAgentRuntimeStoreMemory();

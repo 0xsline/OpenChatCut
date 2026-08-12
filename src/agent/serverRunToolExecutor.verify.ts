@@ -246,7 +246,7 @@ const startExecutor = (
     capability: 'test-run-capability',
     baseDoc: {} as never,
     activation,
-    recorder: { runId: currentRunId } as never,
+    runId: currentRunId,
     abort: new AbortController(),
     recovered,
   });
@@ -268,7 +268,7 @@ recoveredActivationExecutor.start({
   capability: 'test-run-capability',
   baseDoc: {} as never,
   activation: recoveredActivation,
-  recorder: { runId: recoveredActivationRun } as never,
+  runId: recoveredActivationRun,
   abort: new AbortController(),
   recovered: new Map([
     ['search', {

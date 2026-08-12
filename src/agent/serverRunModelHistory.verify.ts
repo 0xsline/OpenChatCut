@@ -67,7 +67,6 @@ try {
     runId: terminalRun,
     status: 'completed',
     assistantText: 'durable answer',
-    recorder: null,
     onTerminal: async () => 'finalized' as const,
     commitModelTurn: async () => releaseCommit.promise,
   });

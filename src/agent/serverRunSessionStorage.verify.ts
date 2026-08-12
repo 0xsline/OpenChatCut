@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { patchAgentRun } from '../persist/agentRuntimeStore.ts';
 import {
   bindServerRunEvents,
   ServerRunToolRequestQueue,
@@ -6,18 +7,13 @@ import {
 import { restoreServerRunToolActivation } from './serverRunProtocol.ts';
 import { finishRecoveredRun } from './serverRunRecovery.ts';
 import { ServerRunTerminalHandoffs } from './serverRunTerminalHandoff.ts';
-import {
-  resumeAgentRun,
-  startAgentRun,
-  type AgentRunRecorder,
-} from './runtime-ledger.ts';
+import { startAgentRun } from './runtime-ledger.ts';
 import { resetAgentRuntimeStoreMemory } from '../persist/agentRuntimeStore.ts';
 import { ToolActivation } from './tool-activation.ts';
 import { TOOL_SCHEMAS } from './tools.ts';
 import {
   beginStoredToolAttempt,
   clearStoredServerRun,
-  clearStoredServerRunLease,
   clearStoredToolAttempt,
   findStoredToolAttempt,
   patchStoredServerRun,
@@ -25,6 +21,28 @@ import {
   saveStoredServerRun,
   storedClaimIdentity,
 } from './serverRunSessionStorage.ts';
+// The settle endpoint is server-side; emulate its effect locally (patch the
+// sidecar) so verifies exercise the full settlement path without a server.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input);
+  if (url.includes('/settle') && init?.method === 'POST') {
+    const body = JSON.parse(String(init.body)) as {
+      projectId: string; status: string;
+      proposalId?: string; summary?: string;
+    };
+    const settleRunId = String(url).split('/').filter(Boolean).at(-2) ?? '';
+    await patchAgentRun(body.projectId, settleRunId, {
+      status: body.status as 'completed' | 'failed' | 'aborted' | 'interrupted'
+        | 'waiting_approval' | 'awaiting_user',
+      ...(body.summary ? { finalSummary: body.summary } : {}),
+    });
+    return new Response(JSON.stringify({ ok: true, already: false, gone: false }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return originalFetch(input, init);
+}) as typeof fetch;
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -122,26 +140,28 @@ const transientDisposition = await finishRecoveredRun({
   runId,
   status: 'completed',
   assistantText: 'completed while detached',
-  recorder: null,
 });
-assert.equal(transientDisposition, false);
-assert.equal(readStoredServerRun(projectId)?.runId, runId,
-  'an unavailable active recorder preserves refresh recovery instead of abandoning terminal replay');
+assert.equal(transientDisposition, 'finalized',
+  'a terminal run without a terminal handler is settled by the server settle fallback');
+assert.equal(readStoredServerRun(projectId), null,
+  'a terminal run without a terminal handler settles server-side and clears recovery');
 
-const finalizedStatuses: string[] = [];
-const releasedLeases: string[] = [];
 const terminalOrder: string[] = [];
-const recorder = {
+assert(saveStoredServerRun(projectId, {
+  projectId,
   runId,
-  finalize: async (status: string) => { finalizedStatuses.push(status); },
-  releaseLease: async () => { releasedLeases.push(runId); },
-} as unknown as AgentRunRecorder;
+  capability: 'raw-tab-capability',
+  createdAt: 1_000,
+  content: 'proposal request',
+  activeToolNames: initialNames,
+  cursor: 0,
+  modelHistoryLength: 3,
+}), 're-storing the run keeps the waiting-approval settlement path covered');
 const waitingDisposition = await finishRecoveredRun({
   projectId,
   runId,
   status: 'completed',
   assistantText: 'proposal ready',
-  recorder,
   onTerminal: async () => ({
     disposition: 'waiting_approval' as const,
     afterModelCommit: () => { terminalOrder.push('proposal-exposed'); },
@@ -149,13 +169,10 @@ const waitingDisposition = await finishRecoveredRun({
   commitModelTurn: async () => { terminalOrder.push('model-history-persisted'); },
 });
 assert.equal(waitingDisposition, 'waiting_approval');
-assert.deepEqual(releasedLeases, [],
-  'a live pending proposal retains its canonical lease for auto-apply or manual settlement');
 assert.deepEqual(terminalOrder, ['model-history-persisted', 'proposal-exposed'],
   'proposal exposure cannot race ahead of durable model-history commit');
-assert.equal(readStoredServerRun(projectId)?.leaseToken, 'lease-token-1',
-  'waiting approval retains the recorder recovery capability for apply or deny');
-assert.deepEqual(finalizedStatuses, []);
+assert.equal(readStoredServerRun(projectId)?.runId, runId,
+  'waiting approval retains the stored run for apply or deny');
 const handoffs = new ServerRunTerminalHandoffs();
 let proposalAttempts = 0;
 let handoffSettlements = 0;
@@ -213,32 +230,17 @@ const refreshDisposition = await finishRecoveredRun({
   runId: refreshRecorder.runId,
   status: 'completed',
   assistantText: 'proposal ready',
-  recorder: refreshRecorder,
-  onTerminal: async (): Promise<'waiting_approval'> => {
-    await refreshRecorder.finalize('waiting_approval', 'proposal ready');
-    return 'waiting_approval' as const;
-  },
+  onTerminal: async (): Promise<'waiting_approval'> => 'waiting_approval' as const,
 });
 assert.equal(refreshDisposition, 'waiting_approval');
-assert(clearStoredServerRunLease(
-  refreshProjectId,
-  refreshRecorder.runId,
-  refreshRecorder.recoveryLeaseToken(),
-));
-const reclaimedAfterRefresh = await resumeAgentRun(refreshProjectId, refreshRecorder.runId);
-assert(reclaimedAfterRefresh,
-  'waiting approval can be reclaimed immediately without the released lease token');
-await reclaimedAfterRefresh.releaseLease();
 clearStoredServerRun(refreshProjectId, refreshRecorder.runId);
 const finalDisposition = await finishRecoveredRun({
   projectId,
   runId,
   status: 'completed',
   assistantText: 'no proposal',
-  recorder,
 });
 assert.equal(finalDisposition, 'finalized');
-assert.deepEqual(finalizedStatuses, ['completed']);
 assert.equal(readStoredServerRun(projectId), null,
   'a finalized no-proposal run clears recovery exactly once');
 clearStoredServerRun(projectId, runId);
@@ -254,12 +256,9 @@ const handledDisposition = await finishRecoveredRun({
   runId,
   status: 'failed',
   assistantText: 'failed once',
-  recorder,
   onTerminal: async () => 'finalized' as const,
 });
 assert.equal(handledDisposition, 'finalized');
-assert.deepEqual(finalizedStatuses, ['completed'],
-  'a browser terminal handler that finalized the record is never finalized a second time');
 assert.equal(readStoredServerRun(projectId), null);
 
 
