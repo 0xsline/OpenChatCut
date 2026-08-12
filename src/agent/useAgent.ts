@@ -1,14 +1,14 @@
-import type { AgentContext } from './context';
 import type { AgentContextUsage } from './context-compaction';
 import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
 import type { AgentChangeSession } from './changeLog';
 import type { Proposal } from './proposal';
-import { useAgentState, type AgentHookState } from './useAgentState';
-import { useAgentHydration, useAgentPersistence } from './useAgentPersistence';
-import { useAgentRun, type AgentSend } from './useAgentRun';
-import { useAgentProposalActions } from './useAgentProposalActions';
-import { useAgentHistoryActions } from './useAgentHistoryActions';
+import type { AgentSend } from './useAgentRun';
 
+/**
+ * The controller surface exposed to the chat panel. Server-side execution is
+ * the only Agent run path; this type is what the serverRun adapter must expose
+ * for the panel to keep working.
+ */
 export interface AgentController {
   readonly messages: DisplayMessage[];
   readonly running: boolean;
@@ -29,35 +29,4 @@ export interface AgentController {
   readonly rejectProposal: () => void;
   readonly rollbackChangeSession: (id: string, force?: boolean) => boolean;
   readonly canRollbackChangeSession: (id: string) => boolean;
-}
-
-/** Compose the built-in chat Agent from focused state, runtime, proposal, and history hooks. */
-export function useAgentController(
-  state: AgentHookState,
-  projectId: string,
-  enabled = true,
-): AgentController {
-  useAgentHydration(state, projectId, enabled);
-  useAgentPersistence(state, projectId, enabled);
-  const runtime = useAgentRun(state, projectId);
-  const proposalActions = useAgentProposalActions(state, projectId, runtime.send);
-  const historyActions = useAgentHistoryActions(state, projectId);
-  return {
-    messages: state.messages,
-    running: state.running,
-    hydrated: state.hydrated,
-    contextUsage: state.contextUsage,
-    proposal: state.proposal,
-    proposalStale: state.proposalStale,
-    pendingGuard: state.pendingGuard,
-    liveTool: state.liveTool,
-    changeLog: state.changeLog,
-    ...runtime,
-    ...proposalActions,
-    ...historyActions,
-  };
-}
-
-export function useAgent(ctx: AgentContext, projectId: string): AgentController {
-  return useAgentController(useAgentState(ctx), projectId);
 }
