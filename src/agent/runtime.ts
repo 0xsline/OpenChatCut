@@ -381,6 +381,12 @@ async function runPreparedAgent(
   });
 }
 
+/**
+ * Browser-side Agent loop. Server-side execution (serverRun) is the only Agent
+ * run path since the server-only refactor; this loop and its api/codex backends
+ * have no runtime consumer and are kept solely as regression-test assets
+ * (token-efficiency.verify, runtime.verify, followup-activation.verify).
+ */
 export async function runAgent(
   messages: LLMMessage[],
   ctx: AgentContext,

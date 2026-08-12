@@ -109,6 +109,7 @@ export interface AgentRunRecord {
   readonly leaseExpiresAt?: number;
   readonly modelId?: string;
   readonly backend?: string;
+  readonly provider?: string;
   readonly externalSessionId?: string;
   readonly context?: AgentRunContext;
   readonly artifactIds: readonly string[];

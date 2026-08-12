@@ -189,8 +189,12 @@ async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<
   if (!origin) return sendJson(res, 400, { error: 'valid request host is required' });
   const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
   const requestedModel = input.model;
+  const backend = body.backend === 'codex' ? 'codex' : 'api';
   const readKey = (name: string): string => getKey(name as KeyName);
-  const config = resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
+  const codexBackend = backend === 'codex';
+  const config = codexBackend
+    ? { provider: 'openai', model: '' }
+    : resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
   const effectiveProvider = normalizeLlmProvider(config.provider);
   const effectiveModel = requestedModel || config.model || defaultModelForProvider(effectiveProvider);
   const openAiApiMode = normalizeOpenAiApiMode(body.openAiApiMode);
@@ -201,6 +205,7 @@ async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<
     ?? await prepareRunAdmission(input.projectId);
   const execution: ServerRunInput = {
     messages: input.messages,
+    backend,
     provider: effectiveProvider,
     model: effectiveModel,
     openAiApiMode,
@@ -227,6 +232,7 @@ async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<
     id: input.runId,
     projectId: input.projectId,
     sessionGeneration,
+    backend,
     provider: effectiveProvider,
     model: effectiveModel,
     askOnly,

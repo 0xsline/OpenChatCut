@@ -50,7 +50,7 @@ export function resolveServerRunMaxOutputTokens(
   );
 }
 
-function flushTextEvents(run: ServerRun, pending: string, force: boolean): string {
+export function flushTextEvents(run: ServerRun, pending: string, force: boolean): string {
   let remainder = pending;
   while (remainder.length >= TEXT_EVENT_CHARS) {
     pushRunEvent(run, 'text-delta', { text: remainder.slice(0, TEXT_EVENT_CHARS) });
@@ -82,7 +82,7 @@ function safeError(error: unknown): string {
 
 
 
-interface ActivationState {
+export interface ActivationState {
   current: ToolActivation;
   tail: Promise<void>;
   followupText: string | null;
@@ -90,6 +90,7 @@ interface ActivationState {
 
 export interface ServerRunInput {
   readonly messages: ModelMessage[];
+  readonly backend?: string;
   readonly provider: string;
   readonly model: string;
   readonly openAiApiMode: OpenAiApiMode;
@@ -105,7 +106,7 @@ type ServerTurnInput = Omit<ServerContextInput, 'schemas'> & {
   readonly requestIndex: number;
 };
 
-async function executeBrowserTool(
+export async function executeBrowserTool(
   run: ServerRun,
   schema: AgentToolSchema,
   args: Record<string, unknown>,
@@ -267,9 +268,10 @@ async function executeServerTurn(
 function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   const provider = normalizeLlmProvider(input.provider);
   const apiMode = normalizeOpenAiApiMode(input.openAiApiMode);
+  const backend = input.backend === 'codex' ? 'codex' : 'api';
   const requested = resolveServerRunToolCatalog(input.tools, run.askOnly);
   const capabilities = resolveModelCapabilities({
-    backend: 'api',
+    backend,
     provider,
     modelId: input.model,
   });
@@ -297,6 +299,7 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
     references: run.references,
   });
   return {
+    backend,
     provider,
     apiMode,
     capabilities,
@@ -304,12 +307,14 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
     maxInputTokens,
     activation,
     prompt,
-    model: createServerLanguageModel(
-      provider,
-      input.model,
-      apiMode,
-      input.origin,
-    ),
+    model: backend === 'codex'
+      ? undefined
+      : createServerLanguageModel(
+          provider,
+          input.model,
+          apiMode,
+          input.origin,
+        ),
   };
 }
 
@@ -321,22 +326,39 @@ async function executeRunTurns(
   const plan = createExecutionPlan(run, input);
   let messages = plan.prompt.messages;
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
-    const outcome = await executeServerTurn({
-      run,
-      messages,
-      instructions: plan.prompt.instructions,
-      model: plan.model,
-      provider: plan.provider,
-      apiMode: plan.apiMode,
-      cacheMode: input.cacheMode,
-      contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-      contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-      maxInputTokens: plan.maxInputTokens,
-      maxOutputTokens: plan.maxOutputTokens,
-      signal,
-      activation: plan.activation,
-      requestIndex: turn + 1,
-    });
+    const outcome = plan.backend === 'codex'
+      ? await (await import('./codex-turn')).executeServerCodexTurn({
+        run,
+        messages,
+        instructions: plan.prompt.instructions,
+        schemas: plan.activation.current.schemas(),
+        model: input.model,
+        askOnly: run.askOnly,
+        projectId: run.projectId,
+        maxInputTokens: plan.maxInputTokens,
+        maxOutputTokens: plan.maxOutputTokens,
+        contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+        contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+        signal,
+        activation: plan.activation,
+        requestIndex: turn + 1,
+      })
+      : await executeServerTurn({
+        run,
+        messages,
+        instructions: plan.prompt.instructions,
+        model: plan.model!,
+        provider: plan.provider,
+        apiMode: plan.apiMode,
+        cacheMode: input.cacheMode,
+        contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+        contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+        maxInputTokens: plan.maxInputTokens,
+        maxOutputTokens: plan.maxOutputTokens,
+        signal,
+        activation: plan.activation,
+        requestIndex: turn + 1,
+      });
     if (outcome.followupText) {
       pushRunEvent(run, 'text-delta', { text: outcome.followupText });
       pushRunEvent(run, 'text-end', serverRunTextMetadata(outcome.followupText));

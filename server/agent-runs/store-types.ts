@@ -54,6 +54,7 @@ export interface ServerRun {
   sessionGeneration: string;
   capabilityVerifier: string;
   requestShapeHash?: string;
+  backend: string;
   provider: string;
   model: string;
   askOnly: boolean;

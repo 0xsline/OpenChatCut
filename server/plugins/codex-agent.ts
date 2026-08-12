@@ -456,3 +456,18 @@ export function codexAgentPlugin(): Plugin {
     },
   };
 }
+
+/**
+ * Internal server-side entry for the Agent run executor: runs one Codex turn
+ * through the same turn manager the HTTP bridge uses, without an HTTP round
+ * trip. The executor feeds tool results back via codexTurnManager.settleToolResult.
+ */
+export async function runServerCodexTurn(
+  request: CodexTurnRequest,
+  emit: (event: CodexTurnStreamEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  if (codexTurnManager.hasRequest(request.requestId)) throw new Error('requestId is already active');
+  const { client } = await requireClient();
+  await codexTurnManager.run(client, request, emit, signal);
+}

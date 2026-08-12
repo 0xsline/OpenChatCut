@@ -89,22 +89,16 @@ export interface ServerContextInput {
   readonly maxInputTokens: number;
   readonly maxOutputTokens: number;
   readonly signal: AbortSignal;
+  /** Optional override for the context-summary model call (Codex backend uses a Codex turn). */
+  readonly summarize?: (messages: readonly ModelMessage[]) => Promise<string>;
 }
 
 export async function prepareServerContext(
   input: ServerContextInput,
 ): Promise<ContextPreparation> {
   const providerOptions = serverProviderOptions(input.provider, input.apiMode, input.cacheMode);
-  const prepared = await prepareContext({
-    messages: input.messages,
-    system: input.instructions,
-    modelId: input.run.model,
-    contextWindowTokens: input.contextWindowTokens,
-    contextWindowEstimated: input.contextWindowEstimated,
-    maxInputTokens: input.maxInputTokens,
-    maxOutputTokens: input.maxOutputTokens,
-    requestOverheadTokens: estimateTextTokens(JSON.stringify(input.schemas)),
-    summarize: (messages) => summarizeConversation(
+  const summarize = input.summarize
+    ?? ((messages: readonly ModelMessage[]) => summarizeConversation(
       messages,
       input.contextWindowTokens,
       input.maxInputTokens,
@@ -123,7 +117,17 @@ export async function prepareServerContext(
         });
         return result.text;
       },
-    ),
+    ));
+  const prepared = await prepareContext({
+    messages: input.messages,
+    system: input.instructions,
+    modelId: input.run.model,
+    contextWindowTokens: input.contextWindowTokens,
+    contextWindowEstimated: input.contextWindowEstimated,
+    maxInputTokens: input.maxInputTokens,
+    maxOutputTokens: input.maxOutputTokens,
+    requestOverheadTokens: estimateTextTokens(JSON.stringify(input.schemas)),
+    summarize,
   });
   if (prepared.checkpoint) {
     await persistServerCheckpoint(input.run, prepared.checkpoint);

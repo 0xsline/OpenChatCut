@@ -404,6 +404,12 @@ function projectIdForRun(
   return null;
 }
 
+/**
+ * Browser-side Codex Agent loop. Codex runs server-side (server/agent-runs/
+ * codex-turn.ts) since the server-only refactor; this loop has no runtime
+ * consumer and is kept solely as a regression-test asset
+ * (runtime.verify, followup-activation.verify, token-efficiency.verify).
+ */
 export async function runCodexAgent(
   messages: LLMMessage[],
   ctx: AgentContext,

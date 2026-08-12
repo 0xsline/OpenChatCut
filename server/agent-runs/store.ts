@@ -147,6 +147,7 @@ export interface CreateServerRunInput {
   readonly id?: string;
   readonly projectId: string;
   readonly sessionGeneration: string;
+  readonly backend?: string;
   readonly provider: string;
   readonly model: string;
   readonly askOnly?: boolean;
@@ -191,6 +192,7 @@ function createRunRecord(
     sessionGeneration: input.sessionGeneration,
     capabilityVerifier,
     requestShapeHash: digest,
+    backend: input.backend ?? 'api',
     provider: input.provider,
     model: input.model,
     askOnly: input.askOnly === true,
@@ -236,7 +238,8 @@ function persistCreatedRun(run: ServerRun, userInputDigest: string): void {
       createdAt: run.createdAt,
       updatedAt: run.createdAt,
       modelId: run.model,
-      backend: run.provider,
+      backend: run.backend,
+      provider: run.provider,
       ...(run.externalSessionId ? { externalSessionId: run.externalSessionId } : {}),
       context: run.runtimeContext,
       artifactIds: [],

@@ -89,13 +89,18 @@ function restoredRun(
   const transportError = typeof runtimeContext.transportError === 'string'
     ? runtimeContext.transportError
     : null;
+  // Pre-backend records stored the provider name in `backend`; new records
+  // store the execution backend ('api' | 'codex') plus `provider` separately.
+  const storedBackend = record.backend;
+  const hasNewBackend = storedBackend === 'api' || storedBackend === 'codex';
   return {
     id: record.runId,
     projectId,
     sessionGeneration,
     capabilityVerifier,
     requestShapeHash: runtimeContext.requestShapeHash,
-    provider: record.backend ?? 'unknown',
+    backend: hasNewBackend ? storedBackend : 'api',
+    provider: record.provider ?? (hasNewBackend ? 'unknown' : (storedBackend ?? 'unknown')),
     model: record.modelId ?? 'unknown',
     askOnly: record.askOnly,
     references: [],

@@ -127,8 +127,8 @@ async function prepareServerRunPayload(
     || !trimmed
     || refs.running.current) return null;
   const choice = getActiveAgentModelChoice();
-  if (!choice || choice.backend !== 'api') {
-    environment.appendMessage({ role: 'error', text: '服务端运行仅支持已配置的 API 模型。' });
+  if (!choice || (choice.backend !== 'api' && choice.backend !== 'codex')) {
+    environment.appendMessage({ role: 'error', text: '服务端运行仅支持已配置的 API / Codex 模型。' });
     return null;
   }
   const settings = refs.settings.current;
@@ -143,9 +143,11 @@ async function prepareServerRunPayload(
   // and a custom vision model is configured, describe image attachments in the
   // history to text before submitting, so the server receives them as usable
   // context instead of dropping them. A vision-capable main model keeps the
-  // raw image parts (projectedHistory carries them through).
+  // raw image parts (projectedHistory carries them through) so it can see the
+  // actual pixels instead of a lossy description.
+  const supportsImages = choice.capabilities.supportsImages.value;
   const vision = resolveVisionModel(choice);
-  if (vision) {
+  if (!supportsImages && vision) {
     modelMessages = await describeImagesForTextModel(modelMessages, vision);
   }
   const payload = buildServerRunPayload(environment.projectId, content, sendOptions, {
@@ -153,6 +155,7 @@ async function prepareServerRunPayload(
     systemPrompt: buildAgentSystemPrompt(ctx, settings),
     provider: choice.provider,
     model: choice.model,
+    backend: choice.backend,
     cacheMode: settings.cacheMode,
     maxOutputTokens: effectiveOutputTokenBudget(
       choice.capabilities.maxOutputTokens.value,

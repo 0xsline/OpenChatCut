@@ -291,6 +291,12 @@ class ApiAgentRunner {
   }
 }
 
+/**
+ * Browser-side API Agent loop. Server-side execution (serverRun) is the only
+ * Agent run path since the server-only refactor; this loop has no runtime
+ * consumer and is kept solely as a regression-test asset
+ * (token-efficiency.verify exercises it against a live provider).
+ */
 export function runApiAgent(
   messages: LLMMessage[],
   ctx: AgentContext,

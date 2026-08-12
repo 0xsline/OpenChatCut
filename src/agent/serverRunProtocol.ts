@@ -105,6 +105,8 @@ export interface ServerRunController {
   readonly stop: () => void;
 }
 
+export type ServerRunBackend = 'api' | 'codex';
+
 export interface ServerRunPayload {
   readonly projectId: string;
   readonly runId: string;
@@ -116,6 +118,7 @@ export interface ServerRunPayload {
   readonly systemPrompt?: string;
   readonly provider?: string;
   readonly model?: string;
+  readonly backend?: ServerRunBackend;
   readonly cacheMode: AgentCacheMode;
   readonly maxOutputTokens: number;
   readonly externalSessionId?: string;
@@ -127,6 +130,7 @@ interface ServerRunTransportContext {
   readonly systemPrompt?: string;
   readonly provider?: string;
   readonly model?: string;
+  readonly backend?: ServerRunBackend;
   readonly cacheMode: AgentCacheMode;
   readonly maxOutputTokens: number;
   readonly openAiApiMode?: string;
@@ -215,10 +219,15 @@ function toProjectedParts(message: ModelMessage): ProjectedPart[] {
  * dropped; the array is capped at MAX_SERVER_RUN_HISTORY_MESSAGES.
  */
 export function projectedHistory(history: readonly ModelMessage[]): ModelMessage[] {
+  // Apply the message window first so the shared image budget is spent on the
+  // messages that are actually retained, not on older messages that would be
+  // sliced off at the end.
+  const windowed = history
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .slice(-MAX_SERVER_RUN_HISTORY_MESSAGES);
   const out: ModelMessage[] = [];
   let imageBudget = MAX_SERVER_RUN_PROJECTED_IMAGE_BYTES;
-  for (const message of history) {
-    if (message.role !== 'user' && message.role !== 'assistant') continue;
+  for (const message of windowed) {
     let textLen = 0;
     let text = '';
     const fileParts: Array<{ data: string; mediaType: string; filename?: string }> = [];
@@ -227,10 +236,13 @@ export function projectedHistory(history: readonly ModelMessage[]): ModelMessage
         text += part.text;
         textLen += part.text.length;
       } else if (part.type === 'file' && part.rawBase64 && imageBudget > 0) {
-        const base64 = part.rawBase64.slice(0, imageBudget);
-        imageBudget = Math.max(0, imageBudget - part.rawBase64.length);
-        if (base64) fileParts.push({
-          data: base64,
+        // Whole-image admission: an image that does not fit the remaining
+        // budget is dropped entirely. Truncating base64 mid-image would send
+        // a corrupted frame to the model, which is worse than omitting it.
+        if (part.rawBase64.length > imageBudget) continue;
+        imageBudget -= part.rawBase64.length;
+        fileParts.push({
+          data: part.rawBase64,
           mediaType: part.mediaType ?? 'image/jpeg',
           ...(part.filename ? { filename: part.filename } : {}),
         });
@@ -298,6 +310,7 @@ export function buildServerRunPayload(
     ...(transport.systemPrompt ? { systemPrompt: transport.systemPrompt } : {}),
     ...(transport.provider ? { provider: transport.provider } : {}),
     ...(transport.model ? { model: transport.model } : {}),
+    ...(transport.backend ? { backend: transport.backend } : {}),
     cacheMode: transport.cacheMode,
     maxOutputTokens: transport.maxOutputTokens,
     ...(transport.openAiApiMode ? { openAiApiMode: transport.openAiApiMode } : {}),
