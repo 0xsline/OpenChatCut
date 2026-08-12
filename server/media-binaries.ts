@@ -39,6 +39,7 @@ export function whisperCliBin(): string {
   const relative = join('whisper-cli', platformKey, `whisper-cli${suffix}`);
   const candidates = [
     join(import.meta.dirname, '..', 'public', relative),
+    join(process.resourcesPath ?? '', 'dist', relative),
     join(process.resourcesPath ?? '', relative),
   ];
   for (const candidate of candidates) {
