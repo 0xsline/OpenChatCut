@@ -20,7 +20,7 @@ import {
   type AgentRunRecord,
   type AgentRuntimeSidecar,
 } from '../../persist/agentRuntimeStore';
-import { serverEventDetail, serverEventsForRun, serverRunTerminalReason, isServerRunRecord, type ServerRunInspectorEvent } from './serverRunInspector';
+import { serverEventsForRun, serverRunTerminalReason, isServerRunRecord } from './serverRunInspector';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 
@@ -231,24 +231,6 @@ function outcomeLabel(event: AgentRunEvent, t: Translate): string {
   return labels[kind];
 }
 
-function ServerEventSection({ events, t }: { events: readonly ServerRunInspectorEvent[]; t: Translate }) {
-  const visible = events.slice(-12).reverse();
-  return <Section title={t('服务端运行事件')}>
-    {visible.length === 0 ? <div style={emptyLine}>{t('没有服务端事件')}</div> : visible.map((event) => {
-      const detail = serverEventDetail(event);
-      const tool = typeof event.data.name === 'string' ? event.data.name : undefined;
-      const title = tool ?? event.type;
-      return <div key={`${event.id}-${event.type}`} style={row}>
-        <span style={{ ...statusDot, background: event.type === 'error' ? theme.danger : event.type === 'done' ? theme.success : theme.accent }} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={rowTitle}><code style={mono}>{title}</code><span>{event.type}</span></div>
-          {detail && <div style={subtle}>{detail}</div>}
-        </div>
-      </div>;
-    })}
-  </Section>;
-}
-
 function ToolOutcomeSection({ events, t }: { events: unknown; t: Translate }) {
   const outcomes = validToolOutcomes(events).slice(-8).reverse();
   return <Section title={t('工具结果')} hint={t('最近调用的工具及其执行结果（只列最近 8 条）')}>
@@ -343,7 +325,6 @@ function InspectorContent({ sidecar, loading, failed, t }: {
     {serverRun && run.status !== 'interrupted' && terminalReason && <div role="note" style={serverReason}>{terminalReason}</div>}
     <ContextSection run={run} t={t} />
     <CheckpointSection checkpoint={checkpoint} t={t} />
-    {serverRun && <ServerEventSection events={serverEvents} t={t} />}
     <ToolOutcomeSection events={run.events} t={t} />
     <ApprovalSection approvals={approvals} t={t} />
     <ArtifactSection artifacts={artifacts} t={t} />
