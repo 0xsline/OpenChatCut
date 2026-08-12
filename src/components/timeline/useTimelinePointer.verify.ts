@@ -109,6 +109,26 @@ assert.deepEqual(
   'timeline-head clamp adjusts the effective delta so the right edge remains fixed',
 );
 
+for (const kind of ['image', 'gif', 'svg', 'motion-graphic', 'text', 'solid'] as const) {
+  calls.length = 0;
+  const extensibleState: TimelineState = {
+    ...state,
+    items: [{ ...state.items[0]!, kind, srcInFrame: undefined }],
+  };
+  commitTimelineDragGesture(extensibleState, commands, {
+    ...drag,
+    mode: 'trim-left',
+    baseSrcIn: 0,
+    deltaF: -10,
+  }, 'selection');
+  assert.equal(calls[0]?.method, 'setItemTiming', `${kind} left extension commits one retime`);
+  assert.deepEqual(
+    calls[0]?.args,
+    ['clip-a', { startFrame: 90, durationInFrames: 60 }],
+    `${kind} has no source in-point, so empty timeline space is valid trim handle`,
+  );
+}
+
 calls.length = 0;
 commitTimelineDragGesture(state, commands, {
   ...drag,
