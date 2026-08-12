@@ -89,7 +89,7 @@ interface ActivationState {
 }
 
 export interface ServerRunInput {
-  readonly messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  readonly messages: ModelMessage[];
   readonly provider: string;
   readonly model: string;
   readonly openAiApiMode: OpenAiApiMode;

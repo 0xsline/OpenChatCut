@@ -44,7 +44,7 @@ function serializeReferences(references: readonly unknown[]): string {
 }
 
 export interface ServerRunMessageInput {
-  readonly messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  readonly messages: ModelMessage[];
   readonly projectId: string;
   readonly askOnly: boolean;
   readonly references: readonly unknown[];
@@ -71,10 +71,7 @@ export function buildServerRunPrompt(input: ServerRunMessageInput): {
   ].join('\n');
   return {
     instructions: `${input.instructions?.trim() || SYSTEM_PROMPT}\n\n${requestContext}`,
-    messages: input.messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-    })),
+    messages: input.messages,
   };
 }
 
