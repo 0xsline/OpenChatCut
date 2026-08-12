@@ -32,6 +32,8 @@ export interface MaterializeBlobMediaOptions {
   mediaPlanSnapshot?: unknown;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
+  /** Observe the server path created for each blob so short-lived callers can clean it up. */
+  onPublished?: (path: string) => void;
 }
 
 interface BlobCandidate {
@@ -123,6 +125,7 @@ async function publishBlobSource(
   if (!upload.ok || !info?.path) {
     throw new Error(info?.error ?? `upload failed (HTTP ${upload.status})`);
   }
+  options.onPublished?.(info.path);
   return info.path;
 }
 
