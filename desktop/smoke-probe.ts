@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron';
 import { externalMcpToken } from '../server/editor-auth.ts';
+import { runDesktopMcpRecoverySmoke } from './smoke-mcp-recovery.ts';
 
 const RENDER_DRAIN_MS = 500;
 
@@ -32,6 +33,9 @@ export async function runDesktopSmokeProbe(
     throw new Error(`/api/external-mcp/mcp → HTTP ${mcp.status}`);
   }
   console.log('[smoke] external MCP endpoint ok');
+  if (process.env.CC_SMOKE_MCP_RECOVERY === '1') {
+    await runDesktopMcpRecoverySmoke(origin, externalMcpToken());
+  }
   const pickerType = await win.webContents.executeJavaScript(
     'typeof window.openChatCutDesktop?.selectDirectory',
   ) as unknown;

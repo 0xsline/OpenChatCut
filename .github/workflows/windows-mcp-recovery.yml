@@ -1,0 +1,59 @@
+name: Windows MCP recovery
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-mcp-recovery.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'server/external-agent/**'
+      - 'server/plugins/project-store*.ts'
+      - 'src/agent/external-run-ledger.ts'
+      - 'src/agent/runtime-ledger.ts'
+      - 'src/persist/agentRuntimeStore.ts'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-mcp-recovery.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'server/external-agent/**'
+      - 'server/plugins/project-store*.ts'
+      - 'src/agent/external-run-ledger.ts'
+      - 'src/agent/runtime-ledger.ts'
+      - 'src/persist/agentRuntimeStore.ts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-mcp-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  process-recovery:
+    name: Offline checkpoint process recovery
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --loglevel=error
+        env:
+          ONNXRUNTIME_NODE_INSTALL: 'skip'
+      - name: Reproduce Issue 63 recovery path
+        run: npx tsx server/external-agent/offline-mcp-process-recovery.verify.ts
+        env:
+          ISSUE63_KEEP_TEMP: '1'
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: issue63-windows-diagnostics
+          path: ${{ runner.temp }}/openchatcut-issue63-*
+          include-hidden-files: true
+          if-no-files-found: warn

@@ -157,6 +157,11 @@ assert.equal(
   3,
   'every shipped desktop artifact must run the render smoke contract',
 );
+assert.equal(
+  workflow.match(/CC_SMOKE_MCP_RECOVERY: '1'/g)?.length,
+  1,
+  'the Windows installer smoke must exercise MCP checkpoint recovery',
+);
 assert.match(workflow, /hdiutil attach[\s\S]*?"\$\{dmgs\[0\]\}"/, 'macOS smoke must mount the generated DMG');
 assert.match(
   workflow,
