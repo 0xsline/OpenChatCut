@@ -3,9 +3,8 @@ import {
   type TranscriptionProviderId,
 } from '../../transcript/types';
 // Agent settings that actually change code paths (not soft prompt hints).
-// Cost guard: high-cost tools (generation/export/transcription/web/sandbox)
-// confirm before execution in Ask mode; YOLO/auto mode skips confirmation
-// (the user opted into unapproved paid execution).
+// Ask/YOLO controls proposal application and prompt behavior; built-in tools
+// execute directly in both modes.
 
 /** MG generates three levels of quality. */
 export type MgTier = 'speed' | 'balance' | 'quality';

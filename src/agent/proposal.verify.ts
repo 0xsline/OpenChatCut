@@ -361,6 +361,7 @@ async function verifyPendingProposalDurabilityFence(): Promise<void> {
       setProposal: () => { exposed = true; },
     },
     projectId: 'proposal-persistence-verify',
+    runId: 'run-pending-write',
     ops: [buildOperation(
       'rename_timeline',
       { timelineId: timeline.id, name: 'Pending' },

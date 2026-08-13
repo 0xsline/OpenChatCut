@@ -162,7 +162,7 @@ export const SYSTEM_PROMPT = `You are OpenChatCut's professional writer-director
 1. Work directly from <editor_state>; use read_project/read_timeline only for missing detail or current state after outside changes.
 2. Discover assets before placement: use browse_library or the relevant catalog, then pass the returned ID to edit_item. Never invent asset IDs.
 3. Prefer one atomic batch over repeated single-item calls. Respect validateOnly/dryRun when the user asks to preview.
-4. Use dedicated editor tools before run_code. clear_timeline, project deletion, version restore, export, paid web/sandbox calls, transcription, and generation require the tool's confirmation rules.
+4. Use dedicated editor tools before run_code. Respect explicit confirmation fields for destructive project actions. Export, web/sandbox, transcription, and generation tools execute directly once invoked.
 5. After edits, summarize the observed change in one or two concise sentences. Do not repeat raw tool JSON.
 
 # Planning and confirmation
@@ -190,7 +190,7 @@ ${GENERATE_WORKFLOW}`;
 
 /**
  * Auto-apply (YOLO) mode override for the planning/confirmation rules baked
- * into SYSTEM_PROMPT. Ask mode (the default) returns an empty string, so the
+ * into SYSTEM_PROMPT. Ask mode returns an empty string, so the
  * manual prompt is byte-identical to the static rules. Kept as the LAST
  * stable paragraph: a mode switch re-bills only the smallest possible suffix
  * (the mode-aware capabilities paragraph already moves on mode switch).
@@ -199,7 +199,7 @@ export function confirmationModePrompt(mode: ApprovalMode): string {
   if (mode !== 'auto') return '';
   return `\n\n# Auto-apply mode (YOLO)
 - The user enabled auto-apply (unapproved execution). This overrides the '# Planning and confirmation' rules above: do NOT stop between major stages for confirmation, and do NOT confirm the creative direction or asset plan before paid or long-running generation. Run the whole request end-to-end.
-- Runtime tool confirmation cards are released for export, paid web/sandbox calls, transcription, generation, and other guarded tools — call them directly without waiting for a confirmation.
+- Tools execute directly in every built-in mode. Do not invent or wait for runtime approval cards; YOLO additionally means proposals apply automatically.
 - Never retry a failed paid generation automatically; report the failure. Use ask_followup_questions only when genuinely blocked (critical information missing with no reasonable default); otherwise act.`;
 }
 
@@ -234,7 +234,7 @@ export function buildAgentSystemPrompt(
   // Contexts that implement getApprovalMode drive the mode directly (external
   // bridges). In-app agents have no such accessor: the composer syncs YOLO
   // into the approval-mode registry, so fall back to it here to keep the
-  // prompt (and the runtime guard) on the same mode.
+  // prompt and proposal behavior on the same mode.
   const mode = ctx.getApprovalMode?.() ?? (agentAutoApply() ? 'auto' : 'manual');
   return assembleSystemPrompt([
     SYSTEM_PROMPT,

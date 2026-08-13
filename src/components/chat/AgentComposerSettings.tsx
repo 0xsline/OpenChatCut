@@ -57,14 +57,9 @@ export function AgentComposerSettings(props: AgentComposerSettingsProps) {
       </div>
       <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
         {autoApply
-          ? t('YOLO 模式：所有操作直接执行，不会逐条确认（仍可撤销）。')
-          : t('Ask 模式：AI 的改动先经你确认；有多个可选项时 AI 会先问你。')}
+          ? t('YOLO 模式：提案自动应用，工具直接执行；仅在缺少关键信息时询问。')
+          : t('Ask 模式：时间线提案等待你应用；工具直接执行，关键选项仍会询问。')}
       </div>
-      {!autoApply && (
-        <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-          {t('生成/导出/转写/网页抓取等付费操作在 Ask 模式下会先经你确认。')}
-        </div>
-      )}
       <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG 质量')}</div>
       <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>
         {MG_TIERS.map((tier) => (

@@ -24,6 +24,7 @@ import { saveExternalProposal, type StoredExternalProposal } from '../persist/ex
 import { formatToolApprovalDetails, type ApprovalDetail } from './approval-details';
 import { redactTextForAgentRuntime } from './runtime-artifact';
 import { effectiveToolInvocationArgs } from './execution-policy';
+import { executeExternalGlobalReadTool } from './external-global-read';
 export interface ExternalProposalSnapshot { proposal: Proposal | null; stale: boolean }
 /** Confirmation request for a real-project tool (generation/export/import/…)
  * issued from an external session; the user decides in the OpenChatCut UI. */
@@ -109,7 +110,11 @@ export class ExternalBridgeRuntime {
     if (isExternalGlobalReadTool(name)) {
       await this.validateBinding(binding);
       throwIfExternalCallCancelled(signal);
-      return this.runGlobalReadTool(name, invocationArgs, signal);
+      return executeExternalGlobalReadTool(
+        this.projectId, name, invocationArgs,
+        this.getContext(),
+        signal,
+      );
     }
     const sessionId = externalSessionId(rawArgs);
     const session = this.sessions.get(sessionId);
@@ -140,25 +145,6 @@ export class ExternalBridgeRuntime {
       return this.runRealTool(requiredSession, name, invocationArgs, signal);
     }
     return this.runEditorTool(requiredSession, name, invocationArgs, signal);
-  }
-
-  private async runGlobalReadTool(
-    name: string,
-    args: Record<string, unknown>,
-    signal?: AbortSignal,
-  ): Promise<unknown> {
-    const run = await ExternalSessionRunLedger.start(this.projectId, 'external-connected', `global_${crypto.randomUUID()}`, 'external-connected', executeTool);
-    try {
-      const invocation = await run.requested(name, args);
-      const result = await run.executeApprovedTool(invocation, args, this.getContext(), signal);
-      await run.finalize('completed', `External global read ${name} completed.`);
-      return result;
-    } catch (error) {
-      await run.finalize('failed', `External global read ${name} failed.`).catch(() => undefined);
-      throw error;
-    } finally {
-      run.dispose();
-    }
   }
 
   private async runRealTool(

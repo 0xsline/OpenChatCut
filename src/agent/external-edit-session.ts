@@ -153,8 +153,8 @@ export function restoreDraftingExternalEditSession(
 }
 
 /** Draft contexts deliberately omit live project navigation/rename callbacks.
- *  The session's approvalMode still reaches the tool gate, so auto (YOLO)
- *  sessions release paid/persistent tools the same way the built-in path does. */
+ *  The session's approvalMode still reaches the external real-tool gate, so
+ *  auto (YOLO) sessions skip that external-client confirmation. */
 export function externalDraftContext(session: ExternalEditSession, live: AgentContext): AgentContext {
   if (!session.draft) throw new Error(`Edit session ${session.id} is no longer writable.`);
   return {

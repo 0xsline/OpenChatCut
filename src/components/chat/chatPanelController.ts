@@ -125,9 +125,7 @@ function useComposerState(projectId: string): ChatComposerController {
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
   const [autoApply, setAutoApply] = useState(() => loadChatAutoApply(projectId));
-  // YOLO mode also releases the runtime confirmation cards: the agent run
-  // loop reads the mode through the approval-mode registry (sessionPrefs
-  // documents the intent; this is the wiring).
+  // Keep the mode-aware system prompt aligned with the persisted composer preference.
   useEffect(() => { setAgentAutoApply(autoApply); }, [autoApply]);
   const [agentSettings, setAgentSettingsState] = useState<AgentSettings>(() => loadAgentSettings());
   const patchAgent = useCallback((patch: Partial<AgentSettings>) => {

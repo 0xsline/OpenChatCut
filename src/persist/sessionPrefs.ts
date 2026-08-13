@@ -72,8 +72,7 @@ export function saveChatMode(projectId: string, mode: ChatModePref): void {
 
 export function loadChatAutoApply(projectId: string): boolean {
   // Default to automatic Proposal application unless the user explicitly turns
-  // it off. In YOLO mode the preference also releases the paid/external
-  // runtime confirmation cards (user opted into unapproved execution).
+  // it off. Tool execution is direct in both built-in modes.
   return readRaw(autoApplyKey(projectId)) !== '0';
 }
 

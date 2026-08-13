@@ -227,10 +227,8 @@ export default {
   '设置': 'Settings',
   'Ask 模式': 'Ask Mode',
   'YOLO 模式': 'YOLO Mode',
-  'Ask 模式：AI 的改动先经你确认；有多个可选项时 AI 会先问你。': 'Ask Mode: AI changes wait for your confirmation; when several options are available, the AI asks you first.',
-  'YOLO 模式：所有操作直接执行，不会逐条确认（仍可撤销）。': 'YOLO Mode: every operation executes immediately without per-item confirmation (still undoable).',
-  
-  '生成/导出/转写/网页抓取等付费操作在 Ask 模式下会先经你确认。': 'Paid operations (generation/export/transcription/web scraping) confirm first in Ask mode.',
+  'Ask 模式：时间线提案等待你应用；工具直接执行，关键选项仍会询问。': 'Ask Mode: timeline proposals wait for you to apply them; tools run directly, while critical choices are still asked.',
+  'YOLO 模式：提案自动应用，工具直接执行；仅在缺少关键信息时询问。': 'YOLO Mode: proposals apply automatically and tools run directly; questions are asked only when critical information is missing.',
   'MG 质量': 'MG quality',
   '速度': 'Speed',
   '均衡': 'Balanced',

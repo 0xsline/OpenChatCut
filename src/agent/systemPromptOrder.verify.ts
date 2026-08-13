@@ -156,7 +156,7 @@ const commonPrefixLength = (a: string, b: string): number => {
   assert.equal(
     buildAgentSystemPrompt(registryCtx, DEFAULT_AGENT_SETTINGS).includes('# Auto-apply mode (YOLO)'),
     false,
-    'ask mode (registry default) must not inject the YOLO override',
+    'the unsynced manual registry must not inject the YOLO override',
   );
   setAgentAutoApply(true);
   try {

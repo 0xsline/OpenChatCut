@@ -28,9 +28,9 @@ At the bottom of the panel:
   - **Q&A** — Q&A only; does not edit the timeline.
 - **Agent Settings** — Open from the controls next to the mode selector. Settings include:
   - **Thinking Mode** — Turn the agent's extra reasoning on or off.
-  - **Ask / YOLO mode** — How AI changes are confirmed. **Ask Mode** (default): AI changes wait for your confirmation, and the AI asks you first when several options exist. **YOLO Mode**: every operation applies immediately without confirmation (still undoable) — including paid generation / export / transcription / web scraping / sandbox calls, whose cost risk the user explicitly accepts by enabling YOLO.
+  - **Ask / YOLO mode** — How timeline proposals are applied. Tools execute directly in both modes. **Ask Mode** leaves timeline proposals for you to apply and may ask about critical choices. **YOLO Mode** (default) applies proposals automatically and asks only when critical information is missing.
   - **Motion Graphics Quality** — Choose Speed, Balance, or Quality for motion graphics generation.
-- **Proposal / confirmation card** — Structural edits and generation tools may show a review card (apply / reject) before changes land.
+- **Proposal card** — In Ask Mode, structural timeline edits may show an apply / reject card before they land. Tool side effects are not held behind this card.
 - **+ button** — Upload reference files (images, videos, etc.) to include in your message.
 - **Skills / 技能 (book icon)** — Open the Skills picker below the chat input. Users can choose a preset Skill or one of their saved Skills to guide the AI with a reusable workflow for the current message. Saved Skills are user-owned and can be reused across projects. The picker also includes **Save this editing process as a Skill**, which inserts a prompt asking the AI to help capture the current workflow.
 - **Selection button** — Toggle selection mode. When active, the user can reference content by:
