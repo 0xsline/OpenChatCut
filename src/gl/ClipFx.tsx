@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AbsoluteFill, Img, Video, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Video as MediaVideo } from '@remotion/media';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { cubeSettled, ensureCube } from './fx/cube';
@@ -27,11 +27,6 @@ interface ClipFxProps {
   frameOffset?: number;
   onPreviewStatus?: SelectedPreviewStatusListener;
 }
-
-type MediaEl = HTMLVideoElement | HTMLImageElement;
-
-const isReady = (el: MediaEl): boolean =>
-  el instanceof HTMLVideoElement ? el.readyState >= 2 && !el.seeking : el.complete;
 
 // contain/cover placement matching MediaFill's objectFit, so GL frames align
 // with the rest of the composition.
@@ -73,16 +68,12 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sourceLayerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<GlRuntime | null>(null);
-  const elRef = useRef<MediaEl | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const failedAdapterRef = useRef<{ definitionKey: string; reason: SelectedPreviewFallbackReason } | null>(null);
   const stagedRenderKeyRef = useRef<string | null>(null);
-  const [renderedKey, setRenderedKey] = useState<string | null>(null);
+  const hasRenderedRef = useRef(false);
+  const [hasRendered, setHasRendered] = useState(false);
   const trimBefore = sourceFrameAt(item, frameOffset);
-  // MediaVideo resolves decoded frames by presentation timestamp. Seeking at an
-  // exact timeline-frame boundary can select the previous frame for fractional
-  // source rates (for example 30000/1001), unlike the ordinal OffthreadVideo
-  // path used without effects. The midpoint keeps both export paths aligned.
-  const exportTrimBefore = trimBefore + 0.5;
 
   const staging = useMemo(() => {
     const c = document.createElement('canvas');
@@ -102,13 +93,12 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
   );
   const onVideoFrame = useCallback(
     (source: CanvasImageSource) => {
-      if (!isRendering) return;
       const ctx = staging.getContext('2d');
       if (!ctx) return;
       drawFit(ctx, source, fit);
       stagedRenderKeyRef.current = renderKey;
     },
-    [fit, isRendering, renderKey, staging],
+    [fit, renderKey, staging],
   );
 
   useEffect(() => {
@@ -163,18 +153,17 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
     // LUT is an intentional pass-through with intensity=0 in fxPasses().
     for (const { def } of active) if (def.cube) void ensureCube(def.cube);
     const tick = () => {
-      const exportVideo = isRendering && item.kind !== 'image';
-      const el = elRef.current;
-      const mediaReady = exportVideo
+      const decodedVideo = item.kind !== 'image';
+      const mediaReady = decodedVideo
         ? stagedRenderKeyRef.current === renderKey
-        : !!el && isReady(el);
+        : !!imageRef.current?.complete;
       if (!mediaReady) { reportWaiting(); raf = requestAnimationFrame(tick); return; }
       if (active.some(({ def }) => def.cube && !cubeSettled(def.cube))) { reportWaiting(); raf = requestAnimationFrame(tick); return; }
       try {
         const runtime = ensureRuntimeSlot(runtimeRef, () => createGlRuntime(canvas));
         const ctx = staging.getContext('2d');
         if (!ctx) throw new Error('2d context unavailable');
-        if (!exportVideo && el) drawFit(ctx, el, fit);
+        if (!decodedVideo && imageRef.current) drawFit(ctx, imageRef.current, fit);
         const shaderFrame = buildEffectShaderFrame(
           active.map(({ fx, def }) => ({ def, overrides: fx.overrides })),
           frame,
@@ -185,7 +174,10 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
         // React state then preserves the same choice for subsequent renders.
         canvas.style.opacity = '1';
         if (sourceLayerRef.current) sourceLayerRef.current.style.opacity = '0';
-        if (!isRendering) setRenderedKey(renderKey);
+        if (!isRendering && !hasRenderedRef.current) {
+          hasRenderedRef.current = true;
+          setHasRendered(true);
+        }
         report('ready');
       } catch (error) {
         const reason = glPreviewFailureReason(error);
@@ -208,7 +200,7 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
   // falling back to the raw source layer would flash the UNFILTERED frame for
   // the 1-2 frames until the new frame's shader pass is ready. The first
   // (never-drawn) load still falls back to the honest source while media loads.
-  const showingShaderFrame = renderedKey !== null;
+  const showingShaderFrame = hasRendered;
   if (active.length === 0) return null;
   return (
     <AbsoluteFill>
@@ -217,10 +209,9 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
       <AbsoluteFill ref={sourceLayerRef} style={{ opacity: showingShaderFrame ? 0 : 1, pointerEvents: 'none' }}>
         {item.kind === 'image'
           // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
-          ? <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} style={{ width: '100%', height: '100%', objectFit: fit }} />
-          : isRendering
-            ? <MediaVideo src={item.src!} trimBefore={exportTrimBefore} playbackRate={item.playbackRate ?? 1} muted headless onVideoFrame={onVideoFrame} />
-            : <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted style={{ width: '100%', height: '100%', objectFit: fit }} />}
+          ? <Img ref={imageRef} src={item.src!} style={{ width: '100%', height: '100%', objectFit: fit }} />
+          : <MediaVideo src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted
+              headless={isRendering} onVideoFrame={onVideoFrame} style={{ width: '100%', height: '100%' }} objectFit={fit} />}
       </AbsoluteFill>
       <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: showingShaderFrame ? 1 : 0 }} />
     </AbsoluteFill>

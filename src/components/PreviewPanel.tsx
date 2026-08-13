@@ -123,6 +123,18 @@ export const PreviewPanel = memo(function PreviewPanel({
   }), [project, state, timelineId]);
   const preview = usePreviewProjectDoc(renderProject, timelineId);
   const duration = preview.plan.durationInFrames;
+  const playerInputProps = useMemo(() => ({
+    state: preview.state,
+    project: preview.project,
+    timelineId,
+    selectedItemId: selectedItem?.id,
+    onSelectedPreviewStatus,
+  }), [preview.state, preview.project, timelineId, selectedItem?.id, onSelectedPreviewStatus]);
+  const thumbnailInputProps = useMemo(() => ({
+    state: preview.state,
+    project: preview.project,
+    timelineId,
+  }), [preview.state, preview.project, timelineId]);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoBoxRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -339,7 +351,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             <Player
               ref={playerRef}
               component={TimelineComposition}
-              inputProps={{ state: preview.state, project: preview.project, timelineId, selectedItemId: selectedItem?.id, onSelectedPreviewStatus }}
+              inputProps={playerInputProps}
               durationInFrames={duration}
               fps={state.fps}
               compositionWidth={state.width}
@@ -362,7 +374,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               <div className="cc-preview-hover-frame" aria-label={t('时间线悬停预览')}>
                 <Thumbnail
                   component={TimelineComposition}
-                  inputProps={{ state: preview.state, project: preview.project, timelineId }}
+                  inputProps={thumbnailInputProps}
                   frameToDisplay={hoverPreviewFrame}
                   durationInFrames={duration}
                   fps={state.fps}

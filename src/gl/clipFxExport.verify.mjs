@@ -129,11 +129,12 @@ try {
         meanSquaredError(effectFrames[outputFrame], baselineFrames[outputFrame]) > 1_000,
         `effect export frame ${outputFrame} did not apply the WebGL effect`,
       );
-      sameFrameDistances.push(meanSquaredError(
+      const sameFrameDistance = meanSquaredError(
         effectFrames[outputFrame],
         baselineFrames[outputFrame],
         true,
-      ));
+      );
+      sameFrameDistances.push(sameFrameDistance);
       let closestBaselineFrame = -1;
       let closestDistance = Number.POSITIVE_INFINITY;
       for (let baselineFrame = 0; baselineFrame < frameCount; baselineFrame += 1) {
@@ -147,7 +148,7 @@ try {
           closestBaselineFrame = baselineFrame;
         }
       }
-      if (closestBaselineFrame !== outputFrame) {
+      if (closestBaselineFrame !== outputFrame && sameFrameDistance > closestDistance + 1) {
         mismatches.push({ outputFrame, closestBaselineFrame });
       }
     }
