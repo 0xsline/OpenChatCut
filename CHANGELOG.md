@@ -6,6 +6,41 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.2] - 2026-08-13
+
+### Added / 新增
+
+- Server-side execution is now the only Agent run path: the browser-side model loop is removed, Codex turns and vision image attachments flow through the server, and chat, runtime sidecar, drafts, settlements and proposals persist server-side through a single-writer ledger that survives refreshes and service restarts.
+  服务端执行现为 Agent 唯一运行路径：浏览器端模型循环已移除，Codex 回合与视觉图片附件全部经由服务端，聊天、运行时账本、草稿、结算与提案通过单写者账本在服务端持久化，可跨刷新与本地服务重启恢复。
+- The Agent loop no longer caps tool turns: the model decides when the task is done. Long runs are protected by transient-LLM-error retries (rate limit, timeout, 5xx, transport), parallel execution of read-only tools behind an exclusive barrier for mutating tools, pressure-driven context compaction with an automatic retry on context-window overflow, recovery closers for interrupted tool calls, and a rolling event window so long runs never die on the event cap.
+  Agent 循环不再限制工具轮次，由模型自行决定任务完成时机。长运行由以下机制保护：瞬时 LLM 错误重试（限流/超时/5xx/网络）、只读工具并行执行（写工具独占屏障）、按压力触发的上下文压缩（超上下文自动压缩并重试一次）、中断工具调用的恢复闭合事件，以及滚动事件窗口——长运行不再因事件上限而终止。
+- External MCP sessions now close durability and security gaps found by full-tool e2e testing: handoff-token upload admission, registry revision adoption after settlement, owner-gone session cleanup, same-window revision rebinding, and strict external session control tools.
+  外部 MCP 会话补齐全工具端到端实测发现的持久化与安全缺口：handoff 令牌上传准入、结算后注册表版本采纳、主人离开后的会话清理、同窗口版本重绑定，以及严格的外部会话控制工具。
+- Desktop native ASR inference auto-enables in the Electron shell (opt-out), browser transcription defaults to the base tier, and cross-origin isolation enables threaded wasm in the browser.
+  Electron 桌面端默认启用原生 ASR 推理（可关闭），浏览器转写默认使用 base 档位，跨域隔离让浏览器启用多线程 wasm。
+- Text-only models now strip image attachments before the request instead of failing, and the output token budget follows the selected model.
+  纯文本模型在请求前自动剥离图片附件而不是报错，输出 token 预算跟随所选模型。
+
+### Changed / 变更
+
+- Consecutive same-source clips share one decoder instance, reducing video instance count and playback contention on long split runs.
+  连续同源片段共享同一解码实例，减少视频实例数与长分割序列的播放竞争。
+- The run inspector no longer repeats the model reply or the raw server event stream; it surfaces diagnostics only.
+  运行检查器不再重复展示模型回复与原始服务端事件流，只显示诊断信息。
+- The 60-minute music/audio analysis duration cap is removed.
+  移除音乐/音频分析 60 分钟时长上限。
+
+### Fixed / 修复
+
+- Left-edge trim on source-free clips could clamp at the preceding clip; left extension now works again (issue #75).
+  无源片段的左边缘裁剪曾被前一片段钳制；左向扩展现已恢复（issue #75）。
+- CAS contention, settle races and server-restart recovery paths hardened across project documents and the agent runtime ledger; project-store writes no longer surface transient conflicts.
+  项目文档与 Agent 运行时账本的 CAS 竞争、结算竞态与服务重启恢复路径全面加固；工程存储写入不再暴露瞬时冲突。
+- Full-repo scan findings fixed across persistence, editor, UI, audio and ASR; usage panel metrics, follow-up questions and oversized tool results now work on the server-run path; YOLO approval mode reaches the server draft context.
+  全仓扫描发现的问题在持久化、编辑器、UI、音频与 ASR 域逐项修复；用量面板指标、追问与超大工具结果在服务端运行路径正常工作；YOLO 审批模式已传入服务端草稿上下文。
+- BytePlus ModelArk catalog entries completed and model size labels corrected to real download totals.
+  补齐字节跳动 ModelArk 能力目录，模型大小标签修正为真实下载总量。
+
 ## [0.2.1] - 2026-08-11
 
 ### Added / 新增
