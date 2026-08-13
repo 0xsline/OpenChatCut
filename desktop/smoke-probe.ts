@@ -67,7 +67,11 @@ export async function runDesktopSmokeProbe(
   const state = { fps: 30, width: 640, height: 360, items: [], selectedId: null };
   const response = await fetch(`${origin}/render-still`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: origin,
+      'Sec-Fetch-Site': 'same-origin',
+    },
     body: JSON.stringify({ state, frames: [0] }),
   });
   if (!response.ok) {
