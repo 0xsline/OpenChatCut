@@ -109,7 +109,6 @@ jobs:
         env:
           CC_SMOKE: '1'
           CC_SMOKE_RENDER: '1'
-          CC_SMOKE_MCP_RECOVERY: '1'
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -161,6 +160,7 @@ jobs:
         env:
           CC_SMOKE: '1'
           CC_SMOKE_RENDER: '1'
+          CC_SMOKE_MCP_RECOVERY: '1'
         run: |
           $ErrorActionPreference = 'Stop'
           $installers = @(Get-ChildItem -LiteralPath release -Filter '*.exe' -File)
