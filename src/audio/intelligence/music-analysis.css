@@ -52,7 +52,7 @@
 .cc-music-analysis-popover {
   position: fixed;
   z-index: 1000;
-  width: min(316px, calc(100vw - 16px));
+  width: min(360px, calc(100vw - 16px));
   max-height: min(520px, calc(100vh - 16px));
   box-sizing: border-box;
   overflow: auto;
@@ -126,15 +126,39 @@
 .cc-music-analysis-metric strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-music-analysis-metric span { color: var(--cc-text-dim); font-size: 9.5px; }
 .cc-music-analysis-metric strong { margin-top: 4px; color: var(--cc-text-strong); font-size: 13px; font-variant-numeric: tabular-nums; }
+.cc-music-analysis-rhythm {
+  margin-bottom: 10px;
+  border: 0.5px solid var(--cc-border);
+  border-radius: 5px;
+  background: var(--cc-panel);
+}
+.cc-music-analysis-rhythm summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px;
+  color: var(--cc-text-muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+.cc-music-analysis-rhythm summary small { color: var(--cc-text-dim); font-size: 9px; font-variant-numeric: tabular-nums; }
+.cc-music-analysis-rhythm summary:focus-visible { outline: 1px solid var(--cc-accent); outline-offset: 1px; }
+.cc-music-analysis-timing-row { padding: 0 7px 7px; }
+.cc-music-analysis-timing-row b { color: var(--cc-text); font-size: 9.5px; font-weight: 500; }
+.cc-music-analysis-timing-row p { margin: 3px 0 0; color: var(--cc-text-muted); font-size: 9px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.cc-music-analysis-timing-row small { display: block; margin-top: 3px; color: var(--cc-text-dim); font-size: 9px; }
 .cc-music-analysis-section-title { margin: 10px 0 6px; color: var(--cc-text-muted); font-size: 10px; font-weight: 600; }
 .cc-music-analysis-tags { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; margin: 0; }
 .cc-music-analysis-tags div { min-width: 0; display: flex; align-items: baseline; gap: 5px; }
 .cc-music-analysis-tags dt { flex: 0 0 auto; color: var(--cc-text-dim); font-size: 9.5px; }
-.cc-music-analysis-tags dd { min-width: 0; overflow: hidden; margin: 0; color: var(--cc-text); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.cc-music-analysis-tags dd { min-width: 0; display: flex; align-items: baseline; gap: 4px; overflow: hidden; margin: 0; color: var(--cc-text); font-size: 10.5px; white-space: nowrap; }
+.cc-music-analysis-tags dd span { overflow: hidden; text-overflow: ellipsis; }
+.cc-music-analysis-tags dd small { color: var(--cc-text-dim); font-size: 9px; font-variant-numeric: tabular-nums; }
 .cc-music-analysis-sections { max-height: 126px; overflow: auto; margin: 0; padding: 0; list-style: none; }
 .cc-music-analysis-sections li {
   display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) 34px;
+  grid-template-columns: 68px minmax(0, 1fr) 72px;
   align-items: center;
   gap: 7px;
   min-height: 24px;
@@ -144,7 +168,7 @@
 .cc-music-analysis-sections time,
 .cc-music-analysis-sections b { font-variant-numeric: tabular-nums; }
 .cc-music-analysis-sections b { overflow: hidden; color: var(--cc-text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.cc-music-analysis-sections span { text-align: right; }
+.cc-music-analysis-section-scores { display: grid; gap: 1px; color: var(--cc-text-dim); font-size: 8.5px; text-align: right; font-variant-numeric: tabular-nums; }
 .cc-music-analysis-actions { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 10px; border-top: 0.5px solid var(--cc-border); }
 .cc-music-analysis-action {
   min-height: 28px;

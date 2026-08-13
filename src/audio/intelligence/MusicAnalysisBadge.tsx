@@ -38,6 +38,7 @@ const SECTION_LABELS: Record<MusicSectionRole, string> = {
   steady: '平稳',
   'outro-like': '尾奏',
 };
+const TIMING_POINT_PREVIEW_LIMIT = 48;
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 interface MusicAnalysisBadgeProps {
@@ -73,6 +74,40 @@ function timeLabel(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function preciseTimeLabel(ms: number): string {
+  const centiseconds = Math.max(0, Math.round(ms / 10));
+  const minutes = Math.floor(centiseconds / 6_000);
+  const seconds = ((centiseconds % 6_000) / 100).toFixed(2).padStart(5, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function TimingPointList({ label, points }: { label: string; points: readonly number[] }) {
+  const t = useT();
+  const shown = points.slice(0, TIMING_POINT_PREVIEW_LIMIT);
+  const remaining = points.length - shown.length;
+  return (
+    <div className="cc-music-analysis-timing-row">
+      <b>{label}</b>
+      <p>{shown.length ? shown.map(preciseTimeLabel).join(' · ') : '—'}</p>
+      {remaining > 0 && <small>{t('另有 {count} 个时间点', { count: remaining })}</small>}
+    </div>
+  );
+}
+
+function RhythmDetails({ analysis }: { analysis: MusicAnalysis }) {
+  const t = useT();
+  return (
+    <details className="cc-music-analysis-rhythm">
+      <summary><span>{t('节奏详情')}</span><small>{t('{beats} 个节拍 · {downbeats} 个重拍', {
+        beats: analysis.beatsMs.length,
+        downbeats: analysis.downbeatsMs.length,
+      })}</small></summary>
+      <TimingPointList label={t('节拍时间点')} points={analysis.beatsMs} />
+      <TimingPointList label={t('重拍时间点')} points={analysis.downbeatsMs} />
+    </details>
+  );
 }
 
 function badgeText(state: MusicAnalysisCardState, t: Translate): string {
@@ -286,16 +321,17 @@ function ReadyAnalysis({ analysis }: { analysis: MusicAnalysis }) {
         <Metric label={t('拍号')} value={`${analysis.meter}/4`} />
         <Metric label={t('置信度')} value={percent(analysis.beatConfidence)} />
       </div>
+      <RhythmDetails analysis={analysis} />
       <h4 className="cc-music-analysis-section-title">{t('音乐标签')}</h4>
       <dl className="cc-music-analysis-tags">
         {TAG_KINDS.map((kind) => {
           const tag = bestTag(analysis, kind);
-          return <div key={kind}><dt>{t(TAG_LABELS[kind])}</dt><dd title={tag ? `${tagText(tag.label, t)} · ${percent(tag.score)}` : undefined}>{tag ? tagText(tag.label, t) : '—'}</dd></div>;
+          return <div key={kind}><dt>{t(TAG_LABELS[kind])}</dt><dd>{tag ? <><span>{tagText(tag.label, t)}</span><small>{percent(tag.score)}</small></> : '—'}</dd></div>;
         })}
       </dl>
       <h4 className="cc-music-analysis-section-title">{t('段落')}</h4>
       {analysis.sections.length > 0
-        ? <ol className="cc-music-analysis-sections">{analysis.sections.map((section, index) => <li key={`${section.fromMs}:${index}`}><time>{timeLabel(section.fromMs)}–{timeLabel(section.toMs)}</time><b>{t(SECTION_LABELS[section.role])}</b><span>{percent(section.energy)}</span></li>)}</ol>
+        ? <ol className="cc-music-analysis-sections">{analysis.sections.map((section, index) => <li key={`${section.fromMs}:${index}`}><time>{timeLabel(section.fromMs)}–{timeLabel(section.toMs)}</time><b>{t(SECTION_LABELS[section.role])}</b><span className="cc-music-analysis-section-scores"><span>{t('能量')} {percent(section.energy)}</span><span>{t('边界')} {percent(section.boundaryConfidence)}</span></span></li>)}</ol>
         : <p className="cc-music-analysis-state">{t('未识别到明确段落')}</p>}
     </>
   );

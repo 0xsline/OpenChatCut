@@ -15,7 +15,7 @@ import {
   loadMusicAnalysisForAsset,
   musicAnalysisRef,
 } from '../../audio/intelligence/store';
-import { musicAnalysisStatus } from '../../audio/intelligence/jobs';
+import { enqueueMusicAnalysis, musicAnalysisStatus } from '../../audio/intelligence/jobs';
 import { fetchModelPackCatalog, modelPackInstallGuidance } from '../../../shared/model-packs';
 
 const MAX_INSPECT_BEATS = 48;
@@ -231,6 +231,12 @@ async function inspectMusic(args: Args, ctx: AgentContext): Promise<unknown> {
       || analysis.sections.length > MAX_INSPECT_SECTIONS
       || analysis.tags.length > MAX_INSPECT_TAGS,
   };
+}
+
+async function analyzeMusic(args: Args, ctx: AgentContext): Promise<unknown> {
+  const { asset } = resolveMusicTarget(args, ctx);
+  const analysis = await enqueueMusicAnalysis(asset, { force: args.force === true });
+  return analysis ? await inspectMusic(args, ctx) : await unavailableAnalysis(asset);
 }
 
 function normalizePlanOptions(args: Args): MusicPlanOptions {
@@ -451,6 +457,7 @@ async function syncCuts(args: Args, ctx: AgentContext): Promise<unknown> {
 
 export async function execMusicIntelligenceTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   try {
+    if (name === 'analyze_music') return await analyzeMusic(args, ctx);
     if (name === 'inspect_music') return await inspectMusic(args, ctx);
     if (name === 'music_edit_plan') {
       const built = await currentPlan(args, ctx);

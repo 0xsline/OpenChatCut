@@ -6,6 +6,7 @@ import type { AtomicAction } from '../../editor/reduce';
 import type { TimelineItem, TimelineState } from '../../editor/types';
 import type { AgentContext } from '../context';
 import { ASK_MODE_TOOL_SCHEMAS } from '../ask-mode-tools';
+import { policyForTool } from '../execution-policy';
 import { ToolActivation } from '../tool-activation';
 import { TOOL_SCHEMAS } from '../tools';
 import {
@@ -142,6 +143,7 @@ function state(items: TimelineItem[], tracks: TimelineState['tracks'] = {}): Tim
 
 {
   const askNames = ASK_MODE_TOOL_SCHEMAS.map((schema) => schema.name);
+  assert.ok(askNames.includes('analyze_music'));
   assert.ok(askNames.includes('inspect_music'));
   assert.ok(askNames.includes('music_edit_plan'));
   assert.equal(askNames.includes('sync_cuts_to_music'), false, 'Q&A mode must not expose the mutating tool');
@@ -149,9 +151,11 @@ function state(items: TimelineItem[], tracks: TimelineState['tracks'] = {}): Tim
     TOOL_SCHEMAS,
     [{ role: 'user', content: '请根据 BGM 卡点剪辑这些视频' }],
   ).names();
+  assert.ok(routed.includes('analyze_music'));
   assert.ok(routed.includes('inspect_music'));
   assert.ok(routed.includes('music_edit_plan'));
   assert.ok(routed.includes('sync_cuts_to_music'));
+  assert.deepEqual(policyForTool('analyze_music'), { effect: 'read', recovery: 'pure' });
 }
 
 

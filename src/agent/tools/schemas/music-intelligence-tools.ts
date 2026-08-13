@@ -46,6 +46,21 @@ const PLAN_PROPERTIES = {
 
 export const MUSIC_INTELLIGENCE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
+    name: 'analyze_music',
+    description: [
+      'Run the installed on-device Beat This + CLAP models for a media-pool asset or timeline clip and wait for completion.',
+      'Returns compact BPM, meter, confidence, tags, sections, and bounded beat/downbeat points; embeddings are never exposed.',
+      'Reuses a valid cache by default; set force to recompute. This tool never downloads model packs or edits the timeline.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        ...TARGET_PROPERTIES,
+        force: { type: 'boolean', description: 'Recompute even when a valid cached analysis exists. Defaults to false.' },
+      },
+    },
+  },
+  {
     name: 'inspect_music',
     description: [
       'Read an already-cached local Beat This + CLAP analysis for a media-pool asset or timeline clip.',

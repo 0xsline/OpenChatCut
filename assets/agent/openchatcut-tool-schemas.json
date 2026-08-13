@@ -4838,6 +4838,27 @@
       }
     },
     {
+      "name": "analyze_music",
+      "description": "Run the installed on-device Beat This + CLAP models for a media-pool asset or timeline clip and wait for completion. Returns compact BPM, meter, confidence, tags, sections, and bounded beat/downbeat points; embeddings are never exposed. Reuses a valid cache by default; set force to recompute. This tool never downloads model packs or edits the timeline.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Timeline audio/video clip id (unique prefix accepted). Its media-pool asset and trim/speed mapping are used."
+          },
+          "assetId": {
+            "type": "string",
+            "description": "Media-pool asset id (unique prefix accepted). Use itemId instead when timeline mapping is needed."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Recompute even when a valid cached analysis exists. Defaults to false."
+          }
+        }
+      }
+    },
+    {
       "name": "inspect_music",
       "description": "Read an already-cached local Beat This + CLAP analysis for a media-pool asset or timeline clip. Returns compact BPM, meter, confidence, tags, sections, and bounded beat/downbeat points; embeddings are never exposed. This tool never starts analysis or downloads models. If no cache exists it explains how to install the required packs and analyze first.",
       "input_schema": {
@@ -5560,6 +5581,27 @@
         "required": [
           "name"
         ]
+      }
+    },
+    {
+      "name": "analyze_music",
+      "description": "Run the installed on-device Beat This + CLAP models for a media-pool asset or timeline clip and wait for completion. Returns compact BPM, meter, confidence, tags, sections, and bounded beat/downbeat points; embeddings are never exposed. Reuses a valid cache by default; set force to recompute. This tool never downloads model packs or edits the timeline.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Timeline audio/video clip id (unique prefix accepted). Its media-pool asset and trim/speed mapping are used."
+          },
+          "assetId": {
+            "type": "string",
+            "description": "Media-pool asset id (unique prefix accepted). Use itemId instead when timeline mapping is needed."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Recompute even when a valid cached analysis exists. Defaults to false."
+          }
+        }
       }
     },
     {

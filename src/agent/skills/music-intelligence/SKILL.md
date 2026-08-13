@@ -1,18 +1,19 @@
 ---
 name: music-intelligence
 description: |
-  Inspect cached local music analysis and plan or apply beat-, downbeat-, or section-synced video cuts.
+  Run or inspect local music analysis and plan or apply beat-, downbeat-, or section-synced video cuts.
   Use for BGM beat edits, rhythm cuts, 卡点剪辑, musical structure, BPM, mood, genre, or instrument questions.
 user-invocable: false
 ---
 
 # Music Intelligence
 
-1. Call `inspect_music` first. It only reads an existing local Beat This + CLAP cache; it never downloads models or starts analysis.
-2. Before editing, call `music_edit_plan` and show its bounded cut/target summary. Prefer `timing:auto`; choose sparse, medium, or dense from the requested pace.
-3. Only after the plan is accepted, call `sync_cuts_to_music` with the returned `analysisRef`. It recomputes the plan, rejects stale analysis, skips locked video tracks, and applies all splits as one undo step.
-4. If analysis is missing, tell the user to install `rhythm-lite` and `music-semantics-lite` locally if needed, analyze the media-pool asset in the UI, then retry. Never trigger heavy analysis from an Agent tool call.
-5. Never request, return, quote, summarize, or place the CLAP embedding in model context. Use tags, sections, confidence, and the opaque `analysisRef` only.
+1. Call `analyze_music` when the user asks to analyze music or no cache exists. It runs the installed local Beat This + CLAP models, waits for completion, and never downloads models; use `force:true` only for an explicit reanalysis request.
+2. Call `inspect_music` when only the existing cache is needed.
+3. Before editing, call `music_edit_plan` and show its bounded cut/target summary. Prefer `timing:auto`; choose sparse, medium, or dense from the requested pace.
+4. Only after the plan is accepted, call `sync_cuts_to_music` with the returned `analysisRef`. It recomputes the plan, rejects stale analysis, skips locked video tracks, and applies all splits as one undo step.
+5. If required model packs are missing, report the returned install guidance, then retry `analyze_music` after installation.
+6. Never request, return, quote, summarize, or place the CLAP embedding in model context. Use tags, sections, confidence, and the opaque `analysisRef` only.
 
 ## Preconditions
 
