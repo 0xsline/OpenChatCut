@@ -43,6 +43,7 @@ async function download(url, dest) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`download failed ${response.status} for ${url}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
+  await mkdir(dirname(dest), { recursive: true });
   await writeFile(dest, bytes);
   return bytes.length;
 }
