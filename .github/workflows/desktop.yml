@@ -133,8 +133,9 @@ jobs:
           mounted=true
           mounted_app="$mount_dir/OpenChatCut.app"
           test -x "$mounted_app/Contents/MacOS/OpenChatCut"
-          # The DMG is read-only; run the render smoke from the extracted app below.
-          CC_SMOKE_RENDER=0 "$mounted_app/Contents/MacOS/OpenChatCut"
+          # The DMG and ZIP contain the same app; execute it from the writable ZIP below.
+          hdiutil detach "$mount_dir"
+          mounted=false
 
           unzip -tq "${zips[0]}"
           test "$(unzip -Z1 "${zips[0]}" 'OpenChatCut.app/Contents/MacOS/OpenChatCut')" = \
