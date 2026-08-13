@@ -264,7 +264,14 @@ async function verifyProposalOwnershipFence(): Promise<void> {
   await rejectPendingProposal(
     proposalState(unowned, rejectOrder, rejectErrors),
     'proposal-persistence-verify',
-    proposalPersistence(rejectOrder),
+    proposalPersistence(rejectOrder, {
+      // The rejection itself succeeds; only the follow-up cleanup fails.
+      // The user-facing warning must still say the proposal was rejected.
+      clear: async () => {
+        rejectOrder.push('durable-clear');
+        throw new Error('cleanup failure');
+      },
+    }),
   );
   assert.equal(rejectOrder.includes('clear'), true);
   assert.match(rejectErrors[0] ?? '', /已拒绝/);
