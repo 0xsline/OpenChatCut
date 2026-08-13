@@ -43,6 +43,9 @@ export function serverRunTerminalReason(
   run: AgentRunRecord,
   events: readonly ServerRunInspectorEvent[] = serverEventsForRun(run),
 ): string | undefined {
+  // Completed and awaiting-user runs end with the model's reply text, which
+  // already lives in the chat panel; only abnormal endings get a reason here.
+  if (run.status === 'completed' || run.status === 'awaiting_user') return undefined;
   if (run.finalSummary) return run.finalSummary;
   const terminal = [...events].reverse().find((event) => event.type === 'done' || event.type === 'error');
   const reason = terminal?.data.reason;
