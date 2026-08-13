@@ -73,7 +73,7 @@ async function verifyArchivedLargeResult(recorder: AgentRunRecorder): Promise<st
   const execution = await executeOpenChatCutTool(aspectSchema, { ratio: '9:16' }, {
     ctx, settings, runRecorder: recorder, toolCallId: 'artifact-call',
     toolCatalog: TOOL_SCHEMAS, activeToolCatalog: [aspectSchema],
-    onEvent: () => undefined, resolveGuard: async () => null,
+    onEvent: () => undefined,
     executeTool: async () => live,
   });
   assert.equal(execution.success, true);
@@ -114,7 +114,7 @@ async function verifyLoadSkillBypass(recorder: AgentRunRecorder): Promise<void> 
   const execution = await executeOpenChatCutTool(schema, { name: 'fixture' }, {
     ctx, settings, runRecorder: recorder, toolCallId: 'skill-call',
     toolCatalog: TOOL_SCHEMAS, activeToolCatalog: [schema],
-    onEvent: () => undefined, resolveGuard: async () => null,
+    onEvent: () => undefined,
     executeTool: async () => payload,
   });
   assert.equal(execution.success, true);

@@ -168,59 +168,8 @@ export function createInlineThinkingExtractor(): {
   };
 }
 
-/** Tools that cost money / long GPU / irreversible export (gated at runtime).
- * Names match live TOOL_SCHEMAS plus persisted legacy aliases.
- * Keep this list exhaustive: every paid API surface must be here —
- * generation (image/video/music/sound/voice/MG), shaders, export, reruns,
- * paid transcription (every provider except local), paid web scraping (Firecrawl),
- * and the paid sandbox (E2B). costGuard.verify.ts guards this invariant. */
-export const HIGH_COST_TOOLS: Readonly<Record<string, true>> = {
-  submit_image: true,
-  submit_video: true,
-  submit_music: true,
-  submit_sound: true,
-  submit_voice: true,
-  submit_motion_graphic: true,
-  create_motion_graphic: true,
-  create_motion_graphic_from_code: true,
-  submit_shader: true,
-  rerun_generation: true,
-  submit_export: true,
-  submit_render_job: true,
-  export_timeline: true,
-  export_motion_graphic_prores: true,
-  convert_motion_graphic_to_video: true,
-  submit_image_generation: true,
-  submit_video_generation: true,
-  submit_music_generation: true,
-  submit_sound_generation: true,
-  submit_voice_generation: true,
-  generate_image: true,
-  generate_video: true,
-  generate_music: true,
-  generate_voice: true,
-  generate_sound: true,
-  // paid transcription (all configured cloud providers, per-minute)
-  transcribe_track: true,
-  // paid web scraping (Firecrawl, per-page)
-  web_browser: true,
-  web_search: true,
-  web_map: true,
-  web_crawl: true,
-  web_batch_scrape: true,
-  // paid sandbox (E2B, per-second)
-  run_code: true,
-};
-
-export function isHighCostTool(name: string): boolean {
-  return HIGH_COST_TOOLS[name] === true;
-}
-
-/**
- * Resolve the transcription provider that will actually receive this invocation.
- * Tool arguments have precedence over the saved setting; callers invoke this only
- * after schema validation, while the defensive checks keep direct callers safe.
- */
+/** Resolve the transcription provider that will actually receive this invocation.
+ * Tool arguments have precedence over the saved setting. */
 export function effectiveTranscriptionProvider(
   args?: Readonly<Record<string, unknown>>,
 ): TranscriptionProviderId {
@@ -233,44 +182,4 @@ export function effectiveTranscriptionProvider(
   } catch {
     return 'assemblyai';
   }
-}
-
-/** Only the on-device provider is free; every external transcription provider is paid. */
-export function transcriptionIsPaid(args?: Readonly<Record<string, unknown>>): boolean {
-  return effectiveTranscriptionProvider(args) !== 'local';
-}
-
-export type CostGuardCategory =
-  | 'image-gen'
-  | 'motion-graphic-gen'
-  | 'video-gen'
-  | 'audio-gen'
-  | 'gpu-operation'
-  | 'irreversible-export'
-  | 'high-cost-operation';
-
-/** Every HIGH_COST_TOOLS entry has a runtime guard; known categories retain tailored copy. */
-export function costCategoryForTool(
-  tool: string,
-  args?: Readonly<Record<string, unknown>>,
-): CostGuardCategory | null {
-  if (tool === 'submit_image' || tool === 'generate_image' || tool === 'submit_image_generation') return 'image-gen';
-  if (
-    tool === 'submit_motion_graphic' || tool === 'create_motion_graphic'
-    || tool === 'create_motion_graphic_from_code'
-  ) return 'motion-graphic-gen';
-  if (tool === 'submit_video' || tool === 'generate_video' || tool === 'submit_video_generation') return 'video-gen';
-  if (
-    tool === 'submit_music' || tool === 'submit_sound' || tool === 'submit_voice'
-    || tool === 'generate_music' || tool === 'generate_sound' || tool === 'generate_voice'
-    || tool === 'submit_music_generation' || tool === 'submit_sound_generation' || tool === 'submit_voice_generation'
-  ) return 'audio-gen';
-  if (tool === 'submit_shader') return 'gpu-operation';
-  if (
-    tool === 'submit_export' || tool === 'submit_render_job' || tool === 'export_timeline'
-    || tool === 'export_motion_graphic_prores' || tool === 'convert_motion_graphic_to_video'
-  ) return 'irreversible-export';
-  // The explicit validated override wins over the saved provider setting.
-  if (tool === 'transcribe_track' && !transcriptionIsPaid(args)) return null;
-  return isHighCostTool(tool) ? 'high-cost-operation' : null;
 }

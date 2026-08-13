@@ -15,7 +15,6 @@ import type { AgentController } from '../../agent/useAgent';
 import { useExternalAgentBridge, type ExternalProposalController } from '../../agent/useExternalAgentBridge';
 import { getAgentModelSnapshot, isAgentModelReady } from '../../agent/model-selection';
 import { refPromptToken, onSelectionRef, setSelectionRefMode } from '../../agent/selection-refs';
-import { shouldBlockAutoApply } from '../../agent/skills/costGuard';
 import { setAgentAutoApply } from '../../agent/approval-mode';
 import type { AgentSettings } from '../../agent/settings/agentSettings';
 import { loadAgentSettings, saveAgentSettings } from '../../agent/settings/agentSettings';
@@ -370,7 +369,7 @@ function usePanelEffects(props: ChatPanelProps, agent: AgentController, composer
   }, [onPreviewState, proposal]);
   useEffect(() => {
     if (!proposal || !composer.autoApply) return;
-    if (shouldBlockAutoApply(proposal, composer.autoApply)) return;
+    if (!composer.autoApply) return;
     const all = new Set(proposal.options[0].operations.map((_, index) => index));
     applyProposal(all);
   }, [applyProposal, composer.autoApply, proposal]);

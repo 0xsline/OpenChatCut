@@ -4,8 +4,8 @@
 import assert from 'node:assert/strict';
 import {
   AGENT_CACHE_MODES, DEFAULT_AGENT_SETTINGS, loadAgentSettings, saveAgentSettings,
-  agentSettingsPrompt, createInlineThinkingExtractor, costCategoryForTool,
-  HIGH_COST_TOOLS, MG_TIERS,
+  agentSettingsPrompt, createInlineThinkingExtractor,
+  MG_TIERS,
 } from './agentSettings';
 
 // ── Default value (node has no localStorage → load uses catch/empty storage, return to default in both cases) ──
@@ -15,16 +15,6 @@ assert.strictEqual(DEFAULT_AGENT_SETTINGS.planMode, false, 'planMode 默认 fals
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.cacheMode, 'short', 'cacheMode 默认 short');
 assert.deepStrictEqual([...AGENT_CACHE_MODES], ['short', 'long']);
 assert.deepStrictEqual([...MG_TIERS], ['speed', 'balance', 'quality']);
-for (const toolName of Object.keys(HIGH_COST_TOOLS)) {
-  assert.notEqual(
-    costCategoryForTool(toolName),
-    null,
-    `${toolName} must be covered by the shared pre-execution runtime guard`,
-  );
-}
-assert.equal(costCategoryForTool('submit_music'), 'audio-gen');
-assert.equal(costCategoryForTool('submit_export'), 'irreversible-export');
-assert.equal(costCategoryForTool('create_motion_graphic_from_code'), 'motion-graphic-gen');
 
 // ── Persistence roundtrip (map version localStorage mock) ──
 const store = new Map<string, string>();

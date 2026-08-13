@@ -182,7 +182,7 @@ export class ExternalBridgeRuntime {
       // auto (YOLO) sessions skip the confirmation card entirely — the
       // client explicitly opted into unapproved real-project execution.
       if (session.approvalMode === 'auto') {
-        const invocation = await run.requested(name, args, true);
+        const invocation = await run.requested(name, args);
         return run.executeApprovedTool(invocation, args, this.getContext(), signal);
       }
       return this.requestRealToolApproval(session, run, name, args);
@@ -201,7 +201,7 @@ export class ExternalBridgeRuntime {
     tool: string,
     args: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const invocation = await run.requested(tool, args, true);
+    const invocation = await run.requested(tool, args);
     const presentation = formatToolApprovalDetails(tool, args);
     const guard = await this.approvalGate.request({
       sessionId: session.id,

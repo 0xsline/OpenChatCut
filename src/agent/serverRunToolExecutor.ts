@@ -1,5 +1,4 @@
 import type { AgentContext } from './context';
-import { agentAutoApply } from './approval-mode';
 import { TOOL_SCHEMAS } from './tools';
 import { executeCodexTool } from './runtime';
 import { ToolActivation } from './tool-activation';
@@ -7,8 +6,8 @@ import type { AgentSettings } from './settings/agentSettings';
 import { draftContext } from './useAgentRun';
 import { makeDraft, type DraftEngine } from '../editor/store';
 import type { ProjectDoc } from '../editor/types';
-import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
-import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
+import type { DisplayMessage, LiveTool } from './agent-session';
+
 import type { AgentEvent } from './runtime';
 import {
   SERVER_RUN_CAPABILITY_HEADER,
@@ -55,7 +54,6 @@ export interface ServerToolExecutorCallbacks {
   readonly updateMessages: (
     update: (messages: DisplayMessage[]) => DisplayMessage[],
   ) => void;
-  readonly setPendingGuard: (guard: PendingGuard | null) => void;
   readonly setLiveTool: (tool: LiveTool | null) => void;
   readonly retryStream: (runId: string) => void;
   readonly abandonRecovery: (runId: string, error: unknown) => void;
@@ -86,7 +84,6 @@ export class ServerRunToolExecutor {
   private runId: string | null = null;
   private capability: string | null = null;
   private abort: AbortController | null = null;
-  private guardResolve: ((decision: GuardDecision) => void) | null = null;
   private readonly lockManager: ServerRunLockManager | null;
 
   constructor(
@@ -128,17 +125,7 @@ export class ServerRunToolExecutor {
   }
 
   stop(): void {
-    this.guardResolve?.('deny');
-    this.guardResolve = null;
-    this.callbacks.setPendingGuard(null);
     this.abort?.abort();
-  }
-
-  confirmGuard(decision: GuardDecision): void {
-    const resolve = this.guardResolve;
-    this.guardResolve = null;
-    this.callbacks.setPendingGuard(null);
-    resolve?.(decision);
   }
 
   private async claim(
@@ -289,29 +276,6 @@ export class ServerRunToolExecutor {
     });
   }
 
-  private guardRequest(info: Omit<PendingGuard, 'resolve'>): Promise<GuardDecision> {
-    // YOLO (auto-apply) mode releases every confirmation card: the user opted
-    // into unapproved execution (sessionPrefs documents the intent). Mirrors
-    // the built-in path in useAgentRun so server runs honor the same mode.
-    if (agentAutoApply()) return Promise.resolve('allow-once');
-    const rememberable = info.approval === 'project' && info.permissionKind === 'paid_external';
-    if (rememberable && isCostAllowed(info.skill, this.projectId)) {
-      return Promise.resolve('allow-once');
-    }
-    const { promise, resolve } = Promise.withResolvers<GuardDecision>();
-    // Both the UI card resolve and confirmGuard must land in the same settle
-    // closure so allow-scope memory is recorded regardless of entry point.
-    const settle = (requested: GuardDecision): void => {
-      this.guardResolve = null;
-      this.callbacks.setPendingGuard(null);
-      const decision = requested === 'allow-scope' && !rememberable ? 'allow-once' : requested;
-      if (decision === 'allow-scope') rememberCostAllowed(info.skill, this.projectId);
-      resolve(decision);
-    };
-    this.guardResolve = settle;
-    this.callbacks.setPendingGuard({ ...info, resolve: settle });
-    return promise;
-  }
 
   private async reportFailure(
     runId: string,
@@ -399,7 +363,6 @@ export class ServerRunToolExecutor {
           ctx: draftContext(this.callbacks.ctx(), this.draft),
           onEvent: (_event: AgentEvent) => undefined,
           settings: this.callbacks.settings(),
-          onSkillGuard: (info) => this.guardRequest(info),
 
           toolCallId,
           signal: this.abort?.signal,

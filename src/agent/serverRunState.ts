@@ -7,7 +7,7 @@ import {
   type SetStateAction,
 } from 'react';
 import type { AgentContext } from './context';
-import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
+import type { DisplayMessage, LiveTool } from './agent-session';
 import type { AgentContextUsage } from './context-compaction';
 import { appendStreamingMessage } from './serverRunRecovery';
 import {
@@ -53,7 +53,6 @@ export interface ServerRunState {
   readonly running: boolean;
   readonly liveTool: LiveTool | null;
   readonly contextUsage: AgentContextUsage | null;
-  readonly pendingGuard: PendingGuard | null;
   readonly setRunning: Dispatch<SetStateAction<boolean>>;
   readonly setLiveTool: Dispatch<SetStateAction<LiveTool | null>>;
   readonly setContextUsage: Dispatch<SetStateAction<AgentContextUsage | null>>;
@@ -136,7 +135,6 @@ function useServerRunMessages(
 function executorCallbacks(
   refs: ServerRunRefs,
   updateMessages: ServerRunState['updateMessages'],
-  setPendingGuard: Dispatch<SetStateAction<PendingGuard | null>>,
   setLiveTool: Dispatch<SetStateAction<LiveTool | null>>,
   retryStream: (runId: string) => void,
 ): ServerToolExecutorCallbacks {
@@ -147,7 +145,6 @@ function executorCallbacks(
       refs.activeOptions.current ?? refs.options.current
     ).onToolAction?.(action),
     updateMessages,
-    setPendingGuard,
     setLiveTool,
     retryStream,
     abandonRecovery: (runId, error) => refs.abandonRecovery.current(runId, error),
@@ -159,7 +156,6 @@ function useServerRunToolExecutor(
   refs: ServerRunRefs,
   eventSession: ServerRunEventSession,
   updateMessages: ServerRunState['updateMessages'],
-  setPendingGuard: Dispatch<SetStateAction<PendingGuard | null>>,
   setLiveTool: Dispatch<SetStateAction<LiveTool | null>>,
 ): ServerRunToolExecutor {
   const retryStream = useCallback((runId: string) => {
@@ -167,12 +163,11 @@ function useServerRunToolExecutor(
   }, [eventSession]);
   const executor = useMemo(() => new ServerRunToolExecutor(
     projectId,
-    executorCallbacks(refs, updateMessages, setPendingGuard, setLiveTool, retryStream),
-  ), [projectId, refs, retryStream, setPendingGuard, setLiveTool, updateMessages]);
+    executorCallbacks(refs, updateMessages, setLiveTool, retryStream),
+  ), [projectId, refs, retryStream, setLiveTool, updateMessages]);
   executor.configure(executorCallbacks(
     refs,
     updateMessages,
-    setPendingGuard,
     setLiveTool,
     retryStream,
   ));
@@ -188,7 +183,6 @@ export function useServerRunState(
   const [running, setRunning] = useState(false);
   const [liveTool, setLiveTool] = useState<LiveTool | null>(null);
   const [contextUsage, setContextUsage] = useState<AgentContextUsage | null>(null);
-  const [pendingGuard, setPendingGuard] = useState<PendingGuard | null>(null);
   const eventSession = useMemo(
     () => new ServerRunEventSession((runId) => refs.subscribe.current?.(runId)),
     [refs],
@@ -199,7 +193,6 @@ export function useServerRunState(
     refs,
     eventSession,
     messageState.updateMessages,
-    setPendingGuard,
     setLiveTool,
   );
   return {
@@ -207,7 +200,6 @@ export function useServerRunState(
     running,
     liveTool,
     contextUsage,
-    pendingGuard,
     setRunning,
     setLiveTool,
     setContextUsage,

@@ -51,7 +51,7 @@ export function invocationFromApproval(
     toolName: binding.tool,
     argsDigest: binding.argsDigest,
     operationId: binding.operationId,
-    policy: policyForTool(binding.tool, true),
+    policy: policyForTool(binding.tool),
   };
 }
 
@@ -174,7 +174,6 @@ export class ExternalSessionRunLedger {
   async requested(
     toolName: string,
     args: Record<string, unknown>,
-    guarded = false,
   ): Promise<ExternalRecordedInvocation> {
     const toolCallId = `external_${crypto.randomUUID()}`;
     const operationId = typeof args.operationId === 'string' ? args.operationId : undefined;
@@ -189,7 +188,7 @@ export class ExternalSessionRunLedger {
       toolName,
       argsDigest,
       operationId,
-      policy: policyForTool(toolName, guarded, args),
+      policy: policyForTool(toolName, args),
     };
   }
 

@@ -1,5 +1,5 @@
 import type { AgentContextUsage } from './context-compaction';
-import type { DisplayMessage, LiveTool, PendingGuard } from './agent-session';
+import type { DisplayMessage, LiveTool } from './agent-session';
 import type { AgentChangeSession } from './changeLog';
 import type { Proposal } from './proposal';
 import type { AgentSend } from './useAgentRun';
@@ -16,7 +16,6 @@ export interface AgentController {
   readonly contextUsage: AgentContextUsage | null;
   readonly proposal: Proposal | null;
   readonly proposalStale: boolean;
-  readonly pendingGuard: PendingGuard | null;
   readonly liveTool: LiveTool | null;
   readonly changeLog: AgentChangeSession[];
   readonly send: AgentSend;

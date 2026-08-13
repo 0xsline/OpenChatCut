@@ -30,12 +30,3 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
   { label: '横转竖', prompt: '将当前工程转换为 9:16 竖屏，并调整主要画面构图' },
 ];
 
-export const GUARD_SKILL_LABELS = {
-  'image-gen': '图像生成',
-  'motion-graphic-gen': 'MG 动画生成',
-  'video-gen': '视频生成',
-  'audio-gen': '音频 / 音乐生成',
-  'gpu-operation': '长时 GPU 任务',
-  'irreversible-export': '不可逆导出',
-  'high-cost-operation': '高成本 / 长时或不可逆操作',
-} as const;

@@ -8,11 +8,7 @@ import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import { buildAgentSystemPrompt } from './systemPrompt';
 import { normalizeLlmMessages } from './messages';
 import { loadAgentSettings, type AgentSettings } from './settings/agentSettings';
-import type { GuardDecision } from './skills/costGuard';
-import {
-  runtimeGuardForTool,
-  type RuntimeGuardRequest,
-} from './runtime-guard';
+
 import {
   getActiveAgentModelChoice,
   type AgentModelChoice,
@@ -44,8 +40,6 @@ export {
   shouldRetryTransientAgentRequest,
   streamPartStartsCompatibleMediaOutput,
 } from './api-runtime';
-export { runtimeGuardForTool } from './runtime-guard';
-export type { RuntimeGuardRequest } from './runtime-guard';
 export type LLMMessage = ModelMessage;
 export interface AgentRuntimeModule {
   runAgent: typeof runAgent;
@@ -65,7 +59,6 @@ export type ProviderContextUsageRecorder = (
 export interface RunAgentOptions {
   readonly askOnly?: boolean;
   readonly signal?: AbortSignal;
-  readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
   readonly previousContextUsage?: AgentContextUsage;
   readonly toolFailures?: ToolFailureTracker;
   /** Internal per-request registry state; callers normally leave this unset. */
@@ -221,7 +214,6 @@ export interface CodexToolRequest {
   readonly ctx: AgentContext;
   readonly onEvent: (event: AgentEvent) => void;
   readonly settings: AgentSettings;
-  readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
   readonly runRecorder?: AgentRunRecorder;
   readonly toolCallId?: string;
   readonly signal?: AbortSignal;
@@ -234,7 +226,7 @@ export async function executeCodexTool(request: CodexToolRequest): Promise<{
   readonly execution: CodexToolExecution;
 }> {
   const {
-    name, args, activation, ctx, onEvent, settings, onSkillGuard, runRecorder,
+    name, args, activation, ctx, onEvent, settings, runRecorder,
     toolCallId, signal, harness, onFollowup,
   } = request;
   const schema = activation.allSchemas().find((candidate) => candidate.name === name);
@@ -248,8 +240,6 @@ export async function executeCodexTool(request: CodexToolRequest): Promise<{
     ctx,
     onEvent,
     settings,
-    resolveGuard: runtimeGuardForTool,
-    onSkillGuard,
     toolCatalog: activation.allSchemas(),
     activeToolCatalog: activation.schemas(),
     harness,
@@ -324,7 +314,7 @@ async function runCodexBackend(input: CodexBackendInput): Promise<LLMMessage[]> 
     executeTool: async (name, args, toolCallId, signal, harness, onFollowup) => {
       const update = await executeCodexTool({
         name, args, activation: currentActivation, ctx, onEvent, settings,
-        onSkillGuard: opts?.onSkillGuard, runRecorder: opts?.runRecorder,
+        runRecorder: opts?.runRecorder,
         toolCallId, signal, harness, onFollowup,
       });
       currentActivation = update.activation;

@@ -72,7 +72,6 @@ try {
     settings: () => ({} as never),
     onToolAction: () => undefined,
     updateMessages: () => undefined,
-    setPendingGuard: () => undefined,
     setLiveTool: () => undefined,
     retryStream: () => assert.fail('an admitted durable attempt must not depend on SSE replay'),
     abandonRecovery: (_id, error) => assert.fail(String(error)),

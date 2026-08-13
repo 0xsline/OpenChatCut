@@ -4,16 +4,13 @@ import { saveProject } from '../persist/projectStore';
 import { clearProposal, saveProposal, settleProposal } from '../persist/proposalStore';
 import type { AgentContext } from './context';
 import { PROVIDER } from './providerConfig';
-import type { AgentRetryOptions, PendingGuard } from './agent-session';
+import type { AgentRetryOptions } from './agent-session';
 import {
   buildProposal,
   type Operation,
   type Proposal,
 } from './proposal';
 import { appendAgentChange, createAgentChangeSession } from './changeLog';
-import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
-import { agentAutoApply } from './approval-mode';
-import type { RuntimeGuardRequest } from './runtime-guard';
 import { settleServerRun } from './serverRunSettleClient';
 import type { AgentRunStatus } from '../persist/agentRuntimeStore';
 import type { AgentHookState } from './useAgentState';
@@ -71,36 +68,6 @@ export function statusAfterMaxToolTurns(status: AgentRunStatus): AgentRunStatus 
 }
 
 
-
-export function requestRuntimeGuard(
-  state: AgentHookState,
-  projectId: string,
-  guard: RuntimeGuardRequest,
-): Promise<GuardDecision> {
-  // YOLO (auto-apply) mode releases every confirmation card: the user opted
-  // into unapproved execution (sessionPrefs documents the intent). Paid,
-  // persistent-local and irreversible operations all run without a prompt.
-  if (agentAutoApply()) return Promise.resolve('allow-once');
-  const rememberable = guard.approval === 'project' && guard.permissionKind === 'paid_external';
-  if (rememberable && isCostAllowed(guard.skill, projectId)) return Promise.resolve('allow-once');
-  const { promise, resolve } = Promise.withResolvers<GuardDecision>();
-  let pending: PendingGuard;
-  pending = {
-    ...guard,
-    resolve: (requested) => {
-      if (state.pendingGuardRef.current === pending) {
-        state.pendingGuardRef.current = null;
-        state.setPendingGuard(null);
-      }
-      const decision = requested === 'allow-scope' && !rememberable ? 'allow-once' : requested;
-      if (decision === 'allow-scope') rememberCostAllowed(guard.skill, projectId);
-      resolve(decision);
-    },
-  };
-  state.pendingGuardRef.current = pending;
-  state.setPendingGuard(pending);
-  return promise;
-}
 
 
 function showRunError(turn: AgentTurn, text: string): void {

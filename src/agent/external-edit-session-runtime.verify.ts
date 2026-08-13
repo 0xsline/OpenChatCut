@@ -358,7 +358,7 @@ const ambiguousInvocation: ExternalRecordedInvocation = {
   toolName: 'submit_render_job',
   argsDigest: 'sha256:ambiguous',
   operationId: 'render-op',
-  policy: policyForTool('submit_render_job', true),
+  policy: policyForTool('submit_render_job'),
 };
 assert.equal(
   externalToolFailureOutcome(ambiguousInvocation, new Error('connection lost'), true).kind,

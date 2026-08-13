@@ -36,7 +36,6 @@ const rejectedMutation = await executeOpenChatCutTool(
     ctx: context,
     onEvent: () => undefined,
     settings: DEFAULT_AGENT_SETTINGS,
-    resolveGuard: async () => null,
   },
 );
 assert.equal(rejectedMutation.success, false);
@@ -54,7 +53,6 @@ const settledFollowup = await executeOpenChatCutTool(
       if (event.type === 'tool') settlementOrder.push(`tool:${event.name}`);
     },
     settings: DEFAULT_AGENT_SETTINGS,
-    resolveGuard: async () => null,
     onFollowup: () => settlementOrder.push('followup'),
   },
 );

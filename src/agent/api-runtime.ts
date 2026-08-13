@@ -32,14 +32,9 @@ import {
 } from './client';
 import { normalizeLlmMessages } from './messages';
 import { loadAgentSettings, type AgentSettings } from './settings/agentSettings';
-import type { GuardDecision } from './skills/costGuard';
 import { completeAbortedTurn } from './abortedTurn';
 import { executeOpenChatCutTool, type CodexToolExecution } from './codex/runtime';
 import { toolFailureReason, ToolFailureTracker } from './toolFailure';
-import {
-  runtimeGuardForTool,
-  type RuntimeGuardRequest,
-} from './runtime-guard';
 import type {
   AgentEvent,
   LLMMessage,
@@ -67,7 +62,6 @@ function createAgentTools(
   onEvent: (event: AgentEvent) => void,
   settings: AgentSettings,
   harness: HarnessToolExecutionContext,
-  onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>,
   onFollowup?: (text: string) => void,
   runRecorder?: AgentRunRecorder,
 ): ToolSet {
@@ -83,8 +77,6 @@ function createAgentTools(
           ctx,
           onEvent,
           settings,
-          resolveGuard: runtimeGuardForTool,
-          onSkillGuard,
           onFollowup,
           toolCatalog: getActivation().allSchemas(),
           activeToolCatalog: getActivation().schemas(),
@@ -189,7 +181,7 @@ class ApiAgentRunner {
       onEvent,
       this.settings,
       harness,
-      opts?.onSkillGuard,
+
       output.markFollowup,
       opts?.runRecorder,
     );

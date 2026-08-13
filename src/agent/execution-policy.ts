@@ -1,7 +1,6 @@
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
 import type { AgentToolSchema } from './tool-schema';
-import type { RuntimeGuardRequest } from './runtime-guard';
 import { isExternalGlobalReadTool, isExternalReadTool } from './external-tool-policy';
 import { effectiveTranscriptionProvider } from './settings/agentSettings';
 
@@ -9,13 +8,11 @@ export type ToolEffect =
   | 'read'
   | 'reversible_edit'
   | 'persistent_local'
-  | 'paid_external'
   | 'irreversible_external';
-export type ToolApprovalPolicy = 'never' | 'once' | 'project' | 'always';
 export type ToolRecoveryPolicy = 'pure' | 'idempotent' | 'resume' | 'outcome_unknown';
+/** Execution classification for recovery and offline authorization; no approval gate. */
 export interface ToolExecutionPolicy {
   readonly effect: ToolEffect;
-  readonly approval: ToolApprovalPolicy;
   readonly recovery: ToolRecoveryPolicy;
 }
 export type ToolInvocationValidation =
@@ -34,33 +31,41 @@ const PERSISTENT_LOCAL_TOOLS = new Set([
   'create_project', 'duplicate_project', 'delete_project', 'restore_project',
 ]);
 const IRREVERSIBLE_EXTERNAL_TOOLS = new Set([
-  'run_code', 'web_crawl', 'submit_render_job',
+  // paid / long-running / non-idempotent retry surface: generation, export,
+  // reruns, paid web scraping, and the paid sandbox. Failed invocations must
+  // not be replayed automatically.
+  'run_code', 'web_crawl', 'web_browser', 'web_search', 'web_map', 'web_batch_scrape',
+  'submit_render_job', 'submit_export', 'export_timeline', 'export_motion_graphic_prores',
+  'convert_motion_graphic_to_video',
+  'transcribe_track',
+  'submit_image', 'submit_video', 'submit_music', 'submit_sound', 'submit_voice',
+  'submit_motion_graphic', 'create_motion_graphic', 'create_motion_graphic_from_code',
+  'submit_shader', 'rerun_generation',
+  'submit_image_generation', 'submit_video_generation', 'submit_music_generation',
+  'submit_sound_generation', 'submit_voice_generation',
+  'generate_image', 'generate_video', 'generate_music', 'generate_voice', 'generate_sound',
 ]);
 const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
 addFormats(ajv);
 const validatorCache = new WeakMap<object, ValidateFunction>();
 
-function guardedRequest(value: boolean | RuntimeGuardRequest | null | undefined): boolean {
-  return value === true || (!!value && typeof value === 'object');
-}
-
 function designStylePolicy(args?: Readonly<Record<string, unknown>>): ToolExecutionPolicy {
   const action = typeof args?.action === 'string' ? args.action : '';
   const ownedStyleId = typeof args?.presetId === 'string' ? args.presetId.trim() : '';
   if (action === 'list' || action === 'get' || (action === 'apply' && args?.applyToProject === false)) {
-    return { effect: 'read', approval: 'never', recovery: 'pure' };
+    return { effect: 'read', recovery: 'pure' };
   }
   if (action === 'save' || action === 'delete' || (action === 'update' && !!ownedStyleId)) {
-    return { effect: 'persistent_local', approval: 'once', recovery: 'idempotent' };
+    return { effect: 'persistent_local', recovery: 'idempotent' };
   }
   if (action === 'apply' || action === 'clear' || action === 'update') {
-    return { effect: 'reversible_edit', approval: 'never', recovery: 'idempotent' };
+    return { effect: 'reversible_edit', recovery: 'idempotent' };
   }
-  return { effect: 'persistent_local', approval: 'once', recovery: 'idempotent' };
+  return { effect: 'persistent_local', recovery: 'idempotent' };
 }
 /**
- * Materialize setting-backed defaults after schema validation so approval,
- * persistence, and execution all bind to the same effective invocation.
+ * Materialize setting-backed defaults after schema validation so persistence
+ * and execution bind to the same effective invocation.
  */
 export function effectiveToolInvocationArgs(
   name: string,
@@ -74,23 +79,19 @@ export function effectiveToolInvocationArgs(
 /** Every callable name receives a conservative execution policy; unknown names still fail active-set validation. */
 export function policyForTool(
   name: string,
-  guarded?: boolean | RuntimeGuardRequest | null,
   args?: Readonly<Record<string, unknown>>,
 ): ToolExecutionPolicy {
-  if (guardedRequest(guarded)) {
-    return { effect: 'paid_external', approval: 'always', recovery: 'outcome_unknown' };
-  }
   if (name === 'manage_design_style') return designStylePolicy(args);
   if (READ_TOOLS.has(name) || isExternalReadTool(name) || isExternalGlobalReadTool(name)) {
-    return { effect: 'read', approval: 'never', recovery: 'pure' };
+    return { effect: 'read', recovery: 'pure' };
   }
   if (IRREVERSIBLE_EXTERNAL_TOOLS.has(name)) {
-    return { effect: 'irreversible_external', approval: 'always', recovery: 'outcome_unknown' };
+    return { effect: 'irreversible_external', recovery: 'outcome_unknown' };
   }
   if (PERSISTENT_LOCAL_TOOLS.has(name)) {
-    return { effect: 'persistent_local', approval: 'once', recovery: 'idempotent' };
+    return { effect: 'persistent_local', recovery: 'idempotent' };
   }
-  return { effect: 'reversible_edit', approval: 'never', recovery: 'idempotent' };
+  return { effect: 'reversible_edit', recovery: 'idempotent' };
 }
 
 function schemaValidator(schema: AgentToolSchema): ValidateFunction {

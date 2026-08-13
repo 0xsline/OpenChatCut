@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { Proposal } from '../../agent/proposal';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
-import { highCostOps } from '../../agent/skills/costGuard';
 
 export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, onForceApply, onRePropose }: {
   proposal: Proposal;
@@ -18,7 +17,6 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, on
   const ops = proposal.options[0].operations;
   const [selected, setSelected] = useState<Set<number>>(() => new Set(ops.map((_, i) => i)));
   const [preview, setPreview] = useState(false);
-  const costly = highCostOps(proposal);
 
   const toggle = (i: number) =>
     setSelected((s) => {
@@ -51,17 +49,7 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, on
             <div className="cc-proposal-title-row">
               <h3 className="cc-proposal-title">{proposal.title || t('编辑提案')}</h3>
               <span className="cc-proposal-badge">{t('待确认')}</span>
-              {costly.length > 0 && (
-                <span className="cc-proposal-badge costly" title={costly.join(', ')}>
-                  {t('高成本')}
-                </span>
-              )}
             </div>
-            {costly.length > 0 && (
-              <p className="cc-proposal-summary costly">
-                {t('高成本操作：包含生成/导出等付费操作，请确认后再应用。')}
-              </p>
-            )}
             {proposal.summary ? (
               <p className="cc-proposal-summary">{proposal.summary}</p>
             ) : null}

@@ -37,8 +37,6 @@ export function useServerRun(
     running: state.running,
     liveTool: state.liveTool,
     contextUsage: state.contextUsage,
-    pendingGuard: state.pendingGuard,
-    confirmGuard: actions.confirmGuard,
     stop: actions.stop,
   };
 }

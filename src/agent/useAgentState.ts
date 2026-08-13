@@ -3,7 +3,7 @@ import type { AgentContext } from './context';
 import type { AgentContextUsage } from './context-compaction';
 import type { LLMMessage } from './runtime';
 import { PROVIDER, type LlmProvider } from './providerConfig';
-import { initialAgentMessages, type DisplayMessage, type LiveTool, type PendingGuard } from './agent-session';
+import { initialAgentMessages, type DisplayMessage, type LiveTool } from './agent-session';
 import { useAgentContextUsage } from './context-usage';
 import { ToolFailureTracker } from './toolFailure';
 import type { Proposal } from './proposal';
@@ -25,8 +25,6 @@ export interface AgentHookState {
   setProposal: StateSetter<Proposal | null>;
   proposalStale: boolean;
   setProposalStale: StateSetter<boolean>;
-  pendingGuard: PendingGuard | null;
-  setPendingGuard: StateSetter<PendingGuard | null>;
   liveTool: LiveTool | null;
   setLiveTool: StateSetter<LiveTool | null>;
   llmRef: MutableValue<LLMMessage[]>;
@@ -37,7 +35,6 @@ export interface AgentHookState {
   hydratedRef: MutableValue<boolean>;
   hydrationEpochRef: MutableValue<number>;
   proposalRef: MutableValue<Proposal | null>;
-  pendingGuardRef: MutableValue<PendingGuard | null>;
   abortRef: MutableValue<AbortController | null>;
   applyingProposalRef: MutableValue<boolean>;
   toolFailuresRef: MutableValue<ToolFailureTracker>;
@@ -54,7 +51,6 @@ export function useAgentState(ctx: AgentContext): AgentHookState {
   const [hydrated, setHydrated] = useState(false);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [proposalStale, setProposalStale] = useState(false);
-  const [pendingGuard, setPendingGuard] = useState<PendingGuard | null>(null);
   const [liveTool, setLiveTool] = useState<LiveTool | null>(null);
   const llmRef = useRef<LLMMessage[]>(initialAgentMessages());
   const context = useAgentContextUsage(llmRef);
@@ -65,20 +61,18 @@ export function useAgentState(ctx: AgentContext): AgentHookState {
   const hydratedRef = useRef(false);
   const hydrationEpochRef = useRef(0);
   const proposalRef = useRef<Proposal | null>(null);
-  const pendingGuardRef = useRef<PendingGuard | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const applyingProposalRef = useRef(false);
   const toolFailuresRef = useRef(new ToolFailureTracker());
   ctxRef.current = ctx;
   proposalRef.current = proposal;
-  pendingGuardRef.current = pendingGuard;
   runningRef.current = running;
   changeLogRef.current = changeLog;
   return {
     messages, setMessages, changeLog, setChangeLog, running, setRunning, hydrated, setHydrated,
-    proposal, setProposal, proposalStale, setProposalStale, pendingGuard, setPendingGuard,
+    proposal, setProposal, proposalStale, setProposalStale,
     liveTool, setLiveTool, llmRef, llmProviderRef, ctxRef, hydratedRef, hydrationEpochRef,
-    proposalRef, runningRef, changeLogRef, pendingGuardRef, abortRef,
+    proposalRef, runningRef, changeLogRef, abortRef,
     applyingProposalRef, toolFailuresRef,
     contextUsage: context.usage,
     contextUsageRef: context.usageRef, replaceContextUsage: context.replace,

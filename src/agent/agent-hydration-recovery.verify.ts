@@ -28,7 +28,6 @@ import {
 import { buildOperation, buildProposal } from './proposal';
 import { cleanupAgentHydration, loadRecoveredAgentSession } from './useAgentPersistence';
 import type { AgentHookState } from './useAgentState';
-import { requestRuntimeGuard } from './useAgentRun';
 // The settle endpoint is server-side; emulate its effect locally (patch the
 // sidecar) so verifies exercise the full settlement path without a server.
 const originalFetch = globalThis.fetch;
@@ -233,44 +232,22 @@ activeAbort.signal.addEventListener('abort', () => cleanupEvents.push('abort'));
 const activeCleanupState = {
   runningRef: { current: true },
   abortRef: { current: activeAbort },
-  pendingGuardRef: { current: { resolve: (decision: string) => cleanupEvents.push(decision) } },
 } as unknown as AgentHookState;
 let stoppedActiveLeases = 0;
 cleanupAgentHydration(activeCleanupState, projectId, async () => { stoppedActiveLeases += 1; });
-assert.deepEqual(cleanupEvents, ['deny', 'abort'],
-  'unmount synchronously denies approval before aborting the active turn');
+assert.deepEqual(cleanupEvents, ['abort'],
+  'unmount synchronously aborts the active turn');
 assert.equal(stoppedActiveLeases, 0,
   'the active execution lease remains owned until runtime finally/finalize');
 
 const idleCleanupState = {
   runningRef: { current: false },
   abortRef: { current: null },
-  pendingGuardRef: { current: null },
 } as unknown as AgentHookState;
 let stoppedIdleLeases = 0;
 cleanupAgentHydration(idleCleanupState, projectId, async () => { stoppedIdleLeases += 1; });
 assert.equal(stoppedIdleLeases, 1, 'idle/hydration recorders release immediately on cleanup');
 
-const immediateGuardRef = { current: null };
-let renderedGuard: unknown = null;
-const immediateGuardState = {
-  runningRef: { current: false },
-  abortRef: { current: null },
-  pendingGuardRef: immediateGuardRef,
-  setPendingGuard: (guard: unknown) => { renderedGuard = guard; },
-} as unknown as AgentHookState;
-const immediateDecision = requestRuntimeGuard(immediateGuardState, projectId, {
-  skill: 'high-cost-operation',
-  permissionKind: 'persistent_local',
-  approval: 'once',
-  tool: 'install_skill',
-});
-assert.equal(immediateGuardRef.current, renderedGuard,
-  'pending guard ref is assigned synchronously before React renders');
-cleanupAgentHydration(immediateGuardState, projectId, async () => undefined);
-assert.equal(await immediateDecision, 'deny',
-  'unmount before the pending-guard render still denies the waiting tool');
-assert.equal(immediateGuardRef.current, null, 'resolving the guard synchronously clears its ref');
 // A proposal whose run is still leased by another editor must hydrate
 // silently (no throw): the proposal is settled stale and cleared so the
 // next open starts clean instead of surfacing a recovery error.

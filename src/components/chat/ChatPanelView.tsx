@@ -1,12 +1,11 @@
 import { createPortal } from 'react-dom';
 import { theme } from '../../theme';
-import { shouldBlockAutoApply } from '../../agent/skills/costGuard';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
 import { AgentChangeLogMenu } from './AgentChangeLogMenu';
 import { AgentRunInspector } from './AgentRunInspector';
 import { ChatComposer } from './ChatComposer';
 import { ChatMessage } from './ChatMessage';
-import { ChatRunStatus, AgentGuardCard } from './ChatRunStatus';
+import { ChatRunStatus } from './ChatRunStatus';
 import { ExternalProposalCard } from './ExternalProposalCard';
 import { ProposalCard } from './ProposalCard';
 import { ToolGroupRow } from './ToolGroupRow';
@@ -138,7 +137,7 @@ function MessageEntries({ controller }: { controller: ChatPanelController }) {
 function AgentRunCards({ controller }: { controller: ChatPanelController }) {
   const { agent, composer, externalProposal, props, streamingThinking, runSeed } = controller;
   const showProposal = agent.proposal
-    && (!composer.autoApply || shouldBlockAutoApply(agent.proposal, composer.autoApply));
+    && !composer.autoApply;
   return <>
     <ChatRunStatus running={agent.running} liveTool={agent.liveTool}
       streamingThinking={streamingThinking} phraseSeed={runSeed} />
@@ -148,7 +147,6 @@ function AgentRunCards({ controller }: { controller: ChatPanelController }) {
         onPreview={(on) => props.onPreviewState(on ? agent.proposal?.resultState ?? null : null)} />
     )}
     <ExternalProposalCard external={externalProposal} onPreviewState={props.onPreviewState} />
-    <AgentGuardCard pendingGuard={agent.pendingGuard} />
   </>;
 }
 

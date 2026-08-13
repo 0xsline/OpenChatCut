@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 import { setAgentAutoApply } from './approval-mode.ts';
-import type { PendingGuard } from './agent-session.ts';
-import type { GuardDecision } from './skills/costGuard.ts';
 import { ToolActivation } from './tool-activation.ts';
 import { TOOL_SCHEMAS } from './tools.ts';
 import { projectServerRunToolResult } from './serverRunToolResult.ts';
@@ -190,7 +188,6 @@ const executorCallbacks = {
   settings: () => ({} as never),
   onToolAction: () => undefined,
   updateMessages: () => undefined,
-  setPendingGuard: () => undefined,
   setLiveTool: (tool: { name: string; partial: string } | null) => { liveToolLog.push(tool); },
   retryStream: (runId: string) => { retriedRuns.push(runId); },
   abandonRecovery: (runId: string, error: unknown) => {
@@ -526,83 +523,6 @@ assert.deepEqual(abandonedRuns, [{
 }]);
 assert.deepEqual(retriedRuns, [],
   'a permanently stale capability is cleared without scheduling a stream retry');
-// ── YOLO (auto-apply) releases server-run confirmation cards ──
-const guardMemory = new Map<string, string>();
-Object.defineProperty(globalThis, 'localStorage', {
-  configurable: true,
-  value: {
-    getItem: (key: string) => guardMemory.get(key) ?? null,
-    setItem: (key: string, value: string) => { guardMemory.set(key, value); },
-    removeItem: (key: string) => { guardMemory.delete(key); },
-  },
-});
-let pendingGuards = 0;
-const guardCallbacks = {
-  ...executorCallbacks,
-  setPendingGuard: (guard: PendingGuard | null) => {
-    if (guard) pendingGuards += 1;
-  },
-  setLiveTool: () => undefined,
-};
-const yoloExecutor = new ServerRunToolExecutor('project-guard-yolo', guardCallbacks, manager);
-const requestGuard = (
-  executor: ServerRunToolExecutor,
-  info: Omit<PendingGuard, 'resolve'>,
-): Promise<GuardDecision> => (
-  (executor as unknown as {
-    guardRequest(info: Omit<PendingGuard, 'resolve'>): Promise<GuardDecision>;
-  }).guardRequest(info)
-);
-const paidGuard = {
-  skill: 'high-cost-operation',
-  permissionKind: 'paid_external',
-  approval: 'always',
-  tool: 'submit_export',
-  summary: 'paid export',
-  details: [],
-} as const;
-setAgentAutoApply(true);
-assert.equal(await requestGuard(yoloExecutor, paidGuard), 'allow-once',
-  'YOLO mode must release a server-run guard card immediately');
-assert.equal(pendingGuards, 0,
-  'YOLO mode must not raise a server-run confirmation card');
-setAgentAutoApply(false);
-const askGuard = requestGuard(yoloExecutor, paidGuard);
-const { promise: guardTick, resolve: settleTick } = Promise.withResolvers<void>();
-setTimeout(settleTick, 10);
-await guardTick;
-assert.equal(pendingGuards, 1,
-  'Ask mode must raise the server-run confirmation card and wait');
-yoloExecutor.confirmGuard('allow-once');
-assert.equal(await askGuard, 'allow-once',
-  'confirming the server-run card releases the guarded tool');
-// ── Ask mode: "allow and remember" (allow-scope) releases remembered tools ──
-const scopeGuard: Omit<PendingGuard, 'resolve'> = {
-  ...paidGuard,
-  approval: 'project',
-};
-setAgentAutoApply(false);
-const scoped = requestGuard(yoloExecutor, scopeGuard);
-const { promise: scopeTick, resolve: settleScopeTick } = Promise.withResolvers<void>();
-setTimeout(settleScopeTick, 10);
-await scopeTick;
-yoloExecutor.confirmGuard('allow-scope');
-assert.equal(await scoped, 'allow-scope',
-  'an allow-scope decision is not flattened to allow-once');
-const raisedCardsBeforeRemembered = pendingGuards;
-assert.equal(await requestGuard(yoloExecutor, scopeGuard), 'allow-once',
-  'a remembered server-run guard releases without raising a card');
-assert.equal(pendingGuards, raisedCardsBeforeRemembered,
-  'the remembered release must not raise another confirmation card');
-// Non-rememberable guards degrade allow-scope to allow-once (no memory).
-// Uses a category that was not remembered above.
-const transient = requestGuard(yoloExecutor, { ...paidGuard, skill: 'image-gen' });
-const { promise: transientTick, resolve: settleTransientTick } = Promise.withResolvers<void>();
-setTimeout(settleTransientTick, 10);
-await transientTick;
-yoloExecutor.confirmGuard('allow-scope');
-assert.equal(await transient, 'allow-once',
-  'allow-scope on a non-project guard degrades to allow-once');
 setAgentAutoApply(false);
 globalThis.fetch = originalFetch;
 if (originalStorage) Object.defineProperty(globalThis, 'sessionStorage', originalStorage);

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import type { AgentContext } from '../agent/context';
-import { runtimeGuardForTool } from '../agent/runtime';
 import { executeGenerateCommand } from '../agent/tools/generate-tool-handlers';
 import {
   acknowledgeIngestedGenerationResults,
@@ -12,6 +11,7 @@ import {
   resumeOpenGenerationJobs,
   resetJobRegistryMemory,
   resolveTrackedJob,
+  resolveTrackedJobForProject,
 } from './jobRegistryStore';
 
 resetJobRegistryMemory();
@@ -241,9 +241,9 @@ await registerTrackedJob({
   toolName: 'submit_video',
   submitArgs: { model: 'kling', durationSeconds: 5, prompt: 'Original prompt' },
 });
-const rerunGuard = await runtimeGuardForTool('rerun_generation', { jobId: 'guard-original' }, context);
-assert.equal(rerunGuard?.tool, 'submit_video');
-assert.equal(rerunGuard?.operationId, 'guard-original-operation');
-assert.match(rerunGuard?.summary ?? '', /模型=kling.*Original prompt|model=kling.*Original prompt/);
+const rerunJob = await resolveTrackedJobForProject(projectId, 'guard-original');
+assert.equal(rerunJob.ok, true);
+assert.equal(rerunJob.ok ? rerunJob.job.toolName : undefined, 'submit_video');
+assert.equal(rerunJob.ok ? rerunJob.job.operationId : undefined, 'guard-original-operation');
 
 console.log('job registry checks passed');

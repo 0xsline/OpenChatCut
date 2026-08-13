@@ -27,12 +27,6 @@ function serverRunAdapter(
     contextUsage: run.contextUsage,
     proposal: bridge.proposal,
     proposalStale: bridge.proposalStale,
-    pendingGuard: run.pendingGuard
-      ? {
-        ...run.pendingGuard,
-        resolve: (requested) => run.confirmGuard(requested),
-      }
-      : null,
     liveTool: run.liveTool,
     changeLog: bridge.changeLog,
     send: run.send,

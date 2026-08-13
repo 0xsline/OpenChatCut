@@ -268,7 +268,6 @@ export function cleanupAgentHydration(
   stopLeases: typeof stopAgentRunLeases = stopAgentRunLeases,
 ): void {
   const activeExecution = state.runningRef.current || state.abortRef.current !== null;
-  state.pendingGuardRef.current?.resolve('deny');
   state.abortRef.current?.abort();
   if (!activeExecution) void stopLeases(projectId);
 }

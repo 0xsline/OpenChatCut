@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import type { AgentContext } from './context';
 import type { AgentSettings } from './settings/agentSettings';
-import type { RuntimeGuardRequest } from './runtime-guard';
-import type { GuardDecision } from './skills/costGuard';
 import { TOOL_SCHEMAS } from './tools';
 import {
   assertValidAgentToolSchemas,
@@ -60,17 +58,12 @@ function fakeRecorder(log: string[], failure?: 'requested'): AgentRunRecorder {
 
 async function executeWithRecorder(
   recorder: AgentRunRecorder,
-  log: string[],
   executeTool: () => Promise<unknown>,
-  guard: RuntimeGuardRequest | null = null,
-  decision: GuardDecision = 'allow-once',
 ) {
   return executeOpenChatCutTool(aspectSchema, { ratio: '9:16' }, {
     ctx, settings, runRecorder: recorder, toolCallId: 'call-1',
     toolCatalog: TOOL_SCHEMAS, activeToolCatalog: [aspectSchema],
     onEvent: () => undefined,
-    resolveGuard: async () => guard,
-    onSkillGuard: async () => { log.push('ui-decision'); return decision; },
     executeTool: async () => executeTool(),
   });
 }
@@ -78,14 +71,11 @@ async function executeWithRecorder(
 async function executeInstallSkill(
   log: string[],
   executeTool: () => Promise<unknown>,
-  onSkillGuard?: (guard: RuntimeGuardRequest) => Promise<GuardDecision>,
 ): Promise<CodexToolExecution> {
   return executeOpenChatCutTool(installSkillSchema, { repo: 'owner/skill' }, {
     ctx, settings, runRecorder: fakeRecorder(log), toolCallId: crypto.randomUUID(),
     toolCatalog: TOOL_SCHEMAS, activeToolCatalog: [installSkillSchema],
     onEvent: () => undefined,
-    resolveGuard: async () => null,
-    onSkillGuard,
     executeTool: async () => executeTool(),
   });
 }
@@ -144,75 +134,35 @@ function verifySecretProjectionFixtures(): void {
 
 async function verifyDurableBoundary(): Promise<void> {
   const ordered: string[] = [];
-  await executeWithRecorder(fakeRecorder(ordered), ordered, async () => {
+  await executeWithRecorder(fakeRecorder(ordered), async () => {
     ordered.push('side-effect');
     return { ok: true };
   });
   assert.deepEqual(ordered, ['requested', 'started', 'side-effect', 'outcome:success']);
   const closed: string[] = [];
   let mutated = false;
-  const failed = await executeWithRecorder(fakeRecorder(closed, 'requested'), closed, async () => {
+  const failed = await executeWithRecorder(fakeRecorder(closed, 'requested'), async () => {
     mutated = true;
     return { ok: true };
   });
   assert.equal(failed.success, false);
   assert.equal(mutated, false, 'durability failure must precede side effects');
-  const guarded: RuntimeGuardRequest = {
-    skill: 'image-gen', tool: aspectSchema.name, summary: 'guarded request',
-  };
-  const denied: string[] = [];
-  await executeWithRecorder(fakeRecorder(denied), denied, async () => {
-    throw new Error('denied tool must not execute');
-  }, guarded, 'deny');
-  assert.deepEqual(denied, [
-    'requested', 'approval-requested', 'ui-decision', 'approval-decided', 'outcome:denied',
-  ]);
   const ambiguous: string[] = [];
-  const unknown = await executeWithRecorder(fakeRecorder(ambiguous), ambiguous, async () => {
+  const unknown = await executeWithRecorder(fakeRecorder(ambiguous), async () => {
     throw new Error('connection lost after provider accepted request');
-  }, guarded);
+  });
   assert.equal(unknown.success, false);
-  assert.equal(ambiguous.at(-1), 'outcome:outcome_unknown');
+  assert.equal(ambiguous.at(-1), 'outcome:terminal_failure');
 }
 
-async function verifyGenericApprovalBoundary(): Promise<void> {
+async function verifyDirectExecutionBoundary(): Promise<void> {
+  // No approval gate: persistent-local tools execute straight through.
   let executions = 0;
-  const missing: string[] = [];
-  const missingResult = await executeInstallSkill(missing, async () => {
+  await executeInstallSkill([], async () => {
     executions += 1;
     return { ok: true };
   });
-  const missingOutput = missingResult.result;
-  assert.equal(
-    !!missingOutput && typeof missingOutput === 'object'
-      && 'denied' in missingOutput && missingOutput.denied === true,
-    true,
-  );
-  assert.equal(executions, 0, 'persistent local tools fail closed without an approval UI');
-
-  const denied: string[] = [];
-  await executeInstallSkill(denied, async () => {
-    executions += 1;
-    return { ok: true };
-  }, async (guard) => {
-    assert.equal(guard.permissionKind, 'persistent_local');
-    assert.equal(guard.approval, 'once');
-    return 'deny';
-  });
-  assert.equal(executions, 0, 'denial blocks install_skill before dispatch');
-
-  let approvals = 0;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    await executeInstallSkill([], async () => {
-      executions += 1;
-      return { ok: true };
-    }, async () => {
-      approvals += 1;
-      return 'allow-once';
-    });
-  }
-  assert.equal(executions, 2);
-  assert.equal(approvals, 2, 'allow-once is requested again instead of becoming remembered permission');
+  assert.equal(executions, 1, 'install_skill executes without a confirmation card');
 }
 
 async function verifyAbortFence(): Promise<void> {
@@ -227,7 +177,6 @@ async function verifyAbortFence(): Promise<void> {
     onEvent: (event) => {
       if (event.type === 'tool' && !isFailedToolResult(event.result)) projectedToDocument = true;
     },
-    resolveGuard: async () => null,
     executeTool: async () => {
       entered.resolve();
       return slow.promise;
@@ -244,7 +193,7 @@ async function verifyAbortFence(): Promise<void> {
 
 async function verifyArtifactFailureFence(): Promise<void> {
   const oversizedMarker = `RAW-${'x'.repeat(20_000)}`;
-  const oversized = await executeWithRecorder(fakeRecorder([]), [], async () => ({
+  const oversized = await executeWithRecorder(fakeRecorder([]), async () => ({
     payload: oversizedMarker,
   }));
   assert.equal(oversized.success, false);
@@ -253,7 +202,7 @@ async function verifyArtifactFailureFence(): Promise<void> {
 
   const circular: Record<string, unknown> = { payload: 'CIRCULAR-RAW' };
   circular.self = circular;
-  const unserializable = await executeWithRecorder(fakeRecorder([]), [], async () => circular);
+  const unserializable = await executeWithRecorder(fakeRecorder([]), async () => circular);
   assert.equal(unserializable.success, false);
   assert.doesNotMatch(JSON.stringify(unserializable.result), /CIRCULAR-RAW/,
     'serialization/digest failure cannot project the raw tool result');
@@ -414,15 +363,10 @@ async function verifyYoloSkipsAllGuards(): Promise<void> {
     ctx: yoloCtx, settings, runRecorder: fakeRecorder(log), toolCallId: 'yolo-1',
     toolCatalog: TOOL_SCHEMAS, activeToolCatalog: [aspectSchema],
     onEvent: () => undefined,
-    resolveGuard: async () => ({
-      skill: 'high-cost-operation', tool: aspectSchema.name, summary: 'paid op',
-      permissionKind: 'persistent_local', approval: 'always',
-    }),
-    onSkillGuard: async () => { log.push('ui-decision'); return 'deny'; },
     executeTool: async () => { log.push('executed'); return { ok: true }; },
   });
-  assert.equal(execution.success, true, 'YOLO mode executes a guarded (paid) tool');
-  assert.equal(log.includes('ui-decision'), false, 'YOLO mode never shows the confirmation card');
+  assert.equal(execution.success, true, 'every mode executes tools directly');
+  assert.equal(log.includes('ui-decision'), false, 'no confirmation card is ever shown');
   assert.equal(log.includes('executed'), true, 'the guarded tool actually ran');
 }
 
@@ -431,7 +375,7 @@ verifyPoliciesAndSchemas();
 verifySecretProjectionFixtures();
 assert.equal(sanitizeJsonForArtifact({ tokenCount: 4, accessToken: 'secret' })?.redacted, true);
 await verifyDurableBoundary();
-await verifyGenericApprovalBoundary();
+await verifyDirectExecutionBoundary();
 await verifyAbortFence();
 await verifyArtifactFailureFence();
 await verifyRequestShapeFingerprint();

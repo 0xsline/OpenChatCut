@@ -1,9 +1,8 @@
 import type { ModelMessage } from 'ai';
 import type { CodexAgentToolSpec } from '../../../shared/codex-agent';
 import type { AgentContext } from '../context';
-import type { AgentEvent, LLMMessage, RuntimeGuardRequest } from '../runtime';
+import type { AgentEvent, LLMMessage } from '../runtime';
 import type { AgentToolSchema } from '../tool-schema';
-import type { GuardDecision } from '../skills/costGuard';
 import type { AgentSettings } from '../settings/agentSettings';
 import type { AgentRunRecorder } from '../runtime-ledger';
 import type { HarnessToolExecutionContext } from '../harness-context';
@@ -27,7 +26,6 @@ import {
   validateAgentToolInvocation,
   type ToolExecutionPolicy,
 } from '../execution-policy';
-import { guardRequestForPolicy } from '../runtime-guard';
 import { digestAgentToolArgs, TOOL_ARTIFACT_THRESHOLD } from '../runtime-ledger';
 import {
   artifactPlaceholder,
@@ -55,12 +53,6 @@ export interface LocalToolExecutionContext {
   readonly ctx: AgentContext;
   readonly onEvent: (event: AgentEvent) => void;
   readonly settings: AgentSettings;
-  readonly resolveGuard: (
-    name: string,
-    args: Record<string, unknown>,
-    ctx: AgentContext,
-  ) => Promise<RuntimeGuardRequest | null>;
-  readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
   readonly onFollowup?: (text: string) => void;
   readonly toolCatalog?: readonly AgentToolSchema[];
   readonly activeToolCatalog?: readonly AgentToolSchema[];
@@ -105,7 +97,7 @@ async function prepareToolBoundary(
   args: Record<string, unknown>,
   execution: LocalToolExecutionContext,
   state: ToolBoundaryState,
-): Promise<RuntimeGuardRequest | null> {
+): Promise<null> {
   const active = execution.activeToolCatalog ?? execution.toolCatalog ?? [schema];
   const validation = validateAgentToolInvocation(schema, args, active);
   if (!validation.ok) {
@@ -114,65 +106,13 @@ async function prepareToolBoundary(
     });
   }
   state.invocationArgs = effectiveToolInvocationArgs(schema.name, args);
-  const resolvedGuard = await execution.resolveGuard(
-    schema.name,
-    state.invocationArgs,
-    execution.ctx,
-  );
-  state.policy = policyForTool(schema.name, resolvedGuard, state.invocationArgs);
-  state.operationId = resolvedGuard?.operationId;
+  state.policy = policyForTool(schema.name, state.invocationArgs);
   state.argsDigest = execution.runRecorder
     ? (await execution.runRecorder.recordToolRequested({
       toolCallId: state.toolCallId, toolName: schema.name, args: state.invocationArgs,
-      operationId: resolvedGuard?.operationId,
     })).argsDigest
     : await digestAgentToolArgs(state.invocationArgs);
-  const guard = guardRequestForPolicy(
-    schema.name,
-    state.invocationArgs,
-    state.policy,
-    resolvedGuard,
-  );
-  return guard ? { ...guard, argsDigest: state.argsDigest } : null;
-}
-async function requestToolApproval(
-  schema: AgentToolSchema,
-  guard: RuntimeGuardRequest | null,
-  execution: LocalToolExecutionContext,
-  state: ToolBoundaryState,
-): Promise<GuardDecision> {
-  if (state.policy.approval === 'never') return 'allow-once';
-  if (!guard) return 'deny';
-  // YOLO mode: no confirmation for any operation, paid tools included.
-  // The user explicitly accepted the cost risk of generation/export/
-  // transcription/web/sandbox calls by enabling auto approval.
-  if (execution.ctx.getApprovalMode?.() === 'auto') return 'allow-once';
-  if (!execution.runRecorder) return 'deny';
-  const approval = execution.runRecorder
-    ? await execution.runRecorder.recordApprovalRequested({
-      toolCallId: state.toolCallId, toolName: schema.name,
-      argsDigest: state.argsDigest!, operationId: state.operationId, summary: guard.summary,
-    })
-    : null;
-  throwIfToolAborted(execution.signal, state);
-  const requested = execution.onSkillGuard ? await execution.onSkillGuard(guard) : 'deny';
-  const decision = requested === 'allow-scope' && state.policy.approval !== 'project'
-    ? 'allow-once' : requested;
-  if (approval) {
-    await execution.runRecorder!.recordApprovalDecision(
-      approval.approvalId,
-      decision === 'deny' ? 'denied' : 'allowed',
-    );
-  }
-  return decision;
-}
-function deniedResult(hasHandler: boolean): Record<string, unknown> {
-  return {
-    denied: true,
-    note: hasHandler
-      ? 'User denied this persistent, paid, or irreversible operation. Do not retry automatically.'
-      : 'This persistent, paid, or irreversible operation requires confirmation, but no confirmation handler is available.',
-  };
+  return null;
 }
 function toolFollowupText(result: unknown): string | null {
   if (!result || typeof result !== 'object' || Array.isArray(result)
@@ -262,23 +202,12 @@ export async function executeOpenChatCutTool(
   const state: ToolBoundaryState = {
     toolCallId: execution.toolCallId ?? crypto.randomUUID(),
     invocationArgs: args,
-    policy: policyForTool(schema.name, null, args),
+    policy: policyForTool(schema.name, args),
     started: false,
   };
   try {
-    const guard = await prepareToolBoundary(schema, args, execution, state);
+    await prepareToolBoundary(schema, args, execution, state);
     throwIfToolAborted(execution.signal, state);
-    const decision = await requestToolApproval(schema, guard, execution, state);
-    throwIfToolAborted(execution.signal, state);
-    if (decision === 'deny') {
-      const denied = deniedResult(!!execution.onSkillGuard);
-      await execution.runRecorder?.recordToolOutcome({
-        toolCallId: state.toolCallId, toolName: schema.name, argsDigest: state.argsDigest,
-        operationId: state.operationId, outcome: { kind: 'denied' },
-      });
-      execution.onEvent({ type: 'tool', name: schema.name, args: state.invocationArgs, result: denied });
-      return { success: true, result: denied };
-    }
     await execution.runRecorder?.recordToolStarted({
       toolCallId: state.toolCallId, toolName: schema.name,
       argsDigest: state.argsDigest!, operationId: state.operationId,

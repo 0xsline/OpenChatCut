@@ -1,6 +1,5 @@
-import type { AgentRuntimeModule, LLMMessage, RuntimeGuardRequest } from './runtime';
+import type { AgentRuntimeModule, LLMMessage } from './runtime';
 import type { AgentReference } from './context';
-import type { GuardDecision } from './skills/costGuard';
 import { getLocale } from '../i18n/locale';
 
 export interface AgentRetryOptions {
@@ -40,9 +39,6 @@ export function ensureAgentRetryMetadata(messages: readonly DisplayMessage[]): D
     : { ...message, retry: createAgentRetry(message.text) });
 }
 
-export interface PendingGuard extends RuntimeGuardRequest {
-  resolve: (decision: GuardDecision) => void;
-}
 
 export interface LiveTool {
   name: string;
