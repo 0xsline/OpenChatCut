@@ -10,7 +10,7 @@
 //
 // Output: public/whisper-cli/<platform>/whisper-cli[.exe]
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -137,7 +137,7 @@ async function main() {
     console.log(`[whisper-cli] built ${platformKey} from source -> ${binPath}`);
     return;
   }
-  const archive = join(OUT_DIR, `${platform}.${spec.asset.split('.').slice(-1)[0] === 'zip' ? 'zip' : 'tar.gz'}`);
+  const archive = join(OUT_DIR, `${platformKey}.${spec.asset.endsWith('.zip') ? 'zip' : 'tar.gz'}`);
   const url = `${BASE}/${spec.asset}`;
   if (!existsSync(binPath)) {
     console.log(`[whisper-cli] downloading ${url}`);
@@ -164,7 +164,7 @@ async function main() {
   const bytes = await readFile(binPath);
   await rm(binPath + '.sha256', { force: true });
   await writeFile(binPath + '.sha256', sha256Of(bytes));
-  console.log(`[whisper-cli] ${platform} ready at ${binPath} (${bytes.length} bytes)`);
+  console.log(`[whisper-cli] ${platformKey} ready at ${binPath} (${bytes.length} bytes)`);
 }
 
 main().catch((error) => {
