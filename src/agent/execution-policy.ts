@@ -85,6 +85,9 @@ export function policyForTool(
   if (READ_TOOLS.has(name) || isExternalReadTool(name) || isExternalGlobalReadTool(name)) {
     return { effect: 'read', recovery: 'pure' };
   }
+  if (name === 'transcribe_track' && args?.provider === 'local') {
+    return { effect: 'reversible_edit', recovery: 'idempotent' };
+  }
   if (IRREVERSIBLE_EXTERNAL_TOOLS.has(name)) {
     return { effect: 'irreversible_external', recovery: 'outcome_unknown' };
   }

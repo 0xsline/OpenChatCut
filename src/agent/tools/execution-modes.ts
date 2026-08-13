@@ -18,7 +18,6 @@ export const PARALLEL_TOOL_NAMES: ReadonlySet<string> = new Set([
   'read_project',
   'list_projects',
   'get_editor_url',
-  'track_progress',
   // library / templates
   'list_templates',
   'search_templates',

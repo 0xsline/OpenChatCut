@@ -66,7 +66,7 @@ function verifyPoliciesAndDetails(): void {
   assert.equal(policyForTool('read_timeline').recovery, 'pure');
 }
 
-async function verifyTranscriptionProviderBinding(): Promise<void> {
+function installTranscriptionProviderStorage(): Record<string, string> {
   const saved: Record<string, string> = {};
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -75,18 +75,27 @@ async function verifyTranscriptionProviderBinding(): Promise<void> {
       setItem: (key: string, value: string) => { saved[key] = value; },
     },
   });
+  return saved;
+}
 
-  saved['cc.transcriptionProvider'] = 'local';
+async function verifyExplicitTranscriptionProviders(): Promise<void> {
   const paidArgs = effectiveToolInvocationArgs('transcribe_track', {
     track: 'A2',
     provider: 'openai',
   });
   assert.deepEqual(paidArgs, { track: 'A2', provider: 'openai' });
-  assert.equal(policyForTool('transcribe_track', paidArgs).recovery, 'outcome_unknown');
+  assert.deepEqual(policyForTool('transcribe_track', paidArgs), {
+    effect: 'irreversible_external',
+    recovery: 'outcome_unknown',
+  });
 
   const localArgs = effectiveToolInvocationArgs('transcribe_track', {
     track: 'A2',
     provider: 'local',
+  });
+  assert.deepEqual(policyForTool('transcribe_track', localArgs), {
+    effect: 'reversible_edit',
+    recovery: 'idempotent',
   });
   let dispatchedLocalArgs: Record<string, unknown> | undefined;
   await executeOpenChatCutTool(transcribeSchema, { track: 'A2', provider: 'local' }, {
@@ -110,7 +119,9 @@ async function verifyTranscriptionProviderBinding(): Promise<void> {
     await digestAgentToolArgs(localArgs),
     'digest identity binds the effective provider with the exact arguments',
   );
+}
 
+async function verifySettingBackedTranscriptionProvider(saved: Record<string, string>): Promise<void> {
   saved['cc.transcriptionProvider'] = 'assemblyai';
   const settingBackedArgs = effectiveToolInvocationArgs('transcribe_track', { track: 'A2' });
   assert.deepEqual(
@@ -136,6 +147,12 @@ async function verifyTranscriptionProviderBinding(): Promise<void> {
     executeTool: async () => ({ ok: true }),
   });
   assert.deepEqual(recordedArgs, settingBackedArgs);
+}
+
+async function verifyTranscriptionProviderBinding(): Promise<void> {
+  const saved = installTranscriptionProviderStorage();
+  await verifyExplicitTranscriptionProviders();
+  await verifySettingBackedTranscriptionProvider(saved);
 }
 
 async function verifySecretIdentityAndRedactedLog(): Promise<void> {
