@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 
 const epochs = new Map<string, number>();
-const FINGERPRINT_MARKER = '.preview-v2-';
+const FINGERPRINT_MARKER = '.preview-v3-';
 
 export interface PreviewGenerationEpoch {
   sourceName: string;

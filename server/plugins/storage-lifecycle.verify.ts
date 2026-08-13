@@ -40,7 +40,7 @@ assert.notEqual(
   previewFingerprint({ ...source, mtimeMs: source.mtimeMs + 1 }),
   'preview cache invalidates when source mtime changes',
 );
-assert.match(previewFingerprint(source), /^preview-v2-/, 'preview cache identity includes the transform version');
+assert.match(previewFingerprint(source), /^preview-v3-/, 'preview cache identity includes the transform version');
 assert.notEqual(
   previewFingerprint(source),
   previewFingerprint({ ...source, size: source.size + 1 }),

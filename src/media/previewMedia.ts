@@ -78,7 +78,7 @@ async function loadProxy(src: string, force: boolean, entry: ProxyEntry): Promis
     if (force && !entry.force && entry.response?.proxy.status !== 'ready') await loadProxy(src, true, entry);
     return;
   }
-  if (!force && entry.response) return;
+  if (entry.response && (!force || entry.response.proxy.status === 'ready')) return;
   entry.force = force;
   entry.response = null;
   notify(entry);
@@ -166,7 +166,7 @@ function useProxySources(sources: readonly string[]): number {
     const unsubscribe = subscribe(sources, bump);
     // Only fetch proxies when policy/source mode expects them.
     if (shouldAutoRequestPreviewProxy(quality.mode, quality.preview)) {
-      for (const src of sources) void requestPreviewProxy(src);
+      for (const src of sources) void requestPreviewProxy(src, quality.preview === 'proxy');
     }
     return unsubscribe;
   }, [sources, quality.mode, quality.preview]);

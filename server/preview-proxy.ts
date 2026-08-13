@@ -122,7 +122,7 @@ export async function buildPreviewProxy(file: string, output: string, signal: Ab
     '-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn',
     '-vf', "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-    '-force_key_frames', 'expr:gte(t,n_forced*2)', '-movflags', '+faststart',
+    '-force_key_frames', 'expr:gte(t,n_forced*0.5)', '-movflags', '+faststart',
     '-c:a', 'aac', '-b:a', '160k', output,
   ], signal, PROXY_TIMEOUT_MS);
 }
