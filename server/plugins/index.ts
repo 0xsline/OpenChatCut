@@ -4,6 +4,7 @@
 // - desktop/embedded-server.ts → Electron production shell (stub mounting)
 // Getter reads keystore immediately - the next request will take effect after the setting panel is saved, no need to restart.
 import type { Plugin } from "vite";
+import { editorApiAuthPlugin } from './editor-api-auth.ts';
 import { crossOriginIsolationPlugin } from "./cross-origin-isolation.ts";
 import { storageLifecyclePlugin } from './storage-lifecycle.ts';
 import { projectStorePlugin } from "./project-store-plugin.ts";
@@ -52,9 +53,13 @@ import { getKey } from "../keystore.ts";
 import { installSystemProxy } from '../net.ts';
 import { requestShapeGatePlugin } from './request-shape-gate';
 
-export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
+export function serverPlugins(options: {
+  editorBootstrapHttp?: boolean;
+  projectStoreHttp?: boolean;
+} = {}): Plugin[] {
   installSystemProxy();
   return [
+    editorApiAuthPlugin(),
     requestShapeGatePlugin(),
     crossOriginIsolationPlugin(),
     storageLifecyclePlugin(),
@@ -70,7 +75,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     }),
     projectStorePlugin({ http: options.projectStoreHttp }),
     extensionStorePlugin(),
-    externalAgentPlugin(),
+    externalAgentPlugin({ editorBootstrapHttp: options.editorBootstrapHttp }),
     codexAgentPlugin(),
     settingsPlugin(),
     exportStagePlugin(),

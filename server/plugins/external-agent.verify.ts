@@ -2,9 +2,17 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer, type IncomingMessage } from 'node:http';
-import { externalMcpAuthorized, trustedEditorRequest } from '../editor-auth.ts';
+import {
+  EDITOR_TOKEN_HEADER,
+  editorApiToken,
+  externalMcpAuthorized,
+  externalMcpToken,
+  trustedEditorRequest,
+} from '../editor-auth.ts';
 import { mintUploadReceipt } from '../external-agent/import-token.ts';
 import {
+  externalAgentPlugin,
+  handleEditorBootstrap,
   handleExternalAgentBridge,
   type BridgeOperations,
 } from './external-agent.ts';
@@ -86,6 +94,13 @@ const server = createServer((req, res) => {
     res.end();
     return;
   }
+  if (req.url === '/api/external-agent/bootstrap') {
+    void handleEditorBootstrap(req, res).catch((error) => {
+      res.statusCode = 500;
+      res.end(error instanceof Error ? error.message : String(error));
+    });
+    return;
+  }
   req.url = req.url?.replace(/^\/api\/external-agent/, '') ?? '/';
   void handleExternalAgentBridge(req, res, operations).catch((error) => {
     res.statusCode = 500;
@@ -136,6 +151,7 @@ interface BridgeRequestOptions {
   origin?: string | null;
   host?: string;
   authorization?: string;
+  editorToken?: string | null;
 }
 
 async function requestBridge(
@@ -148,29 +164,34 @@ async function requestBridge(
   if (requestOrigin) headers.set('Origin', requestOrigin);
   if (options.host) headers.set('Host', options.host);
   if (options.authorization) headers.set('Authorization', options.authorization);
+  const token = options.editorToken === undefined ? editorApiToken() : options.editorToken;
+  if (token) headers.set(EDITOR_TOKEN_HEADER, token);
   return fetch(`${origin}/api/external-agent${path}`, { ...init, headers });
 }
 
 async function bootstrap(options: BridgeRequestOptions = {}): Promise<Response> {
-  return requestBridge('/bootstrap', {
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    'X-OpenChatCut-Editor-Bootstrap': '1',
+  });
+  const requestOrigin = options.origin === undefined ? origin : options.origin;
+  if (requestOrigin) headers.set('Origin', requestOrigin);
+  if (options.host) headers.set('Host', options.host);
+  return fetch(`${origin}/api/external-agent/bootstrap`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-OpenChatCut-Editor-Bootstrap': '1',
-    },
+    headers,
     body: '{}',
-  }, options);
+  });
 }
 
-interface BootstrapValue { mcpToken: string }
+interface BootstrapValue { editorToken: string }
 async function readBootstrap(response: Response): Promise<BootstrapValue> {
   assert.equal(response.status, 200);
   const value: unknown = await response.json();
   assert(value && typeof value === 'object' && !Array.isArray(value));
-  assert.equal('credential' in value, false,
-    'bootstrap must not expose any editor credential');
-  assert('mcpToken' in value && typeof value.mcpToken === 'string' && value.mcpToken);
-  return { mcpToken: value.mcpToken };
+  assert('editorToken' in value && typeof value.editorToken === 'string' && value.editorToken);
+  assert.equal('mcpToken' in value, false, 'HTTP bootstrap must not expose the MCP bearer');
+  return { editorToken: value.editorToken };
 }
 
 const originalToken = process.env.OPENCHATCUT_MCP_TOKEN;
@@ -194,11 +215,12 @@ try {
   ), true), false, 'a configured remote editor URL cannot authorize a non-loopback socket');
   delete process.env.OPENCHATCUT_EDITOR_URL;
 
-  // The bridge is authorized purely by the loopback editor request shape:
-  // registration works with NO credential headers; the rest of the endpoints
-  // additionally require the registration capability (asserted below).
-  const registerNoCredential = await requestBridge('/register', registerRequest);
-  assert.equal(registerNoCredential.status, 200, 'a loopback editor request needs no credential');
+  // The bridge requires both the loopback request shape and the independent
+  // per-process editor token.
+  assert.equal((await requestBridge('/register', registerRequest, { editorToken: null })).status, 401);
+  assert.equal((await requestBridge('/register', registerRequest, { editorToken: 'wrong' })).status, 401);
+  const registered = await requestBridge('/register', registerRequest);
+  assert.equal(registered.status, 200);
   assert.equal(calls.registerEditor, 1);
   for (const [, path] of bridgeRequests.slice(1)) {
     // GET endpoints reject a missing capability outright; tools needs none
@@ -209,9 +231,10 @@ try {
       `${path} must reject a missing registration capability`);
   }
 
-  // Bootstrap returns only the MCP token.
+  // Browser bootstrap returns only the renderer-facing token without requiring
+  // it in advance. External MCP credentials stay off the HTTP surface.
   const bootstrapped = await readBootstrap(await bootstrap());
-  assert.equal(typeof bootstrapped.mcpToken, 'string');
+  assert.equal(bootstrapped.editorToken, editorApiToken());
 
   // Cross-origin pages are rejected on every endpoint.
   assert.equal((await bootstrap({ origin: 'http://evil.example' })).status, 403);
@@ -384,9 +407,9 @@ try {
     headers: { 'Content-Type': 'text/plain' },
     body: '{}',
   })).status, 415);
-  assert.equal((await requestBridge('/bootstrap', {
+  assert.equal((await fetch(`${origin}/api/external-agent/bootstrap`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: origin },
     body: '{}',
   })).status, 415);
 
@@ -399,11 +422,32 @@ try {
 
   delete process.env.OPENCHATCUT_MCP_TOKEN;
   delete process.env.OPENCHATCUT_EDITOR_URL;
-  const tokenlessBootstrap = await readBootstrap(await bootstrap());
+  await readBootstrap(await bootstrap());
   assert.equal((await fetch(`${origin}/api/external-mcp/mcp`)).status, 401);
   assert.equal((await fetch(`${origin}/api/external-mcp/mcp`, {
-    headers: { Authorization: `Bearer ${tokenlessBootstrap.mcpToken}` },
+    headers: { Authorization: `Bearer ${externalMcpToken()}` },
   })).status, 204);
+
+  // Electron obtains credentials over IPC, so its embedded server must not
+  // mount the browser-only HTTP bootstrap endpoint.
+  const mountedPaths: string[] = [];
+  const plugin = externalAgentPlugin({ editorBootstrapHttp: false });
+  const hook = plugin.configureServer;
+  const configure = typeof hook === 'function' ? hook : hook?.handler;
+  await configure?.call(plugin as never, {
+    middlewares: {
+      use: (path: string) => {
+        mountedPaths.push(path);
+      },
+    },
+    config: {
+      logger: { error: () => undefined },
+    },
+  } as never);
+  assert.equal(mountedPaths.includes('/api/external-agent/bootstrap'), false,
+    'embedded mode must not expose HTTP bootstrap');
+  assert.equal(mountedPaths.includes('/api/external-agent'), true);
+  assert.equal(mountedPaths.includes('/api/external-mcp/mcp'), true);
 } finally {
   if (originalToken === undefined) delete process.env.OPENCHATCUT_MCP_TOKEN;
   else process.env.OPENCHATCUT_MCP_TOKEN = originalToken;

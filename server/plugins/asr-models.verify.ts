@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ASR_MODELS, asrModelEntry, asrModelFile, type AsrModelEntry } from '../../shared/asr-models';
+import { EDITOR_TOKEN_HEADER, editorApiToken } from '../editor-auth.ts';
 import { __resetAsrTasks, handleAsrModelsRequest, inspectAsrModel } from './asr-models';
 
 const server = createServer((req, res) => {
@@ -38,14 +39,17 @@ try {
     assert.equal((await post(path, {
       Origin: 'http://evil.example',
       'Content-Type': 'application/json',
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
     })).status, 401, `${path} must require a trusted same-origin request`);
     assert.equal((await post(path, {
       Origin: origin,
       'Content-Type': 'text/plain',
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
     })).status, 415, `${path} must reject non-JSON content`);
     assert.equal((await post(path, {
       Origin: origin,
       'Content-Type': 'application/json',
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
     })).status, 400, `${path} must pass authorization and reject IDs outside the fixed catalog`);
   }
 } finally {

@@ -16,7 +16,7 @@ import { claimBrowserProjectOwnership } from '../external-agent/project-edit-own
 import {
   EDITOR_BOOTSTRAP_HEADER,
   configuredEditorOrigin,
-  editorBootstrapPayload,
+  editorHttpBootstrapPayload,
   editorCredentialAuthorized,
   externalMcpAuthorized,
   headerValue,
@@ -63,7 +63,7 @@ function isJsonRequest(req: IncomingMessage): boolean {
   return contentType?.split(';', 1)[0].trim().toLowerCase() === 'application/json';
 }
 
-async function handleEditorBootstrap(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleEditorBootstrap(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (!trustedEditorRequest(req, true)) {
     sendBridgeJson(res, 403, { error: 'untrusted editor origin' });
     return;
@@ -72,12 +72,9 @@ async function handleEditorBootstrap(req: IncomingMessage, res: ServerResponse):
     sendBridgeJson(res, 415, { error: 'editor bootstrap requires JSON and bootstrap header' });
     return;
   }
-  if (!editorCredentialAuthorized(req, true)) {
-    sendBridgeJson(res, 401, { error: 'invalid editor launch credential' });
-    return;
-  }
   await readBridgeJson(req);
-  sendBridgeJson(res, 200, editorBootstrapPayload());
+  res.setHeader('Cache-Control', 'no-store');
+  sendBridgeJson(res, 200, editorHttpBootstrapPayload());
 }
 
 export async function handleExternalAgentBridge(
@@ -86,10 +83,6 @@ export async function handleExternalAgentBridge(
   operations: BridgeOperations = bridgeOperations,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost');
-  if (req.method === 'POST' && url.pathname === '/bootstrap') {
-    await handleEditorBootstrap(req, res);
-    return;
-  }
   const write = req.method === 'POST';
   if (!trustedEditorRequest(req, write)) {
     sendBridgeJson(res, 403, { error: 'untrusted editor origin' });
@@ -106,10 +99,21 @@ export async function handleExternalAgentBridge(
   await routeExternalAgentBridge(req, res, url, operations);
 }
 
-export function externalAgentPlugin(): Plugin {
+export function externalAgentPlugin(options: { editorBootstrapHttp?: boolean } = {}): Plugin {
   return {
     name: 'openchatcut-external-agent',
     configureServer(server) {
+      if (options.editorBootstrapHttp !== false) {
+        server.middlewares.use('/api/external-agent/bootstrap', (req, res) => {
+          if (req.method !== 'POST') {
+            sendBridgeJson(res, 405, { error: 'method not allowed' });
+            return;
+          }
+          void handleEditorBootstrap(req, res).catch((error) => {
+            if (!res.headersSent) sendBridgeJson(res, 400, { error: error instanceof Error ? error.message : String(error) });
+          });
+        });
+      }
       server.middlewares.use('/api/external-agent', (req, res) => {
         void handleExternalAgentBridge(req, res).catch((error) => {
           if (!res.headersSent) sendBridgeJson(res, 400, { error: error instanceof Error ? error.message : String(error) });

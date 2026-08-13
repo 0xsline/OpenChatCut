@@ -3,6 +3,10 @@ import {
   uploadedMediaLocation,
   type UploadedMediaLocation,
 } from './uploadResponse';
+import {
+  EDITOR_TOKEN_HEADER,
+  editorTokenForUiUpload,
+} from '../agent/editor-credential';
 
 export type UploadProgress = (ratio: number) => void;
 
@@ -94,6 +98,8 @@ async function uploadFileSimple(
   const xhr = new XMLHttpRequest();
   const isPresigned = /^https?:\/\//i.test(plan.url) && !plan.url.includes('/upload');
   xhr.open(isPresigned ? 'PUT' : 'POST', plan.url);
+  const editorToken = await editorTokenForUiUpload(plan.url);
+  if (editorToken) xhr.setRequestHeader(EDITOR_TOKEN_HEADER, editorToken);
   xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
   xhr.upload.onprogress = (event) => {
     if (!onProgress || !event.lengthComputable || event.total <= 0) return;

@@ -21,6 +21,7 @@ import {
 } from '../r2.ts';
 import { importUploadUrl, mintImportToken, type ImportTokenScope } from '../external-agent/import-token.ts';
 import { uploadMultipartPlugin } from './upload-multipart.ts';
+import { editorApiAuthPlugin } from './editor-api-auth.ts';
 import {
   directR2UploadAllowed,
   maxUploadBytes,
@@ -176,7 +177,7 @@ try {
     configFile: false,
     appType: 'custom',
     logLevel: 'silent',
-    plugins: [uploadMultipartPlugin(), uploadRoutesPlugin],
+    plugins: [editorApiAuthPlugin(), uploadMultipartPlugin(), uploadRoutesPlugin],
     server: { host: '127.0.0.1', port: 0 },
   });
   await server.listen();

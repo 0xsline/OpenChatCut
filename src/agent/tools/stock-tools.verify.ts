@@ -29,7 +29,7 @@ Object.defineProperty(globalThis, 'window', {
   value: {
     openChatCutDesktop: {
       editorCredentials: async () => ({
-        credential: 'stock-tool-test',
+        editorToken: 'stock-tool-test',
         mcpToken: 'stock-tool-test',
       }),
     },

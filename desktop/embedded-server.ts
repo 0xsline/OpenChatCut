@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 import type { ViteDevServer } from 'vite';
 import { serverPlugins } from '../server/plugins/index.ts';
 import { getKey, seedKeystore } from '../server/keystore.ts';
-import { trustedEditorRequest } from '../server/editor-auth.ts';
+import { editorCredentialAuthorized, trustedEditorRequest } from '../server/editor-auth.ts';
 import { proxyMiddleware, type ProxyRoute } from '../server/proxy.ts';
 import { parseEnvText } from './env-file.ts';
 import { createMiniConnect, type MiniConnect } from './mini-connect.ts';
@@ -32,12 +32,18 @@ function assemblyHeaders(): Record<string, string> {
   return k ? { authorization: k } : {};
 }
 
-function assemblyAiProxyAuthorized(req: IncomingMessage): boolean {
+function assemblyAiProxyTrusted(req: IncomingMessage): boolean {
   const fetchSite = req.headers['sec-fetch-site'];
   if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') return false;
   const method = req.method?.toUpperCase();
   const isRead = method === 'GET' || method === 'HEAD';
   return trustedEditorRequest(req, !isRead);
+}
+
+function assemblyAiProxyAuthorized(req: IncomingMessage): boolean {
+  const method = req.method?.toUpperCase();
+  const isRead = method === 'GET' || method === 'HEAD';
+  return assemblyAiProxyTrusted(req) && editorCredentialAuthorized(req, !isRead);
 }
 
 export function authorizeAssemblyAiProxy(
@@ -50,7 +56,8 @@ export function authorizeAssemblyAiProxy(
     return;
   }
   req.resume();
-  res.writeHead(403, {
+  const trusted = assemblyAiProxyTrusted(req);
+  res.writeHead(trusted ? 401 : 403, {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store',
   });
@@ -76,9 +83,6 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   });
   const server = createServer((req, res) => app.handle(req, res));
 
-  // Authorize the renderer request before the proxy can inject the provider key.
-  mountAssemblyAiProxy(app);
-
   // vite server pile: complete set of plugin dependencies = middlewares.use + config.logger (verified by plugin)
   const fake = {
     middlewares: { use: app.use.bind(app) },
@@ -91,11 +95,18 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
       },
     },
   } as unknown as ViteDevServer;
-  for (const plugin of serverPlugins({ projectStoreHttp: false })) {
+  for (const plugin of serverPlugins({
+    editorBootstrapHttp: false,
+    projectStoreHttp: false,
+  })) {
     const hook = plugin.configureServer;
     const fn = typeof hook === 'function' ? hook : hook?.handler;
     await fn?.call(plugin as never, fake);
   }
+
+  // Mount after the shared pre-auth plugin so provider-key injection can never
+  // run for an unauthenticated localhost request.
+  mountAssemblyAiProxy(app);
 
   // Static cover at the end: uploading assets at runtime takes precedence over dist's build-stage copy
   app.use('/media/uploads', uploadsMiddleware());

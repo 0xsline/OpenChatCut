@@ -6,8 +6,19 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve, sep } from 'node:path';
 import type { Plugin } from 'vite';
 import { mimeFor } from './media-dir.ts';
+import { privilegedEditorPath } from './plugins/editor-api-auth.ts';
 
 export const PRODUCT_ASSETS_DIR = resolve(process.cwd(), 'assets');
+
+export function bypassProductAssets(url: string): boolean {
+  const pathname = new URL(url, 'http://localhost').pathname;
+  return pathname.startsWith('/@')
+    || pathname.startsWith('/node_modules')
+    || pathname.startsWith('/src/')
+    || pathname.startsWith('/media/uploads')
+    || pathname.startsWith('/jobs')
+    || privilegedEditorPath(pathname);
+}
 
 const EXTRA_MIME: Record<string, string> = {
   html: 'text/html; charset=utf-8',
@@ -97,20 +108,7 @@ export function productAssetsPlugin(): Plugin {
           }
           const url = req.url ?? '';
           // Leave Vite internals / API / user uploads alone
-          if (
-            url.startsWith('/@')
-            || url.startsWith('/node_modules')
-            || url.startsWith('/src/')
-            || url.startsWith('/media/uploads')
-            || url.startsWith('/api')
-            || url.startsWith('/llm')
-            || url.startsWith('/assemblyai')
-            || url.startsWith('/e2b')
-            || url.startsWith('/upload')
-            || url.startsWith('/export')
-            || url.startsWith('/generate')
-            || url.startsWith('/jobs')
-          ) {
+          if (bypassProductAssets(url)) {
             next();
             return;
           }

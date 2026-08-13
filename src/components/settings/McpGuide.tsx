@@ -68,7 +68,11 @@ export function McpGuideDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     let active = true;
     void editorBootstrapInfo().then(
-      (info) => { if (active) setMcpToken(info.mcpToken); },
+      (info) => {
+        if (!active) return;
+        if (info.mcpToken) setMcpToken(info.mcpToken);
+        else setTokenError(true);
+      },
       () => { if (active) setTokenError(true); },
     );
     return () => { active = false; };

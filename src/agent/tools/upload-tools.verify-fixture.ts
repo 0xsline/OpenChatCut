@@ -88,7 +88,7 @@ export function installUploadVerifierFixture(): UploadVerifierFixture {
     value: {
       openChatCutDesktop: {
         editorCredentials: async () => ({
-          credential: 'editor-test-credential',
+          editorToken: 'editor-test-credential',
           mcpToken: 'mcp-test-token',
         }),
       },
@@ -99,7 +99,7 @@ export function installUploadVerifierFixture(): UploadVerifierFixture {
     const url = String(input);
     const headers = new Headers(init?.headers);
     assert.equal(headers.get('X-OpenChatCut-Editor-Credential'), null,
-      'no editor credential header may be attached');
+      'the retired editor credential header must never be attached');
     if (url === '/api/external-agent/import-token') {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       state.mintedBodies.push(body);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { MobileUploadSessionSnapshot } from '../mobile-upload-service';
+import { EDITOR_TOKEN_HEADER, editorApiToken } from '../editor-auth.ts';
 import { handleMobileUploadControl } from './mobile-upload';
 
 const snapshot: MobileUploadSessionSnapshot = {
@@ -41,7 +42,7 @@ const origin = `http://127.0.0.1:${address.port}`;
 try {
   const created = await fetch(`${origin}/sessions?locale=en`, {
     method: 'POST',
-    headers: { origin },
+    headers: { origin, [EDITOR_TOKEN_HEADER]: editorApiToken() },
   });
   assert.equal(created.status, 201);
   assert.equal(creates, 1, 'same-origin editor requests can create a session');
@@ -82,7 +83,7 @@ try {
 
   const deleted = await fetch(`${origin}/sessions/${snapshot.id}`, {
     method: 'DELETE',
-    headers: { origin },
+    headers: { origin, [EDITOR_TOKEN_HEADER]: editorApiToken() },
   });
   assert.equal(deleted.status, 200);
   assert.equal(deletes, 1, 'same-origin editor requests can delete a session');

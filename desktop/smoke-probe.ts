@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { externalMcpToken } from '../server/editor-auth.ts';
+import { EDITOR_TOKEN_HEADER, editorApiToken, externalMcpToken } from '../server/editor-auth.ts';
 
 const RENDER_DRAIN_MS = 500;
 
@@ -8,7 +8,9 @@ export async function runDesktopSmokeProbe(
   win: BrowserWindow,
   render: boolean,
 ): Promise<void> {
-  const res = await fetch(`${origin}/api/keys`);
+  const res = await fetch(`${origin}/api/keys`, {
+    headers: { [EDITOR_TOKEN_HEADER]: editorApiToken() },
+  });
   if (!res.ok) throw new Error(`/api/keys → HTTP ${res.status}`);
   const mcp = await fetch(`${origin}/api/external-mcp/mcp`, {
     method: 'POST',
@@ -63,7 +65,11 @@ export async function runDesktopSmokeProbe(
   const state = { fps: 30, width: 640, height: 360, items: [], selectedId: null };
   const response = await fetch(`${origin}/render-still`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: origin,
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
+    },
     body: JSON.stringify({ state, frames: [0] }),
   });
   if (!response.ok) {

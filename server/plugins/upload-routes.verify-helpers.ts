@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
+import { EDITOR_TOKEN_HEADER, editorApiToken } from '../editor-auth.ts';
 
 interface HttpResult {
   status: number;
@@ -10,6 +11,7 @@ export function editorFetch(input: string | URL, init: RequestInit = {}): Promis
   const headers = new Headers(init.headers);
   const url = new URL(input);
   headers.set('Origin', url.origin);
+  headers.set(EDITOR_TOKEN_HEADER, editorApiToken());
   return globalThis.fetch(input, { ...init, headers });
 }
 
@@ -27,6 +29,7 @@ export function chunkedPut(origin: string, path: string, chunks: readonly Buffer
       'content-type': 'application/octet-stream',
       'transfer-encoding': 'chunked',
       origin,
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
     },
   }, (res) => {
     const responseChunks: Buffer[] = [];

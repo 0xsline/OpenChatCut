@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { externalMcpToken } from '../editor-auth';
+import { EDITOR_TOKEN_HEADER, editorApiToken, externalMcpToken } from '../editor-auth';
 import { handleModelPackRequest, modelPackMutationRequestError } from './model-packs';
 import { recoverDirectorySwap, replaceDirectoryAtomically } from './model-pack-install';
 
@@ -57,12 +57,14 @@ try {
     assert.equal((await postMutation(path)).status, 401, `${path} must reject a request without Origin`);
     assert.equal((await postMutation(path, {
       Origin: origin,
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
       Authorization: `Bearer ${externalMcpToken()}`,
     })).status, path.endsWith('/download') ? 202 : 200,
     `${path} must authorize the loopback editor regardless of the MCP bearer`);
     assert.equal((await postMutation(path, {
       Origin: 'http://evil.example',
       Host: '127.0.0.1:5199',
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
     })).status, 401, `${path} must reject a cross-origin page`);
   }
   assert.equal((await fetch(`${origin}/api/model-packs/download`, {
@@ -71,6 +73,7 @@ try {
   })).status, 401, 'authorization must run before content-type and body parsing');
   assert.equal((await postMutation('/api/model-packs/cancel', {
     Origin: origin,
+    [EDITOR_TOKEN_HEADER]: editorApiToken(),
   })).status, 200, 'same-origin loopback requests must authorize model-pack mutations');
 } finally {
   server.close();

@@ -24,6 +24,8 @@ const HOP_BY_HOP = new Set(['host', 'connection', 'keep-alive', 'proxy-authoriza
 // every localhost port, so a large accumulated cookie jar on a dev machine would
 // otherwise be forwarded verbatim and rejected by provider gateways (431/400).
 const NEVER_FORWARD: Record<string, true> = {
+  'x-openchatcut-editor-bootstrap': true,
+  'x-openchatcut-editor-token': true,
   'x-openchatcut-provider': true,
   cookie: true,
 };

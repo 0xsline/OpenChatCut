@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { EDITOR_TOKEN_HEADER, editorApiToken } from '../editor-auth.ts';
 import { handleAssemblyAiUpload } from './assemblyai-upload';
 
 const root = await mkdtemp(join(tmpdir(), 'openchatcut-asr-upload-'));
@@ -32,7 +33,11 @@ const address = server.address();
 assert.ok(address && typeof address === 'object');
 const endpoint = `http://127.0.0.1:${address.port}/api/assemblyai-upload`;
 const editorOrigin = new URL(endpoint).origin;
-const editorJsonHeaders = { 'content-type': 'application/json', origin: editorOrigin };
+const editorJsonHeaders = {
+  'content-type': 'application/json',
+  origin: editorOrigin,
+  [EDITOR_TOKEN_HEADER]: editorApiToken(),
+};
 
 try {
   const uploaded = await fetch(endpoint, {

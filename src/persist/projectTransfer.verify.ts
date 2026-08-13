@@ -37,14 +37,14 @@ const originalFetch = globalThis.fetch;
 const testGlobals = globalThis as unknown as {
   window?: {
     openChatCutDesktop?: {
-      editorCredentials(): Promise<{ credential: string; mcpToken: string }>;
+      editorCredentials(): Promise<{ editorToken: string; mcpToken: string }>;
     };
   };
 };
 const originalWindow = testGlobals.window;
 testGlobals.window = {
   openChatCutDesktop: {
-    editorCredentials: async () => ({ credential: 'project-transfer-test', mcpToken: 'project-transfer-test' }),
+    editorCredentials: async () => ({ editorToken: 'project-transfer-test', mcpToken: 'project-transfer-test' }),
   },
 };
 try {

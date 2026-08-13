@@ -4,11 +4,14 @@ import { once } from 'node:events';
 import { createServer, type IncomingMessage } from 'node:http';
 import { createMiniConnect } from './mini-connect.ts';
 import { mountAssemblyAiProxy } from './embedded-server.ts';
+import { EDITOR_TOKEN_HEADER, editorApiToken } from '../server/editor-auth.ts';
 
 interface UpstreamRequest {
   method: string;
   path: string;
   authorization: string | undefined;
+  editorBootstrap: string | undefined;
+  editorToken: string | undefined;
   body: Buffer;
 }
 
@@ -25,6 +28,12 @@ const upstream = createServer((req, res) => {
       method: req.method ?? '',
       path: req.url ?? '',
       authorization: req.headers.authorization,
+      editorBootstrap: typeof req.headers['x-openchatcut-editor-bootstrap'] === 'string'
+        ? req.headers['x-openchatcut-editor-bootstrap']
+        : undefined,
+      editorToken: typeof req.headers['x-openchatcut-editor-token'] === 'string'
+        ? req.headers['x-openchatcut-editor-token']
+        : undefined,
       body,
     });
     res.writeHead(req.method === 'POST' ? 201 : 200, { 'Content-Type': 'application/json' });
@@ -59,6 +68,7 @@ interface RequestOptions {
   body?: BodyInit;
   contentType?: string;
   secFetchSite?: string;
+  editorToken?: string | null;
 }
 
 async function requestAssembly(path: string, options: RequestOptions = {}): Promise<Response> {
@@ -67,6 +77,8 @@ async function requestAssembly(path: string, options: RequestOptions = {}): Prom
   if (options.origin !== null) headers.set('Origin', options.origin ?? editorOrigin);
   if (options.contentType) headers.set('Content-Type', options.contentType);
   if (options.secFetchSite) headers.set('Sec-Fetch-Site', options.secFetchSite);
+  const token = options.editorToken === undefined ? editorApiToken() : options.editorToken;
+  if (token) headers.set(EDITOR_TOKEN_HEADER, token);
   return fetch(`${editorOrigin}/assemblyai${path}`, {
     method: options.method,
     headers,
@@ -79,6 +91,10 @@ try {
   delete process.env.OPENCHATCUT_EDITOR_URL;
   const reboundHost = `rebound.example:${editorAddress.port}`;
   const denied = [
+    requestAssembly('/v2/transcript/missing-token', {
+      method: 'GET',
+      editorToken: null,
+    }),
     requestAssembly('/v2/upload', {
       method: 'POST',
       host: reboundHost,
@@ -115,7 +131,8 @@ try {
     }),
   ];
   const deniedResponses = await Promise.all(denied);
-  for (const response of deniedResponses) assert.equal(response.status, 403);
+  assert.equal(deniedResponses[0]?.status, 401);
+  for (const response of deniedResponses.slice(1)) assert.equal(response.status, 403);
   assert.equal(upstreamRequests.length, 0, 'untrusted requests must never reach AssemblyAI');
 
   const binary = Buffer.from([0, 255, 1, 254, 2, 253]);
@@ -150,6 +167,8 @@ try {
   assert.equal(upstreamRequests[1]?.body.toString('utf8'), createBody);
   for (const request of upstreamRequests) {
     assert.equal(request.authorization, 'test-assembly-key');
+    assert.equal(request.editorBootstrap, undefined, 'bootstrap capability must not reach providers');
+    assert.equal(request.editorToken, undefined, 'editor token must not reach providers');
   }
 } finally {
   if (originalEditorUrl === undefined) delete process.env.OPENCHATCUT_EDITOR_URL;

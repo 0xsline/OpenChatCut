@@ -7,6 +7,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { DEFAULT_UPLOAD_MAX_BYTES } from '../r2.ts';
 import { seedKeystore } from '../keystore.ts';
+import { EDITOR_TOKEN_HEADER, editorApiToken } from '../editor-auth.ts';
 import { maxUploadBytes } from './upload-routes.ts';
 import { uploadMultipartPlugin } from './upload-multipart.ts';
 import {
@@ -338,6 +339,7 @@ try {
     headers: {
       'content-type': 'application/json',
       origin,
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
     },
     body: JSON.stringify({
       name: '20GiB-boundary.mov',
@@ -351,7 +353,7 @@ try {
   assert.equal(multipart.maxBytes, DEFAULT_UPLOAD_MAX_BYTES);
   const abortResponse = await fetch(`${origin}/upload/multipart?uploadId=${multipart.uploadId}`, {
     method: 'DELETE',
-    headers: { origin },
+    headers: { origin, [EDITOR_TOKEN_HEADER]: editorApiToken() },
   });
   assert.equal(abortResponse.status, 200, await abortResponse.text());
 

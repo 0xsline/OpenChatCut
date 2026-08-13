@@ -5,6 +5,11 @@ import App from './App';
 import { loadProjectFonts } from './fonts/googleFonts';
 import { hydratePlugins } from './plugins/store';
 import { initSkins } from './skins';
+import { installEditorApiFetch } from './agent/editor-credential';
+
+// Install before hydration or React effects can access a privileged localhost
+// route. Credentials are fetched lazily and remain in module memory.
+installEditorApiFetch();
 
 // Inject skin variables and apply persistent skin before rendering to avoid flashing the default color in the first frame.
 initSkins();

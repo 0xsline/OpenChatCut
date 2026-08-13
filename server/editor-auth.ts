@@ -1,11 +1,13 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { TLSSocket } from 'node:tls';
 import type { EditorBootstrapInfo } from '../shared/editor-auth-transport.ts';
 import { isLoopbackAddress } from './loopback-address.ts';
 
 export const EDITOR_BOOTSTRAP_HEADER = 'x-openchatcut-editor-bootstrap';
+export const EDITOR_TOKEN_HEADER = 'x-openchatcut-editor-token';
 
+const generatedEditorToken = randomBytes(32).toString('base64url');
 const generatedMcpToken = randomBytes(32).toString('base64url');
 const LOCAL_EDITOR_HOSTS: Readonly<Record<string, true>> = {
   localhost: true,
@@ -17,11 +19,16 @@ export function externalMcpToken(): string {
   return process.env.OPENCHATCUT_MCP_TOKEN?.trim() || generatedMcpToken;
 }
 
+/** Process-local capability used only by the renderer-facing editor APIs. */
+export function editorApiToken(): string {
+  return generatedEditorToken;
+}
+
 function secretMatches(actual: string | undefined, expected: string): boolean {
   if (!actual) return false;
-  const left = Buffer.from(actual);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
+  const left = createHash('sha256').update(actual).digest();
+  const right = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(left, right);
 }
 
 export function externalMcpAuthorized(req: IncomingMessage): boolean {
@@ -76,13 +83,22 @@ export function trustedEditorRequest(req: IncomingMessage, requireOrigin: boolea
   }
 }
 
-/** Editor-capable endpoints (uploads, model packs, external-agent bridge) are
- *  authorized purely by the loopback + Origin request shape: any page served
- *  from the local editor may call them. No credential handshake is needed. */
+/** Editor-capable endpoints require both the trusted loopback request shape and
+ *  the independent, per-process editor token. */
 export function editorCredentialAuthorized(req: IncomingMessage, requireOrigin: boolean): boolean {
-  return trustedEditorRequest(req, requireOrigin);
+  return trustedEditorRequest(req, requireOrigin)
+    && secretMatches(headerValue(req, EDITOR_TOKEN_HEADER) ?? undefined, editorApiToken());
 }
 
 export function editorBootstrapPayload(): EditorBootstrapInfo {
-  return { mcpToken: externalMcpToken() };
+  return {
+    editorToken: editorApiToken(),
+    mcpToken: externalMcpToken(),
+  };
+}
+
+/** Browser dev bootstrap grants only the renderer-facing capability. External
+ * MCP credentials are never exposed over HTTP. */
+export function editorHttpBootstrapPayload(): EditorBootstrapInfo {
+  return { editorToken: editorApiToken() };
 }

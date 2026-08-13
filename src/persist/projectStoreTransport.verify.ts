@@ -6,12 +6,19 @@ interface TestGlobals {
     replaceState(state: unknown, title: string, url?: string | URL | null): void;
   };
   localStorage: Storage;
-  location: { hash: string; pathname: string; protocol: string; search: string };
+  location: {
+    hash: string;
+    href: string;
+    origin: string;
+    pathname: string;
+    protocol: string;
+    search: string;
+  };
   sessionStorage: Storage;
   window: {
     openChatCutDesktop?: {
       projectStore(request: unknown): Promise<unknown>;
-      editorCredentials?(): Promise<{ mcpToken: string }>;
+      editorCredentials?(): Promise<{ editorToken: string; mcpToken: string }>;
     };
   };
 }
@@ -62,6 +69,8 @@ let resetImportedTransport: (() => void) | undefined;
 globals.window = {};
 globals.location = {
   hash: '',
+  href: 'http://editor.test/',
+  origin: 'http://editor.test',
   pathname: '/',
   protocol: 'http:',
   search: '',
@@ -103,11 +112,15 @@ try {
   assert.equal(projectStoreRemoteAvailable(), true,
     'any loopback editor tab can reach the shared library');
 
-  // HTTP requests must carry no credential headers whatsoever.
+  // The application-wide fetch boundary attaches the in-memory editor token
+  // to same-origin protected requests and never to third-party URLs.
   const calls: Array<{ url: string; headers: Headers; init?: RequestInit }> = [];
   const httpFetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, headers: new Headers(init?.headers), init });
+    if (url === '/api/external-agent/bootstrap') {
+      return Response.json({ editorToken: 'editor-http-token' });
+    }
     if (url.endsWith('/entry?key=projects')) {
       return Response.json({ found: true, value: 'http' });
     }
@@ -117,17 +130,30 @@ try {
     return Response.json({ ok: true });
   };
   globalThis.fetch = httpFetchMock;
+  const {
+    editorBootstrapInfo,
+    installEditorApiFetch,
+    invalidateEditorBootstrapInfo,
+  } = await loadEditorCredential();
+  installEditorApiFetch();
 
   assert.deepEqual(await requestProjectStore({ operation: 'entry', key: 'projects' }), {
     found: true,
     value: 'http',
   });
-  const writeCall = calls[0];
-  for (const name of writeCall.headers.keys()) {
-    assert.ok(!/x-openchatcut/i.test(name),
-      `requests must not carry credential headers (found ${name})`);
-  }
+  const writeCall = calls.find((call) => call.url.endsWith('/entry?key=projects'));
+  assert(writeCall);
+  assert.equal(writeCall.headers.get('X-OpenChatCut-Editor-Token'), 'editor-http-token');
   assert.equal(writeCall.url, '/api/project-store/entry?key=projects');
+
+  await fetch('https://provider.example/resource', {
+    headers: { Authorization: 'Bearer provider-secret' },
+  });
+  const providerCall = calls.find((call) => call.url === 'https://provider.example/resource');
+  assert(providerCall);
+  assert.equal(providerCall.headers.get('X-OpenChatCut-Editor-Token'), null,
+    'editor token must never be attached to third-party requests');
+  assert.equal(providerCall.headers.get('Authorization'), 'Bearer provider-secret');
 
   // Other operations keep their paths and payloads.
   calls.length = 0;
@@ -139,22 +165,33 @@ try {
   assert.equal(calls[0].url, '/api/project-store/project/purge');
 
   // fetchWithEditorSession is a plain fetch without any session machinery.
-  const recovered = await fetchWithEditorSession('/api/external-agent/bootstrap', { method: 'POST' });
+  const recovered = await fetchWithEditorSession('/api/project-store/migrate-status', { method: 'POST' });
   assert.equal(recovered.status, 200);
-  assert.equal(calls[calls.length - 1].url, '/api/external-agent/bootstrap');
-  for (const name of calls[calls.length - 1].headers.keys()) {
-    assert.ok(!/x-openchatcut/i.test(name),
-      `editor fetches must not carry credential headers (found ${name})`);
-  }
+  assert.equal(calls[calls.length - 1].url, '/api/project-store/migrate-status');
+  assert.equal(calls[calls.length - 1].headers.get('X-OpenChatCut-Editor-Token'), 'editor-http-token');
 
   // Outside a loopback http(s) page nothing claims a write credential.
-  globals.location = { hash: '', pathname: '/', protocol: 'file:', search: '' };
+  globals.location = {
+    hash: '',
+    href: 'file:///editor.html',
+    origin: 'null',
+    pathname: '/',
+    protocol: 'file:',
+    search: '',
+  };
   resetProjectStoreTransport();
   assert.equal(projectStoreWriteCredential(), false,
     'non-loopback pages must not claim a write credential');
   assert.equal(projectStoreRemoteAvailable(), false,
     'non-loopback pages have no remote store');
-  globals.location = { hash: '', pathname: '/', protocol: 'http:', search: '' };
+  globals.location = {
+    hash: '',
+    href: 'http://editor.test/',
+    origin: 'http://editor.test',
+    pathname: '/',
+    protocol: 'http:',
+    search: '',
+  };
 
   // Desktop IPC takes precedence over HTTP when present.
   resetProjectStoreTransport();
@@ -176,12 +213,11 @@ try {
   });
   assert.deepEqual(ipcRequest, { operation: 'entry', key: 'projects' });
 
-  // Editor bootstrap only returns the MCP token (no editor credential).
-  const { editorBootstrapInfo, invalidateEditorBootstrapInfo } = await loadEditorCredential();
+  // Trusted desktop IPC returns both independent in-memory tokens.
   let credentialCalls = 0;
   const credentials = [
-    { mcpToken: 'mcp-token-one' },
-    { mcpToken: 'mcp-token-two' },
+    { editorToken: 'editor-token-one', mcpToken: 'mcp-token-one' },
+    { editorToken: 'editor-token-two', mcpToken: 'mcp-token-two' },
   ];
   globals.window = {
     openChatCutDesktop: {
@@ -189,12 +225,13 @@ try {
       editorCredentials: async () => credentials[Math.min(credentialCalls++, 1)],
     },
   };
+  invalidateEditorBootstrapInfo();
   const firstBootstrap = await editorBootstrapInfo();
   assert.deepEqual(await editorBootstrapInfo(), firstBootstrap);
   assert.equal(credentialCalls, 1, 'bootstrap info should remain cached normally');
   invalidateEditorBootstrapInfo();
   assert.deepEqual(await editorBootstrapInfo(), credentials[1]);
-  assert.equal(credentialCalls, 2, 'invalidation must refetch the MCP token');
+  assert.equal(credentialCalls, 2, 'invalidation must refetch both in-memory tokens');
 
   // Browser project ownership: install / wait / advance / clear / reset.
   resetProjectStoreTransport();

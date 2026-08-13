@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { EDITOR_TOKEN_HEADER, editorApiToken } from '../editor-auth.ts';
 import { transcriptionPlugin } from './transcription.ts';
 import type { TranscriptionOptions } from './transcription-types.ts';
 
@@ -119,7 +120,10 @@ try {
 
   response = await originalFetch(`${origin}/api/transcribe?provider=invalid`, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain', Origin: origin },
+    headers: {
+      'Content-Type': 'text/plain', Origin: origin,
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
+    },
     body: 'simple cross-site-compatible body',
   });
   assert.equal(response.status, 415,
@@ -128,7 +132,10 @@ try {
 
   response = await originalFetch(`${origin}/api/transcribe?provider=invalid`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/octet-stream; charset=binary', Origin: origin },
+    headers: {
+      'Content-Type': 'application/octet-stream; charset=binary', Origin: origin,
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
+    },
     body: 'parameterized body',
   });
   assert.equal(response.status, 415,
@@ -137,7 +144,10 @@ try {
 
   response = await originalFetch(`${origin}/api/transcribe?provider=mistral&language=en&diarize=0`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/octet-stream', Origin: origin },
+    headers: {
+      'Content-Type': 'application/octet-stream', Origin: origin,
+      [EDITOR_TOKEN_HEADER]: editorApiToken(),
+    },
     body: Buffer.from('audio-bytes'),
   });
   assert.equal(response.status, 200,

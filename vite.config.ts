@@ -146,6 +146,8 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/assemblyai/, ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('x-openchatcut-editor-bootstrap');
+              proxyReq.removeHeader('x-openchatcut-editor-token');
               const ak = getKey('ASSEMBLYAI_API_KEY') || aaiKey;  // live override
               if (ak) proxyReq.setHeader('authorization', ak);
             });
