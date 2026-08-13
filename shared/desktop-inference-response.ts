@@ -55,6 +55,7 @@ export function isDesktopInferenceCapabilities(value: unknown): value is Desktop
   return capabilities.version === 3
     && (capabilities.platform === 'darwin'
       || capabilities.platform === 'win32'
+      || capabilities.platform === 'linux'
       || capabilities.platform === 'unsupported')
     && isModelCapability(capabilities.asr, ASR_INFERENCE_CONTRACT.id)
     && isModelCapability(capabilities.semantic, SEMANTIC_INFERENCE_CONTRACT.id)

@@ -153,6 +153,12 @@ assert.equal(windows.clap.contractId, CLAP_INFERENCE_CONTRACT.id);
 assert.equal(windows.rhythm.contractId, RHYTHM_INFERENCE_CONTRACT.id);
 assert.equal(windows.rhythm.preferredBackend, 'directml');
 assert.equal(isDesktopInferenceCapabilities(windows), true);
+const linux = resolveDesktopInferenceCapabilities({
+  platform: 'linux',
+  transformerRuntime: true,
+  ffmpegRuntime: true,
+});
+assert.equal(isDesktopInferenceCapabilities(linux), true);
 const noFfmpeg = resolveDesktopInferenceCapabilities({
   platform: 'darwin',
   transformerRuntime: true,
