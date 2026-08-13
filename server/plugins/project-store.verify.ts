@@ -71,12 +71,29 @@ async function verifyCorruptEntryIsolation(root: string): Promise<void> {
   }
 }
 
-const lockRoot = await mkdtemp(join(tmpdir(), 'openchatcut-project-store-'));
+async function verifyConcurrentProjectIndexUpdates(): Promise<void> {
+  const { getStoredEntry, setStoredEntry } = await import('./project-store.ts');
+  const first = { id: 'race-first', name: 'Race first', updatedAt: 1 };
+  const second = { id: 'race-second', name: 'Race second', updatedAt: 1 };
+  await setStoredEntry(`project:${first.id}`, { id: first.id });
+  await setStoredEntry(`project:${second.id}`, { id: second.id });
+  await Promise.all([
+    setStoredEntry('projects', [first]),
+    setStoredEntry('projects', [second]),
+  ]);
+  const stored = await getStoredEntry('projects');
+  assert.equal(stored.found, true);
+  const ids = new Set((stored.value as Array<{ id: string }>).map((item) => item.id));
+  assert.deepEqual(ids, new Set([first.id, second.id]));
+}
+
+const storeRoot = await mkdtemp(join(tmpdir(), 'openchatcut-project-store-'));
 try {
   await verifyAtomicWriteOrdering();
-  await verifyCorruptEntryIsolation(lockRoot);
+  await verifyCorruptEntryIsolation(storeRoot);
+  await verifyConcurrentProjectIndexUpdates();
 } finally {
-  await rm(lockRoot, { recursive: true, force: true });
+  await rm(storeRoot, { recursive: true, force: true });
 }
 
 console.log('project-store.verify: ok');

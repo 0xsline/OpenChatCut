@@ -2,7 +2,7 @@ import { runProjectMigrations } from '../../src/persist/migrations/index.ts';
 import { revisionOf } from '../../src/agent/external-edit-session.ts';
 import type { ProjectDoc } from '../../src/editor/types.ts';
 import {
-  withProjectStoreLock,
+  withSerializedProjectStore,
   type LockedProjectStore,
   type StoredEntryValue,
 } from '../plugins/project-store.ts';
@@ -64,7 +64,7 @@ export async function claimBrowserProjectOwnership(
   if (!validProjectEditOwnershipIdentity(projectId, ownerId) || !expectedRevision) {
     return { status: 'blocked' };
   }
-  return withProjectStoreLock(async (store) => {
+  return withSerializedProjectStore(async (store) => {
     const project = await storedProject(store, projectId);
     if (!project || project.revision !== expectedRevision) {
       return { status: 'stale', currentRevision: project?.revision };
@@ -115,7 +115,7 @@ export async function claimOfflineProjectOwnership(
   if (!validProjectEditOwnershipIdentity(projectId, ownerId)) {
     return { status: 'blocked' };
   }
-  return withProjectStoreLock(async (store) => {
+  return withSerializedProjectStore(async (store) => {
     const project = await storedProject(store, projectId);
     if (!project) return { status: 'missing' };
     const entry = await store.readEntry(projectEditOwnershipKey(projectId));
@@ -140,7 +140,7 @@ export async function renewProjectEditOwnership(
   claim: ProjectEditOwnershipClaim,
   _baseRevision = claim.baseRevision,
 ): Promise<OwnershipRenewResult> {
-  return withProjectStoreLock(async (store) => {
+  return withSerializedProjectStore(async (store) => {
     const ownership = await store.readEntry(projectEditOwnershipKey(claim.projectId));
     if (ownershipCompatibility(ownership, claim.projectId) === 'blocked') return { status: 'blocked' };
     const current = parseProjectEditOwnership(ownership.value, claim.projectId);
@@ -161,7 +161,7 @@ export async function renewProjectEditOwnership(
 }
 
 export async function releaseProjectEditOwnership(claim: ProjectEditOwnershipClaim): Promise<void> {
-  await withProjectStoreLock(async (store) => {
+  await withSerializedProjectStore(async (store) => {
     const key = projectEditOwnershipKey(claim.projectId);
     const entry = await store.readEntry(key);
     const current = parseProjectEditOwnership(entry.value, claim.projectId);

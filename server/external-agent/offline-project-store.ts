@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   getStoredEntry,
-  withProjectStoreLock,
+  withSerializedProjectStore,
   type LockedProjectStore,
   type StoredEntryValue,
 } from '../plugins/project-store.ts';
@@ -232,7 +232,7 @@ async function attemptCommit(input: CommitAttemptInput): Promise<OfflineProjectC
   const projectKey = `project:${input.projectId}`;
   const versionsKey = `versions:${input.projectId}`;
   try {
-    return await withProjectStoreLock<OfflineProjectCommitResult>(async (store) => {
+    return await withSerializedProjectStore<OfflineProjectCommitResult>(async (store) => {
       const project = await store.readEntry(projectKey);
       const before = project.found ? normalizedProject(project.value) : null;
       if (!before || revisionOf(before) !== input.expectedRevision) return { status: 'stale' };
@@ -316,7 +316,7 @@ export async function saveOfflineEditCheckpoint(
   if (!VALID_PROJECT_ID.test(input.projectId)) throw new Error('invalid project id');
   const checkpoint = normalizedCheckpoint(input.checkpoint, input.expectedRevision);
   if (!checkpoint) throw new Error('invalid offline edit checkpoint');
-  return withProjectStoreLock(async (store) => {
+  return withSerializedProjectStore(async (store) => {
     const project = await store.readEntry(`project:${input.projectId}`);
     const doc = project.found ? normalizedProject(project.value) : null;
     if (!doc || revisionOf(doc) !== input.expectedRevision) return 'stale';
@@ -359,7 +359,7 @@ export async function deleteOfflineEditCheckpoint(
   ownership: ProjectEditOwnershipClaim,
 ): Promise<void> {
   if (!VALID_PROJECT_ID.test(projectId)) throw new Error('invalid project id');
-  await withProjectStoreLock(async (store) => {
+  await withSerializedProjectStore(async (store) => {
     const owned = await store.readEntry(projectEditOwnershipKey(projectId));
     if (!projectEditOwnershipMatches(owned.value, ownership)) return;
     const key = `${CHECKPOINT_PREFIX}${projectId}`;

@@ -209,14 +209,6 @@ async function readDirectoryEntries(): Promise<Record<string, unknown>> {
   return entries;
 }
 
-async function acquireLock(): Promise<() => Promise<void>> {
-  // SQLite backend owns all project-store reads/writes: WAL + busy_timeout(5000)
-  // provide multi-read concurrency and serialized writes themselves, so no
-  // cross-process file lock is needed (and the old owner-safe lease could stall
-  // every other browser/tab with "project store busy"/"guard busy").
-  return async () => {};
-}
-
 async function readyExists(): Promise<boolean> {
   try {
     await access(READY_PATH);
@@ -226,7 +218,7 @@ async function readyExists(): Promise<boolean> {
   }
 }
 
-async function migrateLegacyLocked(): Promise<void> {
+async function migrateLegacyStore(): Promise<void> {
   if (await readyExists()) return;
   const legacy = await readLegacyStore();
   await writeEntries(legacy.store.entries);
@@ -236,38 +228,36 @@ async function migrateLegacyLocked(): Promise<void> {
   await durableRename(LEGACY_STORE_PATH, LEGACY_BACKUP_PATH);
 }
 
+let legacyStoreReady: Promise<void> | undefined;
 async function ensureStoreReady(): Promise<void> {
   await initializeSqliteProjectStore();
   // SQLite backend: no JSON dir / .ready / legacy-file migration needed; the
   // database self-creates its directory and schema (phase 1 adds import).
   if (sqliteStoreEnabled()) return;
   if (await readyExists()) return;
-  const release = await acquireLock();
+  legacyStoreReady ??= migrateLegacyStore();
   try {
-    await migrateLegacyLocked();
-  } finally {
-    await release();
+    await legacyStoreReady;
+  } catch (error) {
+    legacyStoreReady = undefined;
+    throw error;
   }
 }
 
 export async function readStore(): Promise<StoreFile> {
-  await ensureStoreReady();
-  const release = await acquireLock();
-  try {
+  return serializeProjectStore(async () => {
+    await ensureStoreReady();
     const deletedIds = new Set(Object.keys(await readDeletedProjects()));
     const entries = withoutDeletedProjects(await readDirectoryEntries(), deletedIds);
     if (!isProjectStoreEntries(entries)) throw new Error('invalid project store entries');
     return { version: 1, entries };
-  } finally {
-    await release();
-  }
+  });
 }
 
 export async function mergeStoredEntries(incoming: Record<string, unknown>): Promise<StoreFile> {
   if (!isProjectStoreEntries(incoming)) throw new Error('invalid project store entries');
-  await ensureStoreReady();
-  const release = await acquireLock();
-  try {
+  return serializeProjectStore(async () => {
+    await ensureStoreReady();
     const deletedIds = new Set(Object.keys(await readDeletedProjects()));
     const current = await readDirectoryEntries();
     await assertAgentSessionMigrationSafe(createLockedProjectStore(deletedIds), current, incoming);
@@ -281,9 +271,7 @@ export async function mergeStoredEntries(incoming: Record<string, unknown>): Pro
       if (key.startsWith('chat:') || key.startsWith('project:')) indexStoreKey(key, value);
     }
     return next;
-  } finally {
-    await release();
-  }
+  });
 }
 
 export async function setStoredEntry(key: string, value: unknown): Promise<void> {
@@ -292,9 +280,8 @@ export async function setStoredEntry(key: string, value: unknown): Promise<void>
     || key.startsWith('agent-session-generation:')) {
     throw new Error('project store entry is server-managed');
   }
-  await ensureStoreReady();
-  const release = await acquireLock();
-  try {
+  await serializeProjectStore(async () => {
+    await ensureStoreReady();
     const deletedIds = new Set(Object.keys(await readDeletedProjects()));
     const projectId = projectIdFromProjectStoreKey(key);
     if (projectId && deletedIds.has(projectId)) return;
@@ -331,9 +318,7 @@ export async function setStoredEntry(key: string, value: unknown): Promise<void>
       return;
     }
     await writeStoredEntry(key, value);
-  } finally {
-    await release();
-  }
+  });
 }
 
 async function purgeProjectEntryFilesDurably(projectId: string): Promise<void> {
@@ -377,9 +362,8 @@ export async function deleteStoredEntry(key: string): Promise<void> {
     || key.startsWith('agent-session-generation:')) {
     throw new Error('project store entry is server-managed');
   }
-  await ensureStoreReady();
-  const release = await acquireLock();
-  try {
+  await serializeProjectStore(async () => {
+    await ensureStoreReady();
     const projectId = PROJECT_DOCUMENT_KEY.exec(key)?.[1];
     if (projectId) {
       if (!VALID_PROJECT_ID.test(projectId)) throw new Error('invalid project id');
@@ -392,9 +376,7 @@ export async function deleteStoredEntry(key: string): Promise<void> {
     } else {
       await durableRemove(entryPath(key));
     }
-  } finally {
-    await release();
-  }
+  });
 }
 
 const { createLockedProjectStore, readEntryFile } = createProjectStoreEntryAdapter({
@@ -406,28 +388,23 @@ const { createLockedProjectStore, readEntryFile } = createProjectStoreEntryAdapt
 export async function getStoredEntry(key: string): Promise<StoredEntryValue> {
   if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
   await ensureStoreReady();
-  const release = await acquireLock();
-  try {
-    const projectId = projectIdFromProjectStoreKey(key);
-    if (projectId && Object.hasOwn(await readDeletedProjects(), projectId)) return { found: false };
-    return await readEntryFile(key);
-  } finally {
-    await release();
-  }
+  const projectId = projectIdFromProjectStoreKey(key);
+  if (projectId && Object.hasOwn(await readDeletedProjects(), projectId)) return { found: false };
+  return readEntryFile(key);
 }
 
 
 /**
- * Process-local serialization for project-store operations.
+ * Process-local ordering for project-store operations.
  *
  * The owner-safe cross-process file lease was removed (it caused "guard
  * busy" stalls and is unnecessary for a single-instance app). Within a single
  * process, multi-step store operations (project-document CAS, offline commits,
- * agent-runtime CAS, export-recovery) must still be mutually exclusive so their
+ * agent-runtime CAS, export-recovery) must still run in order so their
  * read-modify-write steps do not interleave: e.g. a browser editor registered
  * while an offline commit is in flight must observe the post-commit revision
  * (reload) rather than claim a stale frame. This chained promise serializes
- * concurrent withProjectStoreLock callers in this process. Cross-process
+ * concurrent project-store mutations in this process. Cross-process
  * safety on SQLite continues to come from WAL + busy_timeout.
  */
 let projectStoreTail = Promise.resolve();
@@ -437,44 +414,34 @@ function serializeProjectStore<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
-export async function withProjectStoreLock<T>(
+export async function withSerializedProjectStore<T>(
   work: (store: LockedProjectStore) => Promise<T>,
 ): Promise<T> {
   return serializeProjectStore(async () => {
     await ensureStoreReady();
-    try {
-      const deletedIds = new Set(Object.keys(await readDeletedProjects()));
-      return await work(createLockedProjectStore(deletedIds));
-    } finally {
-      // No per-operation release is needed: the promise chain above already
-      // guarantees the next caller starts only after this one settles.
-    }
+    const deletedIds = new Set(Object.keys(await readDeletedProjects()));
+    return work(createLockedProjectStore(deletedIds));
   });
 }
 
 export const {
   writeAgentRuntime,
   updateStoredAgentRunLease,
-} = createAgentRuntimeStoreOperations(withProjectStoreLock);
+} = createAgentRuntimeStoreOperations(withSerializedProjectStore);
 const updateLegacyExportRecovery =
-  createExportRecoveryLeaseOperation(withProjectStoreLock);
+  createExportRecoveryLeaseOperation(withSerializedProjectStore);
 
 export async function updateExportRecoveryLease(
   input: ExportRecoveryLeaseInput,
 ): Promise<ProjectStoreMutationResponse> {
   await ensureStoreReady();
   if (!sqliteStoreEnabled()) return updateLegacyExportRecovery(input);
-  const release = await acquireLock();
-  try {
-    return sqliteImmediateTransaction((store) => (
-      executeImmediateExportRecoveryMutation(store, input)
-    ));
-  } finally {
-    await release();
-  }
+  return sqliteImmediateTransaction((store) => (
+    executeImmediateExportRecoveryMutation(store, input)
+  ));
 }
 
 export const writeProjectDocument =
-  createProjectDocumentStoreOperation(withProjectStoreLock);
+  createProjectDocumentStoreOperation(withSerializedProjectStore);
 
-export const rotateAgentSession = createAgentSessionStoreOperation(withProjectStoreLock);
+export const rotateAgentSession = createAgentSessionStoreOperation(withSerializedProjectStore);

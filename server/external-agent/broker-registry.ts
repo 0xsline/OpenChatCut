@@ -112,7 +112,7 @@ export class EditorConnectionRegistry {
     // rejection. The old entry is replaced below by this.editors.set, and the
     // persisted ownership claim (validated at validateOwnershipClaim) still
     // fences stale takeovers. Offline/multi-writer safety comes from the
-    // withProjectStoreLock serialization and the ownership epoch checks.
+    // serialized project-store mutations and the ownership epoch checks.
     validateOwnershipClaim(ownership, { projectId, editorInstanceId, baseRevision });
     const ownershipEpoch = ownership?.epoch;
     if (previous && bindingChanged(previous, editorInstanceId, baseRevision, ownershipEpoch)) {
