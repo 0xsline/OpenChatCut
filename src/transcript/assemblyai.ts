@@ -136,7 +136,7 @@ async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}):
 
 async function poll(
   id: string,
-  onWait?: () => void,
+  onWait?: (note?: string) => void,
   onCheckpoint?: AssemblyAiCheckpointWriter,
   resume: AssemblyAiResumeCheckpoint = {},
 ): Promise<TranscriptResult> {
@@ -175,7 +175,8 @@ async function poll(
       return { text: d.text ?? words.map((w: { text: string }) => w.text).join(''), words, utterances };
     }
     if (d.status === 'error') throw new Error(d.error ?? 'transcription error');
-    onWait?.();
+    const waited = Math.max(0, Math.round((ASSEMBLYAI_POLL_DEADLINE_MS - (deadline - Date.now())) / 1000));
+    onWait?.(`云端转写中（${String(d.status)}，已等待 ${waited}s）`);
     await new Promise((res) => setTimeout(res, 2500));
   }
 }
@@ -301,7 +302,7 @@ export async function transcribePathResumable(
   path: string,
   resume: AssemblyAiResumeCheckpoint,
   onCheckpoint: AssemblyAiCheckpointWriter,
-  onWait?: () => void,
+  onWait?: (note?: string) => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
   let checkpoint = { ...resume };
@@ -331,7 +332,7 @@ export async function transcribePathResumable(
 
 export async function transcribePath(
   path: string,
-  onWait?: () => void,
+  onWait?: (note?: string) => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
   return transcribePathResumable(path, {}, () => {}, onWait, opts);
