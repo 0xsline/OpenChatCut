@@ -4,6 +4,7 @@ import { fitItemToDuration } from './clipFit';
 import { splitItemKeyframes } from './keyframes';
 import { sourceWindowForTimelineRange } from './sourceLimit';
 import { unlinkItems } from './linkGroups';
+import { reconcileTimelineCaptionReferences } from '../captions/reconcileSources';
 import { reconcileTransitions } from './transitionReconcile';
 import { hasOperationalTranscript } from '../transcript/types';
 import { splitClipTranscript } from '../transcript/edit';
@@ -76,8 +77,9 @@ export function remapSplitTransitionEndpoints(
 }
 
 function reconcileOverwriteLaneState(state: TimelineState): TimelineState {
-  if (!state.transitions?.length) return state;
-  return { ...state, transitions: reconcileTransitions(state.items, state.transitions) };
+  const reconciled = reconcileTimelineCaptionReferences(state);
+  if (!reconciled.transitions?.length) return reconciled;
+  return { ...reconciled, transitions: reconcileTransitions(reconciled.items, reconciled.transitions) };
 }
 
 function overwriteLaneTarget(

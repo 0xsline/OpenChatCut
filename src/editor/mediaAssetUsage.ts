@@ -1,4 +1,5 @@
 import { maintainLinkGroups } from './linkGroups.js';
+import { reconcileTimelineCaptionReferences } from '../captions/reconcileSources.js';
 import type { MediaAsset, ProjectDoc, Timeline, TimelineItem } from './types.js';
 
 /** Resolve a timeline clip to one pool master without guessing across duplicate sources. */
@@ -116,7 +117,7 @@ export function removeAssetFromTimeline(
   const remainingIds = new Set(items.map((item) => item.id));
   const selectedIds = (timeline.selectedIds ?? (timeline.selectedId ? [timeline.selectedId] : []))
     .filter((id) => remainingIds.has(id));
-  return {
+  return reconcileTimelineCaptionReferences({
     ...timeline,
     items,
     transitions: timeline.transitions?.filter((transition) => (
@@ -127,5 +128,5 @@ export function removeAssetFromTimeline(
     multicamGroups: multicamGroups?.length ? multicamGroups : undefined,
     selectedIds,
     selectedId: selectedIds[selectedIds.length - 1] ?? null,
-  };
+  });
 }
