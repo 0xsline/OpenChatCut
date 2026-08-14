@@ -5,7 +5,13 @@ export {
 
 import type { AgentContext } from '../context';
 import type { AtomicAction } from '../../editor/reduce';
-import type { MediaAsset, TimelineItem, TimelineState } from '../../editor/types';
+import {
+  defaultTrackId,
+  resolveTrackId,
+  type MediaAsset,
+  type TimelineItem,
+  type TimelineState,
+} from '../../editor/types';
 import {
   sourceFramesToTimelineFrames,
   sourceWindowForTimelineRange,
@@ -24,6 +30,8 @@ const MAX_INSPECT_SECTIONS = 16;
 const MAX_INSPECT_TAGS = 12;
 export const MAX_MUSIC_PLAN_CUTS = 96;
 export const MAX_MUSIC_PLAN_TARGETS = 64;
+export const MAX_MUSIC_IMAGE_PLACEMENTS = 96;
+const MAX_MUSIC_IMAGE_ASSETS = 64;
 
 const DENSITY_STRIDE: Record<MusicPlanDensity, number> = {
   sparse: 4,
@@ -43,6 +51,28 @@ export interface MusicPlanOptions {
   readonly targetItemIds?: readonly string[];
 }
 
+export interface MusicImagePlanOptions extends MusicPlanOptions {
+  readonly imageAssetIds?: readonly string[];
+  readonly track?: string;
+}
+
+export interface MusicImagePlacement {
+  readonly assetId: string;
+  readonly startFrame: number;
+  readonly durationInFrames: number;
+}
+
+export interface MusicImageEditPlan {
+  readonly schemaVersion: 1;
+  readonly analysisRef: string;
+  readonly musicItemId: string;
+  readonly imageAssetIds: string[];
+  readonly track: string;
+  readonly timing: MusicEditPlan['timing'];
+  readonly range: MusicEditPlan['range'];
+  readonly placements: MusicImagePlacement[];
+}
+
 interface ResolvedMusicTarget {
   readonly asset: MediaAsset;
   readonly item?: TimelineItem;
@@ -54,6 +84,12 @@ interface BuiltPlan {
   readonly overlappingTargetCount: number;
   readonly lockedTargetCount: number;
   readonly targetLimitReached: boolean;
+}
+
+interface BuiltImagePlan {
+  readonly plan: MusicImageEditPlan;
+  readonly availableCutCount: number;
+  readonly imageCount: number;
 }
 
 function resolvePrefix<T extends { readonly id: string }>(
@@ -132,7 +168,7 @@ async function unavailableAnalysis(asset: MediaAsset): Promise<Record<string, un
     // Catalog status is advisory here; cache absence remains the authoritative result.
   }
   return {
-    error: 'music has not been analyzed yet; analyze this asset from the media pool, then retry',
+    error: 'music has not been analyzed yet; call analyze_music for this asset, then retry',
     assetId: asset.id,
     requiredModelPacks: required,
   };
@@ -260,6 +296,14 @@ function normalizePlanOptions(args: Args): MusicPlanOptions {
   };
 }
 
+function normalizeImagePlanOptions(args: Args): MusicImagePlanOptions {
+  const imageAssetIds = Array.isArray(args.imageAssetIds)
+    ? args.imageAssetIds.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    : undefined;
+  const track = typeof args.track === 'string' && args.track.trim() ? args.track.trim() : undefined;
+  return { ...normalizePlanOptions(args), imageAssetIds, track };
+}
+
 function planRange(item: TimelineItem, options: MusicPlanOptions): MusicEditPlan['range'] {
   const itemEnd = item.startFrame + item.durationInFrames;
   const fromFrame = Math.max(item.startFrame, Math.round(options.fromFrame ?? item.startFrame));
@@ -353,13 +397,128 @@ export function buildMusicEditPlan(
     targetLimitReached: allTargets.length > targets.length,
   };
 }
+
+function selectedImageAssets(
+  assets: readonly MediaAsset[],
+  options: MusicImagePlanOptions,
+): MediaAsset[] {
+  const images = assets.filter((asset) => asset.kind === 'image');
+  const selected = options.imageAssetIds?.length
+    ? options.imageAssetIds.map((id) => resolvePrefix(images, id.trim(), 'image asset'))
+    : images;
+  return [...new Map(selected.map((asset) => [asset.id, asset])).values()]
+    .slice(0, MAX_MUSIC_IMAGE_ASSETS);
+}
+
+function imageTrack(state: TimelineState, requested?: string): string {
+  if (requested !== undefined) {
+    const track = resolveTrackId(state, requested, 'video');
+    if (!track) throw new Error(`video track "${requested}" not found; call edit_track action=list`);
+    return track;
+  }
+  const track = resolveTrackId(state, 'V1', 'video') ?? defaultTrackId(state, 'video');
+  if (!track) throw new Error('no video track for photo placement — create one with edit_track first');
+  return track;
+}
+
+export function buildMusicImagePlacementPlan(
+  analysis: MusicAnalysis,
+  analysisRef: string,
+  musicItem: TimelineItem,
+  state: TimelineState,
+  assets: readonly MediaAsset[],
+  options: MusicImagePlanOptions,
+): BuiltImagePlan {
+  const range = planRange(musicItem, options);
+  const images = selectedImageAssets(assets, options);
+  if (!images.length) throw new Error('no image assets available for photo placement');
+  const timing = chooseTiming(analysis, musicItem, state, options, range);
+  const mapped = mapSourcePoints(timingPoints(analysis, timing), musicItem, state.fps)
+    .filter((frame) => frame > range.fromFrame && frame < range.toFrame);
+  const sampled = mapped.filter((_, index) => index % DENSITY_STRIDE[options.density] === 0);
+  const cutFrames = [...new Set(sampled)].slice(0, Math.max(0, MAX_MUSIC_IMAGE_PLACEMENTS - 1));
+  const boundaries = [range.fromFrame, ...cutFrames, range.toFrame];
+  const placements: MusicImagePlacement[] = [];
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const startFrame = boundaries[index]!;
+    const endFrame = boundaries[index + 1]!;
+    if (endFrame <= startFrame) continue;
+    placements.push({
+      assetId: images[index % images.length]!.id,
+      startFrame,
+      durationInFrames: endFrame - startFrame,
+    });
+  }
+  return {
+    plan: {
+      schemaVersion: 1,
+      analysisRef,
+      musicItemId: musicItem.id,
+      imageAssetIds: images.map((asset) => asset.id),
+      track: imageTrack(state, options.track),
+      timing,
+      range,
+      placements,
+    },
+    availableCutCount: sampled.length,
+    imageCount: images.length,
+  };
+}
+
+interface ImagePlacementActions {
+  readonly actions: AtomicAction[];
+  readonly trackLocked: boolean;
+  readonly conflictingItemIds: string[];
+  readonly missingAssetIds: string[];
+}
+
+export function buildMusicImagePlacementActions(
+  plan: MusicImageEditPlan,
+  state: TimelineState,
+  assets: readonly MediaAsset[],
+): ImagePlacementActions {
+  const assetById = new Map(assets.filter((asset) => asset.kind === 'image').map((asset) => [asset.id, asset]));
+  const missingAssetIds = [...new Set(plan.placements
+    .map((placement) => placement.assetId)
+    .filter((assetId) => !assetById.has(assetId)))];
+  const conflictingItemIds = [...new Set(state.items
+    .filter((item) => item.track === plan.track && item.startFrame < plan.range.toFrame
+      && item.startFrame + item.durationInFrames > plan.range.fromFrame)
+    .map((item) => item.id))];
+  const trackLocked = state.tracks?.[plan.track]?.locked === true;
+  if (trackLocked || conflictingItemIds.length || missingAssetIds.length) {
+    return { actions: [], trackLocked, conflictingItemIds, missingAssetIds };
+  }
+  const actions: AtomicAction[] = plan.placements.flatMap((placement) => {
+    const asset = assetById.get(placement.assetId);
+    if (!asset) return [];
+    const item: Omit<TimelineItem, 'startFrame'> = {
+      id: `item_${crypto.randomUUID()}`,
+      track: plan.track,
+      durationInFrames: placement.durationInFrames,
+      kind: 'image',
+      name: asset.name,
+      src: asset.src,
+      sourceAssetId: asset.id,
+      sourceFilename: asset.sourceFilename,
+      originalFilePath: asset.originalFilePath,
+      sourceRevision: asset.sourceRevision,
+      sourceContentHash: asset.sourceContentHash,
+      width: asset.width,
+      height: asset.height,
+    };
+    return [{ type: 'add', item, startFrame: placement.startFrame } satisfies AtomicAction];
+  });
+  return { actions, trackLocked, conflictingItemIds, missingAssetIds };
+}
 export function staleMusicAnalysisResult(
   supplied: unknown,
   current: string,
+  planToolName = 'music_edit_plan',
 ): Record<string, unknown> | null {
   if (typeof supplied !== 'string' || supplied === current) return null;
   return {
-    error: 'stale music analysisRef; call music_edit_plan again before editing',
+    error: `stale music analysisRef; call ${planToolName} again before editing`,
     staleAnalysisRef: true,
     currentAnalysisRef: current,
   };
@@ -383,6 +542,31 @@ async function currentPlan(
   return buildMusicEditPlan(analysis, ref, target.item, ctx.getState(), normalizePlanOptions(args));
 }
 
+async function currentImagePlan(
+  args: Args,
+  ctx: AgentContext,
+  requireAnalysisRef = false,
+): Promise<BuiltImagePlan | Record<string, unknown>> {
+  const target = resolveMusicTarget({ itemId: args.itemId }, ctx);
+  if (!target.item) throw new Error('itemId is required for a music image plan');
+  const analysis = await loadMusicAnalysisForAsset(target.asset);
+  if (!analysis) return await unavailableAnalysis(target.asset);
+  const ref = musicAnalysisRef(analysis);
+  if (requireAnalysisRef && typeof args.analysisRef !== 'string') {
+    return { error: 'analysisRef is required; call music_image_plan before editing', missingAnalysisRef: true };
+  }
+  const stale = staleMusicAnalysisResult(args.analysisRef, ref, 'music_image_plan');
+  if (stale) return stale;
+  return buildMusicImagePlacementPlan(
+    analysis,
+    ref,
+    target.item,
+    ctx.getState(),
+    ctx.getDoc().assets,
+    normalizeImagePlanOptions(args),
+  );
+}
+
 function planResponse(built: BuiltPlan): Record<string, unknown> {
   return {
     ...built.plan,
@@ -400,6 +584,23 @@ function planResponse(built: BuiltPlan): Record<string, unknown> {
 
 function isBuiltPlan(value: BuiltPlan | Record<string, unknown>): value is BuiltPlan {
   return 'plan' in value;
+}
+
+function isBuiltImagePlan(value: BuiltImagePlan | Record<string, unknown>): value is BuiltImagePlan {
+  return 'plan' in value;
+}
+
+function imagePlanResponse(built: BuiltImagePlan): Record<string, unknown> {
+  return {
+    ...built.plan,
+    summary: {
+      placements: built.plan.placements.length,
+      images: built.imageCount,
+      availableCuts: built.availableCutCount,
+      timing: built.plan.timing,
+      capped: built.availableCutCount > Math.max(0, MAX_MUSIC_IMAGE_PLACEMENTS - 1),
+    },
+  };
 }
 
 export function buildMusicSplitActions(
@@ -455,6 +656,55 @@ async function syncCuts(args: Args, ctx: AgentContext): Promise<unknown> {
   };
 }
 
+async function syncImages(args: Args, ctx: AgentContext): Promise<unknown> {
+  const built = await currentImagePlan(args, ctx, true);
+  if (!isBuiltImagePlan(built)) return built;
+  const prepared = buildMusicImagePlacementActions(built.plan, ctx.getState(), ctx.getDoc().assets);
+  if (prepared.missingAssetIds.length) {
+    return {
+      error: 'some planned image assets are no longer in the media pool; rebuild the music image plan',
+      changed: false,
+      missingAssetIds: prepared.missingAssetIds,
+    };
+  }
+  if (prepared.trackLocked) {
+    return {
+      ok: true,
+      changed: false,
+      analysisRef: built.plan.analysisRef,
+      reason: `target video track ${built.plan.track} is locked; unlock it or choose another track`,
+      track: built.plan.track,
+    };
+  }
+  if (prepared.conflictingItemIds.length) {
+    return {
+      error: `target video track ${built.plan.track} is occupied in the requested range; choose an empty track`,
+      changed: false,
+      track: built.plan.track,
+      conflictingItemIds: prepared.conflictingItemIds.slice(0, MAX_MUSIC_PLAN_TARGETS),
+    };
+  }
+  if (!prepared.actions.length) {
+    return {
+      ok: true,
+      changed: false,
+      analysisRef: built.plan.analysisRef,
+      reason: 'no image placements were produced for the requested music range',
+    };
+  }
+  ctx.commands.batch(prepared.actions, '按音乐卡点插入图片');
+  return {
+    ok: true,
+    changed: true,
+    analysisRef: built.plan.analysisRef,
+    track: built.plan.track,
+    placementCount: prepared.actions.length,
+    imageAssetIds: built.plan.imageAssetIds,
+    timing: built.plan.timing,
+    range: built.plan.range,
+  };
+}
+
 export async function execMusicIntelligenceTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   try {
     if (name === 'analyze_music') return await analyzeMusic(args, ctx);
@@ -464,6 +714,11 @@ export async function execMusicIntelligenceTool(name: string, args: Args, ctx: A
       return isBuiltPlan(built) ? planResponse(built) : built;
     }
     if (name === 'sync_cuts_to_music') return await syncCuts(args, ctx);
+    if (name === 'music_image_plan') {
+      const built = await currentImagePlan(args, ctx);
+      return isBuiltImagePlan(built) ? imagePlanResponse(built) : built;
+    }
+    if (name === 'sync_images_to_music') return await syncImages(args, ctx);
     return { error: `unknown tool ${name}` };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
