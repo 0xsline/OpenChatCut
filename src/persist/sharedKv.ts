@@ -320,16 +320,23 @@ export async function kvGetFresh<T>(key: string): Promise<T | undefined> {
     return cached.value as T | undefined;
   }
   if (!injectedBackend && projectStoreRemoteAvailable()) {
-    await fetchRemoteEntry(key);
-    const value = remoteCache?.[key] as T | undefined;
-    if (cacheGeneration) freshCache.set(key, { value, at: Date.now() });
-    return value;
+    try {
+      await fetchRemoteEntry(key);
+    } catch {
+      // Remote momentarily unreachable (bootstrap may have failed the same
+      // way): serve the local copy instead of failing hydration.
+      await disableRemote();
+    }
+    if (remoteCache) {
+      const value = remoteCache[key] as T | undefined;
+      if (cacheGeneration) freshCache.set(key, { value, at: Date.now() });
+      return value;
+    }
   }
   const value = await localGet<T>(key);
   if (cacheGeneration) freshCache.set(key, { value, at: Date.now() });
   return value;
 }
-
 /** Local-first read for per-machine session data (chat history, agent
  *  runtime sidecar): return the local copy immediately and refresh the
  *  remote cache in the background. Cross-port consistency for these keys is
@@ -390,7 +397,15 @@ async function setProjectDocument(key: string, value: unknown): Promise<void> {
     await localSet(key, value);
     return;
   }
-  if (!remoteCache) throw new Error('共享工程数据库暂时不可用，工程未保存');
+  if (!remoteCache) {
+    // The remote bootstrap failed (desktop IPC / server briefly unreachable).
+    // Fall back to a local write marked as pending so a later successful
+    // bootstrap merge carries it into the shared store — the same offline
+    // semantics as kvGet's local read fallback. Never hard-fail the editor.
+    locallyPendingKeys.add(key);
+    await localSet(key, value);
+    return;
+  }
   const projectId = key.slice('project:'.length);
   let ownership = browserProjectOwnership(projectId);
   const local = await localGet<unknown>(key);

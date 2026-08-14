@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { kvDel, kvGet, kvRemoteMode, kvSet, resetSharedKvMemory } from './sharedKv';
+import { kvDel, kvGet, kvGetFresh, kvRemoteMode, kvSet, resetSharedKvMemory } from './sharedKv';
 
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
 const globals = globalThis as typeof globalThis & Record<string, unknown>;
@@ -190,9 +190,26 @@ try {
   await kvSet('authorized-setting', 'shared');
   assert.equal(local.get('authorized-setting'), 'shared', 'authorized remote write updates IndexedDB');
   assert.equal(remoteEntries['authorized-setting'], 'shared', 'authorized remote write reaches the shared store');
+
+  // Desktop IPC bridge exists but the store keeps failing (issue #63):
+  // bootstrap fails, yet reads and project-document writes must degrade to
+  // local copies instead of hard-failing hydration and saves.
+  installGlobal('window', {
+    openChatCutDesktop: {
+      projectStore: async () => { throw new Error('project store lock guard is busy'); },
+    },
+  });
+  local.clear();
+  resetSharedKvMemory();
+  assert.equal(await kvGetFresh('projects'), undefined,
+    'a failing desktop store degrades fresh reads to the local copy');
+  await kvSet('project:issue-63', { name: 'resilient', version: 1 });
+  assert.deepEqual(local.get('project:issue-63'), { name: 'resilient', version: 1 },
+    'a failing desktop store degrades project saves to local instead of throwing');
+  assert.deepEqual(await kvGet('project:issue-63'), { name: 'resilient', version: 1 },
+    'the degraded local save stays readable');
 } finally {
   resetSharedKvMemory();
   restoreGlobals();
 }
-
-console.log('sharedKv.verify: authority and migration semantics passed');
+console.log('sharedKv.verify: authority, migration, and remote-failure fallback semantics passed');
