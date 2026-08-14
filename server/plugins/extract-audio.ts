@@ -11,11 +11,12 @@ import { existsSync } from 'node:fs';
 import { rename, stat, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
-import { ffmpegBin } from '../media-binaries.ts';
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 
 const MAX_JSON = 8 * 1024;
 const ASR_BITRATE = '64k';
 const FFMPEG_TIMEOUT_MS = 30 * 60_000;
+const FFPROBE_TIMEOUT_MS = 10_000;
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -58,6 +59,42 @@ function uploadNameFromSrc(src: string): string | null {
 function asrStem(sourceName: string): string {
   const stem = sourceName.replace(/\.[^.]+$/, '') || sourceName;
   return stem.replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]+/g, '_').slice(0, 80) || 'media';
+}
+
+function probeHasAudio(inputPath: string): Promise<boolean> {
+  // Probe failures are not evidence that the source is silent. Keep the
+  // existing extraction path as the fallback so a missing/broken ffprobe or a
+  // slow network-mounted file cannot silently skip a valid transcription.
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = '';
+    const finish = (hasAudio: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(hasAudio);
+    };
+    const probe = spawn(ffprobeBin(), [
+      '-v', 'error', '-select_streams', 'a',
+      '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', inputPath,
+    ], { stdio: ['ignore', 'pipe', 'ignore'] });
+    probe.stdout?.on('data', (chunk: Buffer) => {
+      stdout += String(chunk);
+      if (stdout.length > 4096) stdout = stdout.slice(-2048);
+    });
+    const timer = setTimeout(() => {
+      probe.kill('SIGKILL');
+      finish(true);
+    }, FFPROBE_TIMEOUT_MS);
+    probe.once('error', () => finish(true));
+    probe.once('close', (code) => {
+      if (code !== 0) {
+        finish(true);
+        return;
+      }
+      finish(stdout.split(/\r?\n/).some((line) => line.trim() === 'audio'));
+    });
+  });
 }
 
 function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
@@ -157,21 +194,7 @@ export function extractAudioPlugin(): Plugin {
           }
           // Fast-fail sources without an audio track instead of letting ffmpeg
           // emit an opaque "output file does not contain any stream" error.
-          const { ffprobeBin } = await import('../media-binaries.ts');
-          const probe = spawn(ffprobeBin(), [
-            '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0',
-            inputPath,
-          ], { stdio: ['ignore', 'pipe', 'ignore'] });
-          let probeOut = '';
-          probe.stdout.on('data', (chunk: Buffer) => { probeOut += String(chunk); });
-          const hasAudio = await new Promise<boolean>((resolveProbe) => {
-            const timer = setTimeout(() => { probe.kill('SIGKILL'); resolveProbe(false); }, 10_000);
-            probe.once('error', () => { clearTimeout(timer); resolveProbe(false); });
-            probe.once('close', (code) => {
-              clearTimeout(timer);
-              resolveProbe(code === 0 && probeOut.trim().length > 0);
-            });
-          });
+          const hasAudio = await probeHasAudio(inputPath);
           if (!hasAudio) {
             sendJson(res, 422, { ok: false, noAudio: true, error: `source has no audio track: ${name}` });
             return;
