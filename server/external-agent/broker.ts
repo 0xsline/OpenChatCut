@@ -52,6 +52,10 @@ export interface ExternalEditorCancellation {
   ownerGone?: string[];
 }
 
+/** Total time a single editor long-poll waits for an incoming call. */
+const EDITOR_POLL_BUDGET_MS = 25_000;
+/** Refresh the editor registration before the online lease can expire. */
+const EDITOR_POLL_REFRESH_MS = 8_000;
 const DEFAULT_TIMEOUT_MS = 180_000;
 const MAX_TIMEOUT_MS = 600_000;
 const queues = new Map<string, QueuedCall[]>();
@@ -431,15 +435,29 @@ export async function nextEditorCall(
   let binding = editorBinding(projectId);
   let call = binding ? takeNextCall(projectId, binding) : undefined;
   if (!call) {
-    await waitForWake(waiters, projectId, signal, 25_000);
-    if (signal.aborted || !(await touchEditor(
-      projectId,
-      editorInstanceId,
-      baseRevision,
-      registrationCapability,
-    ))) return null;
-    binding = editorBinding(projectId);
-    call = binding ? takeNextCall(projectId, binding) : undefined;
+    // Keep the long-poll responsive while refreshing lastSeen. A single
+    // 25-second wait can let an actively-polling editor approach its online
+    // lease boundary on a slow link and appear offline during a read.
+    const startedAt = Date.now();
+    while (!signal.aborted) {
+      const remaining = EDITOR_POLL_BUDGET_MS - (Date.now() - startedAt);
+      if (remaining <= 0) break;
+      await waitForWake(
+        waiters,
+        projectId,
+        signal,
+        Math.min(EDITOR_POLL_REFRESH_MS, remaining),
+      );
+      if (signal.aborted || !(await touchEditor(
+        projectId,
+        editorInstanceId,
+        baseRevision,
+        registrationCapability,
+      ))) return null;
+      binding = editorBinding(projectId);
+      call = binding ? takeNextCall(projectId, binding) : undefined;
+      if (call) break;
+    }
   }
   if (!call) return null;
   return {

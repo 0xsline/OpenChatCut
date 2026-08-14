@@ -113,4 +113,5 @@ const adopted = pendingEditorCallsForTest()[0];
 assert.notEqual(adopted, undefined);
 
 await import('./mcp.verify.ts');
+await import('./broker-poll-refresh.verify.ts');
 console.log('external-agent broker check passed');
