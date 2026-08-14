@@ -6,9 +6,32 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.3] - 2026-08-14
+
+### Added / 新增
+
+- download_media and push_asset accept unlimited URL batches (the previous 4-URL cap forced the model to split calls; the server handles one URL per request and has no batch limit).
+  download_media 与 push_asset 不再限制批量 URL 数量（原 4 条上限强制模型拆分调用；服务端按单 URL 处理且无批量限制）。
+- Server runs now surface model reasoning in the chat Thinking Process block: native reasoning streams and inline <think>/<thinking> content forward as thinking-delta events, accumulate into the assistant message, and survive reloads.
+  服务端执行路径恢复思考过程显示：原生推理流与内联 <think>/<thinking> 内容以 thinking-delta 事件转发、累积进助手消息，并跨刷新恢复。
+- Long tool execution reports live progress on the chat status line (local ASR model load/download, cloud transcription polling status and elapsed wait).
+  长耗时工具执行在聊天状态行实时显示进度（本地 ASR 模型加载/下载、云端转写轮询状态与已等待时间）。
+
+### Fixed / 修复
+
+- AI SDK chunk/step timers abort with a TimeoutError DOMException that was classified as non-retryable; transient provider stalls now retry automatically instead of failing the whole run after a silent 120s wait.
+  AI SDK 分块/步骤计时器抛出的 TimeoutError 此前被归为不可重试；瞬时上游断流现在自动重试，不再静默等待 120 秒后整轮失败。
+- A model calling a tool it used earlier in the conversation no longer fails with "Tool is not active for this request": canonical-but-inactive tools are admitted at execution time (activation is a token optimization, not a security boundary).
+  模型调用对话早前用过、但当前请求未激活的工具不再报 "Tool is not active"：目录内但未激活的工具在执行时自动补激活（激活只是 token 优化，不是安全边界）。
+- Missing-audio-track errors now spell out the exact edit_track create call instead of the ambiguous "call edit_track action=list", which models misread as track tools being unavailable.
+  缺失音轨错误现在给出明确的 edit_track create 调用方式，替代易被模型误解为"轨道工具不可用"的模糊提示。
+- The chat status line showed "writing arguments…" during tool execution (the server never streams argument deltas); it now shows "running…" or the live progress note.
+  工具执行阶段聊天状态行此前误显示"正在编写参数…"（服务端从不流式推送参数）；现在显示"正在执行…"或实时进度。
+
 ## [0.2.2] - 2026-08-13
 
 ### Added / 新增
+
 
 - Server-side execution is now the only Agent run path: the browser-side model loop is removed, Codex turns and vision image attachments flow through the server, and chat, runtime sidecar, drafts, settlements and proposals persist server-side through a single-writer ledger that survives refreshes and service restarts.
   服务端执行现为 Agent 唯一运行路径：浏览器端模型循环已移除，Codex 回合与视觉图片附件全部经由服务端，聊天、运行时账本、草稿、结算与提案通过单写者账本在服务端持久化，可跨刷新与本地服务重启恢复。
