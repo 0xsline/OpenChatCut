@@ -5,8 +5,8 @@ import { safeSourceFilename } from '../../media/sourceFilename';
 import { fallbackDuration, isHttpUrl, nameFromUrl, probeUrl, sniffKind, type PoolKind } from './stock-url-utils';
 
 // Stock and URL ingest tools:
-// - download_media — url | url[] ≤4 → local uploads + media pool
-// - push_asset — filePath | filePath[] ≤4 (public http URL)
+// - download_media — url | url[] → local uploads + media pool
+// - push_asset — filePath | filePath[] (public http URL)
 // - import_url_asset — legacy alias → push_asset
 // - search_stock_media — Pexels/Pixabay/Unsplash/Freesound proxy
 //
@@ -16,8 +16,6 @@ import { fallbackDuration, isHttpUrl, nameFromUrl, probeUrl, sniffKind, type Poo
 
 type Args = Record<string, unknown>;
 
-
-const MAX_BATCH = 4;
 
 // URL sniffing/naming/duration/metadata detection: see ./stock-url-utils.ts (pure function, open the file and keep the 500-line limit)
 
@@ -46,9 +44,7 @@ function mapTypeToKind(type: string | undefined, url: string): PoolKind | null {
   }
 }
 
-/** string | string[] → trimmed url list. Junk entries are dropped (back-compat);
- * the ≤4 batch cap is enforced by the callers so over-limit input ERRORS instead
- * of being silently truncated. */
+/** string | string[] → trimmed url list. Junk entries are dropped (back-compat). */
 function normalizeUrlList(raw: unknown): string[] {
   const list = Array.isArray(raw) ? raw : [raw];
   return list
@@ -201,8 +197,7 @@ async function registerMediaUrl(
 
 async function execDownloadMedia(args: Args, ctx: AgentContext): Promise<unknown> {
   const urls = normalizeUrlList(args.url);
-  if (!urls.length) return { error: 'url is required (string or array, max 4)' };
-  if (urls.length > MAX_BATCH) return { error: `url accepts at most ${MAX_BATCH} URLs per call (got ${urls.length}); split into batches` };
+  if (!urls.length) return { error: 'url is required (string or array)' };
 
   const batchName = urls.length === 1 && typeof args.name === 'string' ? args.name : undefined;
   const type = typeof args.type === 'string' ? args.type : undefined;
@@ -216,8 +211,7 @@ async function execDownloadMedia(args: Args, ctx: AgentContext): Promise<unknown
 
 async function execPushAsset(args: Args, ctx: AgentContext): Promise<unknown> {
   const urls = normalizeUrlList(args.filePath);
-  if (!urls.length) return { error: 'filePath is required (public http(s) URL or array, max 4)' };
-  if (urls.length > MAX_BATCH) return { error: `filePath accepts at most ${MAX_BATCH} URLs per call (got ${urls.length}); split into batches` };
+  if (!urls.length) return { error: 'filePath is required (public http(s) URL or array)' };
 
   const batchName = urls.length === 1 && typeof args.name === 'string' ? args.name : undefined;
   const type = typeof args.type === 'string' ? args.type : undefined;

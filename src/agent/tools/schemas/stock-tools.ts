@@ -10,19 +10,19 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'download_media',
     description: [
       'Download a media file from a public URL into the project media pool.',
-      'Accepts a single url or array of urls (up to 4). Type inferred from extension / Content-Type; pass type to override.',
+      'Accepts a single url or array of urls. Type inferred from extension / Content-Type; pass type to override.',
       'Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset.',
     ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
         url: {
-          // Accept one URI or an array of up to four URIs.
+          // Accept one URI or an array of URIs.
           anyOf: [
             { type: 'string', format: 'uri' },
             { type: 'array', items: { type: 'string', format: 'uri' } },
           ],
-          description: 'HTTP(S) URL or array of URLs (up to 4 total).',
+          description: 'HTTP(S) URL or array of URLs.',
         },
         name: {
           type: 'string',
@@ -45,7 +45,7 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'push_asset',
     description: [
       'Register a public http(s) media URL as a project asset.',
-      'filePath = public URL (string or array, up to 4). Local-dev downloads into /media/uploads when possible.',
+      'filePath = public URL (string or array). Local-dev downloads into /media/uploads when possible.',
       'type may be motion-graphic (with duration / durationInFrames / properties). effect/transition types are not pool media here.',
       'Do NOT pass local filesystem paths. Returns { failed, succeeded, results: [{ assetId, name, type, success } | { error, success:false }] }.',
     ].join(' '),
@@ -53,7 +53,7 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
       type: 'object',
       properties: {
         filePath: {
-          description: 'Public http(s) media URL or array of URLs (up to 4). Local paths are not accepted.',
+          description: 'Public http(s) media URL or array of URLs. Local paths are not accepted.',
         },
         name: {
           type: 'string',

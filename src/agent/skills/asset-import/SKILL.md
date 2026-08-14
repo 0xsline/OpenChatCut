@@ -15,7 +15,7 @@ The agent cannot read the user's filesystem. If the user gives you a `/Users/...
 
 ## Path 2 — public URLs (agent-driven)
 
-Use `download_media` with up to 4 URLs per call. The server fetches, stores under `/media/uploads/`, and registers pool assets. Prefer this for stock/web media the user pointed at. After download, the asset behaves like any other media-pool asset.
+Use `download_media` with a single URL or a batch array. The server fetches, stores under `/media/uploads/`, and registers pool assets. Prefer this for stock/web media the user pointed at. After download, the asset behaves like any other media-pool asset.
 
 ## Path 3 — external host transfer
 

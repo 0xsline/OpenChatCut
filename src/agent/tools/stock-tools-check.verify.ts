@@ -90,15 +90,16 @@ const dlSingle = await execStockTool(
 assert.strictEqual(dlSingle.succeeded, 1, 'single string url works');
 assert.strictEqual(dlSingle.results[0]!.name, 'Solo Clip', 'name honored for single url');
 
-// download_media rejects more than four URLs instead of truncating.
-const tooMany = await execStockTool(
+// download_media accepts batches larger than four URLs without truncation.
+const bigBatch = await execStockTool(
   'download_media',
   { url: [1, 2, 3, 4, 5].map((n) => `https://cdn.example.com/${n}.mp4`) },
   ctx,
-) as { error?: string; results?: unknown[] };
-assert.ok(tooMany.error, '5 urls should error');
-assert.ok(tooMany.error!.includes('4'), 'error names the 4-url cap');
-assert.strictEqual(tooMany.results, undefined, 'nothing downloaded on over-limit batch');
+) as { error?: string; failed?: number; succeeded?: number; results?: unknown[] };
+assert.ok(!bigBatch.error, '5 urls should not error');
+assert.strictEqual(bigBatch.succeeded, 5, 'all 5 urls downloaded');
+assert.strictEqual(bigBatch.failed, 0, 'no failures in 5-url batch');
+assert.strictEqual(bigBatch.results?.length, 5, '5 rows returned');
 
 // download_media — name is IGNORED for batch (>1 url): display names come from the URL basename
 const dlNamed = await execStockTool(
@@ -117,13 +118,16 @@ assert.deepStrictEqual(dlNamed.results.map((r) => r.name), ['first.mp4', 'second
   assert.deepStrictEqual((dlSchema.input_schema as { required?: string[] }).required, ['url']);
 }
 
-// push_asset — same ≤4 batch cap
+// push_asset — same unbounded batch behaviour
 const pushMany = await execStockTool(
   'push_asset',
   { filePath: [1, 2, 3, 4, 5].map((n) => `https://cdn.example.com/${n}.mp4`) },
   ctx,
-) as { error?: string };
-assert.ok(pushMany.error, 'push_asset also errors on >4');
+) as { error?: string; succeeded?: number; failed?: number; results?: unknown[] };
+assert.ok(!pushMany.error, 'push_asset accepts >4 filePaths');
+assert.strictEqual(pushMany.succeeded, 5, 'all 5 filePaths registered');
+assert.strictEqual(pushMany.failed, 0, 'no failures in 5-path batch');
+assert.strictEqual(pushMany.results?.length, 5, '5 rows returned');
 
 // push_asset — single filePath + name override
 const push = await execStockTool(
