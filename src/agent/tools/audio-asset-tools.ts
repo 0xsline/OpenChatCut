@@ -48,10 +48,12 @@ export function execAudioAssetTool(name: string, args: Args, ctx: AgentContext):
   const requestedTrack = args.track ?? 'A1';
   const resolvedTrack = resolveTrackId(state, requestedTrack, 'audio');
   if (args.track != null && !resolvedTrack) {
-    return { error: `audio track "${String(args.track)}" not found; call edit_track action=list` };
+    return {
+      error: `audio track "${String(args.track)}" does not exist yet. Create it first with edit_track action=create json={"trackType":"audio","name":"${String(args.track)}"} (or omit track to place on the default audio track).`,
+    };
   }
   const track = resolvedTrack ?? defaultTrackId(state, 'audio');
-  if (!track) return { error: 'no audio track; create one with edit_track first' };
+  if (!track) return { error: 'no audio track exists; create one with edit_track action=create json={"trackType":"audio"}' };
   ctx.commands.addAudio(commandAudio(asset), {
     track,
     startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,

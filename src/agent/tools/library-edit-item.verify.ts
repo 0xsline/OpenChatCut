@@ -298,7 +298,7 @@ console.log(`catalog: fx=${FX_IDS.length} lut=${LUT_IDS.length} tr=${TRANSITION_
     ],
   }, ctxOf(invalidDraft)) as { ok: boolean; results?: { error?: string }[] };
   assert.strictEqual(invalid.ok, false, 'unknown requested SFX track must not fall back to A1');
-  assert.match(invalid.results?.[0]?.error ?? '', /audio track "A9" not found/);
+  assert.match(invalid.results?.[0]?.error ?? '', /audio track "A9" does not exist yet\. Create it first with edit_track/);
   assert.strictEqual(
     invalidDraft.getState().items.filter((item) => item.kind === 'audio').length,
     0,

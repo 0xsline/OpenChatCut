@@ -263,10 +263,12 @@ function validateAudioAdd(ctx: AgentContext, entry: Entry): OpResult {
   const requestedTrack = entry.track ?? entry.trackId ?? 'A1';
   const resolvedTrack = resolveTrackId(state, requestedTrack, 'audio');
   if ((entry.track != null || entry.trackId != null) && !resolvedTrack) {
-    return { error: `audio track "${String(requestedTrack)}" not found; call edit_track action=list` };
+    return {
+      error: `audio track "${String(requestedTrack)}" does not exist yet. Create it first with edit_track action=create json={"trackType":"audio","name":"${String(requestedTrack)}"} (or omit track to place on the default audio track).`,
+    };
   }
   const track = resolvedTrack ?? defaultTrackId(state, 'audio');
-  if (!track) return { error: 'no audio track; create one with edit_track first' };
+  if (!track) return { error: 'no audio track exists; create one with edit_track action=create json={"trackType":"audio"}' };
   const startFrame = typeof entry.fromFrame === 'number'
     ? entry.fromFrame
     : typeof entry.startFrame === 'number' ? entry.startFrame : undefined;

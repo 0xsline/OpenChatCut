@@ -56,8 +56,8 @@ assert.deepEqual(
   { error: 'audioName is required; call list_audio to choose an asset' },
 );
 assert.deepEqual(
-  execAudioAssetTool('add_audio', { audioName: 'Generated Voice', track: 'A9' }, ctx),
-  { error: 'audio track "A9" not found; call edit_track action=list' },
+  execAudioAssetTool('add_audio', { audioName: 'asset_voice', track: 'A9' }, ctx),
+  { error: 'audio track "A9" does not exist yet. Create it first with edit_track action=create json={"trackType":"audio","name":"A9"} (or omit track to place on the default audio track).' },
 );
 const added = execAudioAssetTool('add_audio', {
   audioName: 'asset_voice',
