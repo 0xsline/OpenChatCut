@@ -20,6 +20,7 @@ import {
   uploadDir,
   type ResolvedUploadFile,
 } from '../media-dir.ts';
+import { resolveProductAsset } from '../product-assets.ts';
 import { safePublicFetch } from '../safe-public-fetch.ts';
 
 const MAX_MATERIALIZED_MEDIA_BYTES = 10 * 1024 * 1024 * 1024;
@@ -245,9 +246,10 @@ async function checkLocalReference(
     );
   }
 
+  const rawPathname = reference.source.split(/[?#]/, 1)[0] ?? '';
   let pathname: string;
   try {
-    pathname = decodeURIComponent(reference.source.split(/[?#]/, 1)[0] ?? '');
+    pathname = decodeURIComponent(rawPathname);
   } catch {
     return issueFor(reference, 'unsupported_source', `Media source has invalid path encoding: ${reference.source}`);
   }
@@ -297,9 +299,17 @@ async function checkLocalReference(
   }
   const readable = await readableFile(candidate);
   options.signal?.throwIfAborted();
-  return readable
+  if (readable) return null;
+
+  // Product-bundled media is served at the same root-absolute URL paths as
+  // public media by productAssetsPlugin. Keep this lookup behind the same
+  // resolver so export preflight and the static renderer agree on disk layout.
+  const productAsset = resolveProductAsset(rawPathname);
+  const productReadable = productAsset ? await readableFile(productAsset) : false;
+  options.signal?.throwIfAborted();
+  return productReadable
     ? null
-    : issueFor(reference, 'missing_source', `Public media source is missing or unreadable: ${reference.source}`);
+    : issueFor(reference, 'missing_source', `Public or product media source is missing or unreadable: ${reference.source}`);
 }
 
 
