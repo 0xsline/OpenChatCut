@@ -112,7 +112,9 @@ function useSaveKeys(values: Values, onSaved: (next: KeyStatusResponse) => void)
       const body = await res.json().catch(() => ({})) as Partial<KeyStatusResponse> & { error?: string };
       if (!res.ok) throw new Error(body.error || t('保存失败 ({n})', { n: res.status }));
       onSaved(body as KeyStatusResponse);
-      setMsg(savedMessage());
+      // A storage-folder change is copied immediately but only used on the next
+      // launch, so saying "saved" alone would look like nothing happened.
+      setMsg(body.restartRequired ? t('已保存 · 重启应用后新的工程存储目录才会生效') : savedMessage());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
