@@ -6,6 +6,7 @@ import { resolveTimelineRenderPlan } from '../../editor/sequenceGraph';
 import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import type { SourceFrameWindow } from '../../editor/sourceLimit';
 import { extractBlobContactSheet, extractBlobImagePreview, isBlobishSrc } from './blob-frames';
+import { prepareBrowserRenderSnapshots } from './renderSnapshotMedia';
 import { resolveTimeline } from './timeline-target';
 import { maybeDescribeFramesResult } from '../vision';
 
@@ -215,11 +216,19 @@ async function renderStills(
   project?: ProjectDoc,
   timelineId?: string,
 ): Promise<ImagePayload | { error: string }> {
+  let prepared: Awaited<ReturnType<typeof prepareBrowserRenderSnapshots>> | undefined;
   try {
+    prepared = await prepareBrowserRenderSnapshots({ state, project, timelineId });
     const res = await fetch('/render-still', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, frames, grid: true, fps: state.fps, ...(project && timelineId ? { project, timelineId } : {}) }),
+      body: JSON.stringify({
+        state: prepared.state,
+        frames,
+        grid: true,
+        fps: prepared.state.fps,
+        ...(prepared.project && timelineId ? { project: prepared.project, timelineId } : {}),
+      }),
     });
     if (!res.ok) {
       const info = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -233,6 +242,8 @@ async function renderStills(
     return packImages(data.frames, data.gridBase64, note, { renderedBy: data.renderedBy ?? 'remotion' });
   } catch (e) {
     return { error: `render-still 请求失败: ${e instanceof Error ? e.message : String(e)}` };
+  } finally {
+    await prepared?.cleanup();
   }
 }
 
