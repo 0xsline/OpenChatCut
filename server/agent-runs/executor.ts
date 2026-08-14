@@ -1,4 +1,12 @@
-import { jsonSchema, streamText, tool, type LanguageModelUsage, type ModelMessage } from 'ai';
+import {
+  jsonSchema,
+  streamText,
+  tool,
+  type LanguageModelUsage,
+  type ModelMessage,
+  type TextStreamPart,
+  type ToolSet,
+} from 'ai';
 import {
   normalizeLlmProvider,
   normalizeOpenAiApiMode,
@@ -59,6 +67,18 @@ export function flushTextEvents(run: ServerRun, pending: string, force: boolean)
   }
   if (force && remainder) {
     pushRunEvent(run, 'text-delta', { text: remainder });
+    return '';
+  }
+  return remainder;
+}
+export function flushThinkingEvents(run: ServerRun, pending: string, force: boolean): string {
+  let remainder = pending;
+  while (remainder.length >= TEXT_EVENT_CHARS) {
+    pushRunEvent(run, 'thinking-delta', { text: remainder.slice(0, TEXT_EVENT_CHARS) });
+    remainder = remainder.slice(TEXT_EVENT_CHARS);
+  }
+  if (force && remainder) {
+    pushRunEvent(run, 'thinking-delta', { text: remainder });
     return '';
   }
   return remainder;
@@ -124,6 +144,11 @@ export async function executeBrowserTool(
     await previous;
   }
   try {
+    // A model may remember a tool from earlier in the conversation even when
+    // the current request did not activate it. Activation is a token
+    // optimization, not a security boundary: canonical membership (checked by
+    // assertCanonicalToolInvocation below) is what actually gates the call.
+    activation.current = activation.current.admit(schema.name);
     assertCanonicalToolInvocation(schema, args, activation.current.schemas());
     const argsDigest = digestToolArgs(args);
     pushRunEvent(run, 'tool-request', {
@@ -194,28 +219,43 @@ function measuredContextUsage(
     cacheWriteTokens: total.inputTokenDetails.cacheWriteTokens,
     requestIndex,
     attemptIndex: 0,
-    isEstimated: total.inputTokens === undefined
-      || total.outputTokens === undefined,
   };
 }
 
-export async function collectServerText(
+export async function collectServerText<TOOLS extends ToolSet>(
   run: ServerRun,
-  stream: AsyncIterable<string>,
+  stream: AsyncIterable<TextStreamPart<TOOLS>>,
 ): Promise<string> {
   const extractor = createInlineThinkingExtractor();
   let text = '';
   let pending = '';
+  let pendingThinking = '';
   const appendVisible = (visible: string): void => {
     if (!visible) return;
     text += visible;
     pending = flushTextEvents(run, pending + visible, false);
   };
-  for await (const delta of stream) {
-    appendVisible(extractor.push(delta).text);
+  const appendThinking = (thinking: string): void => {
+    if (!thinking) return;
+    pendingThinking = flushThinkingEvents(run, pendingThinking + thinking, false);
+  };
+  for await (const part of stream) {
+    if (part.type === 'reasoning-delta' && part.text) {
+      // Native reasoning streams (DeepSeek/OpenAI/… reasoning_content) never
+      // appear in the visible text stream; forward them as thinking events.
+      appendThinking(part.text);
+      continue;
+    }
+    if (part.type !== 'text-delta' || !part.text) continue;
+    const split = extractor.push(part.text);
+    appendVisible(split.text);
+    appendThinking(split.thinking);
   }
-  appendVisible(extractor.flush().text);
+  const tail = extractor.flush();
+  appendVisible(tail.text);
+  appendThinking(tail.thinking);
   flushTextEvents(run, pending, true);
+  flushThinkingEvents(run, pendingThinking, true);
   pushRunEvent(run, 'text-end', serverRunTextMetadata(text));
   return text;
 }
@@ -275,7 +315,7 @@ async function runServerTurnOnce(
     abortSignal: input.signal,
     timeout: SERVER_RUN_AI_TIMEOUT,
   });
-  const text = await collectServerText(input.run, result.textStream);
+  const text = await collectServerText(input.run, result.fullStream);
   const [toolCalls, responseMessages, totalUsage] = await Promise.all([
     result.toolCalls,
     result.responseMessages,

@@ -72,20 +72,26 @@ export function restoredRunMessages(
   current: DisplayMessage[],
   text: string,
   assistantText: string,
+  assistantThinking = '',
 ): DisplayMessage[] {
   const last = current.at(-1);
   const previous = current.at(-2);
+  const restored: DisplayMessage = {
+    role: 'assistant',
+    text: assistantText,
+    ...(assistantThinking ? { thinking: assistantThinking } : {}),
+  };
   if (last?.role === 'assistant' && last.text === ''
     && previous?.role === 'user' && previous.text === text) {
-    return [...current.slice(0, -1), { ...last, text: assistantText }];
+    return [...current.slice(0, -1), restored];
   }
   if (last?.role === 'user' && last.text === text) {
-    return [...current, { role: 'assistant', text: assistantText }];
+    return [...current, restored];
   }
   return [
     ...current,
     { role: 'user', text },
-    { role: 'assistant', text: assistantText },
+    restored,
   ];
 }
 
@@ -103,6 +109,15 @@ export function appendStreamingMessage(
   return last?.role === 'assistant'
     ? [...current.slice(0, -1), { ...last, text: last.text + delta }]
     : [...current, { role: 'assistant', text: delta }];
+}
+export function appendStreamingThinking(
+  current: DisplayMessage[],
+  delta: string,
+): DisplayMessage[] {
+  const last = current.at(-1);
+  return last?.role === 'assistant'
+    ? [...current.slice(0, -1), { ...last, thinking: (last.thinking ?? '') + delta }]
+    : [...current, { role: 'assistant', text: '', thinking: delta }];
 }
 
 export function recoveredRunAwaitsProposal(

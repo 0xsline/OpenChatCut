@@ -24,6 +24,7 @@ export interface StoredServerRun {
   readonly cursor?: number;
   readonly modelHistoryLength?: number;
   readonly assistantText?: string;
+  readonly assistantThinking?: string;
   readonly attempts?: readonly StoredToolAttempt[];
 }
 
@@ -90,6 +91,9 @@ export function readStoredServerRun(projectId: string): StoredServerRun | null {
         : {}),
       ...(typeof parsed.assistantText === 'string'
         ? { assistantText: parsed.assistantText }
+        : {}),
+      ...(typeof parsed.assistantThinking === 'string'
+        ? { assistantThinking: parsed.assistantThinking }
         : {}),
       ...(Array.isArray(parsed.attempts) && parsed.attempts.every(attempt)
         ? { attempts: parsed.attempts }

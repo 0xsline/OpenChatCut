@@ -44,8 +44,16 @@ assert.equal(
   3000,
 );
 assert.equal(classifyLlmFailure(new TypeError('fetch failed')).code, 'TRANSPORT');
+// AI SDK chunk/step timers abort with a TimeoutError DOMException — transient, retryable.
+assert.equal(
+  classifyLlmFailure(new DOMException('Chunk timeout of 120000ms exceeded', 'TimeoutError')).code,
+  'TIMEOUT',
+);
+assert.equal(
+  classifyLlmFailure(new DOMException('The operation was aborted.', 'AbortError')).code,
+  'TIMEOUT',
+);
 assert.equal(classifyLlmFailure(new (class extends Error {})('x')).code, 'UNKNOWN');
-
 // Retryable set matches the classification above.
 for (const code of ['RATE_LIMIT', 'TIMEOUT', 'SERVER', 'TRANSPORT', 'EMPTY_RESPONSE']) {
   assert.equal(isRetryableLlmFailure(code as never), true, code);

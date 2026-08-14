@@ -9,7 +9,10 @@ import {
 import type { AgentContext } from './context';
 import type { DisplayMessage, LiveTool } from './agent-session';
 import type { AgentContextUsage } from './context-compaction';
-import { appendStreamingMessage } from './serverRunRecovery';
+import {
+  appendStreamingMessage,
+  appendStreamingThinking as appendStreamingThinkingMessage,
+} from './serverRunRecovery';
 import {
   loadAgentSettings,
   type AgentSettings,
@@ -42,6 +45,7 @@ export interface ServerRunRefs {
   readonly finalizingRun: MutableServerRunRef<string | null>;
   readonly staleRecoveryRun: MutableServerRunRef<string | null>;
   readonly assistantText: MutableServerRunRef<string>;
+  readonly assistantThinking: MutableServerRunRef<string>;
   readonly subscribe: MutableServerRunRef<((runId: string) => void) | null>;
   readonly abandonRecovery: MutableServerRunRef<(runId: string, error: unknown) => void>;
   readonly runExecutor: MutableServerRunRef<ServerRunToolExecutor | null>;
@@ -59,6 +63,7 @@ export interface ServerRunState {
   readonly updateMessages: (update: (current: DisplayMessage[]) => DisplayMessage[]) => void;
   readonly appendMessage: (message: DisplayMessage) => void;
   readonly appendStreamingText: (delta: string) => void;
+  readonly appendStreamingThinking: (delta: string) => void;
   readonly eventSession: ServerRunEventSession;
   readonly toolExecutor: ServerRunToolExecutor;
 }
@@ -68,6 +73,7 @@ interface ServerRunMessageState {
   readonly updateMessages: ServerRunState['updateMessages'];
   readonly appendMessage: ServerRunState['appendMessage'];
   readonly appendStreamingText: ServerRunState['appendStreamingText'];
+  readonly appendStreamingThinking: ServerRunState['appendStreamingThinking'];
 }
 
 function useServerRunRefs(ctx: AgentContext, options: ServerRunOptions): ServerRunRefs {
@@ -87,6 +93,7 @@ function useServerRunRefs(ctx: AgentContext, options: ServerRunOptions): ServerR
   const finalizingRun = useRef<string | null>(null);
   const staleRecoveryRun = useRef<string | null>(null);
   const assistantText = useRef('');
+  const assistantThinking = useRef('');
   const subscribe = useRef<((runId: string) => void) | null>(null);
   const abandonRecovery = useRef<(runId: string, error: unknown) => void>(() => undefined);
   const runExecutor = useRef<ServerRunToolExecutor | null>(null);
@@ -99,7 +106,7 @@ function useServerRunRefs(ctx: AgentContext, options: ServerRunOptions): ServerR
   bundle.current ??= {
     enabled, ready, running, context, settings, options: optionRef, activeOptions,
     abort, runId, capability, runProject, cursor, terminalRun,
-    finalizingRun, staleRecoveryRun, assistantText, subscribe, abandonRecovery,
+    finalizingRun, staleRecoveryRun, assistantText, assistantThinking, subscribe, abandonRecovery,
     runExecutor,
   };
   return bundle.current;
@@ -124,11 +131,16 @@ function useServerRunMessages(
     refs.assistantText.current += delta;
     updateMessages((current) => appendStreamingMessage(current, delta));
   }, [refs, updateMessages]);
+  const appendStreamingThinking = useCallback((delta: string) => {
+    refs.assistantThinking.current += delta;
+    updateMessages((current) => appendStreamingThinkingMessage(current, delta));
+  }, [refs, updateMessages]);
   return {
     messages: options.session?.messages ?? localMessages,
     updateMessages,
     appendMessage,
     appendStreamingText,
+    appendStreamingThinking,
   };
 }
 

@@ -236,12 +236,16 @@ export async function executeCodexTool(request: CodexToolRequest): Promise<{
       execution: { success: false, result: { error: `Unknown Codex tool: ${name}` } },
     };
   }
+  // A model may remember a tool it used earlier in the conversation even though
+  // the current request did not activate it. Activation is a token optimization,
+  // not a security boundary — canonical membership above already gates the call.
+  const admitted = activation.admit(name);
   const execution = await executeOpenChatCutTool(schema, args, {
     ctx,
     onEvent,
     settings,
-    toolCatalog: activation.allSchemas(),
-    activeToolCatalog: activation.schemas(),
+    toolCatalog: admitted.allSchemas(),
+    activeToolCatalog: admitted.schemas(),
     harness,
     runRecorder,
     toolCallId,
@@ -249,15 +253,15 @@ export async function executeCodexTool(request: CodexToolRequest): Promise<{
     onFollowup,
   });
   if ((name !== 'ToolSearch' && name !== 'load_skill') || !execution.success) {
-    return { activation, execution };
+    return { activation: admitted, execution };
   }
-  const activated = activation.withToolResult(name, execution.result);
+  const activated = admitted.withToolResult(name, execution.result);
   return {
     activation: activated.activation,
     execution: {
       ...execution,
       result: activated.result,
-      refreshTools: activated.activation.names().length > activation.names().length,
+      refreshTools: activated.activation.names().length > admitted.names().length,
     },
   };
 }

@@ -276,6 +276,7 @@ bindServerRunEvents(source as never, runId, {
   ready: () => true,
   commit: () => 'committed',
   commitTextDelta: () => 'committed',
+  commitThinkingDelta: () => 'committed',
   ensureAssistantMessage: () => undefined,
   onContextUsage: (usage) => { receivedUsages.push(usage); },
   handleToolRequest: (
@@ -371,6 +372,7 @@ bindServerRunEvents(earlySource as never, runId, {
   ready: () => false,
   commit: () => 'committed',
   commitTextDelta: () => 'committed',
+  commitThinkingDelta: () => 'committed',
   ensureAssistantMessage: () => undefined,
   onContextUsage: () => undefined,
   handleToolRequest: async () => {
@@ -402,6 +404,7 @@ bindServerRunEvents(failedSource as never, runId, {
   ready: () => true,
   commit: () => 'failed',
   commitTextDelta: () => 'failed',
+  commitThinkingDelta: () => 'failed',
   ensureAssistantMessage: () => undefined,
   onContextUsage: () => undefined,
   handleToolRequest: async (_id, _callId, _name, _args, _digest, admit) => {

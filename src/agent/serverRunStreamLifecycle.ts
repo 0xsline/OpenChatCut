@@ -55,7 +55,7 @@ function resetAbandonedRun(state: ServerRunState): void {
   refs.abort.current = null;
   refs.cursor.current = 0;
   refs.assistantText.current = '';
-  refs.terminalRun.current = null;
+  refs.assistantThinking.current = '';
   refs.finalizingRun.current = null;
   refs.activeOptions.current = null;
   refs.runExecutor.current = null;
@@ -142,6 +142,20 @@ function commitTextDelta(
   state.appendStreamingText(delta);
   return 'committed';
 }
+function commitThinkingDelta(
+  projectId: string,
+  state: ServerRunState,
+  event: Event,
+  delta: string,
+): ServerRunEventCommit {
+  const sequence = Number((event as MessageEvent).lastEventId);
+  if (!Number.isSafeInteger(sequence) || sequence <= state.refs.cursor.current) return 'ignored';
+  const assistantThinking = state.refs.assistantThinking.current + delta;
+  if (!patchStoredServerRun(projectId, { cursor: sequence, assistantThinking })) return 'failed';
+  state.refs.cursor.current = sequence;
+  state.appendStreamingThinking(delta);
+  return 'committed';
+}
 
 function bindEventSource(
   projectId: string,
@@ -155,6 +169,7 @@ function bindEventSource(
     ready: () => state.refs.ready.current,
     commit: (event) => commitSequence(projectId, state, event),
     commitTextDelta: (event, delta) => commitTextDelta(projectId, state, event, delta),
+    commitThinkingDelta: (event, delta) => commitThinkingDelta(projectId, state, event, delta),
     ensureAssistantMessage: () => state.updateMessages((current) => (
       current.at(-1)?.role === 'assistant'
         ? current

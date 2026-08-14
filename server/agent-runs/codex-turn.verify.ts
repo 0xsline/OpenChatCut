@@ -59,6 +59,7 @@ function sequence(events: readonly CodexTurnStreamEvent[]): ServerCodexTurnDeps 
   const input = makeInput(run);
   const deps = sequence([
     { type: 'text-delta', delta: 'I found ' },
+    { type: 'thinking-delta', delta: 'checking clip boundaries' },
     { type: 'text-delta', delta: 'the clips.' },
     { type: 'done' },
   ]);
@@ -76,6 +77,16 @@ function sequence(events: readonly CodexTurnStreamEvent[]): ServerCodexTurnDeps 
   await flushRunPersistence(run);
   const textEnd = run.events.find((event) => event.type === 'text-end');
   assert.ok(textEnd, 'text-end event is pushed');
+  const thinking = run.events
+    .filter((event) => event.type === 'thinking-delta')
+    .map((event) => {
+      const data = event.data;
+      return data && typeof data === 'object' && 'text' in data && typeof data.text === 'string'
+        ? data.text
+        : '';
+    })
+    .join('');
+  assert.equal(thinking, 'checking clip boundaries', 'codex thinking-delta reaches run events');
 }
 
 // ── Tool turn: tool-start bridges to the browser and settles back ─────────────

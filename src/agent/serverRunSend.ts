@@ -61,6 +61,7 @@ export interface ServerRunSendEnvironment {
     readonly terminalRun: MutableRef<string | null>;
     readonly staleRecoveryRun: MutableRef<string | null>;
     readonly assistantText: MutableRef<string>;
+    readonly assistantThinking: MutableRef<string>;
   };
   readonly setRunning: (running: boolean) => void;
   readonly updateMessages: (
@@ -80,7 +81,7 @@ export interface ServerRunSendEnvironment {
 
 type ServerRunTransientRefs = Pick<
   ServerRunSendEnvironment['refs'],
-  'abort' | 'assistantText' | 'cursor' | 'staleRecoveryRun' | 'terminalRun'
+  'abort' | 'assistantText' | 'assistantThinking' | 'cursor' | 'staleRecoveryRun' | 'terminalRun'
 >;
 
 export function prepareServerRunTransport(
@@ -91,6 +92,7 @@ export function prepareServerRunTransport(
   refs.staleRecoveryRun.current = null;
   refs.cursor.current = 0;
   refs.assistantText.current = '';
+  refs.assistantThinking.current = '';
   refs.abort.current = abort;
 }
 

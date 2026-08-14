@@ -379,4 +379,16 @@ assert.equal(
 assert.equal(expiredSearch.names().includes('ToolSearch'), true,
   'the next completed request keeps ToolSearch fallback');
 
+// admit: a canonical tool the model remembered from history becomes active
+// again; unknown names and non-canonical names are no-ops.
+const admitted = expiredSearch.admit('web_crawl');
+assert.equal(admitted.names().includes('web_crawl'), true,
+  'a canonical-but-inactive tool is admitted for the rest of the request');
+assert.equal(admitted.names().includes('ToolSearch'), true,
+  'admitting keeps ToolSearch active for deferred discovery');
+assert.equal(admitted.admit('not_in_catalog').names().includes('not_in_catalog'), false,
+  'admit cannot register a tool outside the canonical catalog');
+assert.equal(admitted.admit('web_crawl'), admitted,
+  'admitting an already-active tool is a stable no-op');
+
 console.log('tool activation checks passed');

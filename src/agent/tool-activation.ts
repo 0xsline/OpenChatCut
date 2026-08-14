@@ -210,4 +210,16 @@ export class ToolActivation {
   names(): readonly string[] {
     return this.schemas().map((schema) => schema.name);
   }
+
+  /** Canonical-but-inactive call (model remembered a tool from history): activation
+   * is a token optimization, not a security boundary, so admit and continue. */
+  admit(name: string): ToolActivation {
+    if (this.activeNames.has(name) || !this.byName.has(name)) return this;
+    return new ToolActivation(
+      this.catalog,
+      [],
+      [...this.activeNames, name],
+      this.activeNames.has('ToolSearch'),
+    );
+  }
 }

@@ -134,6 +134,7 @@ function restoreRecoveryMessages(context: RecoveryContext): void {
     current,
     stored.text!,
     stored.assistantText ?? '',
+    stored.assistantThinking ?? '',
   ));
 }
 

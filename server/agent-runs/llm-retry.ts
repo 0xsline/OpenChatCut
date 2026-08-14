@@ -71,9 +71,11 @@ export function classifyLlmFailure(error: unknown): LlmFailure {
     return { code: 'TRANSPORT', message: error.message };
   }
   const name = error instanceof Error ? error.name : '';
-  if (name === 'AbortError') {
+  if (name === 'AbortError' || name === 'TimeoutError') {
     // The caller checks its own abort signal first; reaching this branch
     // means the attempt timed out or was aborted mid-flight by the SDK.
+    // The AI SDK chunk/step timers abort with a TimeoutError DOMException,
+    // which is transient and retryable exactly like an AbortError.
     return { code: 'TIMEOUT', message: safeMessage(error) };
   }
   if (error instanceof Error && (name === 'TypeError' || name === 'FetchError')) {

@@ -17,7 +17,7 @@ import {
   recordServerContextUsage,
   type ServerRun,
 } from './store';
-import { executeBrowserTool, flushTextEvents, serverRunTextMetadata, type ActivationState } from './executor';
+import { executeBrowserTool, flushTextEvents, flushThinkingEvents, serverRunTextMetadata, type ActivationState } from './executor';
 
 const CODEX_TURN_TIMEOUT_MS = 600_000;
 
@@ -153,6 +153,7 @@ export async function executeServerCodexTurn(
   pushRunEvent(input.run, 'text-start', {});
   let text = '';
   let pending = '';
+  let pendingThinking = '';
   let done = false;
   let errorMessage: string | null = null;
   const toolHistory: ModelMessage[] = [];
@@ -211,6 +212,9 @@ export async function executeServerCodexTurn(
         text += event.delta;
         pending = flushTextEvents(input.run, pending + event.delta, false);
         break;
+      case 'thinking-delta':
+        pendingThinking = flushThinkingEvents(input.run, pendingThinking + event.delta, false);
+        break;
       case 'tool-start':
         bridgeToolCall(event);
         break;
@@ -253,6 +257,7 @@ export async function executeServerCodexTurn(
     turnError = error;
   }
   flushTextEvents(input.run, pending, true);
+  flushThinkingEvents(input.run, pendingThinking, true);
   pushRunEvent(input.run, 'text-end', serverRunTextMetadata(text));
   if (turnError) throw turnError;
   if (errorMessage) {

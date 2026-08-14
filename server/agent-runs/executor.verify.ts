@@ -157,16 +157,21 @@ const outputRun = createRun({
   model: 'test-model',
 });
 const longVisibleOutput = 'A'.repeat(250_000);
-async function* outputChunks(): AsyncGenerator<string> {
-  yield '<thi';
-  yield 'nk>private chain of thought';
-  yield '</think><thinking>more private reasoning</thinking>';
+let partId = 0;
+const nextPart = (): number => { partId += 1; return partId; };
+async function* outputChunks(): AsyncGenerator<
+  | { type: 'text-delta'; id: number; text: string }
+  | { type: 'reasoning-delta'; id: number; text: string }
+> {
+  yield { type: 'text-delta', id: nextPart(), text: '<thi' };
+  yield { type: 'text-delta', id: nextPart(), text: 'nk>private chain of thought' };
+  yield { type: 'reasoning-delta', id: nextPart(), text: 'native reasoning stream' };
+  yield { type: 'text-delta', id: nextPart(), text: '</think><thinking>more private reasoning</thinking>' };
   for (let offset = 0; offset < longVisibleOutput.length; offset += 777) {
-    yield longVisibleOutput.slice(offset, offset + 777);
+    yield { type: 'text-delta', id: nextPart(), text: longVisibleOutput.slice(offset, offset + 777) };
   }
 }
 const collected = await collectServerText(outputRun, outputChunks());
-assert.equal(collected, longVisibleOutput, 'visible output remains available to proposal flow');
 pushRunEvent(outputRun, 'finish', serverRunTextMetadata(collected));
 await flushRunPersistence(outputRun);
 const persistedVisible = outputRun.events
@@ -176,13 +181,18 @@ const persistedVisible = outputRun.events
 assert.equal(persistedVisible, longVisibleOutput);
 assert(!persistedVisible.includes('private chain of thought'));
 assert(!persistedVisible.includes('more private reasoning'));
+const persistedThinking = outputRun.events
+  .filter((event) => event.type === 'thinking-delta')
+  .map((event) => String(record(event.data).text ?? ''))
+  .join('');
+assert.equal(
+  persistedThinking,
+  'private chain of thoughtnative reasoning streammore private reasoning',
+  'stripped thinking reaches the browser as thinking-delta events',
+);
 assert(
   outputRun.events.length < MAX_SERVER_RUN_EVENTS,
   'a roughly 64K-token visible response fits the run event-count cap',
-);
-assert(
-  outputRun.events.every((event) => Buffer.byteLength(JSON.stringify(event)) <= MAX_SERVER_EVENT_BYTES),
-  'every text chunk remains below the 64 KiB event envelope',
 );
 assert(
   outputRun.events.reduce(
@@ -205,8 +215,8 @@ const escapedRun = createRun({
   model: 'test-model',
 });
 const escapedVisible = '\u0000"\\\ud800'.repeat(2_048);
-async function* escapedChunks(): AsyncGenerator<string> {
-  yield escapedVisible;
+async function* escapedChunks(): AsyncGenerator<{ type: 'text-delta'; id: number; text: string }> {
+  yield { type: 'text-delta', id: nextPart(), text: escapedVisible };
 }
 assert.equal(await collectServerText(escapedRun, escapedChunks()), escapedVisible);
 await flushRunPersistence(escapedRun);

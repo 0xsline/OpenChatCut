@@ -17,6 +17,8 @@ import {
   serverRunRecoveryDelay,
   shouldRetryPendingServerRunAdmission,
   storedServerRunPreservesHydration,
+  appendStreamingThinking,
+  restoredRunMessages,
 } from './serverRunRecovery.ts';
 import { prepareServerRunTransport } from './serverRunSend.ts';
 
@@ -24,6 +26,7 @@ import { prepareServerRunTransport } from './serverRunSend.ts';
 const transportRefs = {
   abort: { current: null as AbortController | null },
   assistantText: { current: 'previous response' },
+  assistantThinking: { current: 'previous thinking' },
   cursor: { current: 37 },
   staleRecoveryRun: { current: 'stale-run' as string | null },
   terminalRun: { current: 'previous-run' as string | null },
@@ -32,6 +35,7 @@ const transportAbort = new AbortController();
 prepareServerRunTransport(transportRefs, transportAbort);
 assert.equal(transportRefs.abort.current, transportAbort);
 assert.equal(transportRefs.assistantText.current, '');
+assert.equal(transportRefs.assistantThinking.current, '');
 assert.equal(transportRefs.cursor.current, 0,
   'each new server run starts at cursor zero instead of inheriting the prior run cursor');
 assert.equal(transportRefs.staleRecoveryRun.current, null);
@@ -338,5 +342,43 @@ await assert.rejects(
   'the browser does not locally finalize a cancellation the server rejected',
 );
 globalThis.fetch = originalFetch;
+
+// thinking stream accumulates onto the streaming assistant message…
+const thinkingStream = appendStreamingThinking([{ role: 'user', text: 'edit' }], 'plan');
+assert.deepEqual(
+  thinkingStream,
+  [{ role: 'user', text: 'edit' }, { role: 'assistant', text: '', thinking: 'plan' }],
+  'a thinking delta before any text opens an assistant message with thinking',
+);
+assert.deepEqual(
+  appendStreamingThinking(thinkingStream, ' more'),
+  [
+    { role: 'user', text: 'edit' },
+    { role: 'assistant', text: '', thinking: 'plan more' },
+  ],
+  'later thinking deltas append to the same message',
+);
+// …and restored runs carry thinking back into the rebuilt assistant message.
+assert.deepEqual(
+  restoredRunMessages(
+    [{ role: 'user', text: 'edit' }],
+    'edit',
+    'done',
+    'plan more',
+  ),
+  [
+    { role: 'user', text: 'edit' },
+    { role: 'assistant', text: 'done', thinking: 'plan more' },
+  ],
+  'restored run messages preserve stored thinking',
+);
+assert.deepEqual(
+  restoredRunMessages([{ role: 'user', text: 'edit' }], 'edit', 'done'),
+  [
+    { role: 'user', text: 'edit' },
+    { role: 'assistant', text: 'done' },
+  ],
+  'runs without thinking keep the previous message shape',
+);
 
 console.log('server run browser adapter verification passed');

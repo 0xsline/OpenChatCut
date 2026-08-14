@@ -44,6 +44,7 @@ function detachSwitchedRun(state: ServerRunState): void {
   state.refs.running.current = false;
   state.refs.cursor.current = 0;
   state.refs.assistantText.current = '';
+  state.refs.assistantThinking.current = '';
   state.refs.staleRecoveryRun.current = null;
   state.setRunning(false);
 }

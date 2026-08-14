@@ -10,6 +10,7 @@ interface ServerRunEventHandlers {
   readonly ready: () => boolean;
   readonly commit: (event: Event) => ServerRunEventCommit;
   readonly commitTextDelta: (event: Event, delta: string) => ServerRunEventCommit;
+  readonly commitThinkingDelta: (event: Event, delta: string) => ServerRunEventCommit;
   readonly ensureAssistantMessage: () => void;
   readonly handleToolRequest: (
     runId: string,
@@ -125,6 +126,11 @@ function bindTextEvents(
     if (!objectRecord(data) || typeof data.text !== 'string') return;
     handleCommit(handlers.commitTextDelta(event, data.text), runId, handlers);
   });
+  source.addEventListener('thinking-delta', (event) => {
+    const data = eventData(event);
+    if (!objectRecord(data) || typeof data.text !== 'string') return;
+    handleCommit(handlers.commitThinkingDelta(event, data.text), runId, handlers);
+  });
 }
 
 function bindToolRequest(
@@ -157,7 +163,7 @@ function bindCompletionEvents(
   runId: string,
   handlers: ServerRunEventHandlers,
 ): void {
-  for (const type of ['text-end', 'tool-result', 'finish', 'status']) {
+  for (const type of ['text-end', 'tool-result', 'finish', 'status', 'llm-retry', 'llm-retry-start']) {
     source.addEventListener(type, (event) => {
       handleCommit(commitEvent(event, handlers), runId, handlers);
     });

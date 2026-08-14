@@ -61,6 +61,7 @@ const ROLLABLE_EVENT: ReadonlySet<string> = new Set([
   'configured',
   'text-start',
   'text-delta',
+  'thinking-delta',
   'text-end',
   'context-usage',
 ]);
