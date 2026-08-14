@@ -183,8 +183,11 @@ export class EditorConnectionRegistry {
       editor.baseRevision = baseRevision;
       this.hooks.revisionChanged(previous);
     }
+    // A successful touch IS the keep-alive: refresh lastSeen so the online
+    // lease (isConnected) reflects this poll even when no call arrives.
+    editor.lastSeen = Date.now();
     return true;
-  }
+}
 
   registrationMatches(
     projectId: string,
