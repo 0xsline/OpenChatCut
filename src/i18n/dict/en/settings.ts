@@ -482,4 +482,10 @@ export default {
   '确认清理': 'Confirm cleanup',
   '清理中…': 'Cleaning up…',
   '已清理 {removed} 个旧 JSON 文件': 'Removed {removed} old JSON files',
+  '工程存储目录': 'Project storage folder',
+  '应用默认数据目录': 'Default app data folder',
+  '工程与素材的本地保存目录，与可选的 R2 云备份。': 'Where projects and media are stored locally, plus optional R2 cloud backup.',
+  '工程、历史版本与素材的存放位置。默认放在应用数据目录里；改到你自己的目录（外置硬盘、同步盘）后，卸载或重装应用都不会动到作品。保存时会把现有数据复制到新目录（原目录保留不删），重启应用后生效。': 'Where projects, version history and media are kept. Defaults to the app data folder; point it at a folder of your own (external drive, synced folder) and uninstalling or reinstalling the app never touches your work. Saving copies the existing data to the new folder (the old one is kept, not deleted); takes effect after a restart.',
+  '桌面端点击“选择目录”；也可手动输入绝对路径（可用 ~/ 开头）。清除后回到默认目录。': 'On desktop, click "Choose folder"; you can also type an absolute path (~/ accepted). Clear it to return to the default folder.',
+  '已保存 · 重启应用后新的工程存储目录才会生效': 'Saved · the new project storage folder takes effect after a restart',
 } as Record<string, string>;

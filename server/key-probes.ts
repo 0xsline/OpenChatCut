@@ -9,6 +9,8 @@ import { environmentProxyUrl, proxyDispatcher } from './outbound-proxy.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
+import { checkDataDir, readDataDirPointer } from './data-dir.ts';
+import { DATA_DIR_ENV, defaultRootDir, runtimeProfile } from './runtime-profile.ts';
 import {
   AI_SDK_BASE_URL_FORMAT,
   resolveLlmBaseUrl,
@@ -58,6 +60,23 @@ const PROXY_PROBE_URL = 'https://www.gstatic.com/generate_204';
 function proxyProbeUrl(overrides: Record<string, unknown>): string {
   if (Object.hasOwn(overrides, 'PROXY_URL')) return String(overrides.PROXY_URL ?? '').trim();
   return getKey('PROXY_URL').trim() || environmentProxyUrl();
+}
+
+/** Storage-root writability check: a local disk probe, never a network request. */
+export async function runDataDirProbe(overrides: Record<string, unknown>): Promise<ProbeResult> {
+  const profile = runtimeProfile();
+  if (process.env[DATA_DIR_ENV]?.trim()) {
+    return { ok: false, message: `目录由 ${DATA_DIR_ENV} 固定，无法在设置中修改` };
+  }
+  const raw = Object.hasOwn(overrides, DATA_DIR_ENV)
+    ? String(overrides[DATA_DIR_ENV] ?? '')
+    : readDataDirPointer() ?? '';
+  const started = Date.now();
+  const body = await checkDataDir(raw, defaultRootDir(profile));
+  const latencyMs = Date.now() - started;
+  return body.ok
+    ? { ok: true, latencyMs, message: body.note ?? '目录可写' }
+    : { ok: false, latencyMs, message: body.error ?? '目录检查失败' };
 }
 
 /** Test the saved proxy or the unsaved value currently shown in the settings field. */
@@ -423,6 +442,9 @@ export function makeGetter(overrides: Record<string, unknown>): Get {
 /** Run a connectivity probe of the provider's page. Unconfigured/unknown pages are returned before sending a request and do not hit the network.*/
 export async function runProbe(page: string, overrides: Record<string, unknown>): Promise<ProbeResult> {
   if (page === 'agent/proxy') return runProxyProbe(overrides);
+  // The storage root is not a keystore key (makeGetter would drop it), so its
+  // writability check reads the panel's raw value directly.
+  if (page === 'storage/projects') return runDataDirProbe(overrides);
   const probe = PROBES[page];
   if (!probe) return { ok: false, message: '该厂商暂不支持连接测试' };
   const get = makeGetter(overrides);

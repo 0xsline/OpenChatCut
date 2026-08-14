@@ -48,6 +48,9 @@ export interface KeyStatusResponse {
   keys: Record<string, KeyState>;
   caps: Record<string, boolean>;
   models: Record<string, string>;
+  /** Set by the save response when the change only lands on the next launch
+   *  (project storage folder: the runtime profile resolves at startup). */
+  restartRequired?: boolean;
 }
 export const secret = (name: string, label: string): SettingsField => ({ name, label, kind: 'secret' });
 export const text = (

@@ -9,10 +9,19 @@ import {
   uploadDir,
 } from '../media-dir.ts';
 import {
+  DATA_DIR_ENV,
+  defaultRootDir,
   isIsolatedDevProfile,
   runtimeProfile,
   type RuntimeProfile,
 } from '../runtime-profile.ts';
+import {
+  checkDataDir,
+  expandDataDir,
+  readDataDirPointer,
+  relocateDataDir,
+  writeDataDirPointer,
+} from '../data-dir.ts';
 
 const ISOLATED_R2_SETTINGS = [
   'R2_ACCOUNT_ID',
@@ -70,8 +79,40 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 /** keyStatus + absolute path to the current asset directory. FCPXML export goes to /media/uploads/<name>
  * Convert to real disk path, otherwise every asset in NLE will be offline; the directory changes with MEDIA_DIR,
  * Only the server knows, so it is returned to the front-end along with the settings (non-key, can be disclosed). */
-function settingsBody() {
-  return { ...keyStatus(), mediaDir: uploadDir() };
+function settingsBody(restartRequired = false) {
+  const profile = runtimeProfile();
+  const status = keyStatus();
+  const configured = readDataDirPointer() ?? '';
+  return {
+    ...status,
+    // The storage root is configuration, not a credential: echo it raw so the
+    // settings field shows where projects actually live. It is not a keystore
+    // key (the keystore lives inside the root), hence the explicit merge.
+    models: { ...status.models, [DATA_DIR_ENV]: configured },
+    mediaDir: uploadDir(),
+    dataDir: profile.rootDir,
+    ...(restartRequired ? { restartRequired: true } : {}),
+  };
+}
+
+/** Apply a storage-root change: validate, copy the existing data, record the
+ *  pointer. The active profile resolved at startup, so the move only takes
+ *  effect on the next launch; the caller reports that to the user. */
+async function applyDataDirChange(
+  raw: string,
+  profile: RuntimeProfile,
+  log: (msg: string) => void,
+): Promise<void> {
+  if (process.env[DATA_DIR_ENV]?.trim()) {
+    throw new Error(`storage directory is pinned by ${DATA_DIR_ENV} and cannot be changed from settings`);
+  }
+  const checked = await checkDataDir(raw, defaultRootDir(profile));
+  if (!checked.ok) throw new Error(checked.error ?? 'invalid storage directory');
+  const target = expandDataDir(raw);
+  if (target && target !== profile.rootDir) {
+    await relocateDataDir(profile.rootDir, target, log);
+  }
+  await writeDataDirPointer(target);
 }
 
 export function settingsPlugin(): Plugin {
@@ -96,6 +137,18 @@ export function settingsPlugin(): Plugin {
             const profile = runtimeProfile();
             const patch = await readBody(req);
             assertProfileSensitiveSettingsPatch(patch, profile);
+            // The storage root is not a keystore key (the keystore lives inside
+            // it): handle and strip it before setKeys sees the patch.
+            let dataDirChanged = false;
+            if (Object.hasOwn(patch, DATA_DIR_ENV)) {
+              await applyDataDirChange(
+                String(patch[DATA_DIR_ENV] ?? ''),
+                profile,
+                (msg) => server.config.logger.info(msg),
+              );
+              delete patch[DATA_DIR_ENV];
+              dataDirChanged = true;
+            }
             const previousMediaDir = uploadDir(profile);
             if ('MEDIA_DIR' in patch) {
               const rawMediaDir = String(patch.MEDIA_DIR ?? '');
@@ -109,7 +162,7 @@ export function settingsPlugin(): Plugin {
               );
             }
             await setKeys(patch);
-            sendJson(res, 200, settingsBody());
+            sendJson(res, 200, settingsBody(dataDirChanged));
             return;
           }
           sendJson(res, 405, { error: 'method not allowed — use GET or POST' });

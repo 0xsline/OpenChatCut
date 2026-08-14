@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { DEV_PROFILE_ID_ENV, resolveRuntimeProfile } from './runtime-profile.ts';
+import { DATA_DIR_ENV, DEV_PROFILE_ID_ENV, defaultRootDir, resolveRuntimeProfile } from './runtime-profile.ts';
+import { dataDirPointerPath } from './data-dir.ts';
 import { projectStoreAuthDir } from './project-store-http-auth.ts';
 
 const homeDir = resolve('runtime-profile-fixtures', 'home');
@@ -90,3 +93,81 @@ assert.throws(
   () => resolveRuntimeProfile({ OPENCHATCUT_DEV_PROFILE_ROOT: isolatedRoot }, { homeDir, cwd }),
   /Unsupported isolated development profile variable/,
 );
+
+// ── User-chosen storage root ─────────────────────────────────────────────────
+// The whole point of the setting is that projects survive removing the app, so the
+// chosen root must win over every default: the hidden global root, the per-checkout
+// media folder, and the isolated dev profile root.
+const dataDirHome = mkdtempSync(join(tmpdir(), 'openchatcut-runtime-data-dir-'));
+try {
+  const chosen = join(dataDirHome, 'Saves', 'OpenChatCut');
+  const envDataDir = resolveRuntimeProfile({ [DATA_DIR_ENV]: chosen }, { homeDir: dataDirHome, cwd });
+  assert.equal(envDataDir.mode, 'default');
+  assert.equal(envDataDir.rootDir, chosen);
+  assert.equal(envDataDir.authDir, join(chosen, 'project-store-auth-v1'));
+  assert.equal(envDataDir.generationJobStore, join(chosen, 'generation-operations-v1.json'));
+  assert.equal(envDataDir.projectStore.directory, join(chosen, 'project-store-v1'));
+  assert.equal(envDataDir.projectStore.tombstonePath, join(chosen, 'deleted-projects-v1.json'));
+  // Media follows the projects it backs, instead of staying in the checkout.
+  assert.equal(envDataDir.mediaDir, join(chosen, 'media', 'uploads'));
+  // The keystore stays with the checkout in default mode: it is not project data.
+  assert.equal(envDataDir.keystorePath, resolve(cwd, '.env.local'));
+
+  // `~/` expands, whitespace is trimmed, and a blank value is the same as no value.
+  assert.equal(
+    resolveRuntimeProfile({ [DATA_DIR_ENV]: '  ~/Saves  ' }, { homeDir: dataDirHome, cwd }).rootDir,
+    join(dataDirHome, 'Saves'),
+  );
+  assert.equal(
+    resolveRuntimeProfile({ [DATA_DIR_ENV]: '~' }, { homeDir: dataDirHome, cwd }).rootDir,
+    dataDirHome,
+  );
+  assert.equal(
+    resolveRuntimeProfile({ [DATA_DIR_ENV]: '   ' }, { homeDir: dataDirHome, cwd }).rootDir,
+    join(dataDirHome, '.openchatcut'),
+  );
+  // A typo must fail loudly: silently falling back would hide the projects somewhere
+  // the user never chose, which is exactly what this setting exists to prevent.
+  assert.throws(
+    () => resolveRuntimeProfile({ [DATA_DIR_ENV]: 'relative/saves' }, { homeDir: dataDirHome, cwd }),
+    /must be an absolute path/,
+  );
+
+  // With no environment variable, the pointer file recorded by the settings UI is used,
+  // and the environment variable wins over it when both are present.
+  const pointed = join(dataDirHome, 'Pointed');
+  mkdirSync(join(dataDirHome, '.openchatcut'), { recursive: true });
+  writeFileSync(dataDirPointerPath(dataDirHome), JSON.stringify({ version: 1, dataDir: pointed }));
+  assert.equal(resolveRuntimeProfile({}, { homeDir: dataDirHome, cwd }).rootDir, pointed);
+  assert.equal(
+    resolveRuntimeProfile({ [DATA_DIR_ENV]: chosen }, { homeDir: dataDirHome, cwd }).rootDir,
+    chosen,
+  );
+  // A damaged pointer degrades to the default root rather than blocking startup.
+  writeFileSync(dataDirPointerPath(dataDirHome), 'not json at all');
+  assert.equal(
+    resolveRuntimeProfile({}, { homeDir: dataDirHome, cwd }).rootDir,
+    join(dataDirHome, '.openchatcut'),
+  );
+
+  // An isolated dev profile keeps its own keystore, but its data moves too: the user
+  // asked for a visible, durable location, which outranks the per-checkout root.
+  const isolatedData = resolveRuntimeProfile({
+    [DEV_PROFILE_ID_ENV]: profileAId,
+    [DATA_DIR_ENV]: chosen,
+  }, { homeDir: dataDirHome, cwd });
+  assert.equal(isolatedData.mode, 'isolated-dev');
+  assert.equal(isolatedData.rootDir, chosen);
+  assert.equal(isolatedData.mediaDir, join(chosen, 'media', 'uploads'));
+  assert.equal(isolatedData.keystorePath, join(chosen, 'settings.env'));
+
+  // defaultRootDir answers "where does clearing the field lead?", so it must ignore
+  // the configured root in both modes.
+  assert.equal(defaultRootDir(envDataDir, dataDirHome), join(dataDirHome, '.openchatcut'));
+  assert.equal(
+    defaultRootDir(isolatedData, dataDirHome),
+    join(dataDirHome, '.openchatcut', 'dev-profiles', profileAId),
+  );
+} finally {
+  rmSync(dataDirHome, { recursive: true, force: true });
+}

@@ -1,7 +1,9 @@
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
+import { readDataDirPointer } from './data-dir.ts';
 
 export const DEV_PROFILE_ID_ENV = 'OPENCHATCUT_DEV_PROFILE_ID';
+export const DATA_DIR_ENV = 'OPENCHATCUT_DATA_DIR';
 const DEV_PROFILE_ENV_PREFIX = 'OPENCHATCUT_DEV_PROFILE_';
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -91,15 +93,33 @@ function configuredProfileId(env: RuntimeProfileEnv): string | null {
   return value;
 }
 
+/** User-chosen storage root (games-style save folder): data survives app removal.
+ *  The environment variable wins so a launch script can pin a location; the
+ *  settings UI records its choice in the fixed pointer file instead.
+ *  Accepts ~/ expansion, requires an absolute path, and rejects anything else
+ *  loudly so a typo never silently falls back to the hidden default location. */
+function configuredDataDir(env: RuntimeProfileEnv, home: string): string | null {
+  const raw = env[DATA_DIR_ENV]?.trim();
+  if (!raw) return readDataDirPointer(home);
+  const expanded = raw === '~' ? home : raw.replace(/^~(?=\/)/, home);
+  if (!isAbsolute(expanded)) {
+    throw new Error(`${DATA_DIR_ENV} must be an absolute path (got: ${raw})`);
+  }
+  return resolve(expanded);
+}
+
 export function resolveRuntimeProfile(
   env: RuntimeProfileEnv = process.env,
   locations: RuntimeProfileLocations = {},
 ): RuntimeProfile {
   const home = locations.homeDir ?? homedir();
   const cwd = locations.cwd ?? process.cwd();
+  const dataDir = configuredDataDir(env, home);
   const profileId = configuredProfileId(env);
   if (profileId) {
-    const rootDir = join(home, '.openchatcut', 'dev-profiles', profileId);
+    // An explicit data dir replaces the per-checkout hidden profile root: the
+    // user asked for their projects to live at a visible, durable location.
+    const rootDir = dataDir ?? join(home, '.openchatcut', 'dev-profiles', profileId);
     const base = profileBase(
       rootDir,
       join(rootDir, 'media', 'uploads'),
@@ -108,12 +128,14 @@ export function resolveRuntimeProfile(
     );
     return Object.freeze({ mode: 'isolated-dev', id: profileId, ...base });
   }
-  const rootDir = join(home, '.openchatcut');
+  const rootDir = dataDir ?? join(home, '.openchatcut');
   const authOverride = env.OPENCHATCUT_PROJECT_STORE_AUTH_DIR?.trim();
   const generationOverride = env.OPENCHATCUT_GENERATION_JOB_STORE;
   const base = profileBase(
     rootDir,
-    join(cwd, 'public', 'media', 'uploads'),
+    // With a user-chosen data dir, media belongs next to the projects it
+    // backs; the checkout-relative default only applies to the hidden root.
+    dataDir ? join(dataDir, 'media', 'uploads') : join(cwd, 'public', 'media', 'uploads'),
     generationOverride ?? join(rootDir, 'generation-operations-v1.json'),
     resolve(cwd, '.env.local'),
   );
@@ -135,4 +157,15 @@ export function isIsolatedDevProfile(
   profile: RuntimeProfile = activeProfile,
 ): profile is IsolatedDevRuntimeProfile {
   return profile.mode === 'isolated-dev';
+}
+
+/** Storage root the app would use with no data directory configured. Lets the
+ *  settings UI say where clearing the field actually leads. */
+export function defaultRootDir(
+  profile: RuntimeProfile = activeProfile,
+  home: string = homedir(),
+): string {
+  return isIsolatedDevProfile(profile)
+    ? join(home, '.openchatcut', 'dev-profiles', profile.id)
+    : join(home, '.openchatcut');
 }

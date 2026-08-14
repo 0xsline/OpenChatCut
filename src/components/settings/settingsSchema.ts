@@ -262,8 +262,16 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     key: 'cloud', title: '存储', icon: 'cloud',
     groups: [
-      { key: 'storage', title: '媒体存储', hint: '素材的本地保存目录，与可选的 R2 云备份。',
+      { key: 'storage', title: '媒体存储', hint: '工程与素材的本地保存目录，与可选的 R2 云备份。',
         vendors: [
+          { key: 'storage/projects', vendor: 'localdisk', title: '工程存储目录',
+            note: '工程、历史版本与素材的存放位置。默认放在应用数据目录里；'
+              + '改到你自己的目录（外置硬盘、同步盘）后，卸载或重装应用都不会动到作品。'
+              + '保存时会把现有数据复制到新目录（原目录保留不删），重启应用后生效。',
+            fields: [
+              directory('OPENCHATCUT_DATA_DIR', '工程存储目录', '应用默认数据目录',
+                '桌面端点击“选择目录”；也可手动输入绝对路径（可用 ~/ 开头）。清除后回到默认目录。'),
+            ] },
           { key: 'storage/local', vendor: 'localdisk', title: '本地磁盘',
             note: '桌面端默认把素材存入系统应用数据目录，浏览器开发版默认使用 public/media/uploads/。'
               + '可选择任意本机目录或外置硬盘；保存后旧目录中的素材会复制到新目录（原文件保留），'
