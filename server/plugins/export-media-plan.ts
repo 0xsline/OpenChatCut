@@ -236,8 +236,10 @@ async function checkLocalReference(
   // absolute paths are treated as local files that were never imported/mapped.
   const isLocalFileUrl = reference.source.startsWith('file:');
   const isWindowsDrivePath = /^[A-Za-z]:[\\/]/.test(reference.source); // C:\… | D:/…
+  const productAssetPath = resolveProductAsset(reference.source.split(/[?#]/, 1)[0] ?? '');
   const isOtherPosixAbsolute = reference.source.startsWith('/')
-    && !reference.source.startsWith('/media/uploads/');
+    && !reference.source.startsWith('/media/uploads/')
+    && !productAssetPath;
   if (isLocalFileUrl || isWindowsDrivePath || isOtherPosixAbsolute) {
     return issueFor(
       reference,
