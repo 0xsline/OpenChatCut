@@ -360,10 +360,14 @@ export class ServerRunToolExecutor {
           name: request.name,
           args: request.args,
           activation: this.activation,
-          ctx: draftContext(this.callbacks.ctx(), this.draft),
-          onEvent: (_event: AgentEvent) => undefined,
+          ctx: {
+            ...draftContext(this.callbacks.ctx(), this.draft),
+            onToolProgress: (note: string) => {
+              this.callbacks.setLiveTool({ name: request.name, partial: note });
+            },
+          },
           settings: this.callbacks.settings(),
-
+          onEvent: (_event: AgentEvent) => undefined,
           toolCallId,
           signal: this.abort?.signal,
         });

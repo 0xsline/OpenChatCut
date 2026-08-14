@@ -338,6 +338,7 @@ export default {
   'MG 动画生成': 'Motion graphic generation',
   '视频生成': 'Video generation',
   '正在编写参数…': 'writing arguments…',
+  '正在执行…': 'running…',
   '工程已在提案生成后发生变化：直接应用可能落错位置。': 'The project changed after this proposal was generated — applying as-is may land edits in the wrong place.',
   '仍然应用': 'Apply anyway',
   '重新提案': 'Re-propose',

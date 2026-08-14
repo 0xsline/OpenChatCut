@@ -33,12 +33,13 @@ export function ChatRunStatus({
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: theme.accent, flexShrink: 0, marginTop: 5, animation: 'cc-rec-pulse 1.2s ease-out infinite' }} />
         <span style={{ minWidth: 0, lineHeight: 1.45 }}>
           <span style={{ fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: 0.2 }}>{liveTool.name}</span>
-          <span style={{ opacity: 0.8 }}> · {t('正在编写参数…')}</span>
-          {liveTool.partial.length > 40 && (
-            <span style={{ display: 'block', fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, opacity: 0.55, overflowWrap: 'anywhere', maxHeight: 48, overflow: 'hidden' }}>
-              …{liveTool.partial.slice(-160)}
-            </span>
-          )}
+          {liveTool.partial
+            ? (
+              <span style={{ display: 'block', fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, opacity: 0.65, overflowWrap: 'anywhere' }}>
+                {liveTool.partial}
+              </span>
+            )
+            : <span style={{ opacity: 0.8 }}> · {t('正在执行…')}</span>}
         </span>
       </div>
     )}

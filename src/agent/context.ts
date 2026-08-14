@@ -66,8 +66,10 @@ export interface AgentContext {
   /** Proposal confirmation mode (built-in chat: auto-apply setting; external: session approvalMode).
    * Drives provider routing: 'manual' asks the user once among several providers; 'auto' lets the agent pick. */
   getApprovalMode?: () => ApprovalMode;
+  /** Live progress note for long-running tool execution (e.g. local ASR model
+   * load/download); surfaced through the chat run status when present. */
+  onToolProgress?: (note: string) => void;
 }
-
 /** Source-media span of a placed clip in ms (srcIn → srcIn + duration·rate). */
 function sourceMediaSpan(item: TimelineItem, fps: number): Record<string, number> {
   if (item.kind !== 'video' && item.kind !== 'audio' && item.kind !== 'gif') return {};

@@ -276,7 +276,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
             continue;
           }
           try {
-            const r = await transcribePath(it.src!, undefined, {}, provider);
+            const r = await transcribePath(it.src!, (note) => { if (note) ctx.onToolProgress?.(note); }, {}, provider);
             ctx.commands.setItemTranscript(it.id, r.words);
             results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
           } catch (transcribeError) {
