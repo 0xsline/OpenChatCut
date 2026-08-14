@@ -15,11 +15,12 @@ body:
       label: Version *
       description: |
         Pick the EXACT version — do not write "latest".
-        - Desktop: Settings → About shows e.g. v0.2.2
+        - Desktop: Settings → About shows e.g. v0.2.3
         - Web: version is shown in the footer/about area
         - From source (main): attach the commit (git log -1 --format=%h)
       options:
-        - v0.2.2 (latest Release)
+        - v0.2.3 (latest Release)
+        - v0.2.2
         - v0.2.1
         - v0.2.0
         - v0.1.9
