@@ -10,9 +10,16 @@ import {
 import {
   normalizeLlmProvider,
   normalizeOpenAiApiMode,
+  type LlmProvider,
   type OpenAiApiMode,
 } from '../../shared/llm-providers';
-import { resolveModelCapabilities } from '../../shared/model-capabilities';
+import {
+  MODEL_CAPABILITY_OVERRIDES_KEY,
+  parseModelCapabilityOverrides,
+  resolveModelCapabilities,
+  type ModelCapabilities,
+} from '../../shared/model-capabilities';
+import { getKey } from '../keystore';
 import {
   assertCanonicalToolInvocation,
   canonicalServerRunToolCatalog,
@@ -340,16 +347,30 @@ async function runServerTurnOnce(
   };
 }
 
+/**
+ * Capability resolution for server-side runs. The keystore-backed
+ * AGENT_MODEL_CAPABILITY_OVERRIDES must apply here exactly like the browser
+ * model-selection path: models absent from the bundled catalog otherwise fall
+ * back to 8K, which the system prompt plus tool schemas exceed on the very
+ * first message (issue #81).
+ */
+export function resolveServerRunCapabilities(
+  provider: LlmProvider,
+  backend: 'codex' | 'api',
+  modelId: string,
+): ModelCapabilities {
+  return resolveModelCapabilities(
+    { backend, provider, modelId },
+    parseModelCapabilityOverrides(getKey(MODEL_CAPABILITY_OVERRIDES_KEY)),
+  );
+}
+
 function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   const provider = normalizeLlmProvider(input.provider);
   const apiMode = normalizeOpenAiApiMode(input.openAiApiMode);
   const backend = input.backend === 'codex' ? 'codex' : 'api';
   const requested = resolveServerRunToolCatalog(input.tools, run.askOnly);
-  const capabilities = resolveModelCapabilities({
-    backend,
-    provider,
-    modelId: input.model,
-  });
+  const capabilities = resolveServerRunCapabilities(provider, backend, input.model);
   const maxOutputTokens = resolveServerRunMaxOutputTokens(
     input.maxOutputTokens,
     capabilities.maxOutputTokens.value,

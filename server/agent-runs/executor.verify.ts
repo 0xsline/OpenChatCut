@@ -8,10 +8,13 @@ import { serverProviderOptions } from './model.ts';
 import { validateCreateInput } from './request.ts';
 import {
   collectServerText,
+  resolveServerRunCapabilities,
   resolveServerRunMaxOutputTokens,
   serverRunTextMetadata,
   turnDisposition,
 } from './executor.ts';
+import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../shared/model-capabilities';
+import { seedKeystore } from '../keystore';
 import {
   createRun,
   flushRunPersistence,
@@ -257,3 +260,34 @@ assert.equal(turnDisposition(true, true), 'max-tokens', 'output cutoff wins over
 assert.equal(turnDisposition(true, false), 'max-tokens');
 
 console.log('server executor turn-disposition checks passed');
+
+// issue #81: server-side capability resolution must honor the keystore-backed
+// AGENT_MODEL_CAPABILITY_OVERRIDES exactly like the browser model-selection
+// path. Without the override, a model missing from the bundled catalog falls
+// back to 8K and the first message already exceeds the budget.
+const overrideJson = JSON.stringify([{
+  backend: 'api',
+  provider: 'openai',
+  modelId: 'deepseek-v4-flash-0731',
+  contextWindowTokens: 100_000,
+}]);
+seedKeystore({ [MODEL_CAPABILITY_OVERRIDES_KEY]: overrideJson });
+const overridden = resolveServerRunCapabilities('openai', 'api', 'deepseek-v4-flash-0731');
+assert.equal(overridden.contextWindowTokens.value, 100_000, 'override context window wins over the 8K fallback');
+assert.equal(overridden.contextWindowTokens.source, 'settings-override', 'the winning value is attributed to the settings override');
+assert.equal(overridden.maxOutputTokens.value, 2_048, 'unset output keeps the fallback while the window is overridden');
+
+const unmatched = resolveServerRunCapabilities('openai', 'api', 'some-other-custom-model');
+assert.equal(unmatched.contextWindowTokens.value, 8_192, 'an unmatched model id keeps the unknown-model fallback');
+assert.equal(unmatched.contextWindowTokens.estimated, true, 'the fallback stays marked as estimated');
+
+const nonCatalogMatching = resolveServerRunCapabilities('openai', 'api', 'deepseek-v4-flash-0731');
+assert.equal(nonCatalogMatching.maxInputTokens.value, 100_000 - 2_048, 'estimated input budget derives from the overridden window minus output');
+
+assert.equal(
+  resolveServerRunCapabilities('ollama', 'api', 'qwen3.5:27b').contextWindowTokens.value,
+  8_192,
+  'local providers without an override still resolve to the unknown-model fallback',
+);
+console.log('server executor capability-override checks passed');
+
