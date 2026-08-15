@@ -42,6 +42,10 @@ const SOURCES: ReadonlyArray<{ name: string; url: (target: ProxyTarget) => strin
     url: (target) => `https://huggingface.co/${target.modelId}/resolve/${target.revision}/${target.filePath}`,
   },
   {
+    name: 'hf-cdn',
+    url: (target) => `https://hf-cdn.sufy.com/${target.modelId}/resolve/${target.revision}/${target.filePath}`,
+  },
+  {
     name: 'hf-mirror',
     url: (target) => `https://hf-mirror.com/${target.modelId}/resolve/${target.revision}/${target.filePath}`,
   },
