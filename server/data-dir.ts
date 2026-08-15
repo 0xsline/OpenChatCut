@@ -7,9 +7,9 @@
 // would require already knowing the root. It is therefore recorded in a small
 // pointer file at a fixed location that never moves.
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { cp, mkdir, readdir, unlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 /** Fixed pointer location — deliberately outside the movable storage root. */
 export function dataDirPointerPath(home: string = homedir()): string {
@@ -122,7 +122,22 @@ export async function relocateDataDir(
         continue;
       }
     }
-    await cp(from, to, { recursive: true, force: false, errorOnExist: false });
+    // Copy aside, then rename into place. A relocation interrupted midway (disk
+    // full, power loss, quit) must never leave a half-copied store looking
+    // complete: the entry either exists whole or not at all, so the next attempt
+    // sees an absent destination and retries from scratch instead of adopting a
+    // partial one. Leftover staging directories are cleaned up on the retry.
+    const staging = `${to}.incoming`;
+    await rm(staging, { recursive: true, force: true });
+    await mkdir(dirname(to), { recursive: true });
+    try {
+      await cp(from, staging, { recursive: true, force: false, errorOnExist: false });
+      await rm(to, { recursive: true, force: true });
+      await rename(staging, to);
+    } catch (error) {
+      await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
     copiedEntries += 1;
   }
   if (copiedEntries > 0) log(`[data-dir] copied ${copiedEntries} entries: ${source} → ${target}`);
