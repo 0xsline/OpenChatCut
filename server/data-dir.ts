@@ -70,26 +70,47 @@ export async function checkDataDir(raw: string, currentDir: string): Promise<Dat
   }
 }
 
-/** Storage-root contents that must travel with a relocation. Anything else in
- *  the root (logs, caches) is regenerated and deliberately left behind. */
+/** Root-level entries that travel with a relocation. Media is NOT here: in the
+ *  default profile uploads live outside the root (checkout `public/media/uploads`
+ *  or packaged `userData/...`), so it is copied separately from the resolved
+ *  upload directory. Anything else in the root is regenerated and left behind. */
 const RELOCATED_ENTRIES = [
   'project-store-v1',
   'project-store-v1.json',
   'project-store-auth-v1',
-  'media',
   'deleted-projects-v1.json',
   'generation-operations-v1.json',
 ] as const;
 
+/** Why a relocation was refused, so the caller can explain it to the user. */
+export type RelocationRefusal = 'sqlite-store-active';
+
+export interface RelocationOutcome {
+  refused?: RelocationRefusal;
+  copiedEntries: number;
+}
+
 /** Copy the current storage root into a newly chosen one. The source is left
- *  untouched: a relocation must never be the step that loses the projects. */
+ *  untouched: a relocation must never be the step that loses the projects.
+ *
+ *  Refuses outright while the SQLite store is the authority. That database is
+ *  the whole project store (documents, FTS, semantic vectors) plus its import
+ *  receipt, and copying a live WAL-mode database with a plain file copy can
+ *  produce a torn snapshot. Moving it safely needs a quiesced backup taken
+ *  under the store lock, which belongs in a follow-up rather than behind a
+ *  settings field that looks harmless. */
 export async function relocateDataDir(
   source: string,
   target: string,
   log: (msg: string) => void,
-): Promise<number> {
-  if (source === target) return 0;
-  let copied = 0;
+  sqliteActive: boolean,
+): Promise<RelocationOutcome> {
+  if (source === target) return { copiedEntries: 0 };
+  if (sqliteActive) {
+    log('[data-dir] relocation refused: the SQLite project store is active');
+    return { refused: 'sqlite-store-active', copiedEntries: 0 };
+  }
+  let copiedEntries = 0;
   for (const entry of RELOCATED_ENTRIES) {
     const from = join(source, entry);
     if (!existsSync(from)) continue;
@@ -97,15 +118,21 @@ export async function relocateDataDir(
     if (existsSync(to)) {
       const existing = await readdir(to).catch(() => ['?']);
       if (existing.length > 0) {
-        log(`[data-dir] 跳过已存在的 ${entry}（目标目录非空，不覆盖）`);
+        log(`[data-dir] skipped ${entry}: already present in the new directory`);
         continue;
       }
     }
     await cp(from, to, { recursive: true, force: false, errorOnExist: false });
-    copied += 1;
+    copiedEntries += 1;
   }
-  if (copied > 0) log(`[data-dir] 已复制 ${copied} 项到新目录：${source} → ${target}`);
-  return copied;
+  if (copiedEntries > 0) log(`[data-dir] copied ${copiedEntries} entries: ${source} → ${target}`);
+  return { copiedEntries };
+}
+
+/** Upload directory the relocated root will resolve to, so the caller can copy
+ *  the existing media into it. Mirrors uploadDir()'s layout for a chosen root. */
+export function relocatedUploadDir(target: string): string {
+  return join(target, 'media', 'uploads');
 }
 
 /** Create the storage root up-front so a first run never races the first write. */

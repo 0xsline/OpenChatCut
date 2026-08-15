@@ -150,8 +150,8 @@ try {
     join(dataDirHome, '.openchatcut'),
   );
 
-  // An isolated dev profile keeps its own keystore, but its data moves too: the user
-  // asked for a visible, durable location, which outranks the per-checkout root.
+  // An isolated dev profile accepts an EXPLICIT data dir: that is a deliberate
+  // per-run choice by whoever launched the checkout.
   const isolatedData = resolveRuntimeProfile({
     [DEV_PROFILE_ID_ENV]: profileAId,
     [DATA_DIR_ENV]: chosen,
@@ -160,6 +160,21 @@ try {
   assert.equal(isolatedData.rootDir, chosen);
   assert.equal(isolatedData.mediaDir, join(chosen, 'media', 'uploads'));
   assert.equal(isolatedData.keystorePath, join(chosen, 'settings.env'));
+
+  // ...but it must NEVER be redirected by the machine-wide pointer file. Isolation is a
+  // hard rule: a checkout would otherwise read and write the developer's real storage
+  // root just because they once set a folder in the settings UI.
+  writeFileSync(dataDirPointerPath(dataDirHome), JSON.stringify({ version: 1, dataDir: pointed }));
+  const isolatedPointer = resolveRuntimeProfile(
+    { [DEV_PROFILE_ID_ENV]: profileAId },
+    { homeDir: dataDirHome, cwd },
+  );
+  assert.equal(
+    isolatedPointer.rootDir,
+    join(dataDirHome, '.openchatcut', 'dev-profiles', profileAId),
+    'an isolated profile ignores the machine-wide pointer file',
+  );
+  assert.equal(isolatedPointer.mediaDir, join(isolatedPointer.rootDir, 'media', 'uploads'));
 
   // defaultRootDir answers "where does clearing the field lead?", so it must ignore
   // the configured root in both modes.

@@ -20,8 +20,10 @@ import {
   expandDataDir,
   readDataDirPointer,
   relocateDataDir,
+  relocatedUploadDir,
   writeDataDirPointer,
 } from '../data-dir.ts';
+import { sqliteStoreEnabled } from '../storage/sqlite-store.ts';
 
 const ISOLATED_R2_SETTINGS = [
   'R2_ACCOUNT_ID',
@@ -97,7 +99,13 @@ function settingsBody(restartRequired = false) {
 
 /** Apply a storage-root change: validate, copy the existing data, record the
  *  pointer. The active profile resolved at startup, so the move only takes
- *  effect on the next launch; the caller reports that to the user. */
+ *  effect on the next launch; the caller reports that to the user.
+ *
+ *  Media is copied separately from the RESOLVED upload directory, not from
+ *  `<root>/media`: in the default profile uploads live outside the root (the
+ *  checkout's `public/media/uploads`, or `userData/...` when packaged), so
+ *  copying the root's own `media` folder would move an empty directory and
+ *  take every `/media/uploads/...` reference offline after the restart. */
 async function applyDataDirChange(
   raw: string,
   profile: RuntimeProfile,
@@ -106,11 +114,23 @@ async function applyDataDirChange(
   if (process.env[DATA_DIR_ENV]?.trim()) {
     throw new Error(`storage directory is pinned by ${DATA_DIR_ENV} and cannot be changed from settings`);
   }
+  if (isIsolatedDevProfile(profile)) {
+    throw new Error('storage directory cannot be changed while an isolated development profile is active');
+  }
   const checked = await checkDataDir(raw, defaultRootDir(profile));
   if (!checked.ok) throw new Error(checked.error ?? 'invalid storage directory');
   const target = expandDataDir(raw);
   if (target && target !== profile.rootDir) {
-    await relocateDataDir(profile.rootDir, target, log);
+    const outcome = await relocateDataDir(profile.rootDir, target, log, sqliteStoreEnabled());
+    if (outcome.refused === 'sqlite-store-active') {
+      throw new Error(
+        'the project store has been migrated to SQLite and cannot be relocated yet: '
+        + 'moving a live database needs a quiesced snapshot, which this setting does not do',
+      );
+    }
+    // Uploads are addressed by name through uploadReadDirs(), so the copy must
+    // land where the relocated profile will resolve its writable upload dir.
+    await syncUploadDirectories(uploadDir(profile), relocatedUploadDir(target), log);
   }
   await writeDataDirPointer(target);
 }
