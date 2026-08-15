@@ -174,6 +174,19 @@ const attr = (el: string, name: string): string => el.match(new RegExp(`${name}=
   assert.ok(assetOpen.includes('name="旅行.最终版.001.MOV"'), '可编辑显示名不得覆盖原始文件名');
   assert.ok(xml.includes('kind="original-media" src="file:///Users/me/%E6%97%85%E8%A1%8C/%E6%97%85%E8%A1%8C.%E6%9C%80%E7%BB%88%E7%89%88.001.MOV"'));
   assert.ok(xml.includes('kind="proxy-media" src="file:///Users/me/.openchatcut/media/8e45fd6f-8da8-4d6a-8a4f-339d6a8fd747.mp4"'));
+  // <pathurl> is the FCPXML-standard location element DaVinci Resolve reads;
+  // non-ASCII segments stay native UTF-8 (Resolve does not decode
+  // percent-encoded paths on macOS), only URL-breaking characters encode.
+  assert.ok(xml.includes('<pathurl>file:///Users/me/旅行/旅行.最终版.001.MOV</pathurl>'),
+    'original-media pathurl keeps native UTF-8 path segments');
+  assert.ok(xml.includes('<pathurl>file:///Users/me/.openchatcut/media/8e45fd6f-8da8-4d6a-8a4f-339d6a8fd747.mp4</pathurl>'),
+    'proxy-media pathurl carries the internal working copy');
+  assert.ok(!xml.includes('<pathurl>file:///Users/me/%E6%97%85%E8%A1%8C'),
+    'pathurl never percent-encodes non-ASCII');
+  assert.ok(
+    xml.includes('src="file:///Users/me/%E6%97%85%E8%A1%8C/%E6%97%85%E8%A1%8C.%E6%9C%80%E7%BB%88%E7%89%88.001.MOV"'),
+    'the src attribute keeps its percent-encoded form for NLEs that require it',
+  );
   assert.equal((xml.match(/suggestedFilename="旅行\.最终版\.001"/g) ?? []).length, 2, '原片与代理建议文件名共用去除最终扩展名的原始 stem');
 
   const encodedSeparatorXml = timelineToFcpxml({
