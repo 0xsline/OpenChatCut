@@ -124,6 +124,7 @@ interface TrackLaneProps {
   overwriteOnDrop: boolean;
   frameFromClientX: (clientX: number) => number;
   onContextMenu: (menu: { id: string; x: number; y: number }) => void;
+  onTransitionContextMenu: (menu: { id: string; x: number; y: number }) => void;
   onTrackContextMenu: (menu: { trackId: TrackId; x: number; y: number; frame: number }) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
   onDropExternalFiles?: (files: File[], trackId: TrackId, startFrame: number) => void;
@@ -133,7 +134,7 @@ export function TrackLane({
   trackId, state, commands, pointer, editMode, pickMode, locked, hidden, muted, px, rowHeight,
   visibleWindow, pinnedItemIds, selectionMovePreview, indexes, libDropTarget, setLibDropTarget,
   applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop,
-  frameFromClientX, onContextMenu, onTrackContextMenu, scrollRef, onDropExternalFiles,
+  frameFromClientX, onContextMenu, onTransitionContextMenu, onTrackContextMenu, scrollRef, onDropExternalFiles,
 }: TrackLaneProps) {
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
@@ -469,6 +470,13 @@ export function TrackLane({
         return (
           <div key={tn.id} title={`${label} · ${(tn.durationInFrames / state.fps).toFixed(1)}s`}
             onClick={() => commands.selectItem(tn.incomingItemId)}
+            // The badge is the transition's only handle on the timeline: without this
+            // it could be selected but never edited or removed from where it is drawn.
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onTransitionContextMenu({ id: tn.id, x: event.clientX, y: event.clientY });
+            }}
             className="cc-transition-marker"
             style={{ position: 'absolute', top: '50%', left: inItem.startFrame * px, transform: 'translate(-50%, -50%)', zIndex: 3 }}>
             <Icon name="swap" size={10} />

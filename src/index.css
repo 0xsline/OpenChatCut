@@ -958,6 +958,7 @@ button, input, select { font: inherit; }
 .cc-track-context-menu-check { color:var(--cc-accent); line-height:0; }
 .cc-caption-cue-menu-item.danger,.cc-caption-cue-menu-item.danger .cc-caption-cue-menu-icon { color:var(--cc-accent); }
 .cc-caption-cue-menu-separator { height:.5px; margin:4px 6px; background:var(--cc-border); }
+.cc-transition-menu-title { padding:4px 8px 2px; color:var(--cc-text-dim); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* Caption style / Translation menu: compact and exquisite, avoid covering half of the preview area */
 .cc-caption-style-menu { z-index:80; width:212px; max-height:min(420px, calc(100vh - 24px)); display:flex; flex-direction:column; overflow:visible; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-panel-alt); box-shadow:0 8px 24px rgba(var(--cc-shadow-rgb), 0.67); color:var(--cc-text); font-size:12px; }
 .cc-duck-menu { width:160px; }

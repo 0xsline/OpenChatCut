@@ -29,6 +29,7 @@ interface UseTimelineTrackMenusOptions {
 export function useTimelineTrackMenus({ state, commands, t }: UseTimelineTrackMenusOptions) {
   const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number; translate?: boolean } | null>(null);
   const [trackMenu, setTrackMenu] = useState<TrackMenuLocation | null>(null);
+  const [transitionMenu, setTransitionMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [trackMenuReturn, setTrackMenuReturn] = useState<TrackMenuLocation | null>(null);
   const [captionError, setCaptionError] = useState<string | null>(null);
 
@@ -150,6 +151,8 @@ export function useTimelineTrackMenus({ state, commands, t }: UseTimelineTrackMe
     setCaptionMenu,
     trackMenu,
     setTrackMenu,
+    transitionMenu,
+    setTransitionMenu,
     captionError,
     setCaptionError,
     duckMenu,
