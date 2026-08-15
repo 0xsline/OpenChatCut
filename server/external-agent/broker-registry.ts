@@ -187,7 +187,7 @@ export class EditorConnectionRegistry {
     // lease (isConnected) reflects this poll even when no call arrives.
     editor.lastSeen = Date.now();
     return true;
-}
+  }
 
   registrationMatches(
     projectId: string,
