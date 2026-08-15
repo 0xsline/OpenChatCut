@@ -1,6 +1,6 @@
 import { theme, themeAlpha } from '../../theme';
 import {
-  captionsOnTrack, selectedIdsOf, trackAlias, trackKind,
+  TRANSITION_LABELS, captionsOnTrack, selectedIdsOf, trackAlias, trackKind,
 } from '../../editor/types';
 import { ClipContextMenu } from './ClipContextMenu';
 import { Icon } from '../icons';
@@ -15,6 +15,7 @@ import { TimelineRuler } from './TimelineRuler';
 import { MarkerEditor } from './MarkerEditor';
 import { trackDeletePlan } from './trackDelete';
 import { TrackContextMenu } from './TrackContextMenu';
+import { TransitionContextMenu } from './TransitionContextMenu';
 import { closeCaptionTrackGaps, trackClearPlan } from './trackContextOperations';
 import { isTimelineDragOverChat } from './timelineChatDrop';
 import { HEADER_W, RULER_H } from './timelineUtil';
@@ -38,7 +39,7 @@ export function Timeline(props: TimelineProps) {
     commitTimelineSelectionMove, zoom, setZoom, px, metaOf,
     playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef,
     playing, editMode, placeMode, setPlaceMode, snapping,
-    captionsVisible, captionMenu, setCaptionMenu, trackMenu, setTrackMenu,
+    captionsVisible, captionMenu, setCaptionMenu, trackMenu, setTrackMenu, transitionMenu, setTransitionMenu,
     duckMenu, setDuckMenu, captionError, setCaptionError,
     moveCaptionCue, openCaptionTrackMenu, openDuckTrackMenu,
     closeTrackDrillMenu, backFromTrackDrillMenu, recorder, toggleCaptions,
@@ -222,11 +223,19 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   rippleOnDrop={placeMode === 'insert'}
                   overwriteOnDrop={placeMode === 'overwrite'}
                   onDropExternalFiles={onDropExternalFiles}
-                  frameFromClientX={frameFromClientX} onContextMenu={(menu) => { setTrackMenu(null); setCtxMenu(menu); }}
+                  frameFromClientX={frameFromClientX} onContextMenu={(menu) => { setTrackMenu(null); setTransitionMenu(null); setCtxMenu(menu); }}
+                  onTransitionContextMenu={(menu) => {
+                    setCtxMenu(null);
+                    setCaptionMenu(null);
+                    setDuckMenu(null);
+                    setTrackMenu(null);
+                    setTransitionMenu(menu);
+                  }}
                   onTrackContextMenu={(menu) => {
                     setCtxMenu(null);
                     setCaptionMenu(null);
                     setDuckMenu(null);
+                    setTransitionMenu(null);
                     setTrackMenu(menu);
                   }} scrollRef={scrollRef}
                 />}
@@ -315,6 +324,26 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
         hidden
         onChange={(event) => insertTrackFiles(event.currentTarget.files)}
       />
+
+      {/* transition badge right-click menu: remove and retime from where it is drawn */}
+      {transitionMenu && (() => {
+        const transition = (state.transitions ?? []).find((item) => item.id === transitionMenu.id);
+        if (!transition) return null;
+        const locked = !!state.tracks?.[transition.trackId]?.locked;
+        return (
+          <TransitionContextMenu
+            label={t(TRANSITION_LABELS[transition.type] ?? transition.type)}
+            durationInFrames={transition.durationInFrames}
+            fps={state.fps}
+            locked={locked}
+            x={transitionMenu.x}
+            y={transitionMenu.y}
+            onSetDuration={(frames) => commands.setTransition(transition.id, { durationInFrames: frames })}
+            onRemove={() => commands.removeTransition(transition.id)}
+            onClose={() => setTransitionMenu(null)}
+          />
+        );
+      })()}
 
       {/* blank-track right-click menu */}
       {trackMenu && (() => {
