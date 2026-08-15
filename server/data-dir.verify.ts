@@ -122,6 +122,33 @@ try {
   // writable uploads, so the caller can copy media into the right place.
   assert.equal(relocatedUploadDir(destination), join(destination, 'media', 'uploads'));
 
+  // 5d. An interrupted relocation must never leave a half-copied entry looking complete.
+  // The copy stages aside and renames into place, so a leftover staging directory from a
+  // crashed attempt is discarded and the retry starts clean rather than adopting a partial
+  // store. Simulated here by planting the staging directory a crash would have left.
+  const resumed = join(fixture, 'resumed');
+  await mkdir(join(resumed, 'project-store-v1.incoming'), { recursive: true });
+  await writeFile(join(resumed, 'project-store-v1.incoming', 'half.json'), 'truncated');
+  assert.deepEqual(
+    await relocateDataDir(source, resumed, () => undefined, false),
+    { copiedEntries: 2 },
+  );
+  assert.equal(
+    await readFile(join(resumed, 'project-store-v1', 'projects.json'), 'utf8'),
+    '[]',
+    'the retry copies the real store, not the abandoned partial one',
+  );
+  assert.equal(
+    existsSync(join(resumed, 'project-store-v1', 'half.json')),
+    false,
+    'nothing from the crashed attempt survives into the adopted store',
+  );
+  assert.equal(
+    existsSync(join(resumed, 'project-store-v1.incoming')),
+    false,
+    'the staging directory is not left behind',
+  );
+
   // 6. A second relocation into a populated destination overwrites nothing and says so.
   await writeFile(join(destination, 'deleted-projects-v1.json'), 'newer, must win');
   const again = await relocateDataDir(source, destination, (msg) => logs.push(msg), false);

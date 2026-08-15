@@ -120,8 +120,13 @@ async function applyDataDirChange(
   const checked = await checkDataDir(raw, defaultRootDir(profile));
   if (!checked.ok) throw new Error(checked.error ?? 'invalid storage directory');
   const target = expandDataDir(raw);
-  if (target && target !== profile.rootDir) {
-    const outcome = await relocateDataDir(profile.rootDir, target, log, sqliteStoreEnabled());
+  // Clearing the field is a relocation too: it sends the next launch back to the
+  // default root, which is empty or stale for anyone who has been running
+  // elsewhere. Treating it as "no move" would skip both the SQLite refusal and
+  // the copy, and lose the projects exactly like the case this guards against.
+  const destination = target ?? defaultRootDir(profile);
+  if (destination !== profile.rootDir) {
+    const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreEnabled());
     if (outcome.refused === 'sqlite-store-active') {
       throw new Error(
         'the project store has been migrated to SQLite and cannot be relocated yet: '
@@ -130,7 +135,7 @@ async function applyDataDirChange(
     }
     // Uploads are addressed by name through uploadReadDirs(), so the copy must
     // land where the relocated profile will resolve its writable upload dir.
-    await syncUploadDirectories(uploadDir(profile), relocatedUploadDir(target), log);
+    await syncUploadDirectories(uploadDir(profile), relocatedUploadDir(destination), log);
   }
   await writeDataDirPointer(target);
 }
