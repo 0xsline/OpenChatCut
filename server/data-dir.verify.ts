@@ -14,6 +14,7 @@ import {
   expandDataDir,
   readDataDirPointer,
   relocateDataDir,
+  relocatedUploadDir,
   writeDataDirPointer,
 } from './data-dir.ts';
 
@@ -84,29 +85,49 @@ try {
 
   // 5. Relocation copies the store entries, leaves regenerated files behind, and never
   // deletes the source: moving the storage root must not be the step that loses projects.
+  // Media is deliberately NOT in the copied set: in the default profile uploads live
+  // outside the root, so the caller copies them from the resolved upload directory.
   const source = join(fixture, 'source');
   await mkdir(join(source, 'project-store-v1'), { recursive: true });
   await writeFile(join(source, 'project-store-v1', 'projects.json'), '[]');
-  await mkdir(join(source, 'media', 'uploads'), { recursive: true });
-  await writeFile(join(source, 'media', 'uploads', 'clip.mp4'), 'video');
   await writeFile(join(source, 'deleted-projects-v1.json'), '{}');
   await writeFile(join(source, 'export-cache.log'), 'regenerated, stays behind');
 
   const logs: string[] = [];
   const destination = join(fixture, 'destination');
-  assert.equal(await relocateDataDir(source, destination, (msg) => logs.push(msg)), 3);
-  assert.equal(await readFile(join(destination, 'media', 'uploads', 'clip.mp4'), 'utf8'), 'video');
+  assert.deepEqual(
+    await relocateDataDir(source, destination, (msg) => logs.push(msg), false),
+    { copiedEntries: 2 },
+  );
   assert.equal(await readFile(join(destination, 'project-store-v1', 'projects.json'), 'utf8'), '[]');
-  assert.ok(existsSync(join(source, 'media', 'uploads', 'clip.mp4')), 'the source is kept intact');
+  assert.ok(existsSync(join(source, 'project-store-v1', 'projects.json')), 'the source is kept intact');
   assert.equal(existsSync(join(destination, 'export-cache.log')), false, 'regenerated files are not carried over');
-  assert.equal(await relocateDataDir(source, source, () => { throw new Error('no log expected'); }), 0);
+  assert.deepEqual(
+    await relocateDataDir(source, source, () => { throw new Error('no log expected'); }, false),
+    { copiedEntries: 0 },
+  );
+
+  // 5b. The SQLite store is the whole project store and cannot be copied file-wise while
+  // live: relocation refuses rather than producing a torn snapshot or an empty new root.
+  const sqliteLogs: string[] = [];
+  const sqliteTarget = join(fixture, 'sqlite-destination');
+  assert.deepEqual(
+    await relocateDataDir(source, sqliteTarget, (msg) => sqliteLogs.push(msg), true),
+    { refused: 'sqlite-store-active', copiedEntries: 0 },
+  );
+  assert.equal(existsSync(sqliteTarget), false, 'a refused relocation copies nothing at all');
+  assert.ok(sqliteLogs.some((msg) => msg.includes('refused')), 'the refusal is reported, never silent');
+
+  // 5c. The relocated upload directory is where the moved profile will resolve its
+  // writable uploads, so the caller can copy media into the right place.
+  assert.equal(relocatedUploadDir(destination), join(destination, 'media', 'uploads'));
 
   // 6. A second relocation into a populated destination overwrites nothing and says so.
   await writeFile(join(destination, 'deleted-projects-v1.json'), 'newer, must win');
-  const again = await relocateDataDir(source, destination, (msg) => logs.push(msg));
-  assert.equal(again, 0);
+  const again = await relocateDataDir(source, destination, (msg) => logs.push(msg), false);
+  assert.deepEqual(again, { copiedEntries: 0 });
   assert.equal(await readFile(join(destination, 'deleted-projects-v1.json'), 'utf8'), 'newer, must win');
-  assert.ok(logs.some((msg) => msg.includes('跳过已存在的')), 'a skipped entry is reported, never silent');
+  assert.ok(logs.some((msg) => msg.includes('skipped')), 'a skipped entry is reported, never silent');
 
   // 7. Creating the root up front is idempotent, so a first run never races a first write.
   const eager = join(fixture, 'eager', 'nested');

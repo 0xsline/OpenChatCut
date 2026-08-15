@@ -94,13 +94,25 @@ function configuredProfileId(env: RuntimeProfileEnv): string | null {
 }
 
 /** User-chosen storage root (games-style save folder): data survives app removal.
- *  The environment variable wins so a launch script can pin a location; the
- *  settings UI records its choice in the fixed pointer file instead.
+ *
+ *  Resolution order, and why:
+ *  1. The environment variable, so a launch script can pin a location. It is
+ *     explicit per process, so it is also the only form an isolated dev profile
+ *     accepts.
+ *  2. The pointer file written by the settings UI, for the ordinary profile ONLY.
+ *     An isolated dev profile must never be redirected by the developer's own
+ *     machine-wide setting: that would break the isolation guarantee and let a
+ *     checkout write into the real storage root.
+ *
  *  Accepts ~/ expansion, requires an absolute path, and rejects anything else
  *  loudly so a typo never silently falls back to the hidden default location. */
-function configuredDataDir(env: RuntimeProfileEnv, home: string): string | null {
+function configuredDataDir(
+  env: RuntimeProfileEnv,
+  home: string,
+  isolated: boolean,
+): string | null {
   const raw = env[DATA_DIR_ENV]?.trim();
-  if (!raw) return readDataDirPointer(home);
+  if (!raw) return isolated ? null : readDataDirPointer(home);
   const expanded = raw === '~' ? home : raw.replace(/^~(?=\/)/, home);
   if (!isAbsolute(expanded)) {
     throw new Error(`${DATA_DIR_ENV} must be an absolute path (got: ${raw})`);
@@ -114,11 +126,12 @@ export function resolveRuntimeProfile(
 ): RuntimeProfile {
   const home = locations.homeDir ?? homedir();
   const cwd = locations.cwd ?? process.cwd();
-  const dataDir = configuredDataDir(env, home);
   const profileId = configuredProfileId(env);
+  const dataDir = configuredDataDir(env, home, profileId !== null);
   if (profileId) {
-    // An explicit data dir replaces the per-checkout hidden profile root: the
-    // user asked for their projects to live at a visible, durable location.
+    // Only an explicit OPENCHATCUT_DATA_DIR reaches here (the pointer file is
+    // ignored for isolated profiles), so redirecting this checkout's root is a
+    // deliberate per-run choice, never a leak from the machine-wide setting.
     const rootDir = dataDir ?? join(home, '.openchatcut', 'dev-profiles', profileId);
     const base = profileBase(
       rootDir,
