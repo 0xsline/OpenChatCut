@@ -150,6 +150,20 @@ export function relocatedUploadDir(target: string): string {
   return join(target, 'media', 'uploads');
 }
 
+/**
+ * Media destination for a data-dir relocation. Setting the field moves media
+ * next to the new root; clearing it returns to the default root, whose media
+ * dir is checkout-relative and lives OUTSIDE rootDir (mirrors the no-dataDir
+ * branch of resolveRuntimeProfile).
+ */
+export function relocatedMediaDestination(
+  target: string | null,
+  destination: string,
+  defaultUploadDir: string,
+): string {
+  return target ? relocatedUploadDir(destination) : defaultUploadDir;
+}
+
 /** Create the storage root up-front so a first run never races the first write. */
 export function ensureDataDir(dir: string): void {
   mkdirSync(dir, { recursive: true });

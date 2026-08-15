@@ -14,6 +14,7 @@ import {
   expandDataDir,
   readDataDirPointer,
   relocateDataDir,
+  relocatedMediaDestination,
   relocatedUploadDir,
   writeDataDirPointer,
 } from './data-dir.ts';
@@ -22,6 +23,7 @@ const fixture = await mkdtemp(join(tmpdir(), 'openchatcut-data-dir-'));
 try {
   const home = join(fixture, 'home');
   await mkdir(home, { recursive: true });
+  const defaultUploads = join(fixture, 'cwd', 'public', 'media', 'uploads');
 
   // 1. Expansion: `~/` and a bare `~` resolve against the given home, the result is
   // normalized, and anything that is not absolute afterwards is rejected rather than
@@ -121,6 +123,18 @@ try {
   // 5c. The relocated upload directory is where the moved profile will resolve its
   // writable uploads, so the caller can copy media into the right place.
   assert.equal(relocatedUploadDir(destination), join(destination, 'media', 'uploads'));
+
+  // 5c2. Media destination selection: setting the field moves media next to the
+  // new root; clearing it returns to the checkout-relative default upload dir
+  // (never rootDir/media/uploads, which the default profile does not read).
+  assert.equal(
+    relocatedMediaDestination(destination, destination, defaultUploads),
+    join(destination, 'media', 'uploads'),
+  );
+  assert.equal(
+    relocatedMediaDestination(null, join(fixture, 'home', '.openchatcut'), defaultUploads),
+    defaultUploads,
+  );
 
   // 5d. An interrupted relocation must never leave a half-copied entry looking complete.
   // The copy stages aside and renames into place, so a leftover staging directory from a

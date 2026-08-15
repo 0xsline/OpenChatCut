@@ -4,6 +4,7 @@ import { keyStatus, setKeys } from '../keystore.ts';
 import { runProbe } from '../key-probes.ts';
 import {
   checkMediaDir,
+  DEFAULT_UPLOAD_DIR,
   expandMediaDir,
   syncUploadDirectories,
   uploadDir,
@@ -20,7 +21,7 @@ import {
   expandDataDir,
   readDataDirPointer,
   relocateDataDir,
-  relocatedUploadDir,
+  relocatedMediaDestination,
   writeDataDirPointer,
 } from '../data-dir.ts';
 import { sqliteStoreEnabled } from '../storage/sqlite-store.ts';
@@ -135,7 +136,8 @@ async function applyDataDirChange(
     }
     // Uploads are addressed by name through uploadReadDirs(), so the copy must
     // land where the relocated profile will resolve its writable upload dir.
-    await syncUploadDirectories(uploadDir(profile), relocatedUploadDir(destination), log);
+    const mediaDestination = relocatedMediaDestination(target, destination, DEFAULT_UPLOAD_DIR);
+    await syncUploadDirectories(uploadDir(profile), mediaDestination, log);
   }
   await writeDataDirPointer(target);
 }
