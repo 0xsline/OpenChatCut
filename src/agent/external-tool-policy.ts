@@ -17,7 +17,7 @@ const DRAFT_EDIT_TOOL_NAMES = new Set([
   'set_aspect_ratio', 'manage_timelines', 'edit_track', 'apply_script',
   'edit_item', 'manage_effects', 'edit_captions', 'update_watermark',
   'manage_markers', 'apply_caption_avoidance', 'place_graphics_in_safe_zone', 'auto_reframe',
-  'manage_design_style', 'sync_images_to_music',
+  'manage_design_style',
 ]);
 
 const SERVER_DIRECT_READ_TOOL_NAMES: Record<string, true> = {

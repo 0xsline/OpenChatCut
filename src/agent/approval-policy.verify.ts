@@ -59,6 +59,13 @@ function verifyPoliciesAndDetails(): void {
   assert.equal(isExternalDraftTool('manage_design_style'), true);
   assert.equal(isExternalRealTool('manage_design_style', { action: 'list' }), false);
   assert.equal(isExternalRealTool('manage_design_style', { action: 'save' }), true);
+  // Music-driven sync tools are structural twins: both apply batched timeline
+  // edits from a global music analysis. They must sit on the same side of the
+  // external draft/real gate (real: approval-bound live-project edits).
+  assert.equal(isExternalDraftTool('sync_images_to_music'), false);
+  assert.equal(isExternalRealTool('sync_images_to_music'), true);
+  assert.equal(isExternalDraftTool('sync_cuts_to_music'), false);
+  assert.equal(isExternalRealTool('sync_cuts_to_music'), true);
   assert.equal(policyForTool('run_code').effect, 'irreversible_external');
   assert.equal(policyForTool('run_code').recovery, 'outcome_unknown');
   assert.equal(policyForTool('submit_export').recovery, 'outcome_unknown');
