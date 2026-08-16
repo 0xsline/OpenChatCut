@@ -364,6 +364,63 @@ await p2;
 await e1;
 assert.deepEqual(parallelOrder, ['start:p1', 'start:p2', 'end:p2', 'end:p1']);
 
+// A read admitted after an exclusive barrier must wait behind it without
+// becoming part of the barrier's own wait set (that cycle used to deadlock).
+const barrierQueue = new ServerRunToolRequestQueue();
+const barrierRelease = Promise.withResolvers<void>();
+const barrierStarted = Promise.withResolvers<void>();
+const barrierOrder: string[] = [];
+const beforeBarrier = barrierQueue.enqueueParallel(runId, async () => {
+  barrierOrder.push('before:start');
+  barrierStarted.resolve();
+  await barrierRelease.promise;
+  barrierOrder.push('before:end');
+});
+await barrierStarted.promise;
+const barrier = barrierQueue.enqueueExclusive(runId, async () => {
+  barrierOrder.push('exclusive');
+});
+const afterBarrier = barrierQueue.enqueueParallel(runId, async () => {
+  barrierOrder.push('after');
+});
+barrierRelease.resolve();
+await Promise.race([
+  Promise.all([beforeBarrier, barrier, afterBarrier]),
+  new Promise((_, reject) => setTimeout(() => reject(new Error('tool queue barrier deadlocked')), 250)),
+]);
+assert.deepEqual(barrierOrder, ['before:start', 'before:end', 'exclusive', 'after']);
+
+const replayedSource = new FakeEventSource();
+let replayedToolExecutions = 0;
+bindServerRunEvents(replayedSource as never, runId, {
+  enabled: () => true,
+  ready: () => true,
+  commit: () => 'replayed',
+  commitTextDelta: () => 'committed',
+  commitThinkingDelta: () => 'committed',
+  ensureAssistantMessage: () => undefined,
+  onContextUsage: () => undefined,
+  handleToolRequest: async (_id, _callId, _name, _args, _digest, admit) => {
+    if (admit()) replayedToolExecutions += 1;
+    return true;
+  },
+  retry: () => undefined,
+  finish: () => undefined,
+  appendMessage: () => undefined,
+  transportError: () => undefined,
+  persistenceError: () => undefined,
+  opened: () => undefined,
+});
+replayedSource.emit('tool-request', {
+  toolCallId: 'call-replayed-after-parallel-results',
+  name: 'load_skill',
+  args: { name: 'multi-clips-to-reels' },
+  argsDigest: 'digest-replayed-after-parallel-results',
+});
+await Promise.resolve();
+assert.equal(replayedToolExecutions, 1,
+  'a queued tool request still executes after later parallel results advance the cursor');
+
 const earlySource = new FakeEventSource();
 let earlyRetries = 0;
 let earlyExecutions = 0;

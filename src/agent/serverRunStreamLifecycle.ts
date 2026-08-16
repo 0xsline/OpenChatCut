@@ -122,7 +122,8 @@ function commitSequence(
   event: Event,
 ): ServerRunEventCommit {
   const sequence = Number((event as MessageEvent).lastEventId);
-  if (!Number.isSafeInteger(sequence) || sequence <= state.refs.cursor.current) return 'ignored';
+  if (!Number.isSafeInteger(sequence)) return 'ignored';
+  if (sequence <= state.refs.cursor.current) return 'replayed';
   if (!patchStoredServerRun(projectId, { cursor: sequence })) return 'failed';
   state.refs.cursor.current = sequence;
   return 'committed';

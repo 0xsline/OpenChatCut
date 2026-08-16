@@ -3,7 +3,7 @@ import type { AgentContextUsage } from './context-compaction';
 import type { ServerRunEventStream } from './serverRunFetchEventStream';
 
 export type ServerRunTerminalStatus = 'awaiting_user' | 'completed' | 'failed' | 'cancelled';
-export type ServerRunEventCommit = 'committed' | 'ignored' | 'failed';
+export type ServerRunEventCommit = 'committed' | 'replayed' | 'ignored' | 'failed';
 
 interface ServerRunEventHandlers {
   readonly enabled: () => boolean;
@@ -44,9 +44,9 @@ export class ServerRunToolRequestQueue {
 
   enqueueExclusive<T>(runId: string, request: () => Promise<T>): Promise<T> {
     const previous = this.exclusiveTails.get(runId) ?? Promise.resolve();
+    const flights = [...(this.parallelFlights.get(runId) ?? [])];
     const pending = previous.then(async () => {
-      const flights = this.parallelFlights.get(runId);
-      if (flights) await Promise.all([...flights]);
+      if (flights.length) await Promise.all(flights);
       return request();
     });
     const tail = pending.then(() => undefined, () => undefined);
@@ -150,7 +150,7 @@ function bindToolRequest(
     const admit = (): boolean => {
       const outcome = commitEvent(event, handlers);
       handleCommit(outcome, runId, handlers);
-      return outcome === 'committed';
+      return outcome === 'committed' || outcome === 'replayed';
     };
     void handlers.handleToolRequest(
       runId, data.toolCallId, data.name, data.args, data.argsDigest, admit,

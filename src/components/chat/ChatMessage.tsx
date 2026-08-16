@@ -56,11 +56,12 @@ interface ChatMessageProps {
   onRetry?: ((retry: AgentRetry) => void) | null;
   /** After the user fills out the <widget> form card and submits it, the assembled answer text is returned.*/
   onWidgetSubmit?: (answer: string) => void;
+  widgetSubmitted?: boolean;
   /** maxTurns pauses the card "continue"; only the last continue card can be clicked (the old card is read-only)*/
   onContinue?: (() => void) | null;
 }
 
-export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, onContinue }: ChatMessageProps) {
+export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, widgetSubmitted, onContinue }: ChatMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -143,6 +144,7 @@ overflowWrap:anywhere breaks long tokens - long errors/summaries are wrapped in 
             title={seg.title}
             submitLabel={seg.submitLabel}
             messagePrefix={seg.messagePrefix}
+            persistedSubmitted={widgetSubmitted}
             onSubmit={(answer) => onWidgetSubmit?.(answer)}
           />
         ) : (

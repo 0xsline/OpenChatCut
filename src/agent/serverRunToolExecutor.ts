@@ -375,16 +375,6 @@ export class ServerRunToolExecutor {
         return this.reportFailure(runId, toolCallId, request, error, true);
       }
       this.activation = update.activation;
-      // ask_followup_questions-style tools surface their question through the
-      // followup channel; the server path has no CodexFollowupPause plumbing,
-      // so append it as a visible assistant message instead of dropping it.
-      const followupText = update.execution.followupText?.trim();
-      if (followupText) {
-        this.callbacks.updateMessages((messages) => [
-          ...messages,
-          { role: 'assistant', text: followupText },
-        ]);
-      }
       const outcome: ServerRunToolAction = {
         runId: this.runId ?? runId,
         toolCallId,

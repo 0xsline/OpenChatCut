@@ -41,6 +41,8 @@ export interface RichOption {
 export interface FormRichChoice extends FieldBase {
   kind: 'visual' | 'voice' | 'scenario';
   multiple: boolean;
+  allowOther: boolean;
+  otherPlaceholder?: string;
   options: RichOption[];
 }
 
@@ -180,7 +182,14 @@ function parseWidgetFields(content: string): WidgetField[] {
     if (closeIndex >= 0) FIELD_TAG_RE.lastIndex = closeIndex + closeTag.length;
     const options = parseRichOptions(kind, inner);
     if (options.length) {
-      fields.push({ ...fieldBase(attrs), kind, multiple: attrs.multiple === 'true', options });
+      fields.push({
+        ...fieldBase(attrs),
+        kind,
+        multiple: attrs.multiple === 'true',
+        allowOther: attrs.allow_other === 'true',
+        otherPlaceholder: attrs.other_placeholder || undefined,
+        options,
+      });
     }
   }
   return fields;

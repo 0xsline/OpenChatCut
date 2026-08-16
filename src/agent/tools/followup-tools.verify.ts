@@ -33,6 +33,7 @@ const widget = buildFollowupWidget([
     options: [
       { id: 'talking-head', label: 'Talking head', description: 'Clean up a presenter clip' },
       { id: 'app-promo', label: 'App promo' },
+      { id: 'custom', label: '其他想法', description: '我来描述' },
     ],
   },
 ], 'One quick check', {
@@ -58,6 +59,11 @@ assert.deepEqual(parsed.fields.map((field) => field.kind), ['text', 'visual', 'v
 assert.equal(parsed.fields[0]?.required, true);
 assert.equal(parsed.fields[2]?.kind === 'voice' ? parsed.fields[2].options[0]?.media : '', 'https://example.com/calm.mp3');
 assert.equal(parsed.fields[3]?.kind === 'scenario' ? parsed.fields[3].multiple : false, true);
+assert.equal(parsed.fields[1]?.kind === 'visual' ? parsed.fields[1].allowOther : false, true,
+  'single-choice follow-ups always include a free-text Other choice');
+assert.equal(parsed.fields[3]?.kind === 'scenario' ? parsed.fields[3].allowOther : false, true);
+assert.equal(parsed.fields[3]?.kind === 'scenario' ? parsed.fields[3].options.some((option) => option.value === 'custom') : true, false,
+  'a model-supplied pseudo Other option is replaced by the editable Other choice');
 
 const answer = formatWidgetAnswer(parsed.fields, {
   brief: 'Use tighter pacing',

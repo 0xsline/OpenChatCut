@@ -1241,21 +1241,21 @@ button, input, select { font: inherit; }
 
 /* ── AI follow-up widget form ──────────────────────────────────────────── */
 .cc-widget {
-  margin:12px 0; overflow:hidden;
+  margin:8px 0; overflow:hidden;
   border:0.5px solid var(--cc-border); border-radius:4px;
   background:var(--cc-panel-alt);
 }
 .cc-widget.submitted .cc-widget-body { opacity:.72; }
 .cc-widget-title {
-  margin:0; padding:10px 12px; border-bottom:0.5px solid var(--cc-border);
+  margin:0; padding:8px 10px; border-bottom:0.5px solid var(--cc-border);
   font-size:13px; line-height:18px; font-weight:650; color:var(--cc-text-strong);
   background:var(--cc-panel);
 }
-.cc-widget-body { padding:0 10px; }
-.cc-widget-field { padding:10px 2px; border-top:0.5px solid var(--cc-border); }
+.cc-widget-body { padding:0 8px; }
+.cc-widget-field { padding:7px 2px; border-top:0.5px solid var(--cc-border); }
 .cc-widget-field.first { border-top:0; }
 .cc-widget-field-head {
-  display:flex; align-items:center; gap:6px; margin-bottom:7px;
+  display:flex; align-items:center; gap:6px; margin-bottom:5px;
 }
 .cc-widget-label {
   margin:0; font-size:12.5px; font-weight:600; line-height:18px; color:var(--cc-text);
@@ -1270,7 +1270,7 @@ button, input, select { font: inherit; }
 .cc-widget-options { display:flex; flex-direction:column; gap:2px; }
 .cc-widget-option {
   position:relative; display:flex; align-items:center; gap:10px;
-  min-height:32px; padding:6px 8px; border:0.5px solid transparent; border-radius:3px; cursor:pointer;
+  min-height:28px; padding:4px 7px; border:0.5px solid transparent; border-radius:3px; cursor:pointer;
   background:transparent; transition:border-color .12s, background .12s;
 }
 .cc-widget-option:hover:not(.disabled) { background:rgba(var(--cc-ink-rgb), 0.04); }
@@ -1322,7 +1322,7 @@ button, input, select { font: inherit; }
 .cc-widget-visuals { display:flex; flex-direction:column; gap:3px; }
 .cc-widget-visual {
   display:flex; align-items:flex-start; gap:10px; width:100%;
-  text-align:left; padding:8px; border-radius:3px; cursor:pointer;
+  text-align:left; padding:6px 7px; border-radius:3px; cursor:pointer;
   border:0.5px solid transparent; background:transparent; color:inherit;
   transition:border-color .12s, background .12s;
 }
@@ -1331,6 +1331,11 @@ button, input, select { font: inherit; }
   border-color:rgba(var(--cc-accent-rgb), 0.35); background:rgba(var(--cc-accent-rgb), 0.07);
 }
 .cc-widget-visual:disabled { cursor:default; }
+.cc-widget-other-button {
+  display:flex; align-items:center; gap:10px; padding:0; border:0;
+  background:transparent; color:inherit; cursor:pointer;
+}
+.cc-widget-other-button:disabled { cursor:default; }
 .cc-widget-visual .cc-widget-radio { margin-top:2px; }
 .cc-widget-visual.on .cc-widget-radio { border-color:var(--cc-accent); }
 .cc-widget-visual.on .cc-widget-radio::after {
@@ -1348,7 +1353,7 @@ button, input, select { font: inherit; }
 .cc-widget-scenario .cc-widget-visual-name::before { content:"→ "; color:var(--cc-accent); }
 .cc-widget-foot {
   display:flex; align-items:center; gap:10px;
-  min-height:44px; padding:8px 10px; border-top:0.5px solid var(--cc-border);
+  min-height:38px; padding:6px 9px; border-top:0.5px solid var(--cc-border);
   background:var(--cc-panel);
 }
 .cc-widget-hint { min-width:0; font-size:10.5px; line-height:1.35; color:var(--cc-text-dim); }

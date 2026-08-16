@@ -68,6 +68,13 @@ function normalizeOptions(options: unknown): NormalizedOption[] {
   }).filter((option): option is NormalizedOption => option !== null);
 }
 
+function isOtherOption(option: NormalizedOption): boolean {
+  const value = option.value.toLowerCase();
+  const display = option.display.toLowerCase();
+  return value === '__other__' || value === 'other' || value === 'custom'
+    || display.startsWith('其他') || display.startsWith('other');
+}
+
 function attrs(values: Record<string, string | boolean | undefined>): string {
   return Object.entries(values)
     .filter(([, value]) => value !== undefined && value !== false && value !== '')
@@ -106,26 +113,28 @@ export function buildFollowupWidget(fields: RawField[], prompt: string, options:
     const variant = field.variant === 'visual' || field.variant === 'voice' || field.variant === 'scenario'
       ? field.variant
       : 'default';
-    const common = attrs({
+    const baseAttrs = {
       id,
       label,
       description: stringValue(field.description),
       placeholder: stringValue(field.placeholder),
       other_placeholder: stringValue(field.otherPlaceholder),
       required: field.required === true ? 'true' : undefined,
-      allow_other: field.allowOther === true ? 'true' : undefined,
-    });
+    };
     if (type === 'text') {
-      tags.push(`<form-text${common}/>`);
+      tags.push(`<form-text${attrs(baseAttrs)}/>`);
       continue;
     }
-    const normalized = normalizeOptions(field.options);
+    const rawOptions = normalizeOptions(field.options);
+    const allowOther = type === 'single' || field.allowOther === true || rawOptions.some(isOtherOption);
+    const normalized = allowOther ? rawOptions.filter((option) => !isOtherOption(option)) : rawOptions;
     if (!normalized.length) {
       // Choice field without options → degrade to a prompt line instead of
       // silently dropping the question (kept in the message as plain text).
       promptLines.push(`- ${label}`);
       continue;
     }
+    const common = attrs({ ...baseAttrs, allow_other: allowOther ? 'true' : undefined });
     if (variant === 'default') {
       const encoded = normalized.map((option) => option.display !== option.value
         ? `${option.value}|${option.display}`

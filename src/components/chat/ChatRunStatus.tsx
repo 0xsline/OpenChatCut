@@ -1,17 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LiveTool } from '../../agent/agent-session';
 import { useT } from '../../i18n/locale';
 import { theme } from '../../theme';
 import { thinkingPhrase } from './thinkingPhrases';
+import { elapsedRunSeconds } from './ChatRunStatus.ts';
 
-function ElapsedTimer() {
-  const [now, setNow] = useState(() => performance.now());
-  const startRef = useRef(performance.now());
+function ElapsedTimer({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const id = window.setInterval(() => setNow(performance.now()), 100);
+    const id = window.setInterval(() => setNow(Date.now()), 100);
     return () => window.clearInterval(id);
   }, []);
-  const seconds = Math.max(0, (now - startRef.current) / 1000);
+  const seconds = elapsedRunSeconds(startedAt, now);
   return <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.75, flexShrink: 0 }}>{seconds.toFixed(1)}s</span>;
 }
 
@@ -20,11 +20,13 @@ export function ChatRunStatus({
   liveTool,
   streamingThinking,
   phraseSeed,
+  startedAt,
 }: {
   running: boolean;
   liveTool: LiveTool | null;
   streamingThinking: boolean;
   phraseSeed: number;
+  startedAt: number;
 }) {
   const t = useT();
   return <>
@@ -52,9 +54,8 @@ export function ChatRunStatus({
             <span style={{ animation: 'cc-think-glow 1.4s ease-in-out infinite' }}>{t('思考中…')}</span>
           </>
         ) : <>{t(thinkingPhrase(phraseSeed))}…</>}
-        <ElapsedTimer />
+        <ElapsedTimer startedAt={startedAt} />
       </div>
     )}
   </>;
 }
-

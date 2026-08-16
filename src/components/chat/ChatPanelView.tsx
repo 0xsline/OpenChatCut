@@ -5,13 +5,14 @@ import { AgentChangeLogMenu } from './AgentChangeLogMenu';
 import { AgentRunInspector } from './AgentRunInspector';
 import { ChatComposer } from './ChatComposer';
 import { ChatMessage } from './ChatMessage';
-import { ChatRunStatus } from './ChatRunStatus';
+import { ChatRunStatus } from './ChatRunStatus.tsx';
 import { ExternalProposalCard } from './ExternalProposalCard';
 import { ProposalCard } from './ProposalCard';
 import { ToolGroupRow } from './ToolGroupRow';
 import { groupMessages } from './message-groups';
 import { EMPTY_PROJECT_STARTERS, QUICK_ACTIONS } from './chatPanelPresets';
 import type { DisplayMessage } from '../../agent/agent-session';
+import { readStoredServerRun } from '../../agent/serverRunSessionStorage';
 import type { ChatPanelController } from './chatPanelController';
 
 const MESSAGE_WINDOW_SIZE = 40;
@@ -124,6 +125,7 @@ function MessageEntries({ controller }: { controller: ChatPanelController }) {
       <ChatMessage key={item.index} msg={item.msg} running={agent.running}
         retry={item.msg.role === 'user' ? item.msg.retry : undefined}
         streaming={agent.running && item.index === agent.messages.length - 1 && item.msg.role === 'assistant'}
+        widgetSubmitted={agent.messages.slice(item.index + 1).some((message) => message.role === 'user')}
         onRetry={onRetry}
         onContinue={item.msg.role === 'continue' && item.index === agent.messages.length - 1 && !agent.running
           ? () => { void agent.send('继续'); } : null}
@@ -140,7 +142,8 @@ function AgentRunCards({ controller }: { controller: ChatPanelController }) {
     && !composer.autoApply;
   return <>
     <ChatRunStatus running={agent.running} liveTool={agent.liveTool}
-      streamingThinking={streamingThinking} phraseSeed={runSeed} />
+      streamingThinking={streamingThinking} phraseSeed={runSeed}
+      startedAt={readStoredServerRun(props.projectId)?.createdAt ?? Date.now()} />
     {showProposal && agent.proposal && (
       <ProposalCard proposal={agent.proposal} onApply={agent.applyProposal} onReject={agent.rejectProposal}
         stale={agent.proposalStale} onForceApply={agent.forceApplyProposal} onRePropose={agent.reProposeStale}

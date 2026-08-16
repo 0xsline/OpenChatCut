@@ -35,6 +35,7 @@ interface WidgetCardProps {
   title?: string;
   submitLabel?: string;
   messagePrefix?: string;
+  persistedSubmitted?: boolean;
   onSubmit: (answer: string) => void;
 }
 
@@ -45,11 +46,12 @@ function isFilled(f: WidgetField, v: string | string[] | undefined): boolean {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
-export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit }: WidgetCardProps) {
+export function WidgetCard({ fields, title, submitLabel, messagePrefix, persistedSubmitted = false, onSubmit }: WidgetCardProps) {
   const t = useT();
   const [values, setValues] = useState<WidgetValues>({});
   const [otherFields, setOtherFields] = useState<Record<string, boolean>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [locallySubmitted, setLocallySubmitted] = useState(false);
+  const submitted = persistedSubmitted || locallySubmitted;
 
   const selectSingle = (id: string, value: string) => {
     setValues((v) => ({ ...v, [id]: value }));
@@ -72,6 +74,7 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
       toggleMulti(field.id, value);
       return;
     }
+    setOtherFields((current) => ({ ...current, [field.id]: false }));
     setValues((current) => ({ ...current, [field.id]: value }));
   };
 
@@ -79,7 +82,7 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
   const handleSubmit = () => {
     if (!canSubmit) return;
     const answer = formatWidgetAnswer(fields, values, messagePrefix);
-    setSubmitted(true);
+    setLocallySubmitted(true);
     onSubmit(answer);
   };
 
@@ -198,6 +201,32 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
                     </button>
                   );
                 })}
+                {!f.multiple && f.allowOther && (
+                  <div className={`cc-widget-visual cc-widget-other${otherFields[f.id] ? ' on' : ''}`}>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={!!otherFields[f.id]}
+                      disabled={submitted}
+                      className="cc-widget-other-button"
+                      onClick={() => selectOther(f.id)}
+                    >
+                      <span className="cc-widget-radio" aria-hidden />
+                      <span className="cc-widget-visual-name">{t('其他…')}</span>
+                    </button>
+                    {otherFields[f.id] && (
+                      <input
+                        type="text"
+                        className="cc-widget-other-input"
+                        disabled={submitted}
+                        autoFocus
+                        value={typeof values[f.id] === 'string' ? values[f.id] as string : ''}
+                        onChange={(event) => setOtherText(f.id, event.target.value)}
+                        placeholder={f.otherPlaceholder || t('请输入')}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </section>
