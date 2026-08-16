@@ -46,6 +46,7 @@ interface AssetMenuContext {
   addAsset: (asset: MediaAsset) => void;
   addToChat?: (assets: MediaAsset[]) => void;
   transcribe: (assets: MediaAsset[]) => void;
+  viewTranscript: (asset: MediaAsset) => void;
 }
 
 interface BlankMenuContext {
@@ -116,6 +117,9 @@ function MediaAssetMenu({ asset: context }: Pick<MediaPoolMenusProps, 'asset'>) 
     onAddChat={() => { addAssetsToChat(context.assets, context.addToChat); close(); }}
     onTranscribe={context.assets.some((item) => assetCanTranscribe(item.kind, item.transcribeStatus))
       ? () => { context.transcribe(context.assets); close(); }
+      : undefined}
+    onViewTranscript={asset && (asset.transcript?.length ?? 0) > 0
+      ? () => { context.viewTranscript(asset); close(); }
       : undefined}
   />;
 }

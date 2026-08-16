@@ -22,6 +22,7 @@ import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
 import { useAssetMenu, type AssetMenuPosition } from './useAssetMenu';
 import { assetMenuSelectionIds, batchAssetRename } from './assetMenuSelection';
 import { MediaPoolMenus } from './MediaPoolMenus';
+import { TranscriptViewerDialog } from './TranscriptViewerDialog';
 import { toggleMediaView } from './mediaView';
 import { resolveMediaPoolShortcut } from './mediaPoolShortcutScope';
 import { useMediaPoolFileImport } from './useMediaPoolFileImport';
@@ -110,6 +111,7 @@ export function MediaPoolPanel({
   const [semanticResults, setSemanticResults] = useState<SemanticMatch[] | null>(null);
   const [semanticOpenRequest, setSemanticOpenRequest] = useState(0);
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
+  const [transcriptViewerId, setTranscriptViewerId] = useState<string | null>(null);
   const relink = useMediaPoolRelink({
     assets,
     offlineAssetIds,
@@ -138,6 +140,20 @@ export function MediaPoolPanel({
     assets, query, semanticResults, currentFolderId, type, favoritesOnly, sort,
   });
   const selectedAssets = assets.filter((asset) => selected.has(asset.id));
+  const transcriptEntries = useMemo(
+    () => assets.filter((asset) => (asset.transcript?.length ?? 0) > 0),
+    [assets],
+  );
+  const viewerIndex = transcriptViewerId
+    ? transcriptEntries.findIndex((asset) => asset.id === transcriptViewerId)
+    : -1;
+  const viewerAsset = viewerIndex >= 0 ? transcriptEntries[viewerIndex] : undefined;
+  const stepViewer = (delta: number) => {
+    if (transcriptEntries.length < 2 || viewerIndex < 0) return;
+    const next = (viewerIndex + delta + transcriptEntries.length) % transcriptEntries.length;
+    setTranscriptViewerId(transcriptEntries[next]!.id);
+  };
+  const openTranscriptViewer = useCallback((id: string) => setTranscriptViewerId(id), []);
 
   const openPrompt = (next: MediaPromptState) => { setPromptValue(next.initialValue); setPromptState(next); };
   const closePrompt = () => {
@@ -428,6 +444,7 @@ export function MediaPoolPanel({
           const target = assets.find((asset) => asset.id === id);
           if (target) onTranscribe(target);
         }}
+        onOpenTranscript={openTranscriptViewer}
       />
 
       <MediaPoolMenus
@@ -447,6 +464,7 @@ export function MediaPoolPanel({
           rename: renameAssets, rememberFocus: modalFocus.remember, startRelink,
           requestRemove: requestRemoveAssets, setConfirmDeleteId, remove: removeAssets,
           transcribe: (targets) => targets.filter((asset) => (asset.kind === 'audio' || asset.kind === 'video') && asset.transcribeStatus !== 'running' && asset.transcribeStatus !== 'done').forEach((asset) => onTranscribe(asset)),
+          viewTranscript: (asset) => setTranscriptViewerId(asset.id),
           move: onMoveAssets, addToTimeline: onAddAssetsToTimeline, addAsset: onAddAsset,
           addToChat: onAddAssetsToChat,
         }}
@@ -460,6 +478,13 @@ export function MediaPoolPanel({
           setView, setSort, setType,
         }}
       />
+
+      {viewerAsset && <TranscriptViewerDialog
+        asset={viewerAsset}
+        entries={transcriptEntries}
+        onClose={() => setTranscriptViewerId(null)}
+        onStep={stepViewer}
+      />}
 
       <MediaPoolDialogs
         prompt={promptState}

@@ -219,4 +219,12 @@ export default {
   '正在转写…': 'Transcribing…',
   '已转写': 'Transcribed',
   '转写失败': 'Transcription failed',
+  '文字稿：{name}': 'Transcript: {name}',
+  '查看文字稿：{name}': 'View transcript: {name}',
+  '查看文字稿': 'View transcript',
+  '复制全文': 'Copy full text',
+  '已复制': 'Copied',
+  '上一条': 'Previous',
+  '下一条': 'Next',
+  '暂无文字稿': 'No transcript yet',
 } as Record<string, string>;
