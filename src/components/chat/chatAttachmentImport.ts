@@ -37,22 +37,38 @@ interface AttachmentImportBinding {
   readonly setError: (message: string | null) => void;
 }
 
+import { parseDocxText, parsePdfText } from './chatDocumentParse';
+
 const DOCUMENT_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.srt', '.csv']);
 
 /** Text document attachments (issue #84): read straight into the composer as
  * editable text; no media-pool asset is created. */
-export function chatDocumentKind(file: File): 'text' | null {
+export function chatDocumentKind(file: File): 'text' | 'docx' | 'pdf' | null {
   const lower = file.name.toLowerCase();
   const dot = lower.lastIndexOf('.');
   const ext = dot >= 0 ? lower.slice(dot) : '';
-  return DOCUMENT_EXTENSIONS.has(ext) ? 'text' : null;
+  if (DOCUMENT_EXTENSIONS.has(ext)) return 'text';
+  if (ext === '.docx') return 'docx';
+  if (ext === '.pdf') return 'pdf';
+  return null;
 }
 
 async function importDocument(binding: AttachmentImportBinding, file: File): Promise<void> {
-  const text = await file.text();
+  const kind = chatDocumentKind(file);
+  let text: string;
+  try {
+    const data = await file.arrayBuffer();
+    if (kind === 'docx') text = await parseDocxText(data);
+    else if (kind === 'pdf') text = await parsePdfText(data);
+    else text = await file.text();
+  } catch (error) {
+    binding.setError(error instanceof Error ? error.message : binding.t('文档解析失败'));
+    return;
+  }
   const block = `[文档: ${file.name}]\n${text.trim()}\n`;
   binding.updateInput((value) => (value.trim() ? `${value}\n${block}` : block));
 }
+
 
 
 function assetReference(asset: MediaAsset): AgentReference {
@@ -122,7 +138,7 @@ export function createChatAttachmentImporter(binding: AttachmentImportBinding): 
     const media = files.filter((file) => chatDocumentKind(file) === null && kindOf(file) !== null);
     const unsupported = files.length - documents.length - media.length;
     binding.setError(unsupported > 0
-      ? binding.t('已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG / md / txt / srt / csv）')
+      ? binding.t('已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG / md / txt / srt / csv / docx / pdf）')
       : null);
     for (const file of documents) await importDocument(binding, file);
     await Promise.all(media.map((file) => importOne(binding, file)));
