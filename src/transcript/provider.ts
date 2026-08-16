@@ -20,6 +20,38 @@ export const TRANSCRIPTION_LANGUAGE_KEY = 'cc.transcriptionLanguage';
 export const TRANSCRIPTION_DIARIZATION_KEY = 'cc.transcriptionDiarization';
 export const TRANSCRIPTION_PROVIDER_CHANGE_EVENT = 'openchatcut:transcription-provider-change';
 
+/** Ingestion auto-transcribe policy. `local` transcribes only on the free
+ *  on-device engine; `all` also fires on paid cloud providers; `off` never.
+ *  Default `local` protects cloud budgets while keeping the free engine automatic. */
+export const AUTO_TRANSCRIBE_INGEST_KEY = 'cc.autoTranscribeIngest';
+export type AutoTranscribeIngestSetting = 'off' | 'local' | 'all';
+
+export function autoTranscribeIngestSetting(): AutoTranscribeIngestSetting {
+  try {
+    const value = localStorage.getItem(AUTO_TRANSCRIBE_INGEST_KEY);
+    if (value === 'off' || value === 'all') return value;
+  } catch {
+    // SSR / private browsing: fall through to the default.
+  }
+  return 'local';
+}
+
+export function shouldAutoTranscribeIngest(
+  provider: TranscriptionProviderId = preferredTranscriptionProvider(),
+): boolean {
+  const setting = autoTranscribeIngestSetting();
+  return setting === 'all' || (setting === 'local' && provider === 'local');
+}
+
+export function setAutoTranscribeIngest(setting: AutoTranscribeIngestSetting): void {
+  try {
+    localStorage.setItem(AUTO_TRANSCRIBE_INGEST_KEY, setting);
+  } catch {
+    // Best-effort; the default stays in effect.
+  }
+}
+
+
 export function preferredTranscriptionProvider(): TranscriptionProviderId {
   try {
     const value = localStorage.getItem(TRANSCRIPTION_PROVIDER_KEY);

@@ -11,6 +11,7 @@ import {
   setPreferredTranscriptionProvider,
 } from '../../transcript/provider';
 import { isTranscriptionProviderId } from '../../transcript/types';
+import { setAutoTranscribeIngest } from '../../transcript/provider';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import { useCodexSettings } from './useCodexSettings';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
@@ -82,6 +83,8 @@ function syncTranscriptionPreferences(models: Record<string, string>): void {
   }
   const provider = models.PREFERRED_TRANSCRIPTION_PROVIDER;
   setPreferredTranscriptionProvider(isTranscriptionProviderId(provider) ? provider : 'assemblyai');
+  const ingest = models.AUTO_TRANSCRIBE_INGEST;
+  if (ingest === 'off' || ingest === 'local' || ingest === 'all') setAutoTranscribeIngest(ingest);
 }
 
 /** Keep the runtime ASR model tier in sync with the saved setting ('' → auto). */

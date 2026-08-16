@@ -17,6 +17,7 @@ import { importUploadedMedia } from './mobileImport';
 import type { MobileUploadRecord } from './mobileUploadApi';
 import { createImportTranscriptionGate, createMediaAssetsChatSeed, importMedia, readyMediaAssetsForPaste, type ImportMediaHooks, type ImportTranscriptionStart } from './upload';
 import { enqueueTranscription, getTranscribeJob, shouldTranscribe, untranscribedTimelineItemIdsForRevision, type TranscribeJob } from '../transcript/transcribe-jobs';
+import { shouldAutoTranscribeIngest } from '../transcript/provider';
 import { showAppToast } from '../ui/appToast';
 
 type Translate = typeof translate;
@@ -129,13 +130,13 @@ function poolImportHooks(run: PoolImportRun, onProgress?: (ratio: number) => voi
     onUploaded: (info) => {
       if (!run.targetId) run.commands.relinkMediaAsset(info.id, uploadedMediaRelinkPatch(info));
       const start = run.transcriptionGate.uploaded(info);
-      if (start) run.startAssetTranscription(start.asset, start.asrPath);
+      if (start && shouldAutoTranscribeIngest()) run.startAssetTranscription(start.asset, start.asrPath);
     },
     onReady: (asset) => {
       const ready = run.targetId ? { ...asset, id: run.targetId } : asset;
       run.commands.relinkMediaAsset(ready.id, mediaAssetRelinkPatch(ready));
       const start = run.transcriptionGate.ready(ready);
-      if (start) run.startAssetTranscription(start.asset, start.asrPath);
+      if (start && shouldAutoTranscribeIngest()) run.startAssetTranscription(start.asset, start.asrPath);
       if (ready.kind !== 'audio') refreshVisualAnalysis(ready);
     },
   };
@@ -386,8 +387,9 @@ function useAssetTranscription(options: EditorMediaIngestOptions): StartAssetTra
 function usePoolImports(options: EditorMediaIngestOptions, start: StartAssetTranscription): PoolImports {
   const { commands, stateRef, t } = options;
   const ingestToPool = useCallback((asset: MediaAsset) => {
-    commands.addAsset(shouldTranscribe(asset.kind) ? { ...asset, transcribeStatus: 'running' } : asset);
-    start(asset);
+    const autoTranscribe = shouldTranscribe(asset.kind) && shouldAutoTranscribeIngest();
+    commands.addAsset(autoTranscribe ? { ...asset, transcribeStatus: 'running' } : asset);
+    if (autoTranscribe) start(asset);
     if (asset.kind !== 'audio') enqueueVisualAnalysis(asset);
   }, [commands, start]);
   const importMobileUpload = useCallback(async (record: MobileUploadRecord) => {

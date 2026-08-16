@@ -667,6 +667,14 @@ button, input, select { font: inherit; }
 .cc-asset-favorite:hover { color:var(--cc-text); background:var(--cc-panel); opacity:1; }
 .cc-asset-favorite[aria-pressed="true"] { color:var(--cc-accent); opacity:1; }
 .cc-asset-more { position:absolute; top:4px; right:4px; width:24px; height:24px; display:grid; place-items:center; padding:0; border:0; border-radius:4px; background:color-mix(in srgb, var(--cc-panel) 79%, transparent); color:var(--cc-text); opacity:0; cursor:pointer; }
+.cc-asset-transcribe { position:absolute; top:4px; right:30px; width:24px; height:24px; display:grid; place-items:center; padding:0; border:0; border-radius:4px; background:color-mix(in srgb, var(--cc-panel) 79%, transparent); color:var(--cc-text); opacity:0; cursor:pointer; }
+.cc-asset-card:hover .cc-asset-transcribe { opacity:.85; }
+.cc-asset-card:hover .cc-asset-transcribe:hover { opacity:1; background:var(--cc-panel); }
+.cc-asset-transcribe-status { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:2; display:grid; place-items:center; min-width:22px; height:22px; padding:0 6px; border-radius:11px; background:color-mix(in srgb, var(--cc-panel) 82%, transparent); color:var(--cc-text); font-size:11px; font-weight:600; line-height:1; pointer-events:none; }
+.cc-asset-transcribe-done { color:var(--cc-accent, #58c17b); }
+.cc-asset-transcribe-failed { color:var(--cc-danger, #e5484d); }
+.cc-asset-transcribe-spinner { width:12px; height:12px; border-radius:50%; border:2px solid color-mix(in srgb, var(--cc-text) 30%, transparent); border-top-color:var(--cc-text); animation: cc-transcribe-spin .8s linear infinite; }
+@keyframes cc-transcribe-spin { to { transform: rotate(360deg); } }
 .cc-asset-used-dot { position:absolute; top:6px; right:6px; width:8px; height:8px; border:1px solid var(--cc-panel); border-radius:50%; background:var(--cc-accent); box-shadow:0 0 0 1px color-mix(in srgb, var(--cc-accent) 32%, transparent); pointer-events:none; }
 .cc-asset-card:hover .cc-asset-more { opacity:1; }
 .cc-folder-card:hover .cc-folder-more { opacity:1; }

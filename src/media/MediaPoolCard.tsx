@@ -33,6 +33,14 @@ interface MediaAssetCardProps {
   onToggleSelected: (id: string) => void;
   onSetSelected: (ids: string[]) => void;
   onSetFavorite: (id: string, favorite: boolean) => void;
+  onTranscribe?: (id: string) => void;
+}
+
+/** Whether the pool can start/retry ASR for this asset from the card. */
+function canTranscribe(asset: MediaAsset): boolean {
+  return (asset.kind === 'audio' || asset.kind === 'video')
+    && asset.transcribeStatus !== 'running'
+    && asset.transcribeStatus !== 'done';
 }
 
 interface AssetPreviewProps {
@@ -255,6 +263,18 @@ function AssetBadges(props: MediaAssetCardProps) {
         event.stopPropagation();
         props.onOpenMenu(asset.id, event.currentTarget);
       }}><Icon name="more" size={17} /></button>
+      {props.onTranscribe && canTranscribe(asset) && <button
+        className="cc-asset-transcribe"
+        aria-label={asset.transcribeStatus === 'failed' ? t('重新转写：{name}', { name: asset.name }) : t('转写：{name}', { name: asset.name })}
+        title={asset.transcribeStatus === 'failed' ? t('重新转写') : t('转写')}
+        onClick={(event) => {
+          event.stopPropagation();
+          props.onTranscribe?.(asset.id);
+        }}
+      ><Icon name="mic" size={14} strokeWidth={1.5} /></button>}
+      {asset.transcribeStatus === 'running' && <span className="cc-asset-transcribe-status" title={t('正在转写…')}><span className="cc-asset-transcribe-spinner" /></span>}
+      {asset.transcribeStatus === 'done' && <span className="cc-asset-transcribe-status cc-asset-transcribe-done" title={t('已转写')}><Icon name="check" size={14} strokeWidth={2.2} /></span>}
+      {asset.transcribeStatus === 'failed' && <span className="cc-asset-transcribe-status cc-asset-transcribe-failed" title={asset.transcribeError ?? t('转写失败')}>!</span>}
     </>
   );
 }

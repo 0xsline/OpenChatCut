@@ -213,4 +213,10 @@ export default {
   '下载并启用': 'Download and enable',
   '正在下载画面语义轻量包… {n}%': 'Downloading the visual-semantics pack… {n}%',
   '模型包下载失败，请到 设置 → 本地模型 重试。': 'Model pack download failed — retry in Settings → Local models.',
+  '转写：{name}': 'Transcribe: {name}',
+  '重新转写：{name}': 'Retranscribe: {name}',
+  '重新转写': 'Retranscribe',
+  '正在转写…': 'Transcribing…',
+  '已转写': 'Transcribed',
+  '转写失败': 'Transcription failed',
 } as Record<string, string>;

@@ -65,12 +65,14 @@ interface MediaPoolPanelProps {
   onRelinkAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Add a solid-color clip. */
   onAddSolid?: () => void;
+  /** Start (or retry) ASR for one asset from the pool UI. */
+  onTranscribe: (asset: MediaAsset) => void;
 }
 
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
   onImport, onImportMobile, directoryImport, directoryImportError, onAddAsset, onAddAssetsToTimeline, onAddAssetsToChat, onCreateFolder, onRenameFolder,
-  onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid,
+  onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid, onTranscribe,
 }: MediaPoolPanelProps) {
   const t = useT();
   const musicAnalysis = useMusicAnalysisCards(assets);
@@ -422,6 +424,10 @@ export function MediaPoolPanel({
         onToggleSelected={toggleSelected}
         onSetSelected={(ids) => setSelected(new Set(ids))}
         onSetFavorite={onSetFavorite}
+        onTranscribe={(id) => {
+          const target = assets.find((asset) => asset.id === id);
+          if (target) onTranscribe(target);
+        }}
       />
 
       <MediaPoolMenus
@@ -440,6 +446,7 @@ export function MediaPoolPanel({
           close: closeAssetMenu, setError, onSetFavorite, onSetAssetsFavorite,
           rename: renameAssets, rememberFocus: modalFocus.remember, startRelink,
           requestRemove: requestRemoveAssets, setConfirmDeleteId, remove: removeAssets,
+          transcribe: (targets) => targets.filter((asset) => (asset.kind === 'audio' || asset.kind === 'video') && asset.transcribeStatus !== 'running' && asset.transcribeStatus !== 'done').forEach((asset) => onTranscribe(asset)),
           move: onMoveAssets, addToTimeline: onAddAssetsToTimeline, addAsset: onAddAsset,
           addToChat: onAddAssetsToChat,
         }}
