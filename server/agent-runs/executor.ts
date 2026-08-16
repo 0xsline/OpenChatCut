@@ -54,6 +54,10 @@ import {
 import { classifyLlmFailure, runServerTurnWithRetry } from './llm-retry';
 import { toolExecutionMode } from '../../src/agent/tools/execution-modes';
 
+// Streaming text persists in chunks of this size. The tail below one chunk
+// stays in the server's pending buffer and is force-flushed by the
+// time-driven flush in collectServerText every few seconds, so a mid-run
+// browser reload loses at most a couple of seconds of output.
 const TEXT_EVENT_CHARS = 8_192;
 export function resolveServerRunMaxOutputTokens(
   requested: number,
@@ -246,17 +250,28 @@ export async function collectServerText<TOOLS extends ToolSet>(
     if (!thinking) return;
     pendingThinking = flushThinkingEvents(run, pendingThinking + thinking, false);
   };
-  for await (const part of stream) {
-    if (part.type === 'reasoning-delta' && part.text) {
-      // Native reasoning streams (DeepSeek/OpenAI/… reasoning_content) never
-      // appear in the visible text stream; forward them as thinking events.
-      appendThinking(part.text);
-      continue;
+  // Force-flush the pending tail on a short timer: without it, a reply shorter
+  // than TEXT_EVENT_CHARS stays entirely in server memory until the turn ends,
+  // and a browser reload mid-run loses the whole in-flight text.
+  const flushTimer = setInterval(() => {
+    if (pending) pending = flushTextEvents(run, pending, true);
+    if (pendingThinking) pendingThinking = flushThinkingEvents(run, pendingThinking, true);
+  }, 2_000);
+  try {
+    for await (const part of stream) {
+      if (part.type === 'reasoning-delta' && part.text) {
+        // Native reasoning streams (DeepSeek/OpenAI/… reasoning_content) never
+        // appear in the visible text stream; forward them as thinking events.
+        appendThinking(part.text);
+        continue;
+      }
+      if (part.type !== 'text-delta' || !part.text) continue;
+      const split = extractor.push(part.text);
+      appendVisible(split.text);
+      appendThinking(split.thinking);
     }
-    if (part.type !== 'text-delta' || !part.text) continue;
-    const split = extractor.push(part.text);
-    appendVisible(split.text);
-    appendThinking(split.thinking);
+  } finally {
+    clearInterval(flushTimer);
   }
   const tail = extractor.flush();
   appendVisible(tail.text);
