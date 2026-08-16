@@ -10,6 +10,7 @@ import { assetIdsFromFolderDrop } from './folderDrop';
 import { durationLabel, mediaRatioLabel } from './mediaPoolFormat';
 import { MgThumb } from './MgThumb';
 import { usePreviewMediaSource } from './previewMedia';
+import { assetCanTranscribe } from '../transcript/transcribe-jobs';
 
 interface MediaAssetCardProps {
   asset: MediaAsset;
@@ -36,12 +37,6 @@ interface MediaAssetCardProps {
   onTranscribe?: (id: string) => void;
 }
 
-/** Whether the pool can start/retry ASR for this asset from the card. */
-function canTranscribe(asset: MediaAsset): boolean {
-  return (asset.kind === 'audio' || asset.kind === 'video')
-    && asset.transcribeStatus !== 'running'
-    && asset.transcribeStatus !== 'done';
-}
 
 interface AssetPreviewProps {
   asset: MediaAsset;
@@ -148,7 +143,7 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
       onDragEnd={() => props.onDragChange(null)}
       onClickCapture={(event) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest('[data-music-analysis-control]')) return;
+        if (target?.closest('[data-music-analysis-control], .cc-asset-favorite, .cc-asset-more, .cc-asset-transcribe')) return;
         // Plain click selects and opens the asset menu beside the card;
         // Ctrl/Shift/meta toggles extra items. Clicking the selected card
         // again deselects it. Double-click adds to the timeline.
@@ -263,7 +258,7 @@ function AssetBadges(props: MediaAssetCardProps) {
         event.stopPropagation();
         props.onOpenMenu(asset.id, event.currentTarget);
       }}><Icon name="more" size={17} /></button>
-      {props.onTranscribe && canTranscribe(asset) && <button
+      {props.onTranscribe && assetCanTranscribe(asset.kind, asset.transcribeStatus) && <button
         className="cc-asset-transcribe"
         aria-label={asset.transcribeStatus === 'failed' ? t('重新转写：{name}', { name: asset.name }) : t('转写：{name}', { name: asset.name })}
         title={asset.transcribeStatus === 'failed' ? t('重新转写') : t('转写')}

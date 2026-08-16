@@ -6,6 +6,7 @@ import { AssetMenuPortal, BlankMediaMenuPortal, FolderMenuPortal } from './Media
 import { assetMenuFavoriteValue } from './assetMenuSelection';
 import { addAssetsToChat, allVisibleAssetsSelected, toggleVisibleAssetSelection } from './mediaSelectionActions';
 import { toggleMediaView } from './mediaView';
+import { assetCanTranscribe } from '../transcript/transcribe-jobs';
 
 interface FolderMenuContext {
   folder?: MediaFolder;
@@ -113,7 +114,9 @@ function MediaAssetMenu({ asset: context }: Pick<MediaPoolMenusProps, 'asset'>) 
     onMove={(folderId) => { if (context.assetIds.length) context.move(context.assetIds, folderId); close(); }}
     onAddTimeline={() => { if (context.addToTimeline) context.addToTimeline(context.assets); else context.assets.forEach(context.addAsset); close(); }}
     onAddChat={() => { addAssetsToChat(context.assets, context.addToChat); close(); }}
-    onTranscribe={() => { context.transcribe(context.assets); close(); }}
+    onTranscribe={context.assets.some((item) => assetCanTranscribe(item.kind, item.transcribeStatus))
+      ? () => { context.transcribe(context.assets); close(); }
+      : undefined}
   />;
 }
 
