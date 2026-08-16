@@ -313,8 +313,12 @@ export async function probeDirectoryMedia(
   const stream = output.streams?.find((candidate) => candidate.codec_type === streamType);
   if (!stream) throw new Error(`ffprobe found no ${streamType} stream`);
   const duration = Number(output.format?.duration ?? stream.duration);
-  const width = Number(stream.width);
-  const height = Number(stream.height);
+  const codedWidth = Number(stream.width);
+  const codedHeight = Number(stream.height);
+  const rotation = rotationOfStream(stream);
+  const swapped = rotation === 90 || rotation === 270;
+  const width = swapped ? codedHeight : codedWidth;
+  const height = swapped ? codedWidth : codedHeight;
   return {
     ...(Number.isFinite(duration) && duration > 0 ? { durationSeconds: duration } : {}),
     ...(Number.isFinite(width) && width > 0 ? { width } : {}),
@@ -323,6 +327,19 @@ export async function probeDirectoryMedia(
       ? { sourceFps: parseRational(stream.avg_frame_rate) ?? parseRational(stream.r_frame_rate) }
       : {}),
   };
+}
+
+/** Rotation from stream tags (rotate) or side-data (display matrix). */
+function rotationOfStream(stream: Record<string, unknown>): number {
+  const tags = stream.tags as Record<string, unknown> | undefined;
+  const tag = Number(tags?.rotate);
+  if (Number.isFinite(tag) && tag !== 0) return ((tag % 360) + 360) % 360;
+  const sideData = stream.side_data_list as Array<Record<string, unknown>> | undefined;
+  for (const entry of sideData ?? []) {
+    const rotation = Number(entry.rotation);
+    if (Number.isFinite(rotation) && rotation !== 0) return ((rotation % 360) + 360) % 360;
+  }
+  return 0;
 }
 
 interface ResolvedDirectoryPublication {

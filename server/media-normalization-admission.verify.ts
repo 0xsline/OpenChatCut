@@ -31,3 +31,19 @@ await assert.rejects(
 assert.equal(normalizationAbortError(alreadyAborted.signal).name, 'AbortError');
 
 process.stdout.write('media-normalization-admission.verify: abortable queue cleanup passed\n');
+
+// Rotation-coded portrait footage (issue report: 9:16 assets recognized as
+// 16:9). Coded 1920x1080 + rotation 90/270 must swap to 1080x1920; the
+// rotation comes from side-data, top-level field, or stream tags.
+{
+  const { rotationOf, displayDimensions } = await import('./media-normalization');
+  assert.deepEqual(displayDimensions(1920, 1080, 90), { width: 1080, height: 1920 });
+  assert.deepEqual(displayDimensions(1920, 1080, 270), { width: 1080, height: 1920 });
+  assert.deepEqual(displayDimensions(1920, 1080, 0), { width: 1920, height: 1080 });
+  assert.deepEqual(displayDimensions(1920, 1080, 180), { width: 1920, height: 1080 });
+  assert.deepEqual(displayDimensions(1080, 1920, 0), { width: 1080, height: 1920 });
+  assert.equal(rotationOf({ side_data_list: [{ rotation: -90 }] }), 270);
+  assert.equal(rotationOf({ rotation: 90 }), 90);
+  assert.equal(rotationOf({ tags: { rotate: '270' } }), 270);
+  assert.equal(rotationOf({}), 0);
+}

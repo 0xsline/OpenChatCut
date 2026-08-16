@@ -180,14 +180,37 @@ export function playableDurationSeconds(meta: Pick<ProbeMeta, 'duration' | 'fram
   }
   return meta.duration;
 }
+/** Displayed dimensions for a rotation-coded stream. ±90/270 swap the
+ * coded width/height; 0/180 keep them. */
+export function displayDimensions(codedWidth: number, codedHeight: number, rotation: number): { width: number; height: number } {
+  const swapped = rotation === 90 || rotation === 270;
+  return swapped
+    ? { width: codedHeight, height: codedWidth }
+    : { width: codedWidth, height: codedHeight };
+}
+
+
+export function rotationOf(video: Record<string, unknown>): number {
+  const raw = Number(video.rotation);
+  if (Number.isFinite(raw) && raw !== 0) return ((raw % 360) + 360) % 360;
+  const tags = video.tags as Record<string, unknown> | undefined;
+  const tag = Number(tags?.rotate);
+  if (Number.isFinite(tag) && tag !== 0) return ((tag % 360) + 360) % 360;
+  const sideData = video.side_data_list as Array<Record<string, unknown>> | undefined;
+  for (const entry of sideData ?? []) {
+    const rotation = Number(entry.rotation);
+    if (Number.isFinite(rotation) && rotation !== 0) return ((rotation % 360) + 360) % 360;
+  }
+  return 0;
+}
+
 
 export async function probeVideo(path: string, signal?: AbortSignal): Promise<ProbeMeta> {
   const { stdout } = await run(
     ffprobeBin(),
     [
       '-v', 'error',
-      '-show_entries', 'format=duration,bit_rate,size:stream=index,codec_type,codec_name,width,height,bit_rate,avg_frame_rate,r_frame_rate,nb_frames',
-      '-of', 'json',
+      '-show_streams', '-show_format', '-of', 'json',
       path,
     ],
     30_000,
@@ -201,9 +224,14 @@ export async function probeVideo(path: string, signal?: AbortSignal): Promise<Pr
   const video = streams.find((s) => s.codec_type === 'video');
   const audio = streams.find((s) => s.codec_type === 'audio');
   if (!video) throw new Error('no video stream');
-  const width = Number(video.width) || 0;
-  const height = Number(video.height) || 0;
-  if (width <= 0 || height <= 0) throw new Error('video stream has invalid dimensions');
+  const codedWidth = Number(video.width) || 0;
+  const codedHeight = Number(video.height) || 0;
+  if (codedWidth <= 0 || codedHeight <= 0) throw new Error('video stream has invalid dimensions');
+  // Portrait footage is usually stored landscape-coded with a rotation
+  // side-data/tag; swap so the asset aspect reflects the displayed frame.
+  const dimensions = displayDimensions(codedWidth, codedHeight, rotationOf(video));
+  const width = dimensions.width;
+  const height = dimensions.height;
   const duration = Number(data.format?.duration) || 0;
   const size = Number(data.format?.size) || (await stat(path)).size;
   throwIfNormalizationAborted(signal);
