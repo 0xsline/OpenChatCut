@@ -19,6 +19,7 @@ export default {
   '描述你想要创建的内容...': 'Describe what you want to create...',
   '告诉 AI 要做哪些修改 - @ 引用素材': 'Tell the AI what to change — @ to reference assets',
   '已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG）': 'Unsupported files ignored (only video / image / audio / GIF / SVG)',
+  '已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG / md / txt / srt / csv）': 'Unsupported files ignored (only video / image / audio / GIF / SVG / md / txt / srt / csv)',
   '导入失败': 'Import failed',
   'Agent 修改记录': 'Agent change log',
   '项操作': 'operations',

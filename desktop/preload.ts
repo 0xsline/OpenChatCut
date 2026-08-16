@@ -41,11 +41,14 @@ import {
   type DesktopRhythmResponse,
 } from '../shared/desktop-inference.ts';
 import {
+  AGENT_PATH_IMPORT_CHANNEL,
   DIRECTORY_IMPORT_CHANNELS,
   isDirectoryImportEvent,
   isDirectoryWatchStartResult,
   type DirectoryImportDisposition,
   type DirectoryImportEvent,
+  type AgentPathImportRequest,
+  type AgentPathImportResult,
   type DirectoryWatchStartResult,
 } from '../shared/directory-import.ts';
 
@@ -98,6 +101,7 @@ export interface OpenChatCutDesktopApi {
     disposition: DirectoryImportDisposition,
   ): Promise<void>;
   stopImportDirectoryWatch(watchId: string): Promise<void>;
+  importAgentPaths(request: AgentPathImportRequest): Promise<AgentPathImportResult>;
   subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
   windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
   revealExport(destinationId: string, filename: string): Promise<void>;
@@ -145,6 +149,8 @@ const api: OpenChatCutDesktopApi = {
   },
   activateImportDirectoryWatch: (watchId) =>
     ipcRenderer.invoke(DIRECTORY_IMPORT_CHANNELS.activate, watchId) as Promise<void>,
+  importAgentPaths: (request) =>
+    ipcRenderer.invoke(AGENT_PATH_IMPORT_CHANNEL, request) as Promise<AgentPathImportResult>,
   acknowledgeImportDirectoryFile: (watchId, importId, disposition) =>
     ipcRenderer.invoke(
       DIRECTORY_IMPORT_CHANNELS.acknowledge, watchId, importId, disposition,

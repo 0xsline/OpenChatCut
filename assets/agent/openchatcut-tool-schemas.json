@@ -5130,6 +5130,38 @@
       }
     },
     {
+      "name": "import_asset",
+      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; the path must be inside the allowed import roots configured via AGENT_IMPORT_ROOTS. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute path to the media file."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "import_folder",
+      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; the directory must be inside the allowed import roots configured via AGENT_IMPORT_ROOTS. Returns the imported pool assets and any per-file errors; duplicates already in the pool are skipped.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute path to the media directory."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
       "name": "review_scene_plan",
       "description": "Advisory review of a multi-scene plan for repetition, decorative visuals, static-card overuse, and generic language. Returns a normalized 0–5 risk score, revision advice, and affected scene numbers. The report is optional advice and never blocks or authorizes submit_image/submit_video.",
       "input_schema": {

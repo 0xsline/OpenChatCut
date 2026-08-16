@@ -28,6 +28,8 @@ import { installDesktopUpdateIpc } from './update-ipc.ts';
 import { supportsDirectDesktopUpdates } from './update-service.ts';
 import { installDesktopInferenceIpc } from './native-inference-ipc.ts';
 import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
+import { importAgentPaths } from './agent-path-import.ts';
+import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
 import {
   assertTrustedDesktopSenderUrl,
   resolveDesktopDevOrigin,
@@ -373,6 +375,19 @@ async function boot(): Promise<void> {
     }),
   });
   installDirectoryWatchIpc(origin);
+  ipcMain.handle(AGENT_PATH_IMPORT_CHANNEL, trustedDesktopHandler(origin, async (_event, request: unknown) => {
+    const value = request as { paths?: unknown; projectId?: unknown; knownHashes?: unknown };
+    const paths = Array.isArray(value?.paths)
+      ? value.paths.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0 && entry.length < 4096)
+      : [];
+    const knownHashes = Array.isArray(value?.knownHashes)
+      ? value.knownHashes.filter((entry): entry is string => typeof entry === 'string' && entry.length <= 128)
+      : [];
+    if (!paths.length || typeof value?.projectId !== 'string') {
+      throw new Error('invalid agent path import request');
+    }
+    return importAgentPaths({ paths, projectId: value.projectId, knownHashes });
+  }));
   const desktopInference = installDesktopInferenceIpc(
     origin,
     join(app.getPath('home'), '.openchatcut', 'asr-models'),

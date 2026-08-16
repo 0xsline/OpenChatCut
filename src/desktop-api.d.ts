@@ -3,6 +3,7 @@ import type {
   ProjectStoreRequest,
   ProjectStoreResponse,
 } from '../shared/project-store-transport';
+import type { AgentPathImportRequest, AgentPathImportResult } from '../shared/directory-import';
 import type { EditorBootstrapInfo } from '../shared/editor-auth-transport';
 import type {
   DesktopUpdateCheckSource,
@@ -76,6 +77,7 @@ declare global {
         disposition: DirectoryImportDisposition,
       ): Promise<void>;
       stopImportDirectoryWatch(watchId: string): Promise<void>;
+      importAgentPaths(request: AgentPathImportRequest): Promise<AgentPathImportResult>;
       subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
       windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
       revealExport(destinationId: string, filename: string): Promise<void>;

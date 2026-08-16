@@ -18,6 +18,19 @@ export interface DirectoryImportedFile {
   readonly proxyKind?: 'alpha-webm';
 }
 
+/** Agent-initiated path import (issue #84): files or directories the agent
+ * asks to import. knownHashes dedupes against the pool's existing content. */
+export interface AgentPathImportRequest {
+  readonly paths: readonly string[];
+  readonly projectId: string;
+  readonly knownHashes: readonly string[];
+}
+
+export interface AgentPathImportResult {
+  readonly imported: ReadonlyArray<Omit<DirectoryImportedFile, 'importId'>>;
+  readonly errors: readonly { path: string; error: string }[];
+}
+
 export interface DirectoryWatchStartResult {
   readonly watchId: string;
   readonly projectId: string;
@@ -30,6 +43,8 @@ export interface DirectoryImportEvent {
   readonly projectId: string;
   readonly file: DirectoryImportedFile;
 }
+
+export const AGENT_PATH_IMPORT_CHANNEL = 'openchatcut:agent-path-import';
 
 export const DIRECTORY_IMPORT_CHANNELS = {
   start: 'openchatcut:directory-import-start',
