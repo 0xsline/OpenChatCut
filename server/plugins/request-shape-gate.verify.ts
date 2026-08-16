@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import type { IncomingMessage } from 'node:http';
 import { requestShapeAllowed } from './request-shape-gate';
+import { externalMcpToken } from '../editor-auth';
 
 function req(overrides: Record<string, unknown> = {}): IncomingMessage {
   return {
     method: 'POST',
+    url: '/api/keys',
     socket: { remoteAddress: '127.0.0.1' },
     headers: {
       host: '127.0.0.1:5199',
@@ -35,7 +37,16 @@ assert.equal(requestShapeAllowed(foreignOrigin), false, 'foreign origin blocked'
 const nonLoopback = req({ socket: { remoteAddress: '10.0.0.5' } });
 assert.equal(requestShapeAllowed(nonLoopback), false, 'non-loopback socket blocked');
 
-const bearer = req({ headers: { authorization: 'Bearer abc' } });
-assert.equal(requestShapeAllowed(bearer), true, 'external MCP bearer allowed through (endpoint verifies)');
+const bearer = req({ url: '/api/external-mcp/mcp', headers: { authorization: 'Bearer abc' } });
+assert.equal(requestShapeAllowed(bearer), false, 'an arbitrary bearer token does not bypass the origin gate');
+
+const scopedElsewhere = req({ headers: { authorization: `Bearer ${externalMcpToken()}` } });
+assert.equal(requestShapeAllowed(scopedElsewhere), false, 'the MCP token is scoped to its endpoint');
+
+const externalMcp = req({
+  url: '/api/external-mcp/mcp',
+  headers: { authorization: `Bearer ${externalMcpToken()}` },
+});
+assert.equal(requestShapeAllowed(externalMcp), true, 'the exact MCP token reaches its own endpoint');
 
 console.log('request-shape-gate.verify: ok');

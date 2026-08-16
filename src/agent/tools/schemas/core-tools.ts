@@ -37,7 +37,7 @@ export const CORE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        itemId: { type: 'string' },
+        itemId: { type: 'string', minLength: 1 },
         props: { type: 'object', description: 'Map of propKey → new value.' },
       },
       required: ['itemId', 'props'],
@@ -49,7 +49,7 @@ export const CORE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        itemId: { type: 'string' },
+        itemId: { type: 'string', minLength: 1 },
         track: { type: 'string', description: 'Current compatible track alias or stable id.' },
         startFrame: { type: 'number' },
       },
@@ -62,7 +62,7 @@ export const CORE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        itemId: { type: 'string' },
+        itemId: { type: 'string', minLength: 1 },
         startFrame: { type: 'number' },
         durationInFrames: { type: 'number' },
         fadeInSeconds: { type: 'number', description: 'Fade-in length in seconds (0 clears).' },
@@ -75,17 +75,17 @@ export const CORE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'duplicate_item',
     description: 'Duplicate a clip (the copy is appended to the end of its track).',
-    input_schema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
+    input_schema: { type: 'object', properties: { itemId: { type: 'string', minLength: 1 } }, required: ['itemId'] },
   },
   {
     name: 'remove_item',
     description: 'Delete a clip from the timeline. ripple:true also closes the gap — later clips on the same track shift left by the removed clip\'s length (a ripple delete); default leaves a gap.',
-    input_schema: { type: 'object', properties: { itemId: { type: 'string' }, ripple: { type: 'boolean' } }, required: ['itemId'] },
+    input_schema: { type: 'object', properties: { itemId: { type: 'string', minLength: 1 }, ripple: { type: 'boolean' } }, required: ['itemId'] },
   },
   {
     name: 'split_item',
     description: 'Split a clip into two at the given absolute frame.',
-    input_schema: { type: 'object', properties: { itemId: { type: 'string' }, atFrame: { type: 'number' } }, required: ['itemId', 'atFrame'] },
+    input_schema: { type: 'object', properties: { itemId: { type: 'string', minLength: 1 }, atFrame: { type: 'number' } }, required: ['itemId', 'atFrame'] },
   },
   {
     name: 'list_audio',

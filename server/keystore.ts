@@ -5,7 +5,7 @@
 // routing are configuration, not credentials: the explicit NON_SECRET_NAMES whitelist
 // lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
 // show and edit them.
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { atomicWriteFile } from "./plugins/project-store-durable.ts";
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from "./llm-config.ts";
 import { decodePersistedEnvValue, mergeEnvText } from "./env-text.ts";
@@ -450,11 +450,7 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
   );
   const isolated = isIsolatedDevProfile(ACTIVE_PROFILE);
   const merged = mergeEnvText(existing, clean, isolated);
-  if (isolated) {
-    await atomicWriteFile(ENV_PATH, merged, { mode: 0o600 });
-  } else {
-    await writeFile(ENV_PATH, merged, "utf8");
-  }
+  await atomicWriteFile(ENV_PATH, merged, { mode: 0o600 });
   for (const [name, v] of clean) {
     if (v) {
       store.set(name, v);
@@ -463,4 +459,3 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     else store.delete(name);
   }
 }
-

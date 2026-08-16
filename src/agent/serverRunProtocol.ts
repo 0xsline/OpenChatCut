@@ -67,6 +67,8 @@ export type ServerRunTerminalResolution =
 export interface ServerRunSession {
   readonly hydrated: boolean;
   readonly messages: DisplayMessage[];
+  readonly contextUsage: AgentContextUsage | null;
+  readonly setContextUsage: (usage: AgentContextUsage | null) => void;
   readonly updateMessages: (update: (messages: DisplayMessage[]) => DisplayMessage[]) => void;
   readonly modelMessages: () => readonly ModelMessage[];
   readonly commitModelTurn: (

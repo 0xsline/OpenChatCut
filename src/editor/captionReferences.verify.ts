@@ -5,6 +5,7 @@ import { removeItemsWithGroups } from './linkGroups';
 import { removeAssetFromTimeline } from './mediaAssetUsage';
 import { applyOverwriteLaneAction } from './reducerOverwrite';
 import { reduce } from './reducerTimeline';
+import { resolveCaptionWords } from '../captions/resolve';
 
 const staleEntries = Array.from({ length: 3 }, (_, index) => ({
   id: `stale-lane-${index}`,
@@ -80,4 +81,63 @@ assert.equal(
   'overwrite removal must reconcile caption bindings',
 );
 
-console.log('caption references verify: removed-item bindings are reconciled');
+const splitSourceCaptions = {
+  enabled: true,
+  template: 'plain' as const,
+  pacing: 'phrase' as const,
+  sourceItemId: 'voice-source',
+};
+const splitSourceState = {
+  id: 'caption-split-timeline',
+  fps: 30,
+  width: 640,
+  height: 360,
+  items: [{
+    id: 'voice-source',
+    name: 'voice.wav',
+    kind: 'audio',
+    src: '/media/uploads/voice.wav',
+    track: 'A1',
+    startFrame: 0,
+    durationInFrames: 60,
+    transcript: [
+      { text: 'left', start: 0, end: 500 },
+      { text: 'right', start: 1_100, end: 1_500 },
+    ],
+  }],
+  tracks: {
+    A1: { kind: 'audio' },
+    C1: {
+      kind: 'caption',
+      captions: {
+        ...splitSourceCaptions,
+        sourceItemId: undefined,
+        sourceEntries: [{ id: 'voice-lane', itemId: 'voice-source' }],
+        perSource: { 'voice-lane': { maxLines: 2 } },
+      },
+    },
+  },
+  captions: splitSourceCaptions,
+  selectedId: null,
+} as unknown as TimelineState;
+const afterSplit = reduce(splitSourceState, {
+  type: 'split', id: 'voice-source', atFrame: 30, newId: 'voice-right',
+});
+assert.deepEqual(afterSplit.captions?.sources, ['voice-source', 'voice-right']);
+assert.deepEqual(
+  resolveCaptionWords(afterSplit.captions!, afterSplit.items, afterSplit.fps).map((word) => word.text),
+  ['left', 'right'],
+  'single-source captions keep both transcript halves after a split',
+);
+const splitTrackCaptions = afterSplit.tracks?.C1?.captions;
+assert.ok(splitTrackCaptions);
+assert.deepEqual(splitTrackCaptions.sourceEntries?.map((entry) => entry.itemId),
+  ['voice-source', 'voice-right']);
+assert.deepEqual(splitTrackCaptions.perSource?.['voice-lane:split:voice-right'], { maxLines: 2 });
+assert.deepEqual(
+  resolveCaptionWords(splitTrackCaptions, afterSplit.items, afterSplit.fps).map((word) => word.text),
+  ['left', 'right'],
+  'multi-lane captions duplicate the automatic source binding for the right fragment',
+);
+
+console.log('caption references verify: removed and split-item bindings are reconciled');

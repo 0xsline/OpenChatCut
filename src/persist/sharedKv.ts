@@ -27,6 +27,7 @@ export interface SharedKvBackend {
 const DB_NAME = 'openchatcut';
 const STORE = 'kv';
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
+const PENDING_KEYS_KEY = '__openchatcut_shared_pending_v1__';
 const memoryStore = new Map<string, unknown>();
 let injectedBackend: SharedKvBackend | undefined;
 interface StoreSnapshot {
@@ -54,6 +55,7 @@ export function configureSharedKvBackend(backend: SharedKvBackend | undefined): 
   injectedBackend = backend;
   remoteCache = null;
   remoteKnown.clear();
+  locallyPendingKeys.clear();
   projectMigrationPending = false;
   readyPromise = undefined;
 }
@@ -121,10 +123,33 @@ async function localKeys(): Promise<string[]> {
     request.onerror = () => reject(request.error);
   });
 }
+async function loadPendingKeys(): Promise<void> {
+  locallyPendingKeys.clear();
+  const saved = await localGet<unknown>(PENDING_KEYS_KEY);
+  if (!Array.isArray(saved)) return;
+  for (const key of saved) {
+    if (typeof key === 'string' && key !== MIGRATION_KEY && key !== PENDING_KEYS_KEY) {
+      locallyPendingKeys.add(key);
+    }
+  }
+}
+async function markPendingKey(key: string): Promise<void> {
+  locallyPendingKeys.add(key);
+  await localSet(PENDING_KEYS_KEY, [...locallyPendingKeys]);
+}
+async function clearPendingKeys(): Promise<void> {
+  locallyPendingKeys.clear();
+  await localDel(PENDING_KEYS_KEY);
+}
+async function clearPendingKey(key: string): Promise<void> {
+  locallyPendingKeys.delete(key);
+  if (locallyPendingKeys.size) await localSet(PENDING_KEYS_KEY, [...locallyPendingKeys]);
+  else await localDel(PENDING_KEYS_KEY);
+}
 async function localEntries(): Promise<Record<string, unknown>> {
   const entries: Record<string, unknown> = {};
   for (const key of await localKeys()) {
-    if (key !== MIGRATION_KEY) entries[key] = await localGet(key);
+    if (key !== MIGRATION_KEY && key !== PENDING_KEYS_KEY) entries[key] = await localGet(key);
   }
   return entries;
 }
@@ -156,15 +181,17 @@ function cacheEntry(key: string, entry: EntryResponse): void {
 }
 async function fetchRemoteEntry(key: string): Promise<void> {
   const entry = await requestEntry(key);
+  if (locallyPendingKeys.has(key) || (key === 'projects' && projectMigrationPending)) {
+    const local = await localGet(key);
+    remoteKnown.add(key);
+    if (local === undefined) delete remoteCache?.[key];
+    else if (remoteCache) remoteCache = { ...remoteCache, [key]: local };
+    return;
+  }
   cacheEntry(key, entry);
-  if (key === 'projects' && projectMigrationPending) return;
-  if (entry.found && !locallyPendingKeys.has(key)) {
-    // Never overwrite a locally-pending (offline-written) newer value with
-    // the server's older copy; the pending key is only cleared once a
-    // writable bootstrap genuinely merges it.
+  if (entry.found) {
     await localSet(key, entry.value);
-    locallyPendingKeys.delete(key);
-  } else if (!entry.found && !locallyPendingKeys.has(key)) {
+  } else {
     await localDel(key);
   }
 }
@@ -247,27 +274,28 @@ async function bootstrap(): Promise<void> {
   if (!canSync()) return;
   let projects: EntryResponse;
   try {
+    await loadPendingKeys();
     const migrated = await localGet<boolean>(MIGRATION_KEY);
     projects = await requestEntry('projects');
     const canWrite = projectStoreWriteCredential();
-    projectMigrationPending = !canWrite
-      && (!projects.found || (Array.isArray(projects.value) && projects.value.length === 0));
-    if ((!migrated || !projects.found) && canWrite) {
+    if ((!migrated || !projects.found || locallyPendingKeys.size > 0) && canWrite) {
       try {
         const local = await localEntries();
         const snapshot = await requestMerge(local);
         projects = 'projects' in snapshot.entries
           ? { found: true, value: snapshot.entries.projects }
           : { found: false };
+        await clearPendingKeys();
       } catch {
         // Merge contention (another origin/instance holds the write lease):
         // keep the remote cache usable for reads; the local backlog can be
         // merged on a later load when the lease is free.
       }
     }
+    projectMigrationPending = locallyPendingKeys.has('projects') || (!canWrite
+      && (!projects.found || (Array.isArray(projects.value) && projects.value.length === 0)));
   } catch {
-    remoteCache = null;
-    remoteKnown.clear();
+    await disableRemote();
     return;
   }
   remoteCache = {};
@@ -395,6 +423,7 @@ export async function kvGet<T>(key: string): Promise<T | undefined> {
 async function setProjectDocument(key: string, value: unknown): Promise<void> {
   if (injectedBackend || !canSync()) {
     await localSet(key, value);
+    if (!injectedBackend) await markPendingKey(key);
     return;
   }
   if (!remoteCache) {
@@ -402,8 +431,8 @@ async function setProjectDocument(key: string, value: unknown): Promise<void> {
     // Fall back to a local write marked as pending so a later successful
     // bootstrap merge carries it into the shared store — the same offline
     // semantics as kvGet's local read fallback. Never hard-fail the editor.
-    locallyPendingKeys.add(key);
     await localSet(key, value);
+    await markPendingKey(key);
     return;
   }
   const projectId = key.slice('project:'.length);
@@ -454,6 +483,7 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
   }
   if (!remoteCache) {
     await localSet(key, value);
+    if (!injectedBackend) await markPendingKey(key);
     return;
   }
   if (!projectStoreWriteCredential()) {
@@ -467,11 +497,11 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
     }
     await disableRemote();
     await localSet(key, value);
-    locallyPendingKeys.add(key);
+    await markPendingKey(key);
     return;
   }
   await localSet(key, value);
-  locallyPendingKeys.delete(key);
+  await clearPendingKey(key);
   remoteKnown.add(key);
   remoteCache = { ...remoteCache, [key]: value };
 }
@@ -567,7 +597,7 @@ export async function kvKeys(): Promise<string[]> {
       await disableRemote();
     }
   }
-  return (await localKeys()).filter((key) => key !== MIGRATION_KEY);
+  return (await localKeys()).filter((key) => key !== MIGRATION_KEY && key !== PENDING_KEYS_KEY);
 }
 
 /** Test helper: reset the Node fallback shared by all persistence modules. */
@@ -575,6 +605,7 @@ export function resetSharedKvMemory(): void {
   memoryStore.clear();
   remoteCache = null;
   remoteKnown.clear();
+  locallyPendingKeys.clear();
   freshCache.clear();
   readyPromise = undefined;
   projectMigrationPending = false;

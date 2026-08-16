@@ -10,6 +10,7 @@ import { applyClipAction } from './reducerClipActions';
 import { applyTrackAction } from './reducerTrackActions';
 import { applyTranscriptAction } from './reducerTranscriptActions';
 import { OVERLAP_GUARDED_ACTIONS, remapSplitTransitionEndpoints, splitTimelineItem } from './reducerOverwrite';
+import { remapSplitTimelineCaptionReferences } from '../captions/reconcileSources';
 
 export function reduce(s: TimelineState, a: Action): TimelineState {
   const applied = fitTimelineItems(applyAction(s, a));
@@ -31,14 +32,16 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
     case 'split': {
       const item = s.items.find((candidate) => candidate.id === a.id);
       if (!item || s.tracks?.[item.track]?.locked
+        || !a.newId || s.items.some((candidate) => candidate.id === a.newId)
+        || !Number.isFinite(a.atFrame)
         || a.atFrame <= item.startFrame
         || a.atFrame >= item.startFrame + item.durationInFrames) return s;
       const [left, right] = splitTimelineItem(s, item, a.atFrame, a.newId);
-      return {
+      return remapSplitTimelineCaptionReferences({
         ...s,
         items: s.items.flatMap((candidate) => candidate.id === a.id ? [left, right] : [candidate]),
         transitions: remapSplitTransitionEndpoints(s.transitions, item.id, right.id),
-      };
+      }, item.id, right.id);
     }
     case 'select': {
       if (a.id === null) return { ...s, selectedId: null, selectedIds: [] };

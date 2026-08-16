@@ -22,6 +22,7 @@ function makeStore() {
 };
 
 const { loadChat, saveChat, clearChat, isPersistedChat, migrateProjectDoc, docFromTimeline } = await import('./projectStore');
+const { configureSharedKvBackend, resetSharedKvMemory } = await import('./sharedKv');
 
 // regression: migrateProjectDoc must PRESERVE designStyle (it rebuilds the doc
 // field-by-field, so an omitted field is silently dropped on every load).
@@ -58,5 +59,17 @@ assert.strictEqual(await loadChat('p2'), null);
 // clear removes it
 await clearChat('p1');
 assert.strictEqual(await loadChat('p1'), null);
+
+configureSharedKvBackend({
+  get: async () => undefined,
+  set: async () => { throw new Error('forced chat write failure'); },
+  delete: async () => undefined,
+  keys: async () => [],
+  writeAgentRuntime: async () => { throw new Error('unused'); },
+  updateAgentRunLease: async () => { throw new Error('unused'); },
+});
+await assert.rejects(saveChat('p-fail', chat), /forced chat write failure/,
+  'saveChat exposes persistence failures to awaited callers');
+resetSharedKvMemory();
 
 console.log('chat-persist.check: ok');

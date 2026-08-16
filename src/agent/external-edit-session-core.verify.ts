@@ -14,6 +14,8 @@ import {
   revisionOf,
 } from './external-edit-session';
 import { ExternalSessionRunLedger } from './external-run-ledger';
+import { execCoreDataTool } from './tools/core-data-tools';
+import type { AgentContext } from './context';
 export const base = docFromTimeline({ ...INITIAL, items: [] });
 export function sessionStatus(value: unknown): unknown {
   assert(value && typeof value === 'object' && 'status' in value);
@@ -122,3 +124,15 @@ assert.equal(restoredLegacyDiscard.approvalMode, 'manual');
 for (const outcome of ['applied', 'rejected', 'cancelled', 'stale', 'failed'] as const) {
   assert.equal(finishExternalEditSession(session, outcome).status, outcome);
 }
+
+let updatedItemId = '';
+const coreContext = {
+  getState: () => ({ items: [{ id: 'first-item' }] }),
+  commands: { updateItemProps: (id: string) => { updatedItemId = id; } },
+} as unknown as AgentContext;
+assert.deepEqual(
+  execCoreDataTool('update_item_props', { itemId: '', props: { text: 'wrong' } }, coreContext),
+  { error: 'no item ' },
+  'an empty item id must not prefix-match the first timeline item',
+);
+assert.equal(updatedItemId, '');

@@ -62,7 +62,10 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
   },
   {
     requestKeywords: ['caption', 'subtitle', 'captions', 'subtitles', '字幕'],
-    tools: ['read_captions', 'edit_captions', 'apply_caption_avoidance', 'place_graphics_in_safe_zone'],
+    tools: [
+      'read_captions', 'edit_captions', 'edit_item',
+      'apply_caption_avoidance', 'place_graphics_in_safe_zone',
+    ],
   },
   {
     requestKeywords: ['transcript', 'script', 'speech', '文字稿', '台词', '口播', '讲稿'],

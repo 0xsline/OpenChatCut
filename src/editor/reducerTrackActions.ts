@@ -67,7 +67,8 @@ export function applyTrackAction(
       return { ...s, transitions: (s.transitions ?? []).filter((t) => t.id !== a.id) };
     case 'duplicate': {
       const it = s.items.find((x) => x.id === a.id);
-      if (!it || s.tracks?.[it.track]?.locked) return s;
+      if (!it || !a.newId || s.items.some((item) => item.id === a.newId)
+        || s.tracks?.[it.track]?.locked) return s;
       const copy: TimelineItem = { ...it, id: a.newId, props: { ...it.props }, startFrame: trackEnd(s, it.track) };
       return { ...s, items: [...s.items, copy], selectedId: copy.id, selectedIds: [copy.id] };
     }

@@ -26,6 +26,7 @@ import { normalizeLlmProvider, PROVIDER } from './providerConfig';
 import { ensureAgentRetryMetadata, initialAgentMessages, type DisplayMessage } from './agent-session';
 import { isProposalStale, type Proposal } from './proposal';
 import { parseAgentChangeLog } from './changeLog';
+import type { AgentContextUsage } from './context-compaction';
 import { projectToolResultForPersistence } from './runtime-artifact';
 import {
   currentAgentRunOwnerInstanceId,
@@ -233,6 +234,20 @@ export async function loadRecoveredAgentSession(
   return { saved, pending, generation };
 }
 
+function persistedContextUsage(value: unknown): AgentContextUsage | null {
+  if (!value || typeof value !== 'object') return null;
+  const usage = value as AgentContextUsage;
+  return Number.isSafeInteger(usage.inputTokens) && usage.inputTokens >= 0
+    && Number.isSafeInteger(usage.contextWindowTokens) && usage.contextWindowTokens > 0
+    && typeof usage.contextWindowEstimated === 'boolean'
+    && typeof usage.isEstimated === 'boolean'
+    && typeof usage.modelId === 'string'
+    && typeof usage.compacted === 'boolean'
+    && Number.isSafeInteger(usage.messageCount) && usage.messageCount >= 0
+    ? usage
+    : null;
+}
+
 export async function hydrateAgentSession(
   state: AgentHookState,
   projectId: string,
@@ -255,7 +270,9 @@ export async function hydrateAgentSession(
     state.llmRef.current = initialAgentMessages();
   }
   state.toolFailuresRef.current.restore(saved?.toolFailures);
-  state.refreshEstimatedContextUsage();
+  const contextUsage = persistedContextUsage(saved?.contextUsage);
+  if (contextUsage) state.replaceContextUsage(contextUsage);
+  else state.refreshEstimatedContextUsage();
   state.llmProviderRef.current = PROVIDER;
   if (pending) state.setProposal(pending);
   state.hydratedRef.current = true;
@@ -427,6 +444,7 @@ export function agentSessionSnapshot(
     messages: messagesForPersistence(state.messages),
     llm: projectLlmMessagesForPersistence(llm),
     changeLog: state.changeLog,
+    contextUsage: state.contextUsageRef.current ?? undefined,
     llmFormat: 'ai-sdk-v1',
     llmProvider: state.llmProviderRef.current,
     toolFailures: state.toolFailuresRef.current.snapshot(),
@@ -434,7 +452,9 @@ export function agentSessionSnapshot(
 }
 
 function persistAgentSession(state: AgentHookState, projectId: string): void {
-  void saveChat(projectId, agentSessionSnapshot(state));
+  void saveChat(projectId, agentSessionSnapshot(state)).catch((error) => {
+    console.error('[agent] chat persistence failed:', error);
+  });
 }
 
 export function useAgentPersistence(

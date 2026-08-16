@@ -3,6 +3,8 @@ import type { ModelMessage } from 'ai';
 import type { AgentToolSchema } from './tool-schema';
 import { activationProviderOptions, ToolActivation } from './tool-activation';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
+import { TOOL_SCHEMAS } from './tools';
+import { execCoreTool } from './tools/core-tools';
 
 const schema = (name: string): AgentToolSchema => ({
   name,
@@ -81,6 +83,13 @@ const backgroundFillRouted = new ToolActivation(catalog, [
 assert.ok(
   backgroundFillRouted.names().includes('edit_item'),
   'background-fill requests expose edit_item',
+);
+const captionEditRouted = new ToolActivation(catalog, [
+  { role: 'user', content: '多加一些字幕' },
+]);
+assert.ok(
+  captionEditRouted.names().includes('edit_item'),
+  'caption requests expose the timeline text-item editor',
 );
 const routedAndExport = new ToolActivation(catalog, [
   { role: 'user', content: '把 V1 轨道片段移动并剪辑一下' },
@@ -230,8 +239,13 @@ const activatedResult = neutralSearch.result;
 assert.ok(neutralSearch.activation.names().includes('submit_export'));
 assert.ok(neutralSearch.activation.names().includes('verify_export'));
 assert.ok(!neutralSearch.activation.names().includes('not_in_catalog'));
-assert.equal(neutralSearch.activation.names().includes('ToolSearch'), false,
-  'a successful search is limited to one discovery round per request');
+assert.equal(neutralSearch.activation.names().includes('ToolSearch'), true,
+  'a successful search keeps discovery available for another tool group in the same request');
+const repeatedSearch = neutralSearch.activation.withSearchResult({
+  results: [{ name: 'web_crawl', description: 'web' }],
+});
+assert.ok(repeatedSearch.activation.names().includes('web_crawl'));
+assert.ok(repeatedSearch.activation.names().includes('ToolSearch'));
 const skillActivation = neutral.withToolResult('load_skill', {
   skill: 'export',
   contents: {
@@ -391,4 +405,25 @@ assert.equal(admitted.admit('not_in_catalog').names().includes('not_in_catalog')
 assert.equal(admitted.admit('web_crawl'), admitted,
   'admitting an already-active tool is a stable no-op');
 
-console.log('tool activation checks passed');
+// Every deferred schema must be discoverable by its exact name and become
+// available to the model on the next step without sending the full catalog.
+assert.equal(new Set(TOOL_SCHEMAS.map((tool) => tool.name)).size, TOOL_SCHEMAS.length,
+  'canonical tool names are unique');
+const fullActivation = new ToolActivation(TOOL_SCHEMAS, [{ role: 'user', content: '你好' }]);
+for (const tool of TOOL_SCHEMAS) {
+  if (tool.name === 'ToolSearch') continue;
+  const result = await execCoreTool(
+    'ToolSearch',
+    { query: tool.name, limit: 12 },
+    {} as never,
+    TOOL_SCHEMAS,
+  ) as { results?: Array<{ name?: string }> };
+  assert.ok(result.results?.some((candidate) => candidate.name === tool.name),
+    `ToolSearch finds ${tool.name} by exact name`);
+  assert.ok(fullActivation.withSearchResult(result).activation.names().includes(tool.name),
+    `ToolSearch exposes ${tool.name} to the next model step`);
+  assert.ok(fullActivation.admit(tool.name).names().includes(tool.name),
+    `a remembered call to canonical tool ${tool.name} is admitted`);
+}
+
+console.log(`tool activation checks passed (${TOOL_SCHEMAS.length} canonical tools)`);

@@ -8,6 +8,7 @@
 import assert from 'node:assert';
 import type { TimelineState } from '../../editor/types';
 import type { AgentContext } from '../context';
+import type { History } from '../../editor/reducerHistory';
 
 // ── tiny in-memory IndexedDB shim (enough for the kv store's get/put/delete) ──
 const mem = new Map<string, unknown>();
@@ -31,6 +32,7 @@ const { makeDraft } = await import('../../editor/store');
 const { docFromTimeline } = await import('../../persist/projectStore');
 const { execDesignTool } = await import('./design-tools');
 const { DESIGN_STYLE_PRESETS } = await import('../../editor/design-presets');
+const { historyReduce } = await import('../../editor/reducerHistory');
 
 const state: TimelineState = { fps: 30, width: 1920, height: 1080, selectedId: null, items: [] };
 const draft = makeDraft(docFromTimeline(state));
@@ -135,5 +137,17 @@ assert.ok(delUnknown.error);
 await execDesignTool('manage_design_style', { action: 'delete', presetId: saveRes.saved.id }, ctx);
 const list2 = await execDesignTool('manage_design_style', { action: 'list' }, ctx) as { owned: unknown[] };
 assert.deepStrictEqual(list2.owned, []);
+
+let history: History = { past: [], present: docFromTimeline(state), future: [] };
+history = historyReduce(history, {
+  type: 'design.set', style: { colors: [{ role: 'primary', value: '#123456' }], fonts: [] },
+});
+assert.strictEqual(history.past.length, 1, 'design.set creates an undo snapshot');
+history = historyReduce(history, { type: 'design.patch', patch: { styleGuide: 'undoable' } });
+assert.strictEqual(history.past.length, 2, 'design.patch creates an undo snapshot');
+history = historyReduce(history, { type: 'undo' });
+assert.strictEqual(history.present.designStyle?.styleGuide, undefined);
+history = historyReduce(history, { type: 'undo' });
+assert.strictEqual(history.present.designStyle, undefined);
 
 console.log('design-tools.check: ok');

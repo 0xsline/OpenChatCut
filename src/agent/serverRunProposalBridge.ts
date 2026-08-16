@@ -73,7 +73,7 @@ function useServerRunSession(
       ...(assistantText ? [{ role: 'assistant', content: assistantText } as const] : []),
     ] as ModelMessage[];
     current.llmRef.current = next;
-    current.refreshEstimatedContextUsage();
+    if (!current.contextUsageRef.current) current.refreshEstimatedContextUsage();
     let committed: boolean;
     try {
       committed = await saveServerRunChat(
@@ -94,10 +94,19 @@ function useServerRunSession(
   return useMemo<ServerRunSession>(() => ({
     hydrated: state.hydrated,
     messages: state.messages,
+    contextUsage: state.contextUsage,
+    setContextUsage: state.replaceContextUsage,
     updateMessages,
     modelMessages: () => stateRef.current.llmRef.current,
     commitModelTurn,
-  }), [commitModelTurn, state.hydrated, state.messages, updateMessages]);
+  }), [
+    commitModelTurn,
+    state.contextUsage,
+    state.hydrated,
+    state.messages,
+    state.replaceContextUsage,
+    updateMessages,
+  ]);
 }
 
 /** Adapts server-run browser tool actions to the existing durable proposal path. */

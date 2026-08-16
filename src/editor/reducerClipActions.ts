@@ -20,6 +20,8 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
       if (s.tracks?.[a.item.track]?.locked) return s;
       if (s.items.some((item) => item.id === a.item.id)) return s;
       const requestedStart = a.startFrame ?? trackEnd(s, a.item.track);
+      if (!Number.isFinite(requestedStart) || requestedStart < 0
+        || !Number.isFinite(a.item.durationInFrames) || a.item.durationInFrames < 1) return s;
       let baseState = s;
       if (a.ripple) {
         const shifts = new Map(s.items
@@ -100,6 +102,9 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
       );
     }
     case 'retime': {
+      if ((a.startFrame !== undefined && !Number.isFinite(a.startFrame))
+        || (a.durationInFrames !== undefined && !Number.isFinite(a.durationInFrames))
+        || (a.srcInFrame !== undefined && !Number.isFinite(a.srcInFrame))) return s;
       if (s.items.some((it) => it.id === a.id && s.tracks?.[it.track]?.locked)) return s;
       const target = s.items.find((it) => it.id === a.id);
       if (!target) return s;

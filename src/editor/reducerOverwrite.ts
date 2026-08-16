@@ -4,7 +4,7 @@ import { fitItemToDuration } from './clipFit';
 import { splitItemKeyframes } from './keyframes';
 import { sourceWindowForTimelineRange } from './sourceLimit';
 import { unlinkItems } from './linkGroups';
-import { reconcileTimelineCaptionReferences } from '../captions/reconcileSources';
+import { reconcileTimelineCaptionReferences, remapSplitTimelineCaptionReferences } from '../captions/reconcileSources';
 import { reconcileTransitions } from './transitionReconcile';
 import { hasOperationalTranscript } from '../transcript/types';
 import { splitClipTranscript } from '../transcript/edit';
@@ -181,11 +181,12 @@ export function applyOverwriteLaneAction(
         || left.durationInFrames !== action.atFrame - target.startFrame
         || right.startFrame !== action.atFrame
         || right.durationInFrames !== target.startFrame + target.durationInFrames - action.atFrame) return null;
-      const unlinked = unlinkItems({
+      const splitState = remapSplitTimelineCaptionReferences({
         ...state,
         items: state.items.flatMap((item) => item.id === target.id ? [left, right] : [item]),
         transitions: remapSplitTransitionEndpoints(state.transitions, target.id, right.id),
-      }, [target.id]);
+      }, target.id, right.id);
+      const unlinked = unlinkItems(splitState, [target.id]);
       return reconcileOverwriteLaneState(unlinked);
     }
   }

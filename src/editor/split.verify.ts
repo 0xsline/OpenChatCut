@@ -84,4 +84,19 @@ const stateOf = (it: TimelineItem): TimelineState => ({ fps, width: 1920, height
   assert.equal(out.items.find((x) => x.id === 'v1b')!.transcript, undefined, 'no transcript to partition');
 }
 
+{
+  const base = stateOf(item({}));
+  assert.equal(reduce(base, { type: 'split', id: 'v1', atFrame: Number.NaN, newId: 'v1b' }).items.length, 1,
+    'NaN split positions are rejected');
+  assert.equal(reduce(base, { type: 'split', id: 'v1', atFrame: 45, newId: 'v1' }).items.length, 1,
+    'split ids must not collide with existing items');
+  assert.equal(reduce(base, { type: 'duplicate', id: 'v1', newId: 'v1' }).items.length, 1,
+    'duplicate ids must not collide with existing items');
+  const { startFrame: _startFrame, ...newItem } = item({ id: 'v2' });
+  assert.equal(reduce(base, { type: 'add', item: newItem, startFrame: Number.NaN }).items.length, 1,
+    'NaN add positions are rejected');
+  assert.equal(reduce(base, { type: 'retime', id: 'v1', durationInFrames: Number.NaN }).items[0]!.durationInFrames, 117,
+    'NaN retime values are rejected');
+}
+
 console.log('split.check: OK');

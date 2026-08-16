@@ -267,8 +267,8 @@ const apiResult = await runApiAgent(
 );
 assert.equal(apiReprepares, 1, 'API re-budgets history after ToolSearch expands schemas');
 assert.ok(apiPreparedTools.includes('submit_export'));
-assert.equal(apiPreparedTools.includes('ToolSearch'), false,
-  'API ToolSearch is limited to one discovery round per request');
+assert.equal(apiPreparedTools.includes('ToolSearch'), true,
+  'API ToolSearch remains available for another discovery round');
 assert.equal(persistedApiUsage.length, 2,
   'each API provider round persists usage before run completion');
 assert.deepEqual(

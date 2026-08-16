@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { buildActions, wrapExecJs } from './firecrawl';
+import { buildActions, saveScreenshot, wrapExecJs } from './firecrawl';
+import { resolveE2bFileBytes } from './e2b';
 
 // ── wrapExecJs ─────────────────────────────────────────────────────────────
 // Top-level `return` (the model's natural style) must be wrapped in an IIFE so
@@ -69,5 +70,13 @@ const many = buildActions(
   undefined,
 ) as unknown[];
 assert.equal(many.length, 10, 'actions capped at 10');
+
+await assert.rejects(
+  resolveE2bFileBytes({ path: '/tmp/private', url: 'http://127.0.0.1/private' }),
+  /non-public address/,
+  'E2B URL imports reject private network targets',
+);
+assert.equal(await saveScreenshot('http://127.0.0.1/private.png'), null,
+  'Firecrawl screenshot downloads reject private network targets');
 
 console.log('firecrawl.verify: wrapExecJs + buildActions passed');

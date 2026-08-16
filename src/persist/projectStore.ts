@@ -126,6 +126,7 @@ export interface PersistedChat {
   messages: unknown[];
   llm: unknown[];
   changeLog?: unknown[];
+  contextUsage?: unknown;
   llmFormat?: 'ai-sdk-v1';
   llmProvider?: LlmProvider;
   toolFailures?: unknown;
@@ -162,20 +163,14 @@ function serverRunTurnIds(chat: unknown): string[] {
 export function saveChat(projectId: string, chat: PersistedChat): Promise<void> {
   const generation = agentSessionWriteGeneration(projectId);
   return serializeChatWrite(projectId, async () => {
-    try {
-      const sessionGeneration = await generation;
-      const key = chatKey(projectId, sessionGeneration);
-      const priorIds = serverRunTurnIds(await kvGet<unknown>(key));
-      await kvSet(key, {
-        ...chat,
-        ...(priorIds.length ? { serverRunTurnIds: priorIds } : {}),
-        sessionGeneration,
-      });
-    } catch {
-      // Remote write failed (read-only/offline): the session still works
-      // in-memory and the local IndexedDB fallback inside kvSet covers
-      // single-origin offline use.
-    }
+    const sessionGeneration = await generation;
+    const key = chatKey(projectId, sessionGeneration);
+    const priorIds = serverRunTurnIds(await kvGet<unknown>(key));
+    await kvSet(key, {
+      ...chat,
+      ...(priorIds.length ? { serverRunTurnIds: priorIds } : {}),
+      sessionGeneration,
+    });
   });
 }
 

@@ -13,7 +13,7 @@ import {
   agentSessionWriteGeneration,
   rotateAgentSessionGeneration,
 } from '../persist/agentSessionGeneration';
-import { docFromTimeline } from '../persist/projectStore';
+import { docFromTimeline, saveChat } from '../persist/projectStore';
 import {
   loadProposalRecord,
   markProposalApplying,
@@ -26,7 +26,13 @@ import {
   type AgentRunRecorder,
 } from './runtime-ledger';
 import { buildOperation, buildProposal } from './proposal';
-import { cleanupAgentHydration, loadRecoveredAgentSession } from './useAgentPersistence';
+import {
+  agentSessionSnapshot,
+  cleanupAgentHydration,
+  hydrateAgentSession,
+  loadRecoveredAgentSession,
+} from './useAgentPersistence';
+import type { AgentContextUsage } from './context-compaction';
 import type { AgentHookState } from './useAgentState';
 // The settle endpoint is server-side; emulate its effect locally (patch the
 // sidecar) so verifies exercise the full settlement path without a server.
@@ -53,6 +59,46 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 
 const projectId = `hydrate-recovery-${crypto.randomUUID()}`;
 resetAgentRuntimeStoreMemory();
+const contextProjectId = `hydrate-context-${crypto.randomUUID()}`;
+const persistedContextUsage: AgentContextUsage = {
+  inputTokens: 8_642,
+  contextWindowTokens: 1_000_000,
+  contextWindowEstimated: false,
+  isEstimated: false,
+  modelId: 'deepseek:deepseek-v4-pro',
+  compacted: false,
+  messageCount: 2,
+};
+const snapshot = agentSessionSnapshot({
+  messages: [],
+  llmRef: { current: [{ role: 'user', content: 'persist context' }] },
+  changeLog: [],
+  llmProviderRef: { current: 'deepseek' },
+  toolFailuresRef: { current: { snapshot: () => [] } },
+  contextUsageRef: { current: persistedContextUsage },
+} as unknown as AgentHookState);
+assert.deepEqual(snapshot.contextUsage, persistedContextUsage,
+  'agent session snapshots retain the latest measured context usage');
+await saveChat(contextProjectId, snapshot);
+let restoredContextUsage: AgentContextUsage | null = null;
+let estimatedContextRefreshes = 0;
+await hydrateAgentSession({
+  ctxRef: { current: { getDoc: () => docFromTimeline({ ...INITIAL, items: [] }) } },
+  setMessages: () => undefined,
+  setChangeLog: () => undefined,
+  llmRef: { current: [] },
+  toolFailuresRef: { current: { restore: () => undefined } },
+  replaceContextUsage: (usage: AgentContextUsage | null) => { restoredContextUsage = usage; },
+  refreshEstimatedContextUsage: () => { estimatedContextRefreshes += 1; },
+  llmProviderRef: { current: 'deepseek' },
+  setProposal: () => undefined,
+  hydratedRef: { current: false },
+  setHydrated: () => undefined,
+} as unknown as AgentHookState, contextProjectId, () => true);
+assert.deepEqual(restoredContextUsage, persistedContextUsage,
+  'reopening a project restores its measured context usage');
+assert.equal(estimatedContextRefreshes, 0,
+  'restored measured usage is not replaced by a lower history-only estimate');
 const capProjectId = `approval-cap-${crypto.randomUUID()}`;
 for (let index = 0; index < MAX_APPROVALS; index += 1) {
   await upsertAgentApproval({

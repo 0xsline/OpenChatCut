@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -183,6 +183,15 @@ try {
   const address = server.httpServer?.address();
   if (!address || typeof address === 'string') throw new Error('upload verification server has no TCP address');
   const origin = `http://127.0.0.1:${address.port}`;
+  await writeFile(join(directory, 'active.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+  const svgDocument = await globalThis.fetch(`${origin}/media/uploads/active.svg`, {
+    headers: { 'sec-fetch-dest': 'document' },
+  });
+  assert.equal(svgDocument.headers.get('content-type'), 'image/svg+xml');
+  assert.equal(svgDocument.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(svgDocument.headers.get('content-security-policy'), 'sandbox');
+  assert.match(svgDocument.headers.get('content-disposition') ?? '', /^attachment;/,
+    'top-level SVG navigation is delivered as a download');
   const ordinaryUi = await editorFetch(`${origin}/upload?name=ui.bin&assetId=ordinary-ui`, {
     method: 'PUT',
     headers: { 'content-type': 'application/octet-stream' },

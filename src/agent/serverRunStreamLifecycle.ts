@@ -181,7 +181,10 @@ function bindEventSource(
     retry: (id) => state.eventSession.retry(id),
     finish: (id, status) => { void lifecycle.finishRun(id, status); },
     appendMessage: state.appendMessage,
-    onContextUsage: (usage) => { state.setContextUsage(usage); },
+    onContextUsage: (usage) => {
+      state.setContextUsage(usage);
+      currentOptions(state).session?.setContextUsage(usage);
+    },
     transportError: (eventSource, id) => {
       state.eventSession.handleTransportError(eventSource, id);
     },

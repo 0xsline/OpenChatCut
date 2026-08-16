@@ -50,7 +50,7 @@ try {
       resolveTools: () => activeTools,
       executeTool: async (name) => {
         if (name === 'ToolSearch') {
-          activeTools = [spec('ask_followup_questions'), spec('web_crawl')];
+          activeTools = [spec('ToolSearch'), spec('ask_followup_questions'), spec('web_crawl')];
           return { success: true, result: { activatedTools: ['web_crawl'] }, refreshTools: true };
         }
         return { success: true, result: { __followup: 'Which format?' }, followupText: 'Which format?' };
@@ -58,15 +58,15 @@ try {
     },
   );
   assert.deepEqual(turns[1]?.tools?.map((tool) => tool.name),
-    ['ask_followup_questions', 'web_crawl']);
+    ['ToolSearch', 'ask_followup_questions', 'web_crawl']);
   const resumed = new ToolActivation(catalog, [
     ...paused,
     { role: 'user', content: '1080p' },
   ] as ModelMessage[]);
   assert.ok(resumed.names().includes('web_crawl'),
     'neutral follow-up retains ToolSearch activation for the unfinished request');
-  assert.equal(resumed.names().includes('ToolSearch'), false,
-    'a paused continuation does not repeat ToolSearch');
+  assert.equal(resumed.names().includes('ToolSearch'), true,
+    'a paused continuation can discover another tool group');
 } finally {
   globalThis.fetch = originalFetch;
 }

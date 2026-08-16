@@ -117,23 +117,6 @@ export function activatedToolNamesFromMessages(messages: readonly ModelMessage[]
   }
   return [...new Set(names)];
 }
-function toolSearchConsumed(messages: readonly ModelMessage[]): boolean {
-  for (const message of messages.slice(activationScanStart(messages))) {
-    if (isActivationCheckpoint(message)) {
-      return !activatedToolNamesFromMessages([message]).includes('ToolSearch');
-    }
-    if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
-    for (const part of message.content) {
-      if (part.type !== 'tool-result'
-        || part.toolName !== 'ToolSearch'
-        || !('output' in part)) continue;
-      if (activatedToolNamesFromResult(part.output).length > 0) return true;
-    }
-  }
-  return false;
-}
-
-
 function routedNames(
   catalog: readonly AgentToolSchema[],
   messages: readonly ModelMessage[],
@@ -161,7 +144,7 @@ export class ToolActivation {
     this.catalog = catalog;
     this.byName = new Map(catalog.map((schema) => [schema.name, schema]));
     const routed = routedNames(catalog, messages);
-    const searchAllowed = allowSearch && !toolSearchConsumed(messages);
+    const searchAllowed = allowSearch;
     const requested = [
       ...bootNames(),
       ...activatedToolNamesFromMessages(messages),
@@ -176,9 +159,7 @@ export class ToolActivation {
     readonly result: unknown;
   } {
     const activatedTools = activatedToolNamesForResult(toolName, result, this.catalog);
-    const retainSearch = toolName === 'ToolSearch'
-      ? activatedTools.length === 0
-      : this.activeNames.has('ToolSearch');
+    const retainSearch = toolName === 'ToolSearch' || this.activeNames.has('ToolSearch');
     return {
       activation: new ToolActivation(
         this.catalog,

@@ -6,7 +6,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { getKey, type KeyName } from './keystore.ts';
 import { getUploadObjectToFile, r2Config } from './r2.ts';
 import {
@@ -263,11 +263,19 @@ export async function serveDiskFile(req: IncomingMessage, res: ServerResponse, f
     }
     status = 206;
   }
+  const contentType = mimeFor(file);
   const headers: Record<string, string> = {
-    'Content-Type': mimeFor(file),
+    'Content-Type': contentType,
+    'X-Content-Type-Options': 'nosniff',
     'Accept-Ranges': 'bytes',
     'Content-Length': String(end - start + 1),
   };
+  if (contentType === 'image/svg+xml') {
+    headers['Content-Security-Policy'] = 'sandbox';
+    if (req.headers['sec-fetch-dest'] === 'document') {
+      headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(basename(file))}`;
+    }
+  }
   if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${info.size}`;
   res.writeHead(status, headers);
   if (req.method === 'HEAD') { res.end(); return; }

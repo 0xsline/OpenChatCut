@@ -24,6 +24,7 @@ export const CORE_DATA_TOOL_NAMES = new Set([
 
 function findItem(ctx: AgentContext, itemId: unknown) {
   const id = String(itemId ?? '');
+  if (!id) return null;
   return ctx.getState().items.find((item) => item.id === id || item.id.startsWith(id)) ?? null;
 }
 

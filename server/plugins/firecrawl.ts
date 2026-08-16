@@ -5,6 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { uploadDir } from '../media-dir.ts';
+import { safePublicFetch } from '../safe-public-fetch.ts';
 // Proxy-aware fetch: attaches the configured outbound proxy (keystore
 // PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
@@ -175,7 +176,7 @@ export function buildActions(
   return list.length ? list : undefined;
 }
 
-async function saveScreenshot(data: unknown): Promise<string | null> {
+export async function saveScreenshot(data: unknown): Promise<string | null> {
   try {
     if (!data || typeof data !== 'string') return null;
     let buf: Buffer;
@@ -184,7 +185,7 @@ async function saveScreenshot(data: unknown): Promise<string | null> {
       if (!b64) return null;
       buf = Buffer.from(b64, 'base64');
     } else if (data.startsWith('http://') || data.startsWith('https://')) {
-      const r = await fetchWithProxy(data, { signal: AbortSignal.timeout(30_000) });
+      const r = await safePublicFetch(data, { signal: AbortSignal.timeout(30_000) });
       if (!r.ok) return null;
       buf = Buffer.from(await r.arrayBuffer());
     } else {

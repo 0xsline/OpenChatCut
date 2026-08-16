@@ -36,7 +36,7 @@ export function useServerRun(
     messages: state.messages,
     running: state.running,
     liveTool: state.liveTool,
-    contextUsage: state.contextUsage,
+    contextUsage: options.session?.contextUsage ?? state.contextUsage,
     stop: actions.stop,
   };
 }

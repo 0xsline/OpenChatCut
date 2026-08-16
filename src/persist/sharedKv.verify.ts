@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { kvDel, kvGet, kvGetFresh, kvRemoteMode, kvSet, resetSharedKvMemory } from './sharedKv';
 
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
+const PENDING_KEYS_KEY = '__openchatcut_shared_pending_v1__';
 const globals = globalThis as typeof globalThis & Record<string, unknown>;
 const savedGlobals = new Map<string, PropertyDescriptor | undefined>();
 for (const name of ['fetch', 'history', 'indexedDB', 'location', 'sessionStorage', 'window']) {
@@ -208,6 +209,36 @@ try {
     'a failing desktop store degrades project saves to local instead of throwing');
   assert.deepEqual(await kvGet('project:issue-63'), { name: 'resilient', version: 1 },
     'the degraded local save stays readable');
+
+  await kvSet('pending-setting', 'local-new');
+  assert.deepEqual(local.get(PENDING_KEYS_KEY), ['project:issue-63', 'pending-setting'],
+    'offline writes persist their pending keys');
+  local.set(MIGRATION_KEY, true);
+  remoteEntries['pending-setting'] = 'remote-old';
+  installGlobal('window', {
+    openChatCutDesktop: {
+      projectStore: async (request: unknown) => {
+        const input = request as { operation: string; key?: string; value?: unknown; entries?: Record<string, unknown> };
+        if (input.operation === 'entry') {
+          return input.key && Object.hasOwn(remoteEntries, input.key)
+            ? { found: true, value: remoteEntries[input.key] }
+            : { found: false };
+        }
+        if (input.operation === 'merge') {
+          Object.assign(remoteEntries, input.entries);
+          return { version: 1, entries: { ...remoteEntries } };
+        }
+        return { version: 1, entries: { ...remoteEntries } };
+      },
+    },
+  });
+  resetSharedKvMemory();
+  assert.equal(await kvGet('pending-setting'), 'local-new',
+    'a reload merges persisted pending writes before reading a stale remote value');
+  assert.equal(remoteEntries['pending-setting'], 'local-new',
+    'the persisted pending value reaches the shared store');
+  assert.equal(local.has(PENDING_KEYS_KEY), false,
+    'a successful merge clears the persisted pending marker');
 } finally {
   resetSharedKvMemory();
   restoreGlobals();
