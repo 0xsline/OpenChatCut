@@ -114,3 +114,34 @@ assert.equal(
 );
 
 console.log('window-scale.verify: responsive desktop bounds and renderer scaling passed');
+
+// ── User UI scale (issue #85): composes over shrink-to-fit, clamped ──
+{
+  const { resolveDesktopWindowScale, parseUserUiScale, DESKTOP_UI_SCALE_MIN, DESKTOP_UI_SCALE_MAX } = await import('./window-scale');
+  const base = { baselineContentWidth: 1440, baselineContentHeight: 900, contentWidth: 1440, contentHeight: 900 };
+  assert.equal(resolveDesktopWindowScale(base).zoomFactor, 1, 'default user scale keeps 100%');
+  assert.equal(resolveDesktopWindowScale({ ...base, userScale: 1.5 }).zoomFactor, 1.5, '150% grows the UI');
+  assert.equal(resolveDesktopWindowScale({ ...base, userScale: 0.8 }).zoomFactor, 0.8, '80% shrinks the UI');
+  // fitted 0.5 is below the 2/3 floor, so it clamps first: 1.25 × 2/3.
+  assert.equal(
+    resolveDesktopWindowScale({ ...base, contentWidth: 720, contentHeight: 900, userScale: 1.25 }).zoomFactor,
+    0.833,
+    'user scale composes with the clamped shrink-to-fit (1.25 × 2/3)',
+  );
+  // fitted 0.75 is above the floor: 0.8 × 0.75 = 0.6.
+  assert.equal(
+    resolveDesktopWindowScale({ ...base, contentWidth: 1080, contentHeight: 900, userScale: 0.8 }).zoomFactor,
+    0.6,
+    'user scale composes with an unclamped fitted ratio (0.8 × 0.75)',
+  );
+  assert.equal(
+    resolveDesktopWindowScale({ ...base, contentWidth: 480, contentHeight: 300, userScale: 1 }).zoomFactor,
+    2 / 3,
+    'the fitted floor still applies with default user scale',
+  );
+  assert.equal(parseUserUiScale('1.25'), 1.25, 'parses a saved scale');
+  assert.equal(parseUserUiScale(undefined), 1, 'missing value falls back to 1');
+  assert.equal(parseUserUiScale('garbage'), 1, 'garbage falls back to 1');
+  assert.equal(parseUserUiScale('3'), DESKTOP_UI_SCALE_MAX, 'upper clamp');
+  assert.equal(parseUserUiScale('0.2'), DESKTOP_UI_SCALE_MIN, 'lower clamp');
+}

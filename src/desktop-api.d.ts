@@ -80,7 +80,9 @@ declare global {
       stopImportDirectoryWatch(watchId: string): Promise<void>;
       importAgentPaths(request: AgentPathImportRequest): Promise<AgentPathImportResult>;
       subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
-      windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
+      windowAction(action: 'close' | 'minimize' | 'toggle-maximize' | 'apply-ui-scale'): Promise<void>;
+      zoomStep(step: number | 'reset'): Promise<void>;
+      subscribeUiScale(listener: (scale: number) => void): () => void;
       openTranscriptWindow(payload: TranscriptWindowPayload): Promise<void>;
       subscribeTranscriptWindow(listener: (payload: TranscriptWindowPayload) => void): () => void;
       revealExport(destinationId: string, filename: string): Promise<void>;
