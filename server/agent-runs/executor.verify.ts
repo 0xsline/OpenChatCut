@@ -273,20 +273,20 @@ const overrideJson = JSON.stringify([{
 }]);
 seedKeystore({ [MODEL_CAPABILITY_OVERRIDES_KEY]: overrideJson });
 const overridden = resolveServerRunCapabilities('openai', 'api', 'deepseek-v4-flash-0731');
-assert.equal(overridden.contextWindowTokens.value, 100_000, 'override context window wins over the 8K fallback');
+assert.equal(overridden.contextWindowTokens.value, 100_000, 'override context window wins over the fallback');
 assert.equal(overridden.contextWindowTokens.source, 'settings-override', 'the winning value is attributed to the settings override');
-assert.equal(overridden.maxOutputTokens.value, 2_048, 'unset output keeps the fallback while the window is overridden');
+assert.equal(overridden.maxOutputTokens.value, 65_536, 'unset output keeps the fallback while the window is overridden');
 
 const unmatched = resolveServerRunCapabilities('openai', 'api', 'some-other-custom-model');
-assert.equal(unmatched.contextWindowTokens.value, 8_192, 'an unmatched model id keeps the unknown-model fallback');
+assert.equal(unmatched.contextWindowTokens.value, 409_600, 'an unmatched model id keeps the unknown-model fallback');
 assert.equal(unmatched.contextWindowTokens.estimated, true, 'the fallback stays marked as estimated');
 
 const nonCatalogMatching = resolveServerRunCapabilities('openai', 'api', 'deepseek-v4-flash-0731');
-assert.equal(nonCatalogMatching.maxInputTokens.value, 100_000 - 2_048, 'estimated input budget derives from the overridden window minus output');
+assert.equal(nonCatalogMatching.maxInputTokens.value, 100_000 - 65_536, 'estimated input budget derives from the overridden window minus output');
 
 assert.equal(
   resolveServerRunCapabilities('ollama', 'api', 'qwen3.5:27b').contextWindowTokens.value,
-  8_192,
+  409_600,
   'local providers without an override still resolve to the unknown-model fallback',
 );
 console.log('server executor capability-override checks passed');

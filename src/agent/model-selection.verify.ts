@@ -40,13 +40,13 @@ assert.deepEqual(gpt56.maxInputTokens, { value: 922_000, estimated: false, sourc
 assert.deepEqual(gpt56.maxOutputTokens, { value: 128_000, estimated: false, source: 'catalog' });
 
 assert.deepEqual(unknownCapabilities.contextWindowTokens, {
-  value: 8_192, estimated: true, source: 'provider-fallback',
+  value: 409_600, estimated: true, source: 'provider-fallback',
 });
 assert.deepEqual(unknownCapabilities.maxInputTokens, {
-  value: 6_144, estimated: true, source: 'provider-fallback',
+  value: 344_064, estimated: true, source: 'provider-fallback',
 });
 assert.deepEqual(unknownCapabilities.maxOutputTokens, {
-  value: 2_048, estimated: true, source: 'provider-fallback',
+  value: 65_536, estimated: true, source: 'provider-fallback',
 });
 assert.deepEqual(unknownCapabilities.supportsImages, {
   value: false, estimated: true, source: 'provider-fallback',
