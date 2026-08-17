@@ -6,6 +6,38 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.4] - 2026-08-16
+
+### Added / 新增
+
+- Media-pool transcription: per-card transcribe button with live status badges, batch transcription from the asset menu, and an auto-transcribe-on-ingest policy (off / local engine / all engines) that protects cloud budgets by default.
+  媒体池级转写：卡片转写按钮与实时状态徽章、右键批量转写、导入后自动转写开关（关/仅本地引擎/全部引擎，默认仅本地，保护云端额度）。
+- Transcript reader in the media pool: read the full transcript with timestamped paragraphs, copy full text, and step across every transcribed asset — in-page floating panel on web, independent draggable desktop window in the Electron build.
+  媒体池文字稿查看：按段落与时间戳通读全部转写稿、一键复制全文、跨素材上/下条切换——网页端为可拖浮层，桌面端为可脱离主窗口的独立浮窗。
+- Document attachments: drag md/txt/srt/csv into the composer, lazy-load docx (mammoth) and pdf (pdfjs-dist) parsing (#84).
+  文档附件：md/txt/srt/csv 直接拖入输入框，docx/pdf 懒加载解析（#84）。
+- Local-path media import for the agent: import_asset / import_folder tools gated by the AGENT_IMPORT_ROOTS whitelist (#84).
+  Agent 本地路径导入：import_asset / import_folder 工具 + AGENT_IMPORT_ROOTS 白名单（#84）。
+- hf-cdn.sufy.com as a high-speed model download fallback source.
+  新增 hf-cdn.sufy.com 高速模型下载源。
+- User-selectable project storage location with safe relocation for SQLite, media, and isolated profiles.
+  工程存储位置可自定义，迁移对 SQLite、素材与隔离 profile 安全。
+- followup answers and run timing persist across reloads; server-run output flushes every 2s so reloads keep it.
+  followup 答案与运行计时跨刷新持久化；服务端运行输出每 2 秒落盘，刷新不丢。
+
+### Fixed / 修复
+
+- Rotation-coded portrait footage (iPhone-style) was recognized as 16:9; the probe now honors rotation side-data/tags and reports the displayed aspect.
+  旋转元数据的竖拍素材（iPhone 风格）被识别为 16:9；探测现按 rotation 元数据报告显示宽高比。
+- FCPXML exports now include pathurl with native UTF-8 paths so DaVinci Resolve relinks Chinese-named media (#27).
+  FCPXML 导出新增原生 UTF-8 路径的 pathurl，达芬奇可自动重连中文名素材（#27）。
+- Server-run capability overrides are applied on the agent run path (#81).
+  服务端运行路径应用能力覆盖（#81）。
+- Shared-store fallback degrades safely when remote bootstrap fails; editor leases refresh during long polls (#63/#70/#71).
+  共享存储降级在远端引导失败时安全回退；编辑器租约在长轮询期间刷新（#63/#70/#71）。
+- Pool card control buttons (favorite / menu / transcribe) were swallowed by the card click-capture — clicks now reach them.
+  媒体池卡片操作按钮（收藏/菜单/转写）被卡片点击捕获吞掉——点击现已正常到达。
+
 ## [0.2.3] - 2026-08-14
 
 ### Added / 新增
