@@ -26,9 +26,12 @@ assert.equal(snapshot.supportsImages.value, true, 'snapshot inherits image suppo
 const ambiguous = resolveModelCapabilities(identity('qwen', 'qwen3-235b-a22b-2507'));
 assert.equal(ambiguous.contextWindowTokens.source, 'catalog', 'prefix matching finds the base entry');
 
-// Unknown ids still fall back (no crash).
+// Unknown ids still fall back (no crash) with the statistically grounded
+// estimate, marked estimated so the UI can prompt for manual adjustment.
 const unknown = resolveModelCapabilities(identity('qwen', 'definitely-not-a-model'));
 assert.equal(unknown.contextWindowTokens.source, 'provider-fallback', 'unknown id falls back');
 assert.equal(unknown.contextWindowTokens.estimated, true, 'fallback is marked estimated');
+assert.equal(unknown.contextWindowTokens.value, 409_600, 'fallback context uses the catalog-grounded estimate');
+assert.equal(unknown.maxOutputTokens.value, 65_536, 'fallback output uses the catalog-grounded estimate');
 
 console.log('model-capabilities.verify: snapshot prefix matching passed');

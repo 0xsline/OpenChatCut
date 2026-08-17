@@ -60,8 +60,14 @@ const CAPABILITY_FIELDS = [
 ] as const;
 const ALLOWED_FIELDS = new Set(['backend', 'provider', 'modelId', ...CAPABILITY_FIELDS]);
 const PROVIDERS = new Set<string>(LLM_PROVIDER_PRESETS.map((preset) => preset.id));
-const UNKNOWN_CONTEXT_TOKENS = 8_192;
-const UNKNOWN_OUTPUT_TOKENS = 2_048;
+// Fallback for models missing from the catalog. Grounded in the catalog
+// itself (569 entries at the time of writing): mean context ≈ 415k
+// (median 256k, only 4% ≤ 8k) and median output 65k — so the previous
+// 8k/2k defaults were wrong for essentially every modern model. The
+// values stay estimates (source: provider-fallback) and users can
+// override them in the capability editor.
+const UNKNOWN_CONTEXT_TOKENS = 409_600;
+const UNKNOWN_OUTPUT_TOKENS = 65_536;
 const catalogProviders = modelsDevCatalog.providers as unknown as Partial<
   Record<LlmProvider, Readonly<Record<string, CatalogModel>>>
 >;

@@ -110,6 +110,14 @@ export function ModelCapabilityEditor({
         <div style={{ minWidth: 0 }}>
           <b style={{ fontSize: 11.5 }}>{t('模型能力')}</b>
           <div style={summaryStyle}>{modelId} · {resolvedSummary(resolved)}</div>
+          {(resolved.contextWindowTokens.estimated || resolved.maxOutputTokens.estimated) && (
+            <div style={{ fontSize: 10.5, lineHeight: 1.5, marginTop: 4, color: theme.textDim, maxWidth: 420 }}>
+              {t('该模型不在内置目录，以上数值为估算（上下文 {context} / 输出 {output}）。若与实际不符，点「展开」手动修改。', {
+                context: resolved.contextWindowTokens.value.toLocaleString(),
+                output: resolved.maxOutputTokens.value.toLocaleString(),
+              })}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexShrink: 0 }}>
           {override && <button type="button" onClick={() => update(Object.fromEntries(
