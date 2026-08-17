@@ -28,6 +28,7 @@ import type {
   DirectoryImportEvent,
   DirectoryWatchStartResult,
 } from '../shared/directory-import';
+import type { TranscriptWindowPayload } from '../shared/transcript-window';
 interface DesktopExportDirectoryGrant {
   readonly grantId: string;
   readonly label: string;
@@ -80,6 +81,8 @@ declare global {
       importAgentPaths(request: AgentPathImportRequest): Promise<AgentPathImportResult>;
       subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
       windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
+      openTranscriptWindow(payload: TranscriptWindowPayload): Promise<void>;
+      subscribeTranscriptWindow(listener: (payload: TranscriptWindowPayload) => void): () => void;
       revealExport(destinationId: string, filename: string): Promise<void>;
       projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
       editorCredentials(): Promise<EditorBootstrapInfo>;

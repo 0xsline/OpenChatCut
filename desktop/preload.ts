@@ -51,6 +51,7 @@ import {
   type AgentPathImportResult,
   type DirectoryWatchStartResult,
 } from '../shared/directory-import.ts';
+import { isTranscriptWindowPayload, TRANSCRIPT_WINDOW_CHANNELS, type TranscriptWindowPayload } from '../shared/transcript-window.ts';
 
 export interface DesktopExportDirectoryGrant {
   readonly grantId: string;
@@ -104,6 +105,8 @@ export interface OpenChatCutDesktopApi {
   importAgentPaths(request: AgentPathImportRequest): Promise<AgentPathImportResult>;
   subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
   windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
+  openTranscriptWindow(payload: TranscriptWindowPayload): Promise<void>;
+  subscribeTranscriptWindow(listener: (payload: TranscriptWindowPayload) => void): () => void;
   revealExport(destinationId: string, filename: string): Promise<void>;
   projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
   editorCredentials(): Promise<EditorBootstrapInfo>;
@@ -166,6 +169,15 @@ const api: OpenChatCutDesktopApi = {
   },
   windowAction: (action) =>
     ipcRenderer.invoke('openchatcut:window-action', action) as Promise<void>,
+  openTranscriptWindow: (payload) =>
+    ipcRenderer.invoke(TRANSCRIPT_WINDOW_CHANNELS.open, payload) as Promise<void>,
+  subscribeTranscriptWindow: (listener) => {
+    const handleUpdate = (_event: IpcRendererEvent, value: unknown): void => {
+      if (isTranscriptWindowPayload(value)) listener(value);
+    };
+    ipcRenderer.on(TRANSCRIPT_WINDOW_CHANNELS.update, handleUpdate);
+    return () => { ipcRenderer.removeListener(TRANSCRIPT_WINDOW_CHANNELS.update, handleUpdate); };
+  },
   revealExport: (destinationId, filename) =>
     ipcRenderer.invoke('openchatcut:reveal-export', destinationId, filename) as Promise<void>,
   projectStore: (request) =>

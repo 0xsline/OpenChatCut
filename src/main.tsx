@@ -2,6 +2,7 @@ import './index.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { TranscriptWindowRoot } from './media/TranscriptWindowRoot';
 import { loadProjectFonts } from './fonts/googleFonts';
 import { hydratePlugins } from './plugins/store';
 import { initSkins } from './skins';
@@ -18,8 +19,9 @@ void hydratePlugins().catch(() => {});
 
 const root = document.getElementById('root');
 if (!root) throw new Error('no #root');
+const isTranscriptWindow = new URLSearchParams(window.location.search).has('transcript-window');
 createRoot(root).render(
   <StrictMode>
-    <App />
+    {isTranscriptWindow ? <TranscriptWindowRoot /> : <App />}
   </StrictMode>,
 );

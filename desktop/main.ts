@@ -30,6 +30,7 @@ import { installDesktopInferenceIpc } from './native-inference-ipc.ts';
 import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
 import { importAgentPaths } from './agent-path-import.ts';
 import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
+import { isTranscriptWindowPayload, TRANSCRIPT_WINDOW_CHANNELS, type TranscriptWindowPayload } from '../shared/transcript-window.ts';
 import {
   assertTrustedDesktopSenderUrl,
   resolveDesktopDevOrigin,
@@ -317,6 +318,44 @@ function registerDesktopHandlers(trustedOrigin: string): void {
   ipcMain.handle('openchatcut:transparent-mov-proxy', trustedDesktopHandler(trustedOrigin, async (_event, storedName: unknown) => {
     if (typeof storedName !== 'string') throw new Error('invalid local media name');
     return createTransparentMovProxy(storedName);
+  }));
+  let transcriptWindow: BrowserWindow | null = null;
+  const openTranscriptWindow = (payload: TranscriptWindowPayload): void => {
+    if (transcriptWindow && !transcriptWindow.isDestroyed()) {
+      transcriptWindow.webContents.send(TRANSCRIPT_WINDOW_CHANNELS.update, payload);
+      transcriptWindow.show();
+      transcriptWindow.focus();
+      return;
+    }
+    const win = new BrowserWindow({
+      width: 420,
+      height: 560,
+      minWidth: 300,
+      minHeight: 220,
+      backgroundColor: '#16161a',
+      title: '文字稿',
+      show: false,
+      webPreferences: {
+        preload: PRELOAD_PATH,
+        contextIsolation: true,
+        nodeIntegration: false,
+        spellcheck: false,
+      },
+    });
+    transcriptWindow = win;
+    win.once('closed', () => {
+      if (transcriptWindow === win) transcriptWindow = null;
+    });
+    installDesktopPageGuards(win, trustedOrigin);
+    void win.loadURL(`${trustedOrigin}/?transcript-window=1`).then(() => {
+      if (win.isDestroyed()) return;
+      win.webContents.send(TRANSCRIPT_WINDOW_CHANNELS.update, payload);
+      win.show();
+    });
+  };
+  ipcMain.handle(TRANSCRIPT_WINDOW_CHANNELS.open, trustedDesktopHandler(trustedOrigin, (_event, value: unknown) => {
+    if (!isTranscriptWindowPayload(value)) throw new Error('invalid transcript window payload');
+    openTranscriptWindow(value);
   }));
   ipcMain.handle('openchatcut:window-action', trustedDesktopHandler(trustedOrigin, (event, action: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);

@@ -1,14 +1,21 @@
 import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import type { MediaAsset } from '../editor/types';
+import type { TranscriptWord } from '../transcript/types';
 import { useT } from '../i18n/locale';
 import { Icon } from '../components/icons';
 import { transcriptParagraphs, transcriptTimestamp } from './transcriptParagraphs';
 
+/** Minimal asset shape the viewer needs; MediaAsset satisfies it. */
+export interface TranscriptViewerAsset {
+  id: string;
+  name: string;
+  transcript?: readonly TranscriptWord[];
+}
+
 export interface TranscriptViewerProps {
   /** Currently viewed asset; must be a member of `entries`. */
-  asset: MediaAsset;
-  /** Pool assets carrying a non-empty transcript, in pool display order. */
-  entries: MediaAsset[];
+  asset: TranscriptViewerAsset;
+  /** Assets carrying a non-empty transcript, in display order. */
+  entries: TranscriptViewerAsset[];
   onClose: () => void;
   /** Step within `entries`; wraps at both ends. */
   onStep: (delta: number) => void;

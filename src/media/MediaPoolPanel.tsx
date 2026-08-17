@@ -153,7 +153,22 @@ export function MediaPoolPanel({
     const next = (viewerIndex + delta + transcriptEntries.length) % transcriptEntries.length;
     setTranscriptViewerId(transcriptEntries[next]!.id);
   };
-  const openTranscriptViewer = useCallback((id: string) => setTranscriptViewerId(id), []);
+  const openTranscriptViewer = useCallback((id: string) => {
+    const desktop = window.openChatCutDesktop;
+    if (desktop?.openTranscriptWindow) {
+      const index = transcriptEntries.findIndex((asset) => asset.id === id);
+      void desktop.openTranscriptWindow({
+        entries: transcriptEntries.map((asset) => ({
+          id: asset.id,
+          name: asset.name,
+          transcript: (asset.transcript ?? []).map(({ text, start, end }) => ({ text, start, end })),
+        })),
+        index: Math.max(0, index),
+      }).catch(() => setTranscriptViewerId(id));
+    } else {
+      setTranscriptViewerId(id);
+    }
+  }, [transcriptEntries]);
 
   const openPrompt = (next: MediaPromptState) => { setPromptValue(next.initialValue); setPromptState(next); };
   const closePrompt = () => {
@@ -464,7 +479,7 @@ export function MediaPoolPanel({
           rename: renameAssets, rememberFocus: modalFocus.remember, startRelink,
           requestRemove: requestRemoveAssets, setConfirmDeleteId, remove: removeAssets,
           transcribe: (targets) => targets.filter((asset) => (asset.kind === 'audio' || asset.kind === 'video') && asset.transcribeStatus !== 'running' && asset.transcribeStatus !== 'done').forEach((asset) => onTranscribe(asset)),
-          viewTranscript: (asset) => setTranscriptViewerId(asset.id),
+          viewTranscript: (asset) => openTranscriptViewer(asset.id),
           move: onMoveAssets, addToTimeline: onAddAssetsToTimeline, addAsset: onAddAsset,
           addToChat: onAddAssetsToChat,
         }}
