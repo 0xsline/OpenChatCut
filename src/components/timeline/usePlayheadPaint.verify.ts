@@ -50,7 +50,7 @@ assert.equal(audioMediaTimeToTimelineFrame(0.5, { ...base, srcInFrame: 30 }, 30)
 const controllerSource = readFileSync(new URL('./useTimelineController.ts', import.meta.url), 'utf8');
 assert.match(
   controllerSource,
-  /getAudibleItem = useCallback\(\\(playheadFrame: number\): AudibleAudioItem \| null =>/,
+  /getAudibleItem = useCallback\(\(playheadFrame: number\): AudibleAudioItem \| null =>/,
   'controller must expose the audible audio item for marking mode',
 );
 assert.match(
