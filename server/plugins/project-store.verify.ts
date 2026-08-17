@@ -44,15 +44,19 @@ async function verifyAtomicWriteOrdering(): Promise<void> {
 }
 
 async function verifyCorruptEntryIsolation(root: string): Promise<void> {
-  const previousHome = process.env.HOME;
+  // os.homedir() resolves from USERPROFILE on Windows and HOME elsewhere, and
+  // runtime-profile routes the store through it; redirect both so the test root
+  // is honored on every platform.
+  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
   process.env.HOME = root;
+  process.env.USERPROFILE = root;
   try {
     const storeDir = join(root, '.openchatcut', 'project-store-v1');
     await mkdir(storeDir, { recursive: true });
     await writeFile(join(storeDir, '.ready'), '1\n');
     await writeFile(join(storeDir, `${encodeURIComponent('project:healthy')}.json`), JSON.stringify({ healthy: true }));
     await writeFile(join(storeDir, `${encodeURIComponent('project:broken')}.json`), '{');
-    // Dynamic import is intentional: project-store captures HOME at module evaluation.
+    // Dynamic import is intentional: project-store captures the resolved store root at module evaluation.
     const { readStore } = await import('./project-store.ts');
     const store = await readStore();
     assert.deepEqual(store.entries['project:healthy'], { healthy: true });
@@ -66,8 +70,10 @@ async function verifyCorruptEntryIsolation(root: string): Promise<void> {
     const quarantine = await readdir(join(storeDir, '.quarantine'));
     assert.equal(quarantine.length, 1);
   } finally {
-    if (previousHome === undefined) delete process.env.HOME;
-    else process.env.HOME = previousHome;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 }
 
