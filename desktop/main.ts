@@ -340,6 +340,10 @@ function registerDesktopHandlers(trustedOrigin: string): void {
         contextIsolation: true,
         nodeIntegration: false,
         spellcheck: false,
+        // The editor bridge heartbeat is a timer-driven long poll; without
+        // this, Electron throttles background windows and the MCP bridge
+        // drops offline (connected:false) while the window is minimized.
+        backgroundThrottling: false,
       },
     });
     transcriptWindow = win;
@@ -446,6 +450,8 @@ async function boot(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
+      // Same heartbeat reasoning as the transcript window above.
+      backgroundThrottling: false,
     },
   });
   applyDesktopWindowFrame(win);

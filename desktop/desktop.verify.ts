@@ -1,6 +1,7 @@
 // 桌面壳纯逻辑检查:env 解析 round-trip、mini-connect 前缀路由语义(插件挂载的
 // 契约)、静态 MIME。跑法:npx tsx desktop/desktop.check.ts(已入 npm test 链)。
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { parseEnvText } from './env-file.ts';
 import { createMiniConnect, matchRoute, rewriteUrl } from './mini-connect.ts';
@@ -97,6 +98,19 @@ async function tick(): Promise<void> { await new Promise((r) => setTimeout(r, 0)
   assert.equal(staticMime('lut.cube'), 'text/plain; charset=utf-8');
   assert.equal(staticMime('clip.mp4'), 'video/mp4', '媒体走 media-dir 表');
   console.log('staticMime: OK');
+}
+
+// Editor windows must keep their MCP bridge heartbeat alive while in the
+// background: Electron throttles background timers by default, which drops
+// the long-poll touch cadence below the 35s online lease and leaves the
+// editor registered but connected:false (issue #86).
+{
+  const main = await readFile(new URL('./main.ts', import.meta.url), 'utf8');
+  const prefs = main.match(/webPreferences:\s*\{[\s\S]*?\}/g) ?? [];
+  assert.ok(prefs.length >= 2, 'main and transcript windows define webPreferences');
+  for (const block of prefs) {
+    assert.match(block, /backgroundThrottling:\s*false/, 'every editor webPreferences keeps the bridge heartbeat running in the background');
+  }
 }
 
 console.log('\ndesktop.check: ALL PASSED');
