@@ -26,7 +26,7 @@ import {
 const ACTIVE_PROFILE = runtimeProfile();
 const ENV_PATH = ACTIVE_PROFILE.keystorePath;
 
-// Whitelist of settable env vars — mirrors what vite.config.ts reads. POST /api/keys
+// Whitelist of settable env vars — mirrors what config/vite.config.ts reads. POST /api/keys
 // rejects anything outside this set so the endpoint can never write arbitrary env.
 export const KEY_NAMES = [
   "AGENT_IMPORT_ROOTS",
@@ -334,7 +334,7 @@ export function getKey(name: KeyName): string {
   return store.get(name) ?? "";
 }
 
-// Capability booleans derived from current key presence — SAME logic as the vite.config
+// Capability booleans derived from current key presence — SAME logic as config/vite.config.ts
 // `define` snapshot, but computed live so the agent perceives runtime key changes.
 export interface Caps {
   image: boolean;

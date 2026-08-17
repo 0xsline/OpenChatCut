@@ -20,6 +20,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "desktop/**/*.ts", "desktop/**/*.mts", "src/globals.d.ts"],
+  "include": ["config/vite.config.ts", "desktop/**/*.ts", "desktop/**/*.mts", "src/globals.d.ts"],
   "exclude": ["desktop/**/*.check.ts"]
 }

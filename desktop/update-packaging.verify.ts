@@ -17,7 +17,7 @@ interface BuilderConfig {
 async function configFor(target: string): Promise<BuilderConfig> {
   // Query isolation is intentional: the config reads CC_EB_TARGET once at module evaluation.
   process.env.CC_EB_TARGET = target;
-  const moduleUrl = new URL(`../electron-builder.config.mjs?target=${target}`, import.meta.url);
+  const moduleUrl = new URL(`../config/electron-builder.config.mjs?target=${target}`, import.meta.url);
   const loaded = await import(moduleUrl.href) as { default: BuilderConfig };
   return loaded.default;
 }
@@ -116,6 +116,21 @@ assert.doesNotMatch(
   windowsDistScript,
   /&& electron-builder /,
   'Windows packaging must not invoke electron-builder with host-derived filters',
+);
+assert.match(
+  windowsDistScript,
+  /'--config','config\/electron-builder\.config\.mjs'/,
+  'Windows packaging must pass the categorized electron-builder config path',
+);
+assert.match(
+  packageJson.scripts['desktop:dist'],
+  /--config config\/electron-builder\.config\.mjs/,
+  'macOS packaging must pass the categorized electron-builder config path',
+);
+assert.match(
+  packageJson.scripts['desktop:dist:linux'],
+  /--config config\/electron-builder\.config\.mjs/,
+  'Linux packaging must pass the categorized electron-builder config path',
 );
 
 const workflow = await readFile(new URL('../.github/workflows/desktop.yml', import.meta.url), 'utf8');

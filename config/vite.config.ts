@@ -3,10 +3,10 @@ import { parse as parseDotenv } from 'dotenv';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { serverPlugins } from './server/plugins/index.ts';
-import { seedKeystore, getKey } from './server/keystore.ts';
-import { productAssetsPlugin } from './server/product-assets.ts';
-import { runtimeProfile } from './server/runtime-profile.ts';
+import { serverPlugins } from '../server/plugins/index.ts';
+import { seedKeystore, getKey } from '../server/keystore.ts';
+import { productAssetsPlugin } from '../server/product-assets.ts';
+import { runtimeProfile } from '../server/runtime-profile.ts';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
 if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');

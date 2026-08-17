@@ -1,6 +1,6 @@
 // Server-side plugin assembly (single source of truth): native shared storage + key-gated connect middleware and respective keystores
-// Getter configuration, extracted from vite.config.ts as is. The two hosts share the same assembly and ensure the same API:
-// - vite.config.ts → dev server(vite mount)
+// Getter configuration, extracted from config/vite.config.ts as is. The two hosts share the same assembly and ensure the same API:
+// - config/vite.config.ts → dev server(vite mount)
 // - desktop/embedded-server.ts → Electron production shell (stub mounting)
 // Getter reads keystore immediately - the next request will take effect after the setting panel is saved, no need to restart.
 import type { Plugin } from "vite";

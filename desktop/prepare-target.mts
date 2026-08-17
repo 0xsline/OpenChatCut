@@ -1,6 +1,6 @@
 // Stage the two platform-specific binaries required for a cross-platform package:
 //   1. chrome-headless-shell for rendering/export into desktop-dist/chrome-headless-shell.
-//      electron-builder.config.mjs always reads extraResources from this staging directory.
+//      config/electron-builder.config.mjs always reads extraResources from this staging directory.
 //   2. @remotion/compositor-<target>. npm installs only the host package, so cross-builds add it manually.
 // Usage: npx tsx desktop/prepare-target.mts darwin-arm64|darwin-x64|win32-x64|linux-x64
 // Chrome comes from the Chrome for Testing CDN used by @remotion/renderer at the same version.

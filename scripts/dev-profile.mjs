@@ -268,7 +268,7 @@ async function runProfileCommand(profile, command, args) {
 
 async function runVite(profile, args) {
   const viteCli = fileURLToPath(new URL('../node_modules/vite/bin/vite.js', import.meta.url));
-  return runProfileCommand(profile, process.execPath, [viteCli, ...args]);
+  return runProfileCommand(profile, process.execPath, [viteCli, '--config', 'config/vite.config.ts', ...args]);
 }
 
 async function main() {

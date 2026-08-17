@@ -86,3 +86,7 @@ MODEL-OPT-PLAN.md
 node_modules
 public/mediapipe/
 public/whisper-cli/
+
+
+# Local npm cache
+.npm-cache/
