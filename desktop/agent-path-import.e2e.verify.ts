@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, copyFile, rm, stat, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, stat, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { seedKeystore } from '../server/keystore.ts';
 import { importAgentPaths, pathAllowedByRoots } from './agent-path-import.ts';
 import { canonicalCurrentUploadDirectory } from './directory-watch-import.ts';
@@ -12,15 +11,35 @@ import { canonicalCurrentUploadDirectory } from './directory-watch-import.ts';
 // paths and duplicates are handled without error. CI-safe (no GUI): the
 // desktop main process is plain Node file logic.
 
-const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const sampleWav = join(repoRoot, 'public/media/uploads/40fc101d-a3fc-4e90-8023-7ef9d16ac9c5.wav');
+/** A valid 16-bit mono PCM wav (1s silence) so the probe reports a
+ *  duration; CI checkouts have no runtime uploads to copy from. */
+function silentWavBytes(seconds = 1): Uint8Array {
+  const sampleRate = 16_000;
+  const samples = sampleRate * seconds;
+  const dataSize = samples * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  return new Uint8Array(buffer);
+}
 
 const workRoot = await mkdtemp(join(tmpdir(), 'occ84-e2e-'));
 await mkdir(join(workRoot, '素材盘'), { recursive: true });
 const importRoot = await realpath(join(workRoot, '素材盘'));
 const sourceName = '访谈素材.wav';
 const sourcePath = join(importRoot, sourceName);
-await copyFile(sampleWav, sourcePath);
+await writeFile(sourcePath, silentWavBytes());
 
 const uploadDir = await canonicalCurrentUploadDirectory();
 const cleanup = new Set<string>();
@@ -64,7 +83,7 @@ try {
 
   // ── Path outside the roots is rejected with a clear error ──
   const outside = join(workRoot, 'outside.wav');
-  await copyFile(sampleWav, outside);
+  await writeFile(outside, silentWavBytes());
   const rejected = await importAgentPaths({
     paths: [outside],
     projectId: 'verify-project',
