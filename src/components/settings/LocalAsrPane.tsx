@@ -153,7 +153,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
         : 0;
       return { text: t('下载中 {pct}%', { pct }), color: theme.accent };
     }
-    if (task?.status === 'error') return { text: t('下载失败'), color: '#f77' };
+    if (task?.status === 'error') return { text: t('下载失败'), color: theme.danger };
     if (m.downloaded) return { text: t('已下载'), color: theme.success };
     return { text: t('未下载'), color: theme.textDim };
   };
@@ -202,7 +202,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
         {t('模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-        {loadError && <div style={{ fontSize: 11.5, color: '#f77' }}>{t('无法读取模型列表：{err}', { err: loadError })}</div>}
+        {loadError && <div style={{ fontSize: 11.5, color: theme.danger }}>{t('无法读取模型列表：{err}', { err: loadError })}</div>}
         {!loadError && !models && <div style={{ fontSize: 11.5, color: theme.textDim }}>{t('读取中…')}</div>}
         {(models ?? []).map((m) => {
           const status = statusLabel(m);

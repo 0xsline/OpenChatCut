@@ -460,11 +460,11 @@ export function ChatComposer(props: ChatComposerProps) {
             </span>
           )}
           {pasteError && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#e5866a', minWidth: 0 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: theme.accent, minWidth: 0 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pasteError}</span>
               {onDismissPasteError && (
                 <button type="button" title={t('关闭')} onClick={onDismissPasteError}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e5866a', padding: 0, lineHeight: 0, display: 'grid', flexShrink: 0 }}>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.accent, padding: 0, lineHeight: 0, display: 'grid', flexShrink: 0 }}>
                   <Icon name="x" size={11} />
                 </button>
               )}

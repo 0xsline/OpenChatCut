@@ -169,7 +169,7 @@ function PackStatus({ pack }: { pack: ModelPackCatalogEntry }) {
     : pack.status === 'downloading'
       ? { text: t('安装中'), color: theme.accent }
       : pack.status === 'error'
-        ? { text: t('安装错误'), color: '#f77' }
+        ? { text: t('安装错误'), color: theme.danger }
         : { text: t('未安装'), color: theme.textDim };
   return <span style={{ fontSize: 10.5, color: display.color }}>{display.text}</span>;
 }
@@ -197,10 +197,10 @@ const sectionStyle: React.CSSProperties = {
   borderTop: `0.5px solid ${theme.border}`,
 };
 const cardStyle: React.CSSProperties = {
-  padding: '10px 11px', borderRadius: 8, border: `0.5px solid ${theme.border}`, background: theme.panel,
+  padding: '10px 11px', borderRadius: 6, border: `0.5px solid ${theme.border}`, background: theme.panel,
 };
 const hintStyle: React.CSSProperties = { fontSize: 11.5, color: theme.textDim };
-const errorStyle: React.CSSProperties = { fontSize: 11, color: '#f77', overflowWrap: 'anywhere' };
+const errorStyle: React.CSSProperties = { fontSize: 11, color: theme.danger, overflowWrap: 'anywhere' };
 const smallButton: React.CSSProperties = {
   border: `1px solid ${theme.border}`, borderRadius: 6, background: 'transparent', color: theme.text,
   fontSize: 11, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
