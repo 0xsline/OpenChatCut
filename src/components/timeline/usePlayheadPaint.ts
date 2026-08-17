@@ -6,6 +6,17 @@ import type { CallbackListener, PlayerRef } from '@remotion/player';
 import { loadTimelineView, saveTimelineView } from '../../persist/sessionPrefs';
 import { HEADER_W, fmt, fmtClock } from './timelineUtil';
 
+export interface AudibleAudioItem {
+  /** Timeline start frame of the audio item. */
+  startFrame: number;
+  /** Item playback rate (timeline frames per source frame). */
+  playbackRate: number;
+  /** Source in-point in source-media frames (srcInFrame ?? 0). */
+  srcInFrame: number;
+  /** Media URL of the item, used to pick the matching media element. */
+  src: string;
+}
+
 interface PlayheadDeps {
   playerRef: RefObject<PlayerRef | null>;
   projectId?: string;
@@ -13,6 +24,47 @@ interface PlayheadDeps {
   fps: number;
   total: number;
   px: number;
+  /**
+   * Marking mode: returns the audio item audible at the given playhead frame,
+   * or null when the playhead should keep following the Player's frame clock.
+   * When an item is returned while playing, the playhead (and therefore the
+   * markers placed at it) follows the audible media element's own clock — what
+   * you actually hear — instead of the wall-clock frame. This eliminates the
+   * drift between playhead and audio caused by main-thread stalls (e.g. rapid
+   * marker creation), which Remotion only re-syncs beyond ~0.1–0.45s of drift.
+   */
+  getAudibleItem?: (playheadFrame: number) => AudibleAudioItem | null;
+}
+
+/**
+ * Map a media element's currentTime (source seconds) to a timeline frame for
+ * an audio item. Pure so it can be unit-verified.
+ */
+export function audioMediaTimeToTimelineFrame(
+  mediaSeconds: number,
+  item: AudibleAudioItem,
+  fps: number,
+): number {
+  const sourceFrame = mediaSeconds * fps;
+  return item.startFrame + (sourceFrame - item.srcInFrame) / item.playbackRate;
+}
+
+// Constant WebAudio output latency shifts what you HEAR vs element.currentTime.
+// Measure once (lazily) and subtract, so markers land on the audible beat
+// instead of a few frames early. Falls back to 0 when the platform does not
+// expose a usable latency (Windows frequently reports 0).
+let measuredAudioLatency: number | null = null;
+function audioOutputLatencySeconds(): number {
+  if (measuredAudioLatency !== null) return measuredAudioLatency;
+  try {
+    const ctx = new AudioContext();
+    const latency = (ctx.baseLatency ?? 0) + (ctx.outputLatency ?? 0);
+    void ctx.close();
+    measuredAudioLatency = Math.min(Math.max(latency, 0), 0.3);
+  } catch {
+    measuredAudioLatency = 0;
+  }
+  return measuredAudioLatency;
 }
 
 interface MediaMetadataSyncPlayer {
@@ -50,13 +102,17 @@ export function attachPlayheadMediaSync(
   };
 }
 
-export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total, px }: PlayheadDeps) {
+export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total, px, getAudibleItem }: PlayheadDeps) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const timelineIdRef = useRef(timelineId);
   timelineIdRef.current = timelineId;
   const totalRef = useRef(total);
   totalRef.current = total;
+  const fpsRef = useRef(fps);
+  fpsRef.current = fps;
+  const getAudibleItemRef = useRef(getAudibleItem);
+  getAudibleItemRef.current = getAudibleItem;
   // Restore once per project + timeline pair. A missing record deliberately seeks
   // to frame 0 instead of inheriting the Player's stale frame from another tab.
   const restoredForRef = useRef<string | null>(null);
@@ -68,6 +124,25 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
   const rulerTimecodeRef = useRef<HTMLSpanElement | null>(null);
   const timecodePreviewFrameRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  // Marking mode: last playhead frame derived from the audible media element's
+  // own clock. Non-null while the audio clock owns the playhead; the Player's
+  // frameupdate then only feeds the fallback/resume reference.
+  const lastAudioFrameRef = useRef<number | null>(null);
+  const lastAudioHeadSaveRef = useRef(0);
+  const findAudibleMediaElement = (item: AudibleAudioItem | null): HTMLMediaElement | null => {
+    const player = playerRef.current;
+    const container = (player as unknown as { getContainerNode?: () => EventTarget | null })?.getContainerNode?.();
+    if (!container || !(container instanceof HTMLElement)) return null;
+    const media = Array.from(container.querySelectorAll<HTMLMediaElement>('audio,video'));
+    if (!media.length) return null;
+    // Prefer the element matching the audible item's src; fall back to the
+    // first element that is actually playing.
+    if (item) {
+      const match = media.find((el) => (el.currentSrc || el.src).includes(item.src));
+      if (match) return match;
+    }
+    return media.find((el) => !el.paused && el.readyState >= 2) ?? null;
+  };
   // coalesce frameupdate → one paint per animation frame (smoother playhead)
   const pendingFrameRef = useRef<number | null>(null);
   const paintRafRef = useRef(0);
@@ -140,6 +215,9 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
       // The stream is throttled and saved once (~800ms), and it can be resumed after refresh wherever it is paused/draged.
       let lastHeadSave = 0;
       const onFrame = (event: { detail: { frame: number } }) => {
+        // Marking mode: while the audible media clock owns the playhead, the
+        // wall-clock frame must not overwrite it (markers read playheadRef).
+        if (lastAudioFrameRef.current !== null) return;
         playheadRef.current = Math.max(0, event.detail.frame);
         pendingFrameRef.current = event.detail.frame;
         if (!paintRafRef.current) paintRafRef.current = requestAnimationFrame(flush);
@@ -157,7 +235,9 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
       const onPlay = () => setPlaying(true);
       const onPause = () => {
         setPlaying(false);
-        const f = player.getCurrentFrame();
+        // Prefer the last audio-clock frame when marking mode was active, so
+        // pausing does not snap the playhead forward to the wall-clock frame.
+        const f = lastAudioFrameRef.current ?? player.getCurrentFrame();
         paintPlayheadRef.current(f, true);
         persistHead(f);
       };
@@ -201,6 +281,46 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     const watchdog = setInterval(tick, 100);
     return () => { clearInterval(watchdog); detach?.(); };
   }, [playerRef]);
+  // Marking mode audio lock: while playing and an audible audio item exists,
+  // drive the playhead from the media element's own clock (what is actually
+  // heard) so marker placement stays locked to the sound even when the main
+  // thread stalls. The Remotion Player advances frames by wall-clock time;
+  // audio advances on its own hardware clock, and Remotion only re-syncs them
+  // beyond ~0.1–0.45s of drift — which is exactly the audible "playhead runs
+  // ahead of the beat" symptom during high-frequency marking.
+  useEffect(() => {
+    if (!playing || !getAudibleItem) return undefined;
+    lastAudioFrameRef.current = null;
+    let raf = 0;
+    const latency = audioOutputLatencySeconds();
+    const loop = () => {
+      const item = getAudibleItemRef.current?.(playheadRef.current) ?? null;
+      const el = findAudibleMediaElement(item);
+      if (el && item && el.currentTime > 0 && !el.paused) {
+        const mediaSec = Math.max(0, el.currentTime - latency);
+        const raw = audioMediaTimeToTimelineFrame(mediaSec, item, fpsRef.current);
+        const clamped = Math.max(0, Math.min(Math.max(0, totalRef.current - 1), Math.round(raw)));
+        lastAudioFrameRef.current = clamped;
+        paintPlayheadRef.current(clamped);
+        const now = performance.now();
+        if (clamped > 0 && now - lastAudioHeadSaveRef.current > 800) {
+          lastAudioHeadSaveRef.current = now;
+          // persistHead is scoped to attachTo; keep resume position roughly in
+          // sync by persisting through the same channel used by frameupdate.
+          const pid = projectIdRef.current;
+          const tid = timelineIdRef.current;
+          if (pid && tid) saveTimelineView(pid, tid, { playhead: clamped });
+        }
+      } else {
+        // Audio clock not available (gap, ended, buffering): hand the playhead
+        // back to the wall-clock frameupdate path.
+        lastAudioFrameRef.current = null;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, getAudibleItem]);
   useEffect(() => {
     const player = playerRef.current;
     if (player) restorePlayerRef.current(player);

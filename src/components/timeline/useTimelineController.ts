@@ -26,7 +26,7 @@ import {
 import { newManualCaptions } from '../../captions/manualCaptions';
 import { useTimelineShortcuts } from './useTimelineShortcuts';
 import { useTimelinePointer } from './useTimelinePointer';
-import { usePlayheadPaint } from './usePlayheadPaint';
+import { usePlayheadPaint, type AudibleAudioItem } from './usePlayheadPaint';
 import { useTimelineZoomController } from './useTimelineZoomController';
 import { timelineFitTotalFrames } from './timelineFitRange';
 import {
@@ -99,11 +99,30 @@ export function useTimelineController({
     return { kind, color };
   };
   // Playhead drawing machine: rAF frame direct drawing + Player watchdog + breakpoint resume (usePlayheadPaint)
+  // Marking mode: expose the audible audio item at a playhead frame so the
+  // playhead / marker placement can follow the media element's own clock during
+  // playback (see usePlayheadPaint). Audio items are the source of truth for
+  // beat marking; video timelines keep the wall-clock behavior.
+  const getAudibleItem = useCallback((playheadFrame: number): AudibleAudioItem | null => {
+    const s = liveStateRef.current;
+    const audible = s.items.find((it) =>
+      it.kind === 'audio' && !!it.src && (it.volume ?? 1) > 0
+      && playheadFrame >= it.startFrame && playheadFrame < it.startFrame + it.durationInFrames
+      && !s.tracks?.[it.track]?.muted && !s.tracks?.[it.track]?.hidden,
+    );
+    if (!audible) return null;
+    return {
+      startFrame: audible.startFrame,
+      playbackRate: audible.playbackRate ?? 1,
+      srcInFrame: audible.srcInFrame ?? 0,
+      src: audible.src!,
+    };
+  }, []);
   const {
     playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef,
     paintPlayhead, setTimecodePreviewFrame, playing,
   } =
-    usePlayheadPaint({ playerRef, projectId, timelineId, fps: state.fps, total, px });
+    usePlayheadPaint({ playerRef, projectId, timelineId, fps: state.fps, total, px, getAudibleItem });
   // editing mode (Selection V / Blade B / Trim N / Pen P). selection =
   // drag/move; blade = click a clip to cut it there; trim = edge-trim ripples
   // following clips; pen = draw opacity keyframes on the selected clip.
@@ -119,7 +138,7 @@ export function useTimelineController({
       ? true
       : captionTrackEntries(state).some((entry) => entry.captions?.enabled) || textClipCount > 0;
   const {
-    captionMenu, setCaptionMenu, trackMenu, setTrackMenu, transitionMenu, setTransitionMenu,
+    captionMenu, setCaptionMenu, trackMenu, setTrackMenu,
     captionError, setCaptionError, duckMenu, setDuckMenu,
     moveCaptionCue, openCaptionTrackMenu, openDuckTrackMenu,
     closeTrackDrillMenu, backFromTrackDrillMenu,
@@ -432,7 +451,7 @@ export function useTimelineController({
     commitTimelineSelectionMove, zoom, setZoom, px, trackScale, metaOf,
     playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef,
     paintPlayhead, playing, editMode, placeMode, setPlaceMode, snapping,
-    captionsVisible, captionMenu, setCaptionMenu, trackMenu, setTrackMenu, transitionMenu, setTransitionMenu,
+    captionsVisible, captionMenu, setCaptionMenu, trackMenu, setTrackMenu,
     duckMenu, setDuckMenu, captionError, setCaptionError,
     moveCaptionCue, openCaptionTrackMenu, openDuckTrackMenu,
     closeTrackDrillMenu, backFromTrackDrillMenu, recorder, toggleCaptions,
