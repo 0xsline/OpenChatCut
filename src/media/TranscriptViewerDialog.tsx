@@ -31,6 +31,19 @@ interface PanelPosition {
  * the way of the main UI, and follows pool interactions (a ✓ badge click
  * swaps the viewed asset). Closes only via its close button.
  */
+interface PoolTranscriptViewerProps {
+  asset: TranscriptViewerAsset | undefined;
+  entries: TranscriptViewerAsset[];
+  onClose: () => void;
+  onStep: (delta: number) => void;
+}
+
+/** Null-guarded entry used by the pool panel. */
+export function PoolTranscriptViewer({ asset, entries, onClose, onStep }: PoolTranscriptViewerProps) {
+  if (!asset) return null;
+  return <TranscriptViewerDialog asset={asset} entries={entries} onClose={onClose} onStep={onStep} />;
+}
+
 export function TranscriptViewerDialog({ asset, entries, onClose, onStep }: TranscriptViewerProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);

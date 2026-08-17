@@ -22,7 +22,8 @@ import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
 import { useAssetMenu, type AssetMenuPosition } from './useAssetMenu';
 import { assetMenuSelectionIds, batchAssetRename } from './assetMenuSelection';
 import { MediaPoolMenus } from './MediaPoolMenus';
-import { TranscriptViewerDialog } from './TranscriptViewerDialog';
+import { PoolTranscriptViewer } from './TranscriptViewerDialog';
+import { useTranscriptViewer } from './useTranscriptViewer';
 import { toggleMediaView } from './mediaView';
 import { resolveMediaPoolShortcut } from './mediaPoolShortcutScope';
 import { useMediaPoolFileImport } from './useMediaPoolFileImport';
@@ -98,7 +99,7 @@ export function MediaPoolPanel({
   } = useAssetMenu();
   const [folderMenuId, setFolderMenuId] = useState<string | null>(null);
   const [folderMenuPos, setFolderMenuPos] = useState<AssetMenuPosition | null>(null);
-  // Two-step confirmation for deletion: Click "Confirm Delete" for the first time, and the menu will be reset when reopening
+  // Two-step deletion: first click asks for confirmation, reopening the menu resets it
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -111,7 +112,7 @@ export function MediaPoolPanel({
   const [semanticResults, setSemanticResults] = useState<SemanticMatch[] | null>(null);
   const [semanticOpenRequest, setSemanticOpenRequest] = useState(0);
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
-  const [transcriptViewerId, setTranscriptViewerId] = useState<string | null>(null);
+  const { transcriptEntries, viewerAsset, openTranscriptViewer, closeTranscriptViewer, stepViewer } = useTranscriptViewer(assets);
   const relink = useMediaPoolRelink({
     assets,
     offlineAssetIds,
@@ -132,44 +133,12 @@ export function MediaPoolPanel({
   useEffect(() => {
     if (!assetMenu) setConfirmDeleteId(null);
   }, [assetMenu]);
-
-
   const currentFolder = folders.find((folder) => folder.id === currentFolderId);
   const childFolders = folders.filter((folder) => folder.parentId === currentFolderId);
   const { query: q, visible } = filterMediaAssets({
     assets, query, semanticResults, currentFolderId, type, favoritesOnly, sort,
   });
   const selectedAssets = assets.filter((asset) => selected.has(asset.id));
-  const transcriptEntries = useMemo(
-    () => assets.filter((asset) => (asset.transcript?.length ?? 0) > 0),
-    [assets],
-  );
-  const viewerIndex = transcriptViewerId
-    ? transcriptEntries.findIndex((asset) => asset.id === transcriptViewerId)
-    : -1;
-  const viewerAsset = viewerIndex >= 0 ? transcriptEntries[viewerIndex] : undefined;
-  const stepViewer = (delta: number) => {
-    if (transcriptEntries.length < 2 || viewerIndex < 0) return;
-    const next = (viewerIndex + delta + transcriptEntries.length) % transcriptEntries.length;
-    setTranscriptViewerId(transcriptEntries[next]!.id);
-  };
-  const openTranscriptViewer = useCallback((id: string) => {
-    const desktop = window.openChatCutDesktop;
-    if (desktop?.openTranscriptWindow) {
-      const index = transcriptEntries.findIndex((asset) => asset.id === id);
-      void desktop.openTranscriptWindow({
-        entries: transcriptEntries.map((asset) => ({
-          id: asset.id,
-          name: asset.name,
-          transcript: (asset.transcript ?? []).map(({ text, start, end }) => ({ text, start, end })),
-        })),
-        index: Math.max(0, index),
-      }).catch(() => setTranscriptViewerId(id));
-    } else {
-      setTranscriptViewerId(id);
-    }
-  }, [transcriptEntries]);
-
   const openPrompt = (next: MediaPromptState) => { setPromptValue(next.initialValue); setPromptState(next); };
   const closePrompt = () => {
     setPromptState(null);
@@ -229,7 +198,6 @@ export function MediaPoolPanel({
   ) => {
     closeAssetMenu();
     setBlankMenuPos(null);
-    // Reuse asset-menu geometry: clamp within the media-pool panel.
     const rect = anchor.getBoundingClientRect();
     const panel = anchor.closest('.cc-media-pool')?.getBoundingClientRect();
     const menuWidth = 152;
@@ -318,7 +286,6 @@ export function MediaPoolPanel({
   const gridEntries = useMemo<MediaGridEntry[]>(() => [
     ...(showFolders && !currentFolderId && onAddSolid ? [{ kind: 'solid' as const }] : []),
     ...(showFolders && !currentFolderId ? [{ kind: 'favorites' as const }] : []),
-    // Inside a subfolder: first tile is "上一层" so assets can be dragged back up.
     ...(showFolders && currentFolder ? [{
       kind: 'parent' as const,
       parentId: currentFolder.parentId,
@@ -494,12 +461,7 @@ export function MediaPoolPanel({
         }}
       />
 
-      {viewerAsset && <TranscriptViewerDialog
-        asset={viewerAsset}
-        entries={transcriptEntries}
-        onClose={() => setTranscriptViewerId(null)}
-        onStep={stepViewer}
-      />}
+      <PoolTranscriptViewer asset={viewerAsset} entries={transcriptEntries} onClose={closeTranscriptViewer} onStep={stepViewer} />
 
       <MediaPoolDialogs
         prompt={promptState}
