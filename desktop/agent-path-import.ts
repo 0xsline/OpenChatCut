@@ -21,6 +21,13 @@ import {
 
 export const AGENT_IMPORT_ROOTS_KEY = 'AGENT_IMPORT_ROOTS';
 
+/** Whether a requested path sits inside one of the configured import
+ *  roots. Extracted for the check; uses the same containment semantics as
+ *  watched folders. */
+export function pathAllowedByRoots(roots: readonly string[], path: string): boolean {
+  return roots.some((root) => isPathInside(root, path));
+}
+
 function authorizedRoots(): readonly string[] {
   const raw = getKey(AGENT_IMPORT_ROOTS_KEY as never).trim();
   if (!raw) return [];
@@ -48,7 +55,7 @@ async function planCandidates(paths: readonly string[]): Promise<{
       errors.push({ path, error: 'AGENT_IMPORT_ROOTS is not configured; set the allowed media root directories (comma-separated) in Settings or .env.local first' });
       continue;
     }
-    if (!roots.some((root) => isPathInside(root, path))) {
+    if (!pathAllowedByRoots(roots, path)) {
       errors.push({ path, error: `path is outside the configured import roots (${roots.join(', ')})` });
       continue;
     }
