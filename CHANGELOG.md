@@ -6,6 +6,22 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.5] - 2026-08-17
+
+### Added / 新增
+
+- User-adjustable UI scale (80%–150%) in Settings → 界面, with Ctrl/Cmd + Plus/Minus/0 zoom shortcuts persisted to the keystore; composes with the automatic shrink-to-fit window scaling (#85).
+  设置 → 界面新增 UI 缩放（80%–150%），支持 Ctrl/Cmd + +/-/0 快捷键并持久化；与窗口自动收缩缩放组合生效（#85）。
+- End-to-end CI coverage for agent local-path import: whitelist containment, tool schema, browser gate, and a real main-process import chain (fingerprint, copy, probe, dedupe) run on every release (#84).
+  Agent 本地路径导入的端到端 CI 覆盖：白名单、工具 schema、浏览器降级、真实主进程导入链（指纹/副本/探测/去重），每次发版执行（#84）。
+
+### Fixed / 修复
+
+- Editor bridge heartbeat dropped offline (connected:false) when the desktop window was minimized or covered — Electron background throttling now disabled on both editor windows, verified at runtime in the platform smoke tests (#86).
+  桌面窗口最小化或被遮挡时编辑桥心跳掉线（connected:false）——两个编辑窗口均关闭 Electron 后台节流，并在三平台 smoke 中做运行时断言（#86）。
+- UI consistency pass: off-scale corner radii unified to the 0/2/4/6 scale, stray hardcoded colors (#f77, #e5866a, #a63d38) moved to --cc-* tokens so skins stay consistent.
+  UI 一致性修复：非标圆角统一到 0/2/4/6 标度，残留硬编码颜色改用 --cc-* token，换肤保持一致。
+
 ## [0.2.4] - 2026-08-16
 
 ### Added / 新增
