@@ -59,6 +59,15 @@ let bundlePromise;
 // Point in via CC_REMOTION_BUNDLE at startup (writable directory - uploads symlink needs to be written in);
 // Headless browser equivalent CC_BROWSER_EXECUTABLE points to the chrome-headless-shell distributed with the package
 // (Default undefined = Remotion self-seeking/self-downloading, dev behavior remains unchanged).
+/** Renderer GL backend. Default angle (Metal on macOS, D3D on Windows);
+ *  Linux prefers angle-egl (works without X11). CC_RENDER_GL overrides for
+ *  diagnosis or GPU-less machines ('swangle' forces software). */
+const RENDER_GL_OVERRIDES = new Set(['angle', 'angle-egl', 'egl', 'vulkan', 'swangle', 'null']);
+function resolveRenderGlBackend() {
+  const override = process.env.CC_RENDER_GL;
+  if (override && RENDER_GL_OVERRIDES.has(override)) return override;
+  return process.platform === 'linux' ? 'angle-egl' : 'angle';
+}
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
 
 export function currentRenderConcurrency() {
@@ -96,7 +105,7 @@ export async function withAbortableCompositionSelection({
   signal?.throwIfAborted();
   const browser = await openBrowserImpl('chrome', {
     browserExecutable: browserExecutable(),
-    chromiumOptions: { gl: 'angle' },
+    chromiumOptions: { gl: resolveRenderGlBackend() },
   });
   let closePromise;
   const closeBrowser = () => closePromise ??= Promise.resolve(browser.close({ silent: true })).catch(() => undefined);
@@ -478,7 +487,7 @@ export async function renderTimeline({
           ? `${Math.round(videoBitrate / 1000)}k`
           : undefined,
       ...proresOptions,
-      chromiumOptions: { gl: 'angle' },
+      chromiumOptions: { gl: resolveRenderGlBackend() },
       browserExecutable: browserExecutable(),
       puppeteerInstance: browser,
       onProgress: onProgress ? ({ progress }) => onProgress(progress) : undefined,
@@ -545,7 +554,7 @@ export async function renderClip({
       ...(transparent && codec === 'prores'
         ? { proResProfile: '4444', imageFormat: 'png', pixelFormat: 'yuva444p10le' }
         : {}),
-      chromiumOptions: { gl: 'angle' },
+      chromiumOptions: { gl: resolveRenderGlBackend() },
       browserExecutable: browserExecutable(),
       puppeteerInstance: browser,
       timeoutInMilliseconds: renderTimeoutInMilliseconds(),
@@ -590,7 +599,7 @@ export async function renderTimelineStills({
   const ownBrowser = !puppeteerInstance;
   const browser = puppeteerInstance ?? await openBrowser('chrome', {
     browserExecutable: browserExecutable(),
-    chromiumOptions: { gl: 'angle' },
+    chromiumOptions: { gl: resolveRenderGlBackend() },
   });
   const closeOnAbort = () => {
     if (ownBrowser) void browser.close({ silent: true }).catch(() => undefined);
@@ -615,7 +624,7 @@ export async function renderTimelineStills({
         imageFormat: 'jpeg', jpegQuality: 72,
         // Slightly smaller cells when many frames → cheaper vision payload
         scale: (list.length > 6 ? 480 : 640) / composition.width,
-        chromiumOptions: { gl: 'angle' },
+        chromiumOptions: { gl: resolveRenderGlBackend() },
         browserExecutable: browserExecutable(),
         offthreadVideoThreads: offthreadVideoThreads(),
         output: null,

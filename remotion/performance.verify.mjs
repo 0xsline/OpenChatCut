@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   h264FfmpegOverride,
   hardwareEncoderFailureClass,
@@ -156,3 +157,13 @@ await assert.rejects(
 );
 
 console.log('remotion performance verification passed');
+
+// GL backend selection: angle on desktop platforms, angle-egl on Linux
+// (headless renderers without X11), CC_RENDER_GL override for diagnosis.
+{
+  const render = await readFile(new URL('./render.mjs', import.meta.url), 'utf8');
+  assert.match(render, /function resolveRenderGlBackend/, 'GL backend resolver exists');
+  assert.match(render, /process\.platform === 'linux' \? 'angle-egl' : 'angle'/, 'linux defaults to angle-egl, others to angle');
+  assert.match(render, /CC_RENDER_GL/, 'CC_RENDER_GL overrides the backend');
+  assert.ok((render.match(/gl: resolveRenderGlBackend\(\)/g) ?? []).length >= 5, 'every render/still path uses the resolver');
+}
