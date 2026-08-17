@@ -15,11 +15,12 @@ body:
       label: 版本 *
       description: |
         请选择**具体版本号**，不要写「最新」：
-        - 桌面版：设置 → 关于，形如 v0.2.5
+        - 桌面版：设置 → 关于，形如 v0.2.6
         - 网页版：左下角「· 我的工程」旁或关于页
         - main 源码运行：请附 commit（git log -1 --format=%h）
       options:
-        - v0.2.5（最新 Release）
+        - v0.2.6（最新 Release）
+        - v0.2.5
         - v0.2.4
         - v0.2.3
         - v0.2.2

@@ -6,6 +6,22 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.6] - 2026-08-17
+
+### Added / 新增
+
+- Transition badges on the timeline gain a right-click menu: five duration presets (0.2/0.3/0.5/1/2s) and remove-transition, without hunting through clip effect lists (#88).
+  时间线转场角标新增右键菜单：五档时长预设（0.2/0.3/0.5/1/2 秒）与删除转场，不用再去片段特效列表里翻找（#88）。
+- Renderer GL backend now resolves per platform: angle (Metal/D3D) on macOS/Windows, angle-egl on Linux, with CC_RENDER_GL override for diagnosis. GPU compositing benchmarked ~2.2x faster than software.
+  渲染 GL 后端按平台解析：macOS/Windows 用 angle（Metal/D3D），Linux 用 angle-egl，支持 CC_RENDER_GL 覆盖诊断。实测 GPU 合成比软件渲染快约 2.2 倍。
+
+### Fixed / 修复
+
+- Snapshot model ids (qwen3.7-plus-2026-05-26 style) now resolve to their base catalog entry, and the unknown-model fallback is grounded in the catalog (context 409,600 / output 65,536) with an in-editor estimate hint — no more 'request is too large' for catalog misses.
+  快照式模型 ID（如 qwen3.7-plus-2026-05-26）现匹配到基座条目；未知模型兜底值按目录统计校准（上下文 409,600 / 输出 65,536）并在编辑器提示估算——目录外模型不再报"request is too large"。
+- project-store.verify redirects USERPROFILE on Windows so the check uses its temp root (#89).
+  project-store.verify 在 Windows 上重定向 USERPROFILE，检查使用临时根目录（#89）。
+
 ## [0.2.5] - 2026-08-17
 
 ### Added / 新增
