@@ -318,6 +318,27 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     ],
   },
   {
+    key: 'interface', title: '界面', icon: 'layoutPanel',
+    groups: [
+      { key: 'display', title: '显示', hint: '界面缩放与显示相关设置。',
+        vendors: [
+          { key: 'display/scale', vendor: 'localasr', title: '界面缩放',
+            note: '调整整个编辑器的缩放比例（80%–150%）。桌面版保存后立即生效，也可用 Ctrl/Cmd + +/- 快速调整、Ctrl/Cmd + 0 复位。浏览器版请使用浏览器自带缩放。',
+            fields: [
+              { name: 'UI_SCALE', label: '界面缩放', kind: 'select', defaultLabel: '100%',
+                options: [
+                  { value: '0.8', label: '80%' },
+                  { value: '0.9', label: '90%' },
+                  { value: '1', label: '100%' },
+                  { value: '1.1', label: '110%' },
+                  { value: '1.25', label: '125%' },
+                  { value: '1.5', label: '150%' },
+                ] },
+            ] },
+        ] },
+    ],
+  },
+  {
     key: 'local', title: '本地模型', icon: 'database',
     groups: [
       { key: 'local', title: '本地模型', hint: '本地转写、节拍与音乐分析、画面语义搜索。模型按需安装，数据不出本机。',

@@ -104,7 +104,9 @@ export interface OpenChatCutDesktopApi {
   stopImportDirectoryWatch(watchId: string): Promise<void>;
   importAgentPaths(request: AgentPathImportRequest): Promise<AgentPathImportResult>;
   subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
-  windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
+  windowAction(action: 'close' | 'minimize' | 'toggle-maximize' | 'apply-ui-scale'): Promise<void>;
+  zoomStep(step: number | 'reset'): Promise<void>;
+  subscribeUiScale(listener: (scale: number) => void): () => void;
   openTranscriptWindow(payload: TranscriptWindowPayload): Promise<void>;
   subscribeTranscriptWindow(listener: (payload: TranscriptWindowPayload) => void): () => void;
   revealExport(destinationId: string, filename: string): Promise<void>;
@@ -169,6 +171,15 @@ const api: OpenChatCutDesktopApi = {
   },
   windowAction: (action) =>
     ipcRenderer.invoke('openchatcut:window-action', action) as Promise<void>,
+  zoomStep: (step) =>
+    ipcRenderer.invoke('openchatcut:zoom-step', step) as Promise<void>,
+  subscribeUiScale: (listener) => {
+    const handleScale = (_event: IpcRendererEvent, value: unknown): void => {
+      if (typeof value === 'number' && Number.isFinite(value)) listener(value);
+    };
+    ipcRenderer.on('openchatcut:ui-scale-changed', handleScale);
+    return () => { ipcRenderer.removeListener('openchatcut:ui-scale-changed', handleScale); };
+  },
   openTranscriptWindow: (payload) =>
     ipcRenderer.invoke(TRANSCRIPT_WINDOW_CHANNELS.open, payload) as Promise<void>,
   subscribeTranscriptWindow: (listener) => {

@@ -7,12 +7,14 @@ import {
   useProjects,
 } from './app/appShell';
 import { AppSplash, DashboardRoute, EditorRoute } from './app/AppViews';
+import { useUiScaleShortcuts } from './hooks/useUiScaleShortcuts';
 
 export default function App() {
   const t = useT();
   const route = useAppRoute();
   useAgentBackendSync();
   useLocalAsrWarmup(route.name);
+  useUiScaleShortcuts();
   const { projects, refresh } = useProjects();
 
   if (!projects) return <AppSplash text={t('加载中…')} />;

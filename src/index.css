@@ -225,7 +225,7 @@ button, input, select { font: inherit; }
 .cc-chat-messages { height:100%; min-height:0; overflow-y:auto; padding:4px 14px; color:var(--cc-text); font-size:13.5px; }
 .cc-chat-scroll-navigation {
   position:absolute; left:50%; z-index:4; display:flex; align-items:center; padding:2px;
-  border:0.5px solid var(--cc-border-light); border-radius:7px; background:var(--cc-panel-alt);
+  border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-panel-alt);
   box-shadow:0 3px 10px rgba(var(--cc-shadow-rgb),.22); transform:translateX(-50%);
 }
 .cc-chat-scroll-navigation--top { top:10px; }
@@ -670,7 +670,7 @@ button, input, select { font: inherit; }
 .cc-asset-transcribe { position:absolute; top:4px; right:30px; width:24px; height:24px; display:grid; place-items:center; padding:0; border:0; border-radius:4px; background:color-mix(in srgb, var(--cc-panel) 79%, transparent); color:var(--cc-text); opacity:0; cursor:pointer; }
 .cc-asset-card:hover .cc-asset-transcribe { opacity:.85; }
 .cc-asset-card:hover .cc-asset-transcribe:hover { opacity:1; background:var(--cc-panel); }
-.cc-asset-transcribe-status { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:2; display:grid; place-items:center; min-width:22px; height:22px; padding:0 6px; border-radius:11px; background:color-mix(in srgb, var(--cc-panel) 82%, transparent); color:var(--cc-text); font-size:11px; font-weight:600; line-height:1; }
+.cc-asset-transcribe-status { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:2; display:grid; place-items:center; min-width:22px; height:22px; padding:0 6px; border-radius:999px; background:color-mix(in srgb, var(--cc-panel) 82%, transparent); color:var(--cc-text); font-size:11px; font-weight:600; line-height:1; }
 .cc-asset-transcribe-done { color:var(--cc-accent); }
 .cc-asset-transcribe-failed { color:var(--cc-danger); }
 .cc-asset-transcribe-spinner { width:12px; height:12px; border-radius:50%; border:2px solid color-mix(in srgb, var(--cc-text) 30%, transparent); border-top-color:var(--cc-text); animation: cc-transcribe-spin .8s linear infinite; }
@@ -679,7 +679,7 @@ button, input, select { font: inherit; }
 .cc-asset-transcribe-done { cursor:pointer; }
 .cc-asset-transcribe-done:hover { background:color-mix(in srgb, var(--cc-accent) 22%, transparent); }
 
-.cc-transcript-viewer-panel { position:fixed; right:20px; bottom:20px; z-index:850; display:flex; flex-direction:column; width:min(420px, 88vw); max-height:min(64vh, 520px); border:1px solid var(--cc-border); border-radius:10px; background:var(--cc-panel); box-shadow:0 10px 32px rgba(var(--cc-shadow-rgb), .28); overflow:hidden; }
+.cc-transcript-viewer-panel { position:fixed; right:20px; bottom:20px; z-index:850; display:flex; flex-direction:column; width:min(420px, 88vw); max-height:min(64vh, 520px); border:1px solid var(--cc-border); border-radius:6px; background:var(--cc-panel); box-shadow:0 10px 32px rgba(var(--cc-shadow-rgb), .28); overflow:hidden; }
 .cc-transcript-viewer-panel .cc-transcript-viewer-head { cursor:grab; user-select:none; -webkit-user-select:none; }
 .cc-transcript-viewer-panel .cc-transcript-viewer-head:active { cursor:grabbing; }
 .cc-transcript-viewer-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px 8px; }
@@ -822,7 +822,7 @@ button, input, select { font: inherit; }
 .cc-modal > div { display:flex; justify-content:flex-end; gap:8px; }
 .cc-modal button { padding:6px 12px; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-hover); color:var(--cc-text); cursor:pointer; }
 .cc-modal button.primary { border-color:var(--cc-accent); background:var(--cc-accent); color:var(--cc-on-accent); }
-.cc-modal button.danger { border-color:#a63d38; background:#a63d38; color:#fff; }
+.cc-modal button.danger { border-color:var(--cc-danger); background:var(--cc-danger); color:var(--cc-on-accent); }
 
 /* Instant tooltip (toolbar): The native title has ~1s browser inherent delay, and it appears immediately when hovering here.
    The data-tip carries the copy and pops it downwards (the toolbar is at the top of the timeline panel); use -r to right-align the text near the right edge to prevent overflow.

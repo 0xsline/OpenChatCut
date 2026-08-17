@@ -46,6 +46,14 @@ export async function runDesktopSmokeProbe(
   ) as unknown;
   if (updaterType !== 'function') throw new Error('desktop updater preload is unavailable');
   console.log('[smoke] desktop updater preload ok');
+  // Editor bridge heartbeat (issue #86): the long poll is timer-driven, so
+  // background throttling must be off or minimizing the window drops the
+  // MCP bridge offline. Assert the RUNTIME value, not just the source flag.
+  const throttlingDisabled = win.webContents.getBackgroundThrottling();
+  if (throttlingDisabled !== false) {
+    throw new Error(`background throttling is enabled (${String(throttlingDisabled)}); the MCP bridge heartbeat will stall in background windows`);
+  }
+  console.log('[smoke] background throttling disabled (bridge heartbeat safe)');
   const inference = await win.webContents.executeJavaScript(
     'window.openChatCutDesktop?.inference?.getCapabilities()',
   ) as {

@@ -29,6 +29,7 @@ import { supportsDirectDesktopUpdates } from './update-service.ts';
 import { installDesktopInferenceIpc } from './native-inference-ipc.ts';
 import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
 import { importAgentPaths } from './agent-path-import.ts';
+import { getKey, setKeys } from '../server/keystore.ts';
 import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
 import { isTranscriptWindowPayload, TRANSCRIPT_WINDOW_CHANNELS, type TranscriptWindowPayload } from '../shared/transcript-window.ts';
 import {
@@ -41,7 +42,8 @@ import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { focusExistingWindow } from './single-instance.ts';
 import { requestProfileScopedSingleInstanceLock } from './runtime-profile.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
-import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
+import { applyResponsiveWindowScale, DESKTOP_UI_SCALE_MAX, DESKTOP_UI_SCALE_MIN, installResponsiveWindowScale, parseUserUiScale } from './window-scale.ts';
+import { resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import {
   createExportDirectoryGrant,
   type ExportDirectoryGrantDescriptor,
@@ -340,6 +342,10 @@ function registerDesktopHandlers(trustedOrigin: string): void {
         contextIsolation: true,
         nodeIntegration: false,
         spellcheck: false,
+        // The editor bridge heartbeat is a timer-driven long poll; without
+        // this, Electron throttles background windows and the MCP bridge
+        // drops offline (connected:false) while the window is minimized.
+        backgroundThrottling: false,
       },
     });
     transcriptWindow = win;
@@ -365,7 +371,22 @@ function registerDesktopHandlers(trustedOrigin: string): void {
     else if (action === 'toggle-maximize') {
       if (win.isMaximized()) win.unmaximize();
       else win.maximize();
+    } else if (action === 'apply-ui-scale') {
+      applyResponsiveWindowScale(win);
     }
+  }));
+  // Zoom accelerators (issue #85): step the saved UI scale and re-apply.
+  ipcMain.handle('openchatcut:zoom-step', trustedDesktopHandler(trustedOrigin, async (event, step: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (step !== 'reset' && (typeof step !== 'number' || step === 0)) throw new Error('invalid zoom step');
+    const current = parseUserUiScale(getKey('UI_SCALE' as never));
+    const next = step === 'reset'
+      ? 1
+      : Math.min(DESKTOP_UI_SCALE_MAX, Math.max(DESKTOP_UI_SCALE_MIN, Math.round((current + step) * 100) / 100));
+    await setKeys({ UI_SCALE: String(next) });
+    applyResponsiveWindowScale(win);
+    win.webContents.send('openchatcut:ui-scale-changed', next);
   }));
   ipcMain.handle('openchatcut:reveal-export', trustedDesktopHandler(trustedOrigin, async (
     _event,
@@ -446,6 +467,8 @@ async function boot(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
+      // Same heartbeat reasoning as the transcript window above.
+      backgroundThrottling: false,
     },
   });
   applyDesktopWindowFrame(win);

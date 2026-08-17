@@ -60,7 +60,7 @@ function desktopApi(): DesktopPathImportApi | null {
   const bridge = (typeof window === 'undefined' ? undefined : window) as unknown as {
     openChatCutDesktop?: DesktopPathImportApi;
   };
-  return bridge.openChatCutDesktop ?? null;
+  return bridge?.openChatCutDesktop ?? null;
 }
 
 export async function execAgentPathImportTool(

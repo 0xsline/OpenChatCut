@@ -123,7 +123,7 @@ function ProjectActions({ project, props, model }: { project: ProjectMeta; props
         model.rename.setConfirmId(null);
       }}
       disabled={model.transfer.busy}
-      style={{ ...miniBtn, color: '#f77' }}
+      style={{ ...miniBtn, color: theme.danger }}
       title={t('彻底删除工程,并清掉只有它引用的素材文件')}
     >{t('确认删除')}</button>;
   }
