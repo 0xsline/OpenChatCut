@@ -218,7 +218,16 @@ export function resolveModelCapabilities(
   identity: ModelIdentity,
   records: readonly ModelCapabilityOverride[] = [],
 ): ModelCapabilities {
-  const model = catalogProviders[identity.provider]?.[identity.modelId];
+  // Snapshot model ids (e.g. qwen3.7-plus-2026-05-26) share the base model's
+  // catalog entry: match exact first, then the longest `base-` prefix.
+  const catalog = catalogProviders[identity.provider] ?? {};
+  const model = catalog[identity.modelId]
+    ?? (() => {
+      const snapshotBase = Object.keys(catalog)
+        .filter((id) => identity.modelId.startsWith(`${id}-`))
+        .sort((a, b) => b.length - a.length)[0];
+      return snapshotBase ? catalog[snapshotBase] : undefined;
+    })();
   const override = findModelCapabilityOverride(records, identity);
   const context = override?.contextWindowTokens !== undefined
     ? exact(override.contextWindowTokens, 'settings-override')
