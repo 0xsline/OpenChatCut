@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { createMiniConnect } from '../../desktop/mini-connect.ts';
 import { agentRunsPlugin } from './routes.ts';
