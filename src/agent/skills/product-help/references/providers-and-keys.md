@@ -14,7 +14,7 @@ If a capability is off, say so and offer alternatives (upload, library, another 
 | Image gen | `submit_image` | `IMAGE_API_KEY` / OpenAI, `GEMINI_API_KEY`, `MINIMAX_API_KEY` |
 | Video gen | `submit_video` | `SEEDANCE_API_KEY`, `KLING_API_KEY`, `MINIMAX_API_KEY` (Hailuo) |
 | TTS / voice | `submit_voice` | Provider-specific server key(s): Doubao, ElevenLabs, MiniMax, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia |
-| Music | `submit_music` | `MUREKA_API_KEY`, `MINIMAX_API_KEY` |
+| Music | `submit_music` | `MUREKA_API_KEY`, `MINIMAX_API_KEY`, `ATLASCLOUD_API_KEY` |
 | Sound FX gen | `submit_sound` | `ELEVENLABS_API_KEY` |
 | Stock search | `search_stock_media` | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `UNSPLASH_ACCESS_KEY`, `FREESOUND_API_KEY` |
 | Transcription | `transcribe_track` | The provider selected in Settings (or an explicit configured override): AssemblyAI (default), local, OpenAI, Mistral, Deepgram, Groq, ElevenLabs, or Cartesia |

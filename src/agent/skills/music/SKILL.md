@@ -1,7 +1,7 @@
 ---
 name: music
 description: |
-  Music generation via Mureka and MiniMax. Use for instrumentals, songs, soundtracks, track/stem generation, or covers through `submit_music`.
+  Music generation via Mureka, MiniMax, and Atlas Cloud. Use for instrumentals, songs, soundtracks, track/stem generation, or covers through `submit_music`.
 user-invocable: true
 ---
 
@@ -15,8 +15,9 @@ user-invocable: true
 | --- | --- | --- |
 | `mureka` | `instrumental`, `song`, `prompt-song`, `soundtrack`, `track` | [references/mureka.md](references/mureka.md) |
 | `minimax` | `t2m`, `cover` | [references/minimax.md](references/minimax.md) |
+| `atlas` | `t2m` | [references/atlas.md](references/atlas.md) |
 
-Select the named/configured vendor. Default to Mureka instrumental for ordinary BGM. Use Mureka song/prompt-song when its vocal or reference controls are wanted; use Mureka soundtrack for an image/video-driven score and track mode for generating a stem/track from a song/audio source. Use MiniMax for its text-to-music and cover models.
+Select the named/configured vendor. Default to Mureka instrumental for ordinary BGM. Use Mureka song/prompt-song when its vocal or reference controls are wanted; use Mureka soundtrack for an image/video-driven score and track mode for generating a stem/track from a song/audio source. Use MiniMax for its text-to-music and cover models. Use Atlas Cloud for schema-backed text-to-music through its asynchronous audio API.
 
 ## Shared workflow
 
@@ -53,6 +54,9 @@ submit_music({ provider: "minimax", mode: "t2m", prompt: "Rainy night pop", lyri
 
 // MiniMax cover from a project audio asset
 submit_music({ provider: "minimax", mode: "cover", prompt: "Warm acoustic coffee-shop cover", referenceAssetId: "audioAssetId" });
+
+// Atlas Cloud text-to-music
+submit_music({ provider: "atlas", mode: "t2m", prompt: "Cinematic ambient score with restrained piano", isInstrumental: true });
 ```
 
 ## Rules
@@ -60,5 +64,6 @@ submit_music({ provider: "minimax", mode: "cover", prompt: "Warm acoustic coffee
 - Only generate after an explicit request; `count` 2–3 can multiply provider charges, so never add variants silently.
 - Mureka `stream:true` enables the provider's streaming task phase, but OpenChatCut still waits for durable final files.
 - MiniMax cover requires a configured `music-cover*` model and exactly one of `referenceAssetId` or `coverFeatureId`; `coverFeatureId` also requires lyrics.
+- Atlas Cloud supports `t2m` only and does not accept MiniMax cover/optimizer or Mureka-specific controls.
 - Never mix MiniMax audio-setting fields into Mureka or Mureka IDs/modes into MiniMax.
 - Generated music does not guarantee exact beat/drop timing; cut and align after generation.

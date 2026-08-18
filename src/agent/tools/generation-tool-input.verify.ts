@@ -107,6 +107,17 @@ assert.equal(minimaxMusic.count, undefined, 'MiniMax must not receive Mureka cou
 assert.equal(minimaxMusic.stream, undefined, 'MiniMax must not receive Mureka streaming');
 assert.equal(minimaxMusic.referenceAssetId, undefined, 't2m must not receive cover references');
 
+const atlasMusic = buildSubmitMusicArgs({
+  provider: 'atlas', mode: 'cover', prompt: 'ambient', lyrics: 'soft lights', isInstrumental: false,
+  lyricsOptimizer: true, count: 3, stream: true, referenceAssetId: 'audio-1', sampleRate: 32_000,
+});
+assert.equal(atlasMusic.provider, 'atlas');
+assert.equal(atlasMusic.mode, 't2m', 'Atlas exposes only its schema-backed t2m mode');
+assert.equal(atlasMusic.sampleRate, 32_000);
+assert.equal(atlasMusic.lyricsOptimizer, undefined, 'Atlas must not receive MiniMax lyrics optimizer');
+assert.equal(atlasMusic.count, undefined, 'Atlas must not receive Mureka count');
+assert.equal(atlasMusic.referenceAssetId, undefined, 'Atlas must not receive MiniMax cover references');
+
 const soundtrack = buildSubmitMusicArgs({
   provider: 'mureka', mode: 'soundtrack', prompt: 'tense', sourceAssetId: 'image-1',
   styles: ['rock'], vocalId: 'voice-1', audioStartMs: 1000, audioEndMs: 6000,

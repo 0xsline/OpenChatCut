@@ -110,6 +110,8 @@ export const KEY_NAMES = [
   "KLING_BASE_URL",
   "MUREKA_API_KEY",
   "MUREKA_BASE_URL",
+  "ATLASCLOUD_API_KEY",
+  "ATLASCLOUD_API_BASE",
   "MINIMAX_API_KEY",
   "MINIMAX_BASE_URL",
   "PEXELS_API_KEY",
@@ -161,6 +163,7 @@ export const KEY_NAMES = [
   "MINIMAX_VIDEO_MODEL",
   "MUREKA_MUSIC_MODEL",
   "MINIMAX_MUSIC_MODEL",
+  "ATLASCLOUD_MUSIC_MODEL",
   // ── vendor routing (non-secret config) ──
   "PREFERRED_IMAGE_VENDOR",
   "PREFERRED_VOICE_VENDOR",
@@ -213,6 +216,8 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "SEEDANCE_VIDEO_MODEL",
   "KLING_VIDEO_MODEL",
   "MUREKA_MUSIC_MODEL",
+  "ATLASCLOUD_API_BASE",
+  "ATLASCLOUD_MUSIC_MODEL",
   "MINIMAX_TTS_MODEL",
   "MINIMAX_VIDEO_MODEL",
   "MINIMAX_MUSIC_MODEL",
@@ -373,7 +378,7 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
     video:
       has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY"),
-    music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY"),
+    music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY"),
     sound: has("ELEVENLABS_API_KEY"),
     stock:
       has("PEXELS_API_KEY") ||

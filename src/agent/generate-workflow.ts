@@ -21,8 +21,8 @@ export const GENERATE_WORKFLOW = `
 - Default to 4 seconds and promptInfluence 0.3. submit_sound creates one media-pool audio asset only and does not place it on the timeline.
 
 ## Music generation
-- Use submit_music only after the user explicitly requests newly generated music; it starts an asynchronous generation job (Mureka or MiniMax).
-- Default provider mureka and mode instrumental. Mureka also supports song (lyrics), prompt-song, soundtrack (image/video sourceAssetId), and track/stem generation (songId or audio sourceAssetId), count 1–3, styles, voice/reference IDs, ranges, and streaming tasks. MiniMax t2m supports lyrics, lyricsOptimizer, isInstrumental, sampleRate/bitrate/audioFormat; cover supports referenceAssetId or coverFeatureId plus style prompt (10–300) with a music-cover model.
+- Use submit_music only after the user explicitly requests newly generated music; it starts an asynchronous generation job (Mureka, MiniMax, or Atlas Cloud).
+- Default provider mureka and mode instrumental. Mureka also supports song (lyrics), prompt-song, soundtrack (image/video sourceAssetId), and track/stem generation (songId or audio sourceAssetId), count 1–3, styles, voice/reference IDs, ranges, and streaming tasks. MiniMax t2m supports lyrics, lyricsOptimizer, isInstrumental, sampleRate/bitrate/audioFormat; cover supports referenceAssetId or coverFeatureId plus style prompt (10–300) with a music-cover model. Atlas Cloud supports t2m with prompt/lyrics, instrumental selection, and output audio settings.
 - Describe the style, mood, instrumentation, and intended edit context in prompt. Do not silently request extra variants.
 - submit_music returns immediately with a jobId. Call track_progress target=generation with action=status or action=wait; only a successful tracked result creates the media-pool audio asset.
 

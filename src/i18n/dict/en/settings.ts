@@ -263,6 +263,7 @@ export default {
   '默认 https://api-singapore.klingai.com': 'Default https://api-singapore.klingai.com',
   '默认 https://api.mureka.ai': 'Default https://api.mureka.ai',
   '默认 https://api.minimaxi.com': 'Default https://api.minimaxi.com',
+  '默认 https://api.atlascloud.ai/api/v1': 'Default https://api.atlascloud.ai/api/v1',
   '默认 https://api.mistral.ai/v1': 'Default https://api.mistral.ai/v1',
   '默认 https://api.groq.com/openai/v1': 'Default https://api.groq.com/openai/v1',
 

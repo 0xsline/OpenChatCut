@@ -38,6 +38,10 @@ const mm = capabilitiesPrompt({ ...ALL_OFF, video: true, image: true, voice: tru
 assert.ok(mm.includes('Hailuo(model=hailuo)') && mm.includes('MiniMax(model=image-01)')
   && mm.includes('MiniMax(provider=minimax)'), 'one minimax key lights all its vendor rows');
 
+applyLiveKeyStatus({ ATLASCLOUD_API_KEY: { configured: true } });
+const atlas = capabilitiesPrompt({ ...ALL_OFF, music: true });
+assert.ok(atlas.includes('Atlas Cloud(provider=atlas)'), 'Atlas key lights the Atlas music route');
+
 // AND-group: doubao needs both keys
 applyLiveKeyStatus({ DOUBAO_TTS_APP_ID: { configured: true } });
 const half = capabilitiesPrompt({ ...ALL_OFF, voice: true });

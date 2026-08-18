@@ -152,6 +152,15 @@ function minimaxMusic(args: GenerateArgs): SubmitMusicArgs {
   };
 }
 
+function atlasMusic(args: GenerateArgs): SubmitMusicArgs {
+  return {
+    ...musicBase(args, 'atlas', 't2m'),
+    isInstrumental: bool(args.isInstrumental),
+    sampleRate: num(args.sampleRate),
+    bitrate: num(args.bitrate),
+  };
+}
+
 function murekaMusic(args: GenerateArgs): SubmitMusicArgs {
   const allowed = new Set<MusicMode>(['instrumental', 'song', 'prompt-song', 'soundtrack', 'track']);
   const mode = allowed.has(args.mode as MusicMode) ? args.mode as MusicMode : 'instrumental';
@@ -167,9 +176,10 @@ function murekaMusic(args: GenerateArgs): SubmitMusicArgs {
   };
 }
 
-const MUSIC_STRATEGIES = { mureka: murekaMusic, minimax: minimaxMusic } as const;
+const MUSIC_STRATEGIES = { mureka: murekaMusic, minimax: minimaxMusic, atlas: atlasMusic } as const;
 export function buildSubmitMusicArgs(args: GenerateArgs): SubmitMusicArgs {
-  return MUSIC_STRATEGIES[args.provider === 'minimax' ? 'minimax' : 'mureka'](args);
+  const provider = args.provider === 'minimax' || args.provider === 'atlas' ? args.provider : 'mureka';
+  return MUSIC_STRATEGIES[provider](args);
 }
 
 const videoBase = (args: GenerateArgs, model: SubmitVideoArgs['model']): SubmitVideoArgs => ({

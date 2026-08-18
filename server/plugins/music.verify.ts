@@ -6,6 +6,7 @@ import {
   requireGenerationResultUrls,
 } from './generation-jobs.ts';
 import { expectedMusicResultCount, isMinimaxCoverModel, pickMurekaAudioUrl, validateMusicRequest } from './music.ts';
+import { atlasRequestBody, generateAtlasMusic, parseAtlasPrediction } from './music-atlas.ts';
 import { murekaRequestShape } from './music-mureka.ts';
 
 assert.equal(pickMurekaAudioUrl({ choices: [{ audio_url: 'a' }] }), 'a');
@@ -25,6 +26,7 @@ assert.equal(murekaRequestShape(murekaSong, 'auto').endpoint, '/v1/song/generate
 assert.equal(expectedMusicResultCount(mureka), 1);
 assert.equal(expectedMusicResultCount(murekaSong), 3);
 assert.equal(expectedMusicResultCount({ provider: 'minimax', count: 3 }), 1);
+assert.equal(expectedMusicResultCount({ provider: 'atlas', count: 3 }), 1);
 assert.deepEqual(
   generationResultCheckpoint(['https://cdn/audio-1.mp3'], 3, 'mureka-task'),
   { urls: ['https://cdn/audio-1.mp3'], complete: false },
@@ -123,6 +125,73 @@ assert.equal(mmAudio.audioFormat, 'wav');
 // minimax prompt can be longer than 1024
 validateMusicRequest({ provider: 'minimax', prompt: 'x'.repeat(1500) });
 
+const atlas = validateMusicRequest({
+  provider: 'atlas', prompt: 'Warm documentary underscore', lyrics: '[Verse]\nQuiet city lights',
+  sampleRate: 32_000, bitrate: 128_000, audioFormat: 'wav',
+});
+assert.equal(atlas.mode, 't2m');
+assert.equal(atlas.isInstrumental, false);
+assert.deepEqual(atlasRequestBody(atlas, 'minimax/music-2.6'), {
+  model: 'minimax/music-2.6',
+  prompt: 'Warm documentary underscore',
+  lyrics: '[Verse]\nQuiet city lights',
+  is_instrumental: false,
+  format: 'wav',
+  sample_rate: 32_000,
+  bitrate: 128_000,
+});
+assert.deepEqual(
+  parseAtlasPrediction({ code: 200, data: { id: 'pred-1', status: 'processing' } }),
+  { id: 'pred-1', status: 'processing' },
+);
+assert.throws(() => parseAtlasPrediction({ code: 401, message: 'unauthorized' }), /unauthorized/);
+assert.throws(() => validateMusicRequest({ provider: 'atlas', mode: 'cover', prompt: 'cover me' }), /mode must be t2m/);
+assert.throws(
+  () => validateMusicRequest({ provider: 'atlas', prompt: 'song', lyricsOptimizer: true }),
+  /not supported by atlas/,
+);
+assert.throws(
+  () => validateMusicRequest({ provider: 'atlas', prompt: 'song', lyrics: 'words', isInstrumental: true }),
+  /cannot be combined with lyrics/,
+);
+
+const originalFetch = globalThis.fetch;
+let atlasPosts = 0;
+let atlasGets = 0;
+let acceptedAtlasTask = '';
+globalThis.fetch = async (_input, init) => {
+  if (init?.method === 'POST') {
+    atlasPosts += 1;
+    return new Response(JSON.stringify({ code: 200, data: { id: 'pred-1', status: 'processing' } }));
+  }
+  atlasGets += 1;
+  return new Response(JSON.stringify({
+    code: 200,
+    data: { id: 'pred-1', status: 'completed', outputs: ['https://cdn/audio.mp3'] },
+  }));
+};
+try {
+  const atlasOptions = {
+    baseUrl: '', apiKey: '', model: '', minimaxBaseUrl: '', minimaxApiKey: '', minimaxModel: '',
+    atlasBaseUrl: 'https://api.atlascloud.ai/api/v1', atlasApiKey: 'test-key', atlasModel: 'minimax/music-2.6',
+  };
+  assert.deepEqual(
+    await generateAtlasMusic(atlasOptions, atlas, async (taskId) => { acceptedAtlasTask = taskId; }),
+    ['https://cdn/audio.mp3'],
+  );
+  assert.equal(acceptedAtlasTask, 'pred-1');
+  assert.equal(atlasPosts, 1, 'fresh Atlas generation submits exactly once');
+  assert.equal(atlasGets, 1);
+  assert.deepEqual(
+    await generateAtlasMusic(atlasOptions, atlas, async () => assert.fail('resumed Atlas job must not register a new task'), 'pred-1'),
+    ['https://cdn/audio.mp3'],
+  );
+  assert.equal(atlasPosts, 1, 'resumed Atlas generation must not submit again');
+  assert.equal(atlasGets, 2);
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
 assert.throws(() => validateMusicRequest({ provider: 'mureka', mode: 'song', prompt: 'x' }), /requires lyrics/);
 assert.throws(
   () => validateMusicRequest({ provider: 'mureka', mode: 'soundtrack', sourceAssetPath: '/media/uploads/a.mp3', sourceAssetKind: 'audio' }),
@@ -202,4 +271,4 @@ const coverFeature = validateMusicRequest({
 });
 assert.equal(coverFeature.coverFeatureId, 'feature-1');
 
-console.log('music.check: ok (all Mureka modes + MiniMax t2m/cover)');
+console.log('music.check: ok (Mureka, MiniMax, and Atlas Cloud modes)');

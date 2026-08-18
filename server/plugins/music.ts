@@ -12,6 +12,7 @@ import {
   type RegisterGenerationProviderTask,
 } from './generation-jobs.ts';
 import { saveAudioResponse } from './music-media.ts';
+import { generateAtlasMusic } from './music-atlas.ts';
 import { generateMureka, pickMurekaAudioUrl } from './music-mureka.ts';
 import { isMinimaxCoverModel, minimaxMusicUrl } from './music-minimax.ts';
 import type { MusicOptions, MusicRequest, ValidMusicRequest } from './music-types.ts';
@@ -42,7 +43,7 @@ export function expectedMusicResultCount(input: Pick<ValidMusicRequest, 'provide
   return input.provider === 'mureka' ? input.count : 1;
 }
 
-async function minimaxResult(jobId: string, input: ValidMusicRequest, url: string): Promise<GenerationResult> {
+async function singleMusicResult(jobId: string, input: ValidMusicRequest, url: string): Promise<GenerationResult> {
   const response = await fetchGeneratedResult(url, 'audio');
   const saved = await saveAudioResponse(response, input.audioFormat, input.sampleRate);
   return { assetId: jobId, kind: 'audio', name: input.name, ...saved };
@@ -75,7 +76,14 @@ async function runMusicOperation(
   if (!checkpoint.complete) {
     const providerUrls = input.provider === 'minimax'
       ? [await minimaxMusicUrl(options, input)]
-      : await generateMureka(
+      : input.provider === 'atlas'
+        ? await generateAtlasMusic(
+          options,
+          input,
+          (taskId) => registerProviderTask('atlas', taskId),
+          providerTaskId,
+        )
+        : await generateMureka(
         options,
         input,
         (taskId) => registerProviderTask('mureka', taskId),
@@ -84,15 +92,15 @@ async function runMusicOperation(
     urls = requireGenerationResultUrls(providerUrls, expectedResultCount);
   }
   urls = requireGenerationResultUrls(urls, expectedResultCount);
-  const download = () => input.provider === 'minimax'
-    ? minimaxResult(operationId, input, urls[0])
+  const download = () => input.provider !== 'mureka'
+    ? singleMusicResult(operationId, input, urls[0])
     : murekaResults(operationId, input, urls);
   for (const [index, url] of urls.entries()) await registerDownload(url, download, index);
   return download();
 }
 
 export function musicGenerationPlugin(options: MusicOptions): Plugin {
-  for (const provider of ['mureka', 'minimax'] as const) {
+  for (const provider of ['mureka', 'minimax', 'atlas'] as const) {
     registerGenerationJobResumer('submit_music', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,
@@ -122,7 +130,12 @@ export function musicGenerationPlugin(options: MusicOptions): Plugin {
           if (input.provider === 'mureka' && !options.apiKey) {
             throw new Error('Mureka is not configured. Set MUREKA_API_KEY in .env.local or 设置面板.');
           }
-          const model = input.provider === 'minimax' ? options.minimaxModel : options.model;
+          if (input.provider === 'atlas' && !options.atlasApiKey) {
+            throw new Error('Atlas Cloud is not configured. Set ATLASCLOUD_API_KEY in .env.local or 设置面板.');
+          }
+          const model = input.provider === 'minimax'
+            ? options.minimaxModel
+            : input.provider === 'atlas' ? options.atlasModel : options.model;
           const submitArgs = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'operationId'));
           const submission = await createGenerationJob(
             { kind: 'music', model, ...input },

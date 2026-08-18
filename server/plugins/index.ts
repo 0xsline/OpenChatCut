@@ -231,6 +231,15 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get minimaxModel() {
         return getKey("MINIMAX_MUSIC_MODEL") || "music-2.6";
       },
+      get atlasBaseUrl() {
+        return getKey("ATLASCLOUD_API_BASE") || "https://api.atlascloud.ai/api/v1";
+      },
+      get atlasApiKey() {
+        return getKey("ATLASCLOUD_API_KEY");
+      },
+      get atlasModel() {
+        return getKey("ATLASCLOUD_MUSIC_MODEL") || "minimax/music-2.6";
+      },
     }),
     videoGenerationPlugin({
       get seedanceBaseUrl() {
