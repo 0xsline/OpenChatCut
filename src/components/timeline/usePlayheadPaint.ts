@@ -129,20 +129,7 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
   // frameupdate then only feeds the fallback/resume reference.
   const lastAudioFrameRef = useRef<number | null>(null);
   const lastAudioHeadSaveRef = useRef(0);
-  const findAudibleMediaElement = (item: AudibleAudioItem | null): HTMLMediaElement | null => {
-    const player = playerRef.current;
-    const container = (player as unknown as { getContainerNode?: () => EventTarget | null })?.getContainerNode?.();
-    if (!container || !(container instanceof HTMLElement)) return null;
-    const media = Array.from(container.querySelectorAll<HTMLMediaElement>('audio,video'));
-    if (!media.length) return null;
-    // Prefer the element matching the audible item's src; fall back to the
-    // first element that is actually playing.
-    if (item) {
-      const match = media.find((el) => (el.currentSrc || el.src).includes(item.src));
-      if (match) return match;
-    }
-    return media.find((el) => !el.paused && el.readyState >= 2) ?? null;
-  };
+
   // coalesce frameupdate → one paint per animation frame (smoother playhead)
   const pendingFrameRef = useRef<number | null>(null);
   const paintRafRef = useRef(0);
@@ -293,6 +280,20 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     lastAudioFrameRef.current = null;
     let raf = 0;
     const latency = audioOutputLatencySeconds();
+    const findAudibleMediaElement = (item: AudibleAudioItem | null): HTMLMediaElement | null => {
+      const player = playerRef.current;
+      const container = (player as unknown as { getContainerNode?: () => EventTarget | null })?.getContainerNode?.();
+      if (!container || !(container instanceof HTMLElement)) return null;
+      const media = Array.from(container.querySelectorAll<HTMLMediaElement>('audio,video'));
+      if (!media.length) return null;
+      // Prefer the element matching the audible item's src; fall back to the
+      // first element that is actually playing.
+      if (item) {
+        const match = media.find((el) => (el.currentSrc || el.src).includes(item.src));
+        if (match) return match;
+      }
+      return media.find((el) => !el.paused && el.readyState >= 2) ?? null;
+    };
     const loop = () => {
       const item = getAudibleItemRef.current?.(playheadRef.current) ?? null;
       const el = findAudibleMediaElement(item);
@@ -320,7 +321,7 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [playing, getAudibleItem]);
+  }, [playing, getAudibleItem, playerRef]);
   useEffect(() => {
     const player = playerRef.current;
     if (player) restorePlayerRef.current(player);

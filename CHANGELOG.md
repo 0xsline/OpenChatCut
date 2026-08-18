@@ -6,6 +6,18 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.7] - 2026-08-17
+
+### Added / 新增
+
+- Marking mode: while playing, the playhead follows the audible media element's own clock (with audio output-latency compensation), so beat markers stay locked to the sound even when the main thread stalls (#90).
+  打标记模式：播放时播放头跟随音频元素自身时钟（含音频输出延迟补偿），主线程卡顿时节拍标记仍与听到的声音对齐（#90）。
+
+### Fixed / 修复
+
+- Server-run drafts failed with 'could not be persisted' after a tab switch or browser restart — the run capability was stored in sessionStorage (per-tab, wiped on close). It now persists in localStorage, and the draft error message carries the actual reason (403 capability lost / 404 run gone).
+  切换标签页或重启浏览器后 server-run 草稿报"could not be persisted"——运行凭证原本存在 sessionStorage（按标签页隔离、关闭即清）。现改存 localStorage，且草稿报错附带真实原因（403 凭证丢失 / 404 运行不存在）。
+
 ## [0.2.6] - 2026-08-17
 
 ### Added / 新增
