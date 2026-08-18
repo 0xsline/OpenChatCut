@@ -244,4 +244,5 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   hailuo: [['MINIMAX_API_KEY']],
   mureka: [['MUREKA_API_KEY']],
   atlas: [['ATLASCLOUD_API_KEY']],
+  sonilo: [['SONILO_API_KEY']],
 };

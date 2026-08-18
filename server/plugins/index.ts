@@ -252,7 +252,6 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get soniloApiKey() {
         return getKey("SONILO_API_KEY");
       },
-      },
     }),
     videoGenerationPlugin({
       get seedanceBaseUrl() {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildSubmitImageArgs, buildSubmitMusicArgs, buildSubmitVideoArgs, buildSubmitVoiceArgs, shouldAddImageToTimeline } from './generate-tool-input';
+import { buildSubmitImageArgs, buildSubmitMusicArgs, buildSubmitSoundArgs, buildSubmitVideoArgs, buildSubmitVoiceArgs, shouldAddImageToTimeline } from './generate-tool-input';
 
 assert.equal(shouldAddImageToTimeline({}), true);
 assert.equal(shouldAddImageToTimeline({ addToTimeline: false }), false);
@@ -127,6 +127,40 @@ assert.equal(soundtrack.sourceAssetId, 'image-1');
 assert.equal(soundtrack.styles, undefined, 'soundtrack must not receive prompt-song controls');
 assert.equal(soundtrack.vocalId, undefined, 'soundtrack must not receive song controls');
 assert.equal(soundtrack.lyricsOptimizer, undefined, 'Mureka must not receive MiniMax controls');
+
+const soniloMusic = buildSubmitMusicArgs({
+  provider: 'sonilo', mode: 'soundtrack', prompt: 'warm indie folk', sourceAssetId: 'cut-1',
+  lyrics: 'hello', styles: ['pop'], count: 2, stream: true, bitrate: 128000, audioFormat: 'mp3',
+});
+assert.equal(soniloMusic.provider, 'sonilo');
+assert.equal(soniloMusic.mode, 'v2m', 'sonilo always submits v2m');
+assert.equal(soniloMusic.sourceAssetId, 'cut-1');
+assert.equal(soniloMusic.prompt, 'warm indie folk');
+assert.equal(soniloMusic.lyrics, undefined, 'sonilo must not receive lyrics');
+assert.equal(soniloMusic.styles, undefined, 'sonilo must not receive Mureka styles');
+assert.equal(soniloMusic.count, undefined, 'sonilo must not receive Mureka count');
+assert.equal(soniloMusic.stream, undefined, 'sonilo must not receive Mureka streaming');
+assert.equal(soniloMusic.bitrate, undefined, 'sonilo must not receive MiniMax audio settings');
+assert.equal(soniloMusic.audioFormat, undefined, 'sonilo output format is fixed');
+
+const elevenSound = buildSubmitSoundArgs({
+  prompt: 'thunder', durationSeconds: 4, promptInfluence: 0.5, loop: true, sourceAssetId: 'cut-1',
+});
+assert.equal(elevenSound.provider, 'elevenlabs', 'sound provider defaults to elevenlabs');
+assert.equal(elevenSound.prompt, 'thunder');
+assert.equal(elevenSound.sourceAssetId, undefined, 'ElevenLabs must not receive a sonilo video source');
+
+const soniloSound = buildSubmitSoundArgs({
+  provider: 'sonilo', sourceAssetId: 'cut-1', prompt: 'whoosh', durationSeconds: 4,
+  promptInfluence: 0.5, loop: true, outputFormat: 'mp3_44100_128', name: 'cut sfx',
+});
+assert.equal(soniloSound.provider, 'sonilo');
+assert.equal(soniloSound.sourceAssetId, 'cut-1');
+assert.equal(soniloSound.name, 'cut sfx');
+assert.equal(soniloSound.prompt, undefined, 'sonilo SFX are generated from the video, not a prompt');
+assert.equal(soniloSound.durationSeconds, undefined, 'sonilo must not receive ElevenLabs duration');
+assert.equal(soniloSound.loop, undefined, 'sonilo must not receive ElevenLabs loop');
+assert.equal(soniloSound.outputFormat, undefined, 'sonilo must not receive ElevenLabs output format');
 
 const eleven = buildSubmitVoiceArgs({
   provider: 'elevenlabs', text: 'Hello', voiceId: 'peter', outputFormat: 'mp3_44100_128',

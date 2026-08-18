@@ -51,7 +51,7 @@ export default {
   'submit_image · 文生图 / 图生图，任一厂商即可。': 'submit_image · Text-to-image / image-to-image; any one vendor works.',
   'submit_voice · 文字转配音，任一厂商即可。': 'submit_voice · Text to voiceover; any one vendor works.',
   'submit_video · 文 / 图生视频，任一厂商即可。': 'submit_video · Text / image to video; any one vendor works.',
-  'submit_music · 文字生成配乐，任一厂商即可。': 'submit_music · Text to soundtrack; any one vendor works.',
+  'submit_music · 文字 / 成片生成配乐，任一厂商即可。': 'submit_music · Text or finished cut to soundtrack; any one vendor works.',
   'search_stock_media · 搜索可商用图片 / 视频素材。': 'search_stock_media · Search commercially usable photos / videos.',
   'transcribe_track · 词级字幕、清口水、删词。': 'transcribe_track · Word-level captions, filler cleanup, word deletion.',
   '素材的本地保存目录，与可选的 R2 云备份。': 'Local save directory for media, plus optional R2 cloud backup.',
@@ -129,6 +129,8 @@ export default {
   // ──Page Note/Field Note──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
   'Key 同时用于音效生成（submit_sound）。': 'The key is also used for sound-effect generation (submit_sound).',
+  '按成片生成：把渲染好的视频交给 Sonilo，配乐跟着画面节奏走（可选一句风格提示，不填也行）。配乐自带授权、可商用（以条款为准）；每条音轨附 license_id 留档。同一个 Key 也用于按成片生成音效（submit_sound，免版税）。':
+    'Generates from the finished cut: hand Sonilo the rendered video and the music follows its pacing (one optional style hint; works without one). Music is licensed, safe for commercial use (terms apply); each track comes with a license_id record. The same key also powers video-matched sound effects (submit_sound, royalty-free).',
   '可直接使用 Anthropic 官方 API Key；如使用兼容服务，再修改 Base URL 和模型。': 'Use an official Anthropic API key directly, or change the Base URL and model for a compatible service.',
   '默认使用 Claude Fable 5；自定义兼容地址时，也可填写该服务支持的模型 ID。': 'Claude Fable 5 is the default. With a compatible endpoint, enter any model ID supported by that service.',
   '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。': 'Each provider keeps its own endpoint, key, and model. Test the connection, then choose from the models returned by that API.',
@@ -262,6 +264,7 @@ export default {
   '默认 https://ark.cn-beijing.volces.com/api/v3': 'Default https://ark.cn-beijing.volces.com/api/v3',
   '默认 https://api-singapore.klingai.com': 'Default https://api-singapore.klingai.com',
   '默认 https://api.mureka.ai': 'Default https://api.mureka.ai',
+  '默认 https://api.sonilo.com': 'Default https://api.sonilo.com',
   '默认 https://api.minimaxi.com': 'Default https://api.minimaxi.com',
   '默认 https://api.atlascloud.ai/api/v1': 'Default https://api.atlascloud.ai/api/v1',
   '默认 https://api.mistral.ai/v1': 'Default https://api.mistral.ai/v1',

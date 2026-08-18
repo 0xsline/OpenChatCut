@@ -73,7 +73,7 @@ assert.throws(
 // sonilo controls must not leak into the other providers
 assert.throws(() => validateMusicRequest({ provider: 'minimax', prompt: 'lofi', mode: 'v2m' }), /t2m or cover/);
 assert.throws(() => validateMusicRequest({ provider: 'mureka', mode: 'v2m', prompt: 'lofi' }), /mureka mode must be/);
-assert.throws(() => validateMusicRequest({ provider: 'suno', prompt: 'lofi' }), /mureka, minimax, or sonilo/);
+assert.throws(() => validateMusicRequest({ provider: 'suno', prompt: 'lofi' }), /mureka, minimax, atlas, or sonilo/);
 
 // ── task shapes ──
 assert.equal(soniloTaskId({ task_id: 'task-1' }), 'task-1');
