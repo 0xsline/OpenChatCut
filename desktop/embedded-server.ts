@@ -14,6 +14,7 @@ import { trustedEditorRequest } from '../server/editor-auth.ts';
 import { proxyMiddleware, type ProxyRoute } from '../server/proxy.ts';
 import { parseEnvText } from './env-file.ts';
 import { createMiniConnect, type MiniConnect } from './mini-connect.ts';
+import { listenWithAffinity } from './embedded-port.ts';
 import { distStaticMiddleware, uploadsMiddleware } from './static-files.ts';
 
 export interface EmbeddedServer {
@@ -101,23 +102,10 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   app.use('/media/uploads', uploadsMiddleware());
   app.use(distStaticMiddleware(distDir));
 
-  // Port policy: priority 5199 (document address of external MCP client in README); occupied (web page dev
-  // server / second desktop instance), fall back to a random port - the App must be able to start, and the MCP client is started instead.
-  // The actual port in the log. Other listen errors are still thrown.
-  const listenOn = (port: number) => new Promise<number>((resolvePort, reject) => {
-    const onError = (err: Error) => reject(err);
-    server.once('error', onError);
-    server.listen(port, '127.0.0.1', () => {
-      server.off('error', onError);
-      const addr = server.address();
-      if (addr && typeof addr === 'object') resolvePort(addr.port);
-      else reject(new Error('embedded server failed to bind'));
-    });
-  });
-  const port = await listenOn(5199).catch((err: NodeJS.ErrnoException) => {
-    if (err.code !== 'EADDRINUSE') throw err;
-    console.warn('[embedded-server] port 5199 in use — falling back to a random port; point external MCP clients at the origin logged below');
-    return listenOn(0);
-  });
+  // Port policy: canonical 5199 first (the documented external-MCP address),
+  // then the fallback used last time it was busy, then a fresh random port that
+  // becomes the remembered one. See listenWithAffinity for why the fallback has
+  // to be stable: a random port per launch silently broke registered agents.
+  const port = await listenWithAffinity(server);
   return { server, port, origin: `http://127.0.0.1:${port}` };
 }

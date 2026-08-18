@@ -1,0 +1,102 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { embeddedPortPath, listenWithAffinity, readRememberedPort, rememberPort } from './embedded-port.ts';
+
+const home = mkdtempSync(join(tmpdir(), 'occ-port-'));
+const servers: Server[] = [];
+const fresh = (): Server => {
+  const server = createServer((_req, res) => res.end('ok'));
+  servers.push(server);
+  return server;
+};
+const bindRandom = (server: Server) => new Promise<number>((resolve, reject) => {
+  server.once('error', reject);
+  server.listen(0, '127.0.0.1', () => {
+    const addr = server.address();
+    if (addr && typeof addr === 'object') resolve(addr.port);
+    else reject(new Error('bind failed'));
+  });
+});
+const close = (server: Server) => new Promise<void>((resolve) => server.close(() => resolve()));
+const silent = () => {};
+
+try {
+  // Reserve two real ports to stand in for "canonical" and its occupant, so the
+  // suite never touches the machine's actual 5199 (often busy on a dev box).
+  const canonicalBlocker = fresh();
+  const canonical = await bindRandom(canonicalBlocker);
+  await close(canonicalBlocker);
+  servers.pop();
+
+  // Canonical free: bound directly, and nothing is remembered — there is no
+  // fallback situation to remember.
+  const direct = fresh();
+  assert.equal(await listenWithAffinity(direct, { canonicalPort: canonical, home, log: silent }), canonical);
+  assert.equal(readRememberedPort(home), null, 'no fallback file when the canonical port worked');
+  await close(direct);
+
+  // Canonical busy, nothing remembered: a random port is picked AND persisted,
+  // owner-only, so the next conflicted launch lands on the same address.
+  const occupant = fresh();
+  await new Promise<void>((resolve, reject) => {
+    occupant.once('error', reject);
+    occupant.listen(canonical, '127.0.0.1', () => resolve());
+  });
+  const first = fresh();
+  const fallback = await listenWithAffinity(first, { canonicalPort: canonical, home, log: silent });
+  assert.notEqual(fallback, canonical);
+  assert.equal(readRememberedPort(home), fallback, 'the fallback is remembered');
+  assert.equal(statSync(embeddedPortPath(home)).mode & 0o777, 0o600, 'port file is owner-only');
+  await close(first);
+
+  // Same conflict on the next launch: the SAME fallback comes back. This is the
+  // whole point — a registered MCP client keeps its address across restarts.
+  const second = fresh();
+  assert.equal(
+    await listenWithAffinity(second, { canonicalPort: canonical, home, log: silent }),
+    fallback,
+    'a repeated conflict reuses the remembered fallback',
+  );
+  await close(second);
+
+  // Canonical AND remembered both busy: a new random port, which replaces the
+  // remembered one instead of leaving a stale pointer behind.
+  const fallbackBlocker = fresh();
+  await new Promise<void>((resolve, reject) => {
+    fallbackBlocker.once('error', reject);
+    fallbackBlocker.listen(fallback, '127.0.0.1', () => resolve());
+  });
+  const third = fresh();
+  const rerolled = await listenWithAffinity(third, { canonicalPort: canonical, home, log: silent });
+  assert.ok(rerolled !== canonical && rerolled !== fallback);
+  assert.equal(readRememberedPort(home), rerolled, 'the new fallback replaces the old one');
+  await close(third);
+  await close(fallbackBlocker);
+
+  // The conflict goes away: the canonical, documented address self-heals, even
+  // though a remembered fallback still exists on disk.
+  await close(occupant);
+  const healed = fresh();
+  assert.equal(
+    await listenWithAffinity(healed, { canonicalPort: canonical, home, log: silent }),
+    canonical,
+    'the canonical port wins again as soon as it is free',
+  );
+  await close(healed);
+
+  // A corrupted or nonsensical port file is ignored rather than dialled.
+  writeFileSync(embeddedPortPath(home), 'pas-un-port\n');
+  assert.equal(readRememberedPort(home), null);
+  writeFileSync(embeddedPortPath(home), '80\n');
+  assert.equal(readRememberedPort(home), null, 'privileged ports are never remembered');
+  assert.ok(rememberPort(rerolled, home), 'a valid port can be written back');
+  assert.equal(readFileSync(embeddedPortPath(home), 'utf8').trim(), String(rerolled));
+
+  console.log('embedded-port.verify OK');
+} finally {
+  await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  rmSync(home, { recursive: true, force: true });
+}
