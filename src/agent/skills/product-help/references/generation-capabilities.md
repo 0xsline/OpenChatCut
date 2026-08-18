@@ -62,6 +62,7 @@ with word/speaker detail preserved when the provider supplies it.
 | --- | --- |
 | `mureka` | Instrumental, lyrics-song, prompt-song, soundtrack from image/video, track/stem; count 1–3 and all official controls |
 | `minimax` | t2m plus cover via project audio or `coverFeatureId`; official audio settings |
+| `atlas` | Async t2m through Atlas Cloud; prompt/lyrics, instrumental mode, and schema-backed audio settings |
 
 ## Sound · `submit_sound`
 

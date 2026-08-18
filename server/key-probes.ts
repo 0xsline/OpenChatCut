@@ -178,6 +178,27 @@ const minimaxProbe: ProbeDef = {
   postCheck: minimaxPostCheck,
 };
 
+const atlasMusicProbe: ProbeDef = {
+  needs: [['ATLASCLOUD_API_KEY']],
+  run: async (get) => {
+    const root = base(get, 'ATLASCLOUD_API_BASE', 'https://api.atlascloud.ai/api/v1');
+    const response = await fetchWithProxy(`${root}/model/prediction/openchatcut-credential-probe`, {
+      signal: t(), headers: bearer(get('ATLASCLOUD_API_KEY')),
+    });
+    if (response.status !== 404) return response;
+    const body = await response.text().catch(() => '');
+    try {
+      const payload = JSON.parse(body) as { code?: number; message?: string };
+      if (payload.code === 404 && payload.message === 'not found') {
+        return new Response('{"authenticated":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+    } catch {
+      // Preserve an unrecognized 404 so the common classifier reports a bad Base URL.
+    }
+    return new Response(body, { status: 404, headers: response.headers });
+  },
+};
+
 // BytePlus ModelArk: one account/key serves image (Seedream) and video (Seedance) alike —
 // both capability pages share this /models detection, same as minimaxProbe above.
 const byteplusProbe: ProbeDef = {
@@ -328,6 +349,7 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
   },
   'music/minimax': minimaxProbe,
+  'music/atlas': atlasMusicProbe,
   // /v1/search has been opened to anonymous users (the measured number is 200 without key), and the key; collections cannot be detected
   // It is the account binding endpoint, and the fake key is stable 401.
   'stock/pexels': {

@@ -82,10 +82,26 @@ function validateMinimax(input: MusicRequest, mode: MusicMode, prompt: string, l
   if (input.audioFormat && !['mp3', 'wav', 'pcm'].includes(input.audioFormat)) throw new Error('MiniMax audioFormat must be mp3, wav, or pcm');
 }
 
+function validateAtlas(input: MusicRequest, mode: MusicMode, prompt: string, lyrics?: string): void {
+  if (mode !== 't2m') throw new Error('atlas mode must be t2m');
+  rejectMurekaOnly(input);
+  if (input.referenceAudioPath || input.coverFeatureId || input.lyricsOptimizer !== undefined) {
+    throw new Error('MiniMax cover and lyricsOptimizer controls are not supported by atlas');
+  }
+  if (!prompt || prompt.length > 2000) throw new Error('Atlas prompt is required and must be at most 2000 characters');
+  if (lyrics && lyrics.length > 3500) throw new Error('Atlas lyrics must be at most 3500 characters');
+  if (input.isInstrumental && lyrics) throw new Error('Atlas instrumental generation cannot be combined with lyrics');
+  if (!SAMPLE_RATES.has(input.sampleRate ?? 44_100)) throw new Error('sampleRate must be 16000, 24000, 32000, or 44100');
+  if (!BITRATES.has(input.bitrate ?? 256_000)) throw new Error('bitrate must be 32000, 64000, 128000, or 256000');
+  if (input.audioFormat && !['mp3', 'wav', 'pcm'].includes(input.audioFormat)) throw new Error('Atlas audioFormat must be mp3, wav, or pcm');
+}
+
 export function validateMusicRequest(input: MusicRequest): ValidMusicRequest {
   const provider = String(input.provider ?? 'mureka');
-  if (provider !== 'mureka' && provider !== 'minimax') throw new Error('provider must be mureka or minimax');
-  const inferredMode: MusicMode = provider === 'mureka' ? 'instrumental' : input.referenceAudioPath || input.coverFeatureId ? 'cover' : 't2m';
+  if (provider !== 'mureka' && provider !== 'minimax' && provider !== 'atlas') throw new Error('provider must be mureka, minimax, or atlas');
+  const inferredMode: MusicMode = provider === 'mureka'
+    ? 'instrumental'
+    : provider === 'minimax' && (input.referenceAudioPath || input.coverFeatureId) ? 'cover' : 't2m';
   const mode = input.mode ?? inferredMode;
   const prompt = optionalText(input.prompt) ?? '';
   const lyrics = optionalText(input.lyrics);
@@ -97,14 +113,15 @@ export function validateMusicRequest(input: MusicRequest): ValidMusicRequest {
     if (!Number.isInteger(count) || count < 1 || count > 3) throw new Error('mureka count must be an integer from 1 to 3');
     if (input.audioFormat && !['mp3', 'wav', 'flac'].includes(input.audioFormat)) throw new Error('Mureka audioFormat must be mp3, wav, or flac');
     validateMurekaMode(input, mode, prompt, lyrics);
-  } else validateMinimax(input, mode, prompt, lyrics);
+  } else if (provider === 'minimax') validateMinimax(input, mode, prompt, lyrics);
+  else validateAtlas(input, mode, prompt, lyrics);
   const name = optionalText(input.name) ?? `Music · ${(prompt || mode).slice(0, 36)}`;
   return {
     ...input, provider, mode, prompt, lyrics, name,
     isInstrumental: provider === 'mureka'
       ? mode === 'instrumental'
       : input.isInstrumental ?? (mode === 't2m' && !lyrics && !input.lyricsOptimizer),
-    lyricsOptimizer: input.lyricsOptimizer === true,
+    lyricsOptimizer: provider === 'minimax' && input.lyricsOptimizer === true,
     sampleRate: input.sampleRate ?? 44_100,
     bitrate: input.bitrate ?? 256_000,
     audioFormat: input.audioFormat ?? 'mp3',

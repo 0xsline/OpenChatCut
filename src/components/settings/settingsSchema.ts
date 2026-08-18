@@ -234,6 +234,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
         route: routeSelect('PREFERRED_MUSIC_VENDOR', [
           { value: 'mureka', label: 'Mureka' },
           { value: 'minimax', label: 'MiniMax' },
+          { value: 'atlas', label: 'Atlas Cloud' },
         ]),
         vendors: [
           { key: 'music/mureka', vendor: 'mureka', title: 'Mureka', fields: [
@@ -243,6 +244,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           ] },
           minimaxPage('music', modelSelect('MINIMAX_MUSIC_MODEL', '音乐模型', 'music-2.6',
             ['music-3.0', 'music-2.6', 'music-3.0-free', 'music-2.6-free', 'music-cover', 'music-cover-free'])),
+          { key: 'music/atlas', vendor: 'atlas', title: 'Atlas Cloud', fields: [
+            secret('ATLASCLOUD_API_KEY', 'API Key'),
+            text('ATLASCLOUD_API_BASE', 'Base URL', '默认 https://api.atlascloud.ai/api/v1'),
+            modelSelect('ATLASCLOUD_MUSIC_MODEL', '音乐模型', 'minimax/music-2.6', ['minimax/music-2.6']),
+          ] },
         ] },
     ],
   },

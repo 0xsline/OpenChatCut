@@ -1,4 +1,4 @@
-export type MusicProvider = 'mureka' | 'minimax';
+export type MusicProvider = 'mureka' | 'minimax' | 'atlas';
 export type MusicMode = 'instrumental' | 'song' | 'prompt-song' | 'soundtrack' | 'track' | 't2m' | 'cover';
 export type MusicAudioFormat = 'mp3' | 'wav' | 'pcm' | 'flac';
 export type MurekaStyle = 'pop' | 'rock' | 'jazz' | 'r&b' | 'edm' | 'ambient' | 'folk'
@@ -13,6 +13,9 @@ export interface MusicOptions {
   minimaxBaseUrl: string;
   minimaxApiKey: string;
   minimaxModel: string;
+  atlasBaseUrl: string;
+  atlasApiKey: string;
+  atlasModel: string;
 }
 
 export interface MusicRequest {
