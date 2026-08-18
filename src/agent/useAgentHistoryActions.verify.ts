@@ -45,8 +45,8 @@ class MemoryStorage implements Storage {
   setItem(key: string, value: string): void { this.values.set(key, value); }
 }
 
-const originalSessionStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
-Object.defineProperty(globalThis, 'sessionStorage', {
+const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+Object.defineProperty(globalThis, 'localStorage', {
   value: new MemoryStorage(),
   configurable: true,
 });
@@ -271,10 +271,10 @@ await assert.rejects(
 );
 await kvDel(`agent-session-generation:${corruptProjectId}`);
 
-if (originalSessionStorage) {
-  Object.defineProperty(globalThis, 'sessionStorage', originalSessionStorage);
+if (originalLocalStorage) {
+  Object.defineProperty(globalThis, 'localStorage', originalLocalStorage);
 } else {
-  Reflect.deleteProperty(globalThis, 'sessionStorage');
+  Reflect.deleteProperty(globalThis, 'localStorage');
 }
 
 console.log('useAgentHistoryActions.verify: context and inspector history clear atomically');

@@ -138,10 +138,10 @@ assert.deepEqual(
   }),
   { acquired: false },
 );
-const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 const originalFetch = globalThis.fetch;
 const browserStorage = new MemoryStorage();
-Object.defineProperty(globalThis, 'sessionStorage', {
+Object.defineProperty(globalThis, 'localStorage', {
   value: browserStorage,
   configurable: true,
 });
@@ -167,7 +167,7 @@ new ServerRunToolExecutor('project-disabled', executorCallbacks, manager);
 assert.equal(
   browserStorage.mutationCount,
   mutationsBeforeDisabledExecutor,
-  'constructing a disabled/not-started executor does not write sessionStorage',
+  'constructing a disabled/not-started executor does not write localStorage',
 );
 const oversizedProjection = projectServerRunToolResult({
   payload: 'x'.repeat(1024 * 1024 + 1),
@@ -490,8 +490,8 @@ assert.deepEqual(retriedRuns, [],
   'a permanently stale capability is cleared without scheduling a stream retry');
 setAgentAutoApply(false);
 globalThis.fetch = originalFetch;
-if (originalStorage) Object.defineProperty(globalThis, 'sessionStorage', originalStorage);
-else Reflect.deleteProperty(globalThis, 'sessionStorage');
+if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+else Reflect.deleteProperty(globalThis, 'localStorage');
 Reflect.deleteProperty(globalThis, 'localStorage');
 assert.equal(unavailableCallbackRan, false,
   'without Web Locks the browser neither executes nor synthesizes a conflicting result');

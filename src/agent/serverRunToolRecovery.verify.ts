@@ -32,9 +32,9 @@ class ImmediateLockManager implements ServerRunLockManager {
   }
 }
 
-const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, 'sessionStorage', {
+Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
   value: new MemoryStorage(),
 });
@@ -95,8 +95,8 @@ try {
     'settled cursor-admitted attempts are removed from browser recovery storage');
 } finally {
   globalThis.fetch = originalFetch;
-  if (originalStorage) Object.defineProperty(globalThis, 'sessionStorage', originalStorage);
-  else Reflect.deleteProperty(globalThis, 'sessionStorage');
+  if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+  else Reflect.deleteProperty(globalThis, 'localStorage');
 }
 
 console.log('server run admitted tool recovery verification passed');

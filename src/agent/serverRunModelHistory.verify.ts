@@ -48,8 +48,8 @@ assert.deepEqual(persisted?.serverRunTurnIds, [runId],
 assert.equal(sanitizePortableChat(persisted!).serverRunTurnIds, undefined,
   'portable chat never exports local server-run idempotency markers');
 
-const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
-Object.defineProperty(globalThis, 'sessionStorage', {
+const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
   value: new MemoryStorage(),
 });
@@ -78,8 +78,8 @@ try {
   assert.equal(readStoredServerRun(terminalProject), null,
     'terminal recovery credentials clear only after the model turn is durable');
 } finally {
-  if (originalStorage) Object.defineProperty(globalThis, 'sessionStorage', originalStorage);
-  else Reflect.deleteProperty(globalThis, 'sessionStorage');
+  if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+  else Reflect.deleteProperty(globalThis, 'localStorage');
 }
 
 console.log('server run model history verification passed');
