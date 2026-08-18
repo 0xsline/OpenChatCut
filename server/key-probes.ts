@@ -350,6 +350,14 @@ export const PROBES: Record<string, ProbeDef> = {
   },
   'music/minimax': minimaxProbe,
   'music/atlas': atlasMusicProbe,
+  // Read-only account endpoint; fake key → 401. The same key also serves
+  // /generate/sound (video-to-SFX), so one probe covers both capabilities.
+  'music/sonilo': {
+    needs: [['SONILO_API_KEY']],
+    run: (get) => fetch(`${base(get, 'SONILO_BASE_URL', 'https://api.sonilo.com')}/v1/account/services`, {
+      signal: t(), headers: bearer(get('SONILO_API_KEY')),
+    }),
+  },
   // /v1/search has been opened to anonymous users (the measured number is 200 without key), and the key; collections cannot be detected
   // It is the account binding endpoint, and the fake key is stable 401.
   'stock/pexels': {

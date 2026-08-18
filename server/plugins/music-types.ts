@@ -1,5 +1,5 @@
-export type MusicProvider = 'mureka' | 'minimax' | 'atlas';
-export type MusicMode = 'instrumental' | 'song' | 'prompt-song' | 'soundtrack' | 'track' | 't2m' | 'cover';
+export type MusicProvider = 'mureka' | 'minimax' | 'atlas' | 'sonilo';
+export type MusicMode = 'instrumental' | 'song' | 'prompt-song' | 'soundtrack' | 'track' | 't2m' | 'cover' | 'v2m';
 export type MusicAudioFormat = 'mp3' | 'wav' | 'pcm' | 'flac';
 export type MurekaStyle = 'pop' | 'rock' | 'jazz' | 'r&b' | 'edm' | 'ambient' | 'folk'
   | 'latin' | 'k-pop' | 'j-pop' | 'house' | 'gospel' | 'lo-fi';
@@ -16,6 +16,8 @@ export interface MusicOptions {
   atlasBaseUrl: string;
   atlasApiKey: string;
   atlasModel: string;
+  soniloBaseUrl: string;
+  soniloApiKey: string;
 }
 
 export interface MusicRequest {

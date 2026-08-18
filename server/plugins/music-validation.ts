@@ -57,6 +57,27 @@ function rejectMurekaOnly(input: MusicRequest): void {
   if (values.some((value) => value !== undefined)) throw new Error('Mureka generation controls are supported by the mureka provider only');
 }
 
+// Sonilo v2m scores the finished cut: the video is the input, the prompt is a
+// single optional style hint (works without one). No lyrics/stems/segment
+// controls exist, output is always one m4a track, and /v1 picks the model.
+function validateSonilo(input: MusicRequest, mode: MusicMode, prompt: string, lyrics?: string): void {
+  if (mode !== 'v2m') throw new Error('sonilo mode must be v2m');
+  if (!input.sourceAssetPath || input.sourceAssetKind !== 'video') {
+    throw new Error('sonilo v2m requires a project video sourceAssetId (the rendered cut)');
+  }
+  if (prompt.length > 500) throw new Error('sonilo style prompt must be at most 500 characters');
+  if (lyrics) throw new Error('sonilo v2m does not take lyrics; music is generated from the video');
+  const murekaOnly = [input.styles, input.gender, input.referenceId, input.instrumentalId, input.vocalId, input.melodyId,
+    input.audioStartMs, input.audioEndMs, input.songId, input.trackType, input.generateStartMs, input.generateEndMs,
+    input.vocalGender, input.stream];
+  if (murekaOnly.some((value) => value !== undefined)) throw new Error('Mureka generation controls are supported by the mureka provider only');
+  const minimaxOnly = [input.referenceAudioPath, input.coverFeatureId, input.lyricsOptimizer, input.isInstrumental,
+    input.sampleRate, input.bitrate];
+  if (minimaxOnly.some((value) => value !== undefined)) throw new Error('MiniMax-only controls are not supported by sonilo');
+  if (input.count !== undefined && input.count !== 1) throw new Error('sonilo v2m returns exactly one result; count must be 1');
+  if (input.audioFormat) throw new Error('sonilo output format is not configurable (m4a is returned)');
+}
+
 function validateMinimax(input: MusicRequest, mode: MusicMode, prompt: string, lyrics?: string): void {
   if (mode !== 't2m' && mode !== 'cover') throw new Error('minimax mode must be t2m or cover');
   rejectMurekaOnly(input);
@@ -98,14 +119,15 @@ function validateAtlas(input: MusicRequest, mode: MusicMode, prompt: string, lyr
 
 export function validateMusicRequest(input: MusicRequest): ValidMusicRequest {
   const provider = String(input.provider ?? 'mureka');
-  if (provider !== 'mureka' && provider !== 'minimax' && provider !== 'atlas') throw new Error('provider must be mureka, minimax, or atlas');
-  const inferredMode: MusicMode = provider === 'mureka'
-    ? 'instrumental'
-    : provider === 'minimax' && (input.referenceAudioPath || input.coverFeatureId) ? 'cover' : 't2m';
+  if (provider !== 'mureka' && provider !== 'minimax' && provider !== 'atlas' && provider !== 'sonilo') throw new Error('provider must be mureka, minimax, atlas, or sonilo');
+  const inferredMode: MusicMode = provider === 'mureka' ? 'instrumental'
+    : provider === 'sonilo' ? 'v2m'
+      : provider === 'minimax' && (input.referenceAudioPath || input.coverFeatureId) ? 'cover' : 't2m';
   const mode = input.mode ?? inferredMode;
   const prompt = optionalText(input.prompt) ?? '';
   const lyrics = optionalText(input.lyrics);
-  if (provider === 'mureka') {
+  if (provider === 'sonilo') validateSonilo(input, mode, prompt, lyrics);
+  else if (provider === 'mureka') {
     if (!MUREKA_MODES.has(mode)) throw new Error('mureka mode must be instrumental, song, prompt-song, soundtrack, or track');
     if (input.referenceAudioPath || input.coverFeatureId || input.lyricsOptimizer !== undefined || input.isInstrumental !== undefined
       || input.sampleRate !== undefined || input.bitrate !== undefined) throw new Error('MiniMax-only controls are not supported by mureka');
@@ -120,7 +142,9 @@ export function validateMusicRequest(input: MusicRequest): ValidMusicRequest {
     ...input, provider, mode, prompt, lyrics, name,
     isInstrumental: provider === 'mureka'
       ? mode === 'instrumental'
-      : input.isInstrumental ?? (mode === 't2m' && !lyrics && !input.lyricsOptimizer),
+      : provider === 'sonilo'
+        ? true
+        : input.isInstrumental ?? (mode === 't2m' && !lyrics && !input.lyricsOptimizer),
     lyricsOptimizer: provider === 'minimax' && input.lyricsOptimizer === true,
     sampleRate: input.sampleRate ?? 44_100,
     bitrate: input.bitrate ?? 256_000,

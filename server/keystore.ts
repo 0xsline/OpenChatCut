@@ -114,6 +114,8 @@ export const KEY_NAMES = [
   "ATLASCLOUD_API_BASE",
   "MINIMAX_API_KEY",
   "MINIMAX_BASE_URL",
+  "SONILO_API_KEY",
+  "SONILO_BASE_URL",
   "PEXELS_API_KEY",
   "PIXABAY_API_KEY",
   "UNSPLASH_ACCESS_KEY",
@@ -378,8 +380,8 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
     video:
       has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY"),
-    music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY"),
-    sound: has("ELEVENLABS_API_KEY"),
+    music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
+    sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:
       has("PEXELS_API_KEY") ||
       has("PIXABAY_API_KEY") ||
