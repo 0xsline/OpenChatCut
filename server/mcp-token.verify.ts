@@ -34,11 +34,22 @@ try {
 
   // A malformed file is replaced, not trusted: serving arbitrary file content
   // would turn a corrupted write into the endpoint's credential.
-  writeFileSync(path, 'pas-un-jeton\n');
+  // Written deliberately world-readable: the heal must not inherit that.
+  writeFileSync(path, 'pas-un-jeton\n', { mode: 0o644 });
   const healed = loadOrCreateMcpToken({ home });
   assert.match(healed.token, /^[A-Za-z0-9_-]{43}$/);
   assert.notEqual(healed.token, 'pas-un-jeton');
   assert.equal(readFileSync(path, 'utf8').trim(), healed.token, 'the healed token is written back');
+  assert.equal(statSync(path).mode & 0o777, 0o600, 'healing sheds the loose permissions of the old file');
+
+  // Losing the first-mint race adopts the winner: the file was created between
+  // our failed read and our exclusive write, and both processes must end up
+  // serving the token the file actually holds.
+  rmSync(path);
+  const raceWinner = 'W'.repeat(43);
+  const noteThenWrite = () => writeFileSync(path, raceWinner + '\n', { mode: 0o600, flag: 'wx' });
+  noteThenWrite();
+  assert.equal(loadOrCreateMcpToken({ home }).token, raceWinner, 'an existing exclusive write wins the race');
 
   // A filesystem that refuses writes degrades to the old per-process token
   // instead of refusing to serve: MCP access survives a read-only HOME.

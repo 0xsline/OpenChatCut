@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -46,20 +46,40 @@ export interface McpTokenResult {
  */
 export function loadOrCreateMcpToken(location: McpTokenLocation = {}): McpTokenResult {
   const path = mcpTokenPath(location);
+  const readValid = (): string | null => {
+    try {
+      const existing = readFileSync(path, 'utf8').trim();
+      return TOKEN_PATTERN.test(existing) ? existing : null;
+    } catch {
+      return null;
+    }
+  };
+  const existing = readValid();
+  if (existing !== null) return { token: existing, persisted: true };
+  // A malformed file is replaced rather than trusted: serving whatever ended up
+  // in it would turn a corrupted write into the endpoint's credential. Removing
+  // it (instead of overwriting) also sheds whatever loose permissions the old
+  // file carried, so the healed credential is always written fresh at 0600.
   try {
-    const existing = readFileSync(path, 'utf8').trim();
-    if (TOKEN_PATTERN.test(existing)) return { token: existing, persisted: true };
-    // A malformed file is replaced rather than trusted: serving whatever ended
-    // up in it would turn a corrupted write into the endpoint's credential.
+    unlinkSync(path);
   } catch {
     // Missing file: first launch.
   }
   const token = randomBytes(32).toString('base64url');
   try {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    writeFileSync(path, `${token}\n`, { mode: 0o600 });
+    // Exclusive create: the profile-scoped instance lock does not serialize a
+    // packaged app against a dev server sharing the same HOME, so two first
+    // launches can race to mint. 'wx' lets exactly one write win; the loser
+    // adopts the winner below, and both processes end up serving the token the
+    // file actually holds.
+    writeFileSync(path, `${token}\n`, { mode: 0o600, flag: 'wx' });
     return { token, persisted: true };
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      const winner = readValid();
+      if (winner !== null) return { token: winner, persisted: true };
+    }
     return { token, persisted: false };
   }
 }
