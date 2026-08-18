@@ -85,6 +85,11 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   music: [
     { label: 'Mureka', arg: 'mureka', argKey: 'provider', need: [['MUREKA_API_KEY']] },
     { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
+    { label: 'Sonilo', arg: 'sonilo', argKey: 'provider', need: [['SONILO_API_KEY']] },
+  ],
+  sound: [
+    { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
+    { label: 'Sonilo', arg: 'sonilo', argKey: 'provider', need: [['SONILO_API_KEY']] },
   ],
   stock: [
     { label: 'Pexels', arg: 'pexels', argKey: 'provider', need: [['PEXELS_API_KEY']] },

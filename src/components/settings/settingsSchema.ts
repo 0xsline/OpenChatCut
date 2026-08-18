@@ -230,10 +230,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           byteplusPage('video', modelText('BYTEPLUS_VIDEO_MODEL', '视频模型', 'seedance-1-5-pro-251215',
             '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedance'),
         ] },
-      { key: 'music', title: '生音乐', hint: 'submit_music · 文字生成配乐，任一厂商即可。',
+      { key: 'music', title: '生音乐', hint: 'submit_music · 文字 / 成片生成配乐，任一厂商即可。',
         route: routeSelect('PREFERRED_MUSIC_VENDOR', [
           { value: 'mureka', label: 'Mureka' },
           { value: 'minimax', label: 'MiniMax' },
+          { value: 'sonilo', label: 'Sonilo' },
         ]),
         vendors: [
           { key: 'music/mureka', vendor: 'mureka', title: 'Mureka', fields: [
@@ -243,6 +244,14 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           ] },
           minimaxPage('music', modelSelect('MINIMAX_MUSIC_MODEL', '音乐模型', 'music-2.6',
             ['music-3.0', 'music-2.6', 'music-3.0-free', 'music-2.6-free', 'music-cover', 'music-cover-free'])),
+          { key: 'music/sonilo', vendor: 'sonilo', title: 'Sonilo',
+            note: '按成片生成：把渲染好的视频交给 Sonilo，配乐跟着画面节奏走（可选一句风格提示，不填也行）。'
+              + '配乐自带授权、可商用（以条款为准）；每条音轨附 license_id 留档。'
+              + '同一个 Key 也用于按成片生成音效（submit_sound，免版税）。',
+            fields: [
+              secret('SONILO_API_KEY', 'API Key'),
+              text('SONILO_BASE_URL', 'Base URL', '默认 https://api.sonilo.com'),
+            ] },
         ] },
     ],
   },

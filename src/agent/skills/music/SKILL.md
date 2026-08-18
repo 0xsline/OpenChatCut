@@ -1,7 +1,7 @@
 ---
 name: music
 description: |
-  Music generation via Mureka and MiniMax. Use for instrumentals, songs, soundtracks, track/stem generation, or covers through `submit_music`.
+  Music generation via Mureka, MiniMax, and Sonilo. Use for instrumentals, songs, soundtracks, track/stem generation, covers, or video-conditioned scoring of the finished cut through `submit_music`.
 user-invocable: true
 ---
 
@@ -15,8 +15,9 @@ user-invocable: true
 | --- | --- | --- |
 | `mureka` | `instrumental`, `song`, `prompt-song`, `soundtrack`, `track` | [references/mureka.md](references/mureka.md) |
 | `minimax` | `t2m`, `cover` | [references/minimax.md](references/minimax.md) |
+| `sonilo` | `v2m` | [references/sonilo.md](references/sonilo.md) |
 
-Select the named/configured vendor. Default to Mureka instrumental for ordinary BGM. Use Mureka song/prompt-song when its vocal or reference controls are wanted; use Mureka soundtrack for an image/video-driven score and track mode for generating a stem/track from a song/audio source. Use MiniMax for its text-to-music and cover models.
+Select the named/configured vendor. Default to Mureka instrumental for ordinary BGM. Use Mureka song/prompt-song when its vocal or reference controls are wanted; use Mureka soundtrack for an image/video-driven score and track mode for generating a stem/track from a song/audio source. Use MiniMax for its text-to-music and cover models. Use Sonilo v2m when the music should be composed from the finished cut itself (a project video asset) rather than a text description.
 
 ## Shared workflow
 
@@ -53,6 +54,10 @@ submit_music({ provider: "minimax", mode: "t2m", prompt: "Rainy night pop", lyri
 
 // MiniMax cover from a project audio asset
 submit_music({ provider: "minimax", mode: "cover", prompt: "Warm acoustic coffee-shop cover", referenceAssetId: "audioAssetId" });
+
+// Sonilo video-to-music from the rendered cut (prompt optional)
+submit_music({ provider: "sonilo", mode: "v2m", sourceAssetId: "renderedCutAssetId" });
+submit_music({ provider: "sonilo", mode: "v2m", sourceAssetId: "renderedCutAssetId", prompt: "Warm indie folk, no drums" });
 ```
 
 ## Rules

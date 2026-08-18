@@ -18,11 +18,13 @@ export const GENERATE_WORKFLOW = `
 ## Sound-effect generation
 - Use submit_sound only after the user explicitly requests a new/original/custom sound, or when the existing sound-effects library has no suitable result.
 - For ordinary whoosh, riser, impact, notification, click, ding, censor beep, record scratch, shutter, typing, or reaction sounds, use the existing library first.
-- Default to 4 seconds and promptInfluence 0.3. submit_sound creates one media-pool audio asset only and does not place it on the timeline.
+- Default provider elevenlabs (text prompt): default to 4 seconds and promptInfluence 0.3. Provider sonilo generates royalty-free SFX matched to a project video asset (the rendered cut, up to 3 minutes) via sourceAssetId — no prompt or duration controls.
+- submit_sound creates one media-pool audio asset only and does not place it on the timeline.
 
 ## Music generation
-- Use submit_music only after the user explicitly requests newly generated music; it starts an asynchronous generation job (Mureka or MiniMax).
+- Use submit_music only after the user explicitly requests newly generated music; it starts an asynchronous generation job (Mureka, MiniMax, or Sonilo).
 - Default provider mureka and mode instrumental. Mureka also supports song (lyrics), prompt-song, soundtrack (image/video sourceAssetId), and track/stem generation (songId or audio sourceAssetId), count 1–3, styles, voice/reference IDs, ranges, and streaming tasks. MiniMax t2m supports lyrics, lyricsOptimizer, isInstrumental, sampleRate/bitrate/audioFormat; cover supports referenceAssetId or coverFeatureId plus style prompt (10–300) with a music-cover model.
+- Sonilo mode v2m is video-conditioned: it reads a project video asset (the rendered cut, up to 6 minutes) via sourceAssetId and composes music matched to its pacing; prompt is a single optional style hint (≤500, works without one); exactly one result. Generated music is licensed, safe for commercial use (terms apply), and each track carries a licenseId (also archived as a .license.json sidecar beside the audio file).
 - Describe the style, mood, instrumentation, and intended edit context in prompt. Do not silently request extra variants.
 - submit_music returns immediately with a jobId. Call track_progress target=generation with action=status or action=wait; only a successful tracked result creates the media-pool audio asset.
 

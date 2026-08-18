@@ -4,8 +4,8 @@ export interface SubmitMusicArgs {
   operationId?: string;
   prompt?: string;
   name?: string;
-  provider?: 'mureka' | 'minimax';
-  mode?: 'instrumental' | 'song' | 'prompt-song' | 'soundtrack' | 'track' | 't2m' | 'cover';
+  provider?: 'mureka' | 'minimax' | 'sonilo';
+  mode?: 'instrumental' | 'song' | 'prompt-song' | 'soundtrack' | 'track' | 't2m' | 'cover' | 'v2m';
   lyrics?: string;
   isInstrumental?: boolean;
   lyricsOptimizer?: boolean;
@@ -23,7 +23,7 @@ export interface SubmitMusicArgs {
   instrumentalId?: string;
   vocalId?: string;
   melodyId?: string;
-  /** Mureka soundtrack image/video or track source audio. */
+  /** Mureka soundtrack image/video, track source audio, or Sonilo v2m video (the rendered cut). */
   sourceAssetId?: string;
   audioStartMs?: number;
   audioEndMs?: number;

@@ -40,7 +40,7 @@ import visionSvg from '../../../assets/vendor-icons/vision.svg?raw';
 export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
-  | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
+  | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
   | 'vision' | 'proxy';
@@ -99,6 +99,7 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   inworld: { bg: '#7A5CFF', mono: 'IW' }, // Inworld TTS, no official SVG vendored yet
   speechify: { bg: '#FF6A3D', mono: 'SP' }, // Speechify, no official SVG vendored yet
   wavespeed: { bg: '#00B8D9', mono: 'WS' }, // WaveSpeed AI, no official SVG vendored yet
+  sonilo: { bg: '#101828', mono: 'SO', fg: '#e8f6f2' }, // Sonilo, no official SVG vendored yet
 };
 
 interface VendorIconProps {

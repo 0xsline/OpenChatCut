@@ -1627,61 +1627,70 @@
     },
     {
       "name": "submit_sound",
-      "description": "Generate one original/custom sound effect with ElevenLabs and create an audio asset in the media pool. Does not place timeline items. For ordinary whooshes, clicks, impacts, dings, and similar editing sounds, use the existing library first.",
+      "description": "Generate one sound-effect audio asset in the media pool: ElevenLabs synthesizes from a text prompt; Sonilo generates SFX from a project video asset (the rendered cut, up to 3 minutes) with no prompt. Does not place timeline items. For ordinary whooshes, clicks, impacts, dings, and similar editing sounds, use the existing library first.",
       "input_schema": {
         "type": "object",
         "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "elevenlabs",
+              "sonilo"
+            ],
+            "description": "Defaults to elevenlabs (text prompt). sonilo generates video-matched SFX from sourceAssetId instead of a prompt."
+          },
           "prompt": {
             "type": "string",
-            "minLength": 1,
-            "description": "Detailed sound description."
+            "description": "Detailed sound description. Required for elevenlabs; not used by sonilo."
           },
           "durationSeconds": {
             "type": "number",
             "minimum": 0.5,
             "maximum": 30,
-            "description": "Optional 0.5–30 seconds. Omit to let ElevenLabs choose the duration."
+            "description": "ElevenLabs only. Optional 0.5–30 seconds; omit to let ElevenLabs choose the duration."
           },
           "promptInfluence": {
             "type": "number",
             "minimum": 0,
             "maximum": 1,
-            "description": "Prompt adherence; defaults to 0.3."
+            "description": "ElevenLabs only. Prompt adherence; defaults to 0.3."
           },
           "loop": {
             "type": "boolean",
-            "description": "Create a seamless loop. Requires the configured eleven_text_to_sound_v2 model."
+            "description": "ElevenLabs only. Create a seamless loop; requires the configured eleven_text_to_sound_v2 model."
           },
           "outputFormat": {
             "type": "string",
-            "description": "Official ElevenLabs codec_sample-rate_bitrate enum, e.g. mp3_44100_128, opus_48000_128, pcm_44100."
+            "description": "ElevenLabs only. Official codec_sample-rate_bitrate enum, e.g. mp3_44100_128, opus_48000_128, pcm_44100."
+          },
+          "sourceAssetId": {
+            "type": "string",
+            "description": "Sonilo only. Project video asset (the rendered cut, ≤3 minutes) the SFX are generated from."
           },
           "name": {
             "type": "string",
             "description": "Optional media-pool asset name."
           }
-        },
-        "required": [
-          "prompt"
-        ]
+        }
       }
     },
     {
       "name": "submit_music",
-      "description": "Submit a Mureka or MiniMax music job. Mureka supports instrumental, lyrics song, prompt song, soundtrack, and track/stem modes with up to 3 results. MiniMax supports text-to-music and cover. Results are saved to the media pool.",
+      "description": "Submit a Mureka, MiniMax, or Sonilo music job. Mureka supports instrumental, lyrics song, prompt song, soundtrack, and track/stem modes with up to 3 results. MiniMax supports text-to-music and cover. Sonilo v2m generates music from a project video asset (the rendered cut, up to 6 minutes) — video-conditioned, with a single optional style prompt. Results are saved to the media pool.",
       "input_schema": {
         "type": "object",
         "properties": {
           "prompt": {
             "type": "string",
             "maxLength": 2000,
-            "description": "Style/control prompt. Required for most modes; optional with Mureka provider IDs. Mureka max is 1024 or 2000 by mode; MiniMax cover requires 10–300."
+            "description": "Style/control prompt. Required for most modes; optional with Mureka provider IDs and Sonilo v2m (≤500, works promptless). Mureka max is 1024 or 2000 by mode; MiniMax cover requires 10–300."
           },
           "provider": {
             "type": "string",
             "enum": [
               "mureka",
-              "minimax"
+              "minimax",
+              "sonilo"
             ],
             "description": "Defaults to mureka."
           },
@@ -1694,9 +1703,10 @@
               "soundtrack",
               "track",
               "t2m",
-              "cover"
+              "cover",
+              "v2m"
             ],
-            "description": "Mureka: instrumental/song/prompt-song/soundtrack/track. MiniMax: t2m/cover."
+            "description": "Mureka: instrumental/song/prompt-song/soundtrack/track. MiniMax: t2m/cover. Sonilo: v2m (video-to-music)."
           },
           "lyrics": {
             "type": "string",
@@ -1795,7 +1805,7 @@
           },
           "sourceAssetId": {
             "type": "string",
-            "description": "Mureka soundtrack image/video asset or track-mode audio asset."
+            "description": "Mureka soundtrack image/video asset, track-mode audio asset, or Sonilo v2m video asset (the rendered cut, ≤6 minutes)."
           },
           "audioStartMs": {
             "type": "integer",

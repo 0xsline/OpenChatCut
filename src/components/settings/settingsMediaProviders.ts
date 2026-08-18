@@ -243,4 +243,5 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   kling: [['KLING_API_KEY']],
   hailuo: [['MINIMAX_API_KEY']],
   mureka: [['MUREKA_API_KEY']],
+  sonilo: [['SONILO_API_KEY']],
 };
