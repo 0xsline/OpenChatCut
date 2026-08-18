@@ -28,7 +28,7 @@
     "verify:affected": "node scripts/run-affected-verifies.mjs",
     "verify:media-drag": "tsx src/media/drag.verify.ts",
     "verify:semantic-sampling": "tsx src/media/semantic-search/samplingConfig.verify.ts",
-    "verify:runtime-profile": "node scripts/dev-profile.verify.mjs && tsx server/runtime-profile.verify.ts && tsx desktop/runtime-profile.verify.ts && tsx server/keystore-profile.verify.ts && tsx server/keystore-default-profile.verify.ts && tsx server/media-dir-profile.verify.ts && tsx server/data-dir.verify.ts && tsx server/r2-profile.verify.ts",
+    "verify:runtime-profile": "node scripts/dev-profile.verify.mjs && tsx server/runtime-profile.verify.ts && tsx desktop/runtime-profile.verify.ts && tsx server/keystore-profile.verify.ts && tsx server/keystore-default-profile.verify.ts && tsx server/media-dir-profile.verify.ts && tsx server/data-dir.verify.ts && tsx server/r2-profile.verify.ts && tsx server/mcp-token.verify.ts",
     "verify:directory-watch": "tsx shared/directory-import.verify.ts && tsx desktop/directory-watch-errors.verify.ts && tsx desktop/directory-watch-controller.verify.ts && tsx desktop/directory-watch-import.verify.ts && tsx desktop/directory-watch.verify.ts && tsx src/media/directoryDrop.verify.ts && tsx src/media/directoryImportAsset.verify.ts && tsx src/media/useDirectoryImport.verify.ts && tsx src/media/directoryImportIntegration.verify.ts && tsx src/media/media-folder-menu.verify.ts && tsx src/media/media-pool-batch-timeline.verify.ts",
     "verify:clip-fx-export": "node src/gl/clipFxExport.verify.mjs",
     "verify:approval-policy": "tsx src/agent/approval-policy.verify.ts",
