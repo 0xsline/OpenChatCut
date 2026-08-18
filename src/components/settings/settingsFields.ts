@@ -26,6 +26,11 @@ export interface SettingsVendorPage {
   readonly connection?: 'codex';
   readonly kind?: 'provider' | 'settings' | 'local-models';
   readonly fields: readonly SettingsField[];
+  /** Renders as a button under the note, dispatching a global action. The note
+   *  under Anthropic tells Claude Code subscribers where to go (the external
+   *  MCP panel) without giving them any way to get there; naming a destination
+   *  the reader cannot reach is what made the only entry path undiscoverable. */
+  readonly noteAction?: { readonly label: string; readonly action: string };
 }
 
 export interface SettingsGroup {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { theme } from '../theme';
 import { Icon } from './icons';
 import { ExportHistory } from './ExportHistory';
@@ -6,7 +6,7 @@ import { GenerationActivity } from './GenerationActivity';
 import { SkinPicker } from './settings/SkinPicker';
 import { McpGuideDialog } from './settings/McpGuide';
 import { getLocale, setLocale, useT } from '../i18n/locale';
-import { invokeAction } from '../shortcuts/actionRegistry';
+import { invokeAction, bindAction } from '../shortcuts/actionRegistry';
 import { DesktopWindowControls } from './DesktopWindowControls';
 import { TopBarIconButton } from './TopBarIconButton';
 
@@ -47,6 +47,10 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   const [mcpOpen, setMcpOpen] = useState(false);
+  // The settings dialog (and anything else) can summon the MCP guide through the
+  // action registry: the Anthropic pane names this panel as the way in for
+  // Claude Code subscribers, so it has to be able to actually open it.
+  useEffect(() => bindAction('open-mcp-guide', () => setMcpOpen(true)), []);
   const commit = () => { setEditing(false); if (onRename && draft.trim() && draft.trim() !== projectName) onRename(draft.trim()); };
 
   return (
