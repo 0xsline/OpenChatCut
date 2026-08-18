@@ -16,4 +16,29 @@ assert.throws(() => validateSoundRequest({ prompt: 'x', durationSeconds: 0.1 }),
 assert.throws(() => validateSoundRequest({ prompt: 'x', promptInfluence: 2 }), /promptInfluence must be between/);
 assert.throws(() => validateSoundRequest({ prompt: 'x', outputFormat: 'wav' }), /unsupported ElevenLabs outputFormat/);
 
-console.log('sound.check: ok (elevenlabs official sound parameters)');
+// sonilo: SFX from the cut — video source in, no prompt, no synthesis controls
+assert.equal(ok.provider, 'elevenlabs', 'provider defaults to elevenlabs');
+const sonilo = validateSoundRequest({ provider: 'sonilo', sourceAssetPath: '/media/uploads/cut.mp4', sourceAssetKind: 'video' });
+assert.equal(sonilo.provider, 'sonilo');
+assert.equal(sonilo.sourceAssetPath, '/media/uploads/cut.mp4');
+assert.equal(sonilo.prompt, '');
+assert.throws(() => validateSoundRequest({ provider: 'sonilo' }), /video sourceAssetId/);
+assert.throws(
+  () => validateSoundRequest({ provider: 'sonilo', sourceAssetPath: '/media/uploads/a.mp3', sourceAssetKind: 'audio' }),
+  /video sourceAssetId/,
+);
+assert.throws(
+  () => validateSoundRequest({ provider: 'sonilo', sourceAssetPath: '/media/uploads/cut.mp4', sourceAssetKind: 'video', prompt: 'whoosh' }),
+  /prompt is not supported/,
+);
+assert.throws(
+  () => validateSoundRequest({ provider: 'sonilo', sourceAssetPath: '/media/uploads/cut.mp4', sourceAssetKind: 'video', loop: true }),
+  /ElevenLabs sound controls/,
+);
+assert.throws(
+  () => validateSoundRequest({ prompt: 'x', sourceAssetPath: '/media/uploads/cut.mp4', sourceAssetKind: 'video' }),
+  /sonilo provider only/,
+);
+assert.throws(() => validateSoundRequest({ provider: 'freesound', prompt: 'x' }), /elevenlabs or sonilo/);
+
+console.log('sound.check: ok (elevenlabs official sound parameters + sonilo video-to-sfx)');

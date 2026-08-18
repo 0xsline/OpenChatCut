@@ -7,6 +7,16 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
 import { uploadDir } from '../media-dir.ts';
+import {
+  SONILO_SFX_ENDPOINT,
+  SONILO_SFX_MAX_VIDEO_SECONDS,
+  assertSoniloVideoDuration,
+  awaitSoniloTracks,
+  saveSoniloAudioResponse,
+  submitSoniloVideoTask,
+  writeSoniloLicenseSidecar,
+} from './sonilo-media.ts';
+import { fetchGeneratedResult } from './result-download.ts';
 // Proxy-aware fetch: attaches the configured outbound proxy (keystore
 // PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
@@ -22,26 +32,35 @@ const OUTPUT_FORMATS = new Set([
   'opus_48000_32', 'opus_48000_64', 'opus_48000_96', 'opus_48000_128', 'opus_48000_192',
 ]);
 
+type SoundProvider = 'elevenlabs' | 'sonilo';
+
 interface SoundOptions {
   baseUrl: string;
   apiKey: string;
   model: string;
+  soniloBaseUrl: string;
+  soniloApiKey: string;
 }
 
 interface SoundRequest {
+  provider?: string;
   prompt?: string;
   durationSeconds?: number;
   promptInfluence?: number;
   loop?: boolean;
   outputFormat?: string;
+  sourceAssetPath?: string;
+  sourceAssetKind?: string;
 }
 
 export interface ValidSoundRequest {
+  provider: SoundProvider;
   prompt: string;
   durationSeconds?: number;
   promptInfluence: number;
   loop: boolean;
   outputFormat: string;
+  sourceAssetPath?: string;
 }
 
 async function readJson(req: IncomingMessage): Promise<SoundRequest> {
@@ -74,19 +93,36 @@ async function providerError(response: Response): Promise<string> {
 
 /** Pure validation — exported for unit checks. */
 export function validateSoundRequest(input: SoundRequest): ValidSoundRequest {
+  const provider = String(input.provider ?? 'elevenlabs');
+  if (provider !== 'elevenlabs' && provider !== 'sonilo') throw new Error('sound provider must be elevenlabs or sonilo');
   const prompt = String(input.prompt ?? '').trim();
+  if (provider === 'sonilo') {
+    // Sonilo video-to-SFX reads the cut itself — no prompt, no ElevenLabs
+    // synthesis controls; the source video is the whole request.
+    if (!input.sourceAssetPath || input.sourceAssetKind !== 'video') {
+      throw new Error('sonilo sound requires a project video sourceAssetId (the rendered cut)');
+    }
+    if (prompt) throw new Error('sonilo sound is generated from the video; prompt is not supported');
+    if ([input.durationSeconds, input.promptInfluence, input.loop, input.outputFormat].some((value) => value !== undefined)) {
+      throw new Error('ElevenLabs sound controls are not supported by sonilo');
+    }
+    return { provider, prompt: '', promptInfluence: 0.3, loop: false, outputFormat: 'mp3_44100_128', sourceAssetPath: input.sourceAssetPath };
+  }
   const durationSeconds = input.durationSeconds;
   const promptInfluence = input.promptInfluence ?? 0.3;
   const loop = input.loop ?? false;
   const outputFormat = String(input.outputFormat ?? 'mp3_44100_128');
   if (!prompt) throw new Error('prompt is required');
+  if (input.sourceAssetPath !== undefined || input.sourceAssetKind !== undefined) {
+    throw new Error('sourceAssetId is supported by the sonilo provider only');
+  }
   if (durationSeconds != null && (!Number.isFinite(durationSeconds) || durationSeconds < 0.5 || durationSeconds > 30)) {
     throw new Error('durationSeconds must be between 0.5 and 30');
   }
   if (!Number.isFinite(promptInfluence) || promptInfluence < 0 || promptInfluence > 1) throw new Error('promptInfluence must be between 0 and 1');
   if (typeof loop !== 'boolean') throw new Error('loop must be a boolean');
   if (!OUTPUT_FORMATS.has(outputFormat)) throw new Error(`unsupported ElevenLabs outputFormat ${outputFormat}`);
-  return { prompt, durationSeconds, promptInfluence, loop, outputFormat };
+  return { provider, prompt, durationSeconds, promptInfluence, loop, outputFormat };
 }
 
 const validate = validateSoundRequest;
@@ -148,6 +184,26 @@ async function saveAudio(bytes: Buffer, outputFormat: string): Promise<{ path: s
   return { path: `/media/uploads/${filename}`, durationSeconds: await probeDuration(file) };
 }
 
+// Sonilo video-to-SFX: async on the provider side (submit → poll), consumed
+// here within the synchronous /generate/sound contract — SFX for a ≤3-minute
+// cut completes well inside the request window, matching the ElevenLabs path.
+async function generateSoniloSound(
+  options: SoundOptions,
+  input: ValidSoundRequest,
+): Promise<{ path: string; durationSeconds: number; licenseId?: string }> {
+  if (!options.soniloApiKey) throw new Error('Sonilo is not configured. Set SONILO_API_KEY in .env.local or 设置面板.');
+  const sourcePath = input.sourceAssetPath!;
+  await assertSoniloVideoDuration(sourcePath, SONILO_SFX_MAX_VIDEO_SECONDS, 'SFX');
+  const baseUrl = options.soniloBaseUrl.replace(/\/$/, '');
+  const taskId = await submitSoniloVideoTask(baseUrl, options.soniloApiKey, SONILO_SFX_ENDPOINT, sourcePath);
+  const [primary] = await awaitSoniloTracks(baseUrl, options.soniloApiKey, taskId);
+  if (!primary) throw new Error('Sonilo returned no SFX track');
+  // Presigned result URL — downloaded without auth headers by design.
+  const saved = await saveSoniloAudioResponse(await fetchGeneratedResult(primary.url, 'audio'), primary.url);
+  if (primary.licenseId) await writeSoniloLicenseSidecar(saved.path, primary.licenseId);
+  return { ...saved, licenseId: primary.licenseId };
+}
+
 export function soundGenerationPlugin(options: SoundOptions): Plugin {
   return {
     name: 'openchatcut-sound-generation',
@@ -155,8 +211,12 @@ export function soundGenerationPlugin(options: SoundOptions): Plugin {
       server.middlewares.use('/generate/sound', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
-          if (!options.apiKey) throw new Error('Sound generation is not configured. Set ELEVENLABS_API_KEY in .env.local.');
           const input = validate(await readJson(req));
+          if (input.provider === 'sonilo') {
+            sendJson(res, 200, await generateSoniloSound(options, input));
+            return;
+          }
+          if (!options.apiKey) throw new Error('Sound generation is not configured. Set ELEVENLABS_API_KEY in .env.local.');
           if (input.loop && options.model !== 'eleven_text_to_sound_v2') {
             throw new Error('loop requires ELEVENLABS_SOUND_MODEL eleven_text_to_sound_v2');
           }

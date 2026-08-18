@@ -15,6 +15,9 @@ export interface GenerationResult {
   fps?: number;
   /** Offset of a ranged export within the source timeline. */
   sourceStartSeconds?: number;
+  /** Provider license record id for the generated track (also archived as a
+   * `.license.json` sidecar beside the audio file). */
+  licenseId?: string;
   sizeBytes?: number;
   codec?: string;
   encoder?: H264EncoderProfile;

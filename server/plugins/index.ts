@@ -211,6 +211,12 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get model() {
         return getKey("ELEVENLABS_SOUND_MODEL") || "eleven_text_to_sound_v2";
       },
+      get soniloBaseUrl() {
+        return getKey("SONILO_BASE_URL") || "https://api.sonilo.com";
+      },
+      get soniloApiKey() {
+        return getKey("SONILO_API_KEY");
+      },
     }),
     musicGenerationPlugin({
       get baseUrl() {
@@ -230,6 +236,12 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       },
       get minimaxModel() {
         return getKey("MINIMAX_MUSIC_MODEL") || "music-2.6";
+      },
+      get soniloBaseUrl() {
+        return getKey("SONILO_BASE_URL") || "https://api.sonilo.com";
+      },
+      get soniloApiKey() {
+        return getKey("SONILO_API_KEY");
       },
     }),
     videoGenerationPlugin({
