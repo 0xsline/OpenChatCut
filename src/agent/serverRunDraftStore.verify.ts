@@ -18,6 +18,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     });
   }
   if (url.includes('/draft') && init?.method === 'POST') {
+    if (url.includes('draft-cap-403')) return new Response('{}', { status: 403 });
+    if (url.includes('draft-gone-404')) return new Response('{}', { status: 404 });
+    if (url.includes('draft-other-500')) return new Response('{}', { status: 500 });
     const body = JSON.parse(String(init.body)) as {
       projectId: string; artifact: Record<string, unknown>;
     };
@@ -87,5 +90,20 @@ assert.match(body.args.azure, /sig=\[REDACTED\]/);
 assert.match(body.args.gcs, /X-Goog-Signature=\[REDACTED\]/);
 assert.match(body.error, /\[REDACTED\]/);
 await recorder.finalize('interrupted', 'privacy verifier complete');
+
+// Error hints carry the real reason (the bare 'could not be persisted' hid
+// the capability loss after tab switches/reloads).
+{
+  const { saveServerRunDraftBase } = await import('./serverRunDraftStore');
+  const expectHint = async (runId: string, pattern: RegExp) => {
+    await assert.rejects(
+      saveServerRunDraftBase('project', runId, { text: 't', content: 'c', askOnly: false, references: [], baseDoc: {} as never }),
+      (error: unknown) => error instanceof Error && pattern.test(error.message),
+    );
+  };
+  await expectHint('draft-cap-403', /run capability was lost/);
+  await expectHint('draft-gone-404', /no longer exists on the server/);
+  await expectHint('draft-other-500', /HTTP 500/);
+}
 
 console.log('serverRunDraftStore.verify: recovery drafts redact credentials');
