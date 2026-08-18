@@ -53,7 +53,7 @@ function toolNames(value: unknown): value is readonly string[] {
 
 export function readStoredServerRun(projectId: string): StoredServerRun | null {
   try {
-    const stored = sessionStorage.getItem(runKey(projectId));
+    const stored = localStorage.getItem(runKey(projectId));
     if (!stored) return null;
     if (!stored.startsWith('{')) return { projectId, runId: stored };
     const parsed = JSON.parse(stored) as Partial<StoredServerRun>;
@@ -106,7 +106,7 @@ export function readStoredServerRun(projectId: string): StoredServerRun | null {
 
 export function saveStoredServerRun(projectId: string, value: StoredServerRun): boolean {
   try {
-    sessionStorage.setItem(runKey(projectId), JSON.stringify(value));
+    localStorage.setItem(runKey(projectId), JSON.stringify(value));
     return readStoredServerRun(projectId)?.runId === value.runId;
   } catch {
     return false;
@@ -133,15 +133,15 @@ export function clearStoredServerRunLease(
 
 export function clearStoredServerRun(projectId: string, runId?: string): void {
   if (runId && readStoredServerRun(projectId)?.runId !== runId) return;
-  try { sessionStorage.removeItem(runKey(projectId)); } catch { /* best effort */ }
+  try { localStorage.removeItem(runKey(projectId)); } catch { /* best effort */ }
 }
 
 export function storedClaimIdentity(projectId: string): string {
   try {
-    const existing = sessionStorage.getItem(claimKey(projectId));
+    const existing = localStorage.getItem(claimKey(projectId));
     if (existing) return existing;
     const created = crypto.randomUUID();
-    sessionStorage.setItem(claimKey(projectId), created);
+    localStorage.setItem(claimKey(projectId), created);
     return created;
   } catch {
     return crypto.randomUUID();

@@ -69,8 +69,8 @@ class FakeEventSource {
   }
 }
 
-const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
-Object.defineProperty(globalThis, 'sessionStorage', {
+const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+Object.defineProperty(globalThis, 'localStorage', {
   value: new MemoryStorage(),
   configurable: true,
 });
@@ -497,7 +497,7 @@ assert.equal(persistenceFailures, 1,
   'a failed durable cursor write enters permanent settlement');
 
 
-if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
-else Reflect.deleteProperty(globalThis, 'sessionStorage');
+if (original) Object.defineProperty(globalThis, 'localStorage', original);
+else Reflect.deleteProperty(globalThis, 'localStorage');
 
 console.log('server run session storage verification passed');

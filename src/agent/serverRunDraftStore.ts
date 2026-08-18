@@ -142,7 +142,14 @@ async function storeBody(
       },
     }),
   });
-  if (!response.ok) throw new Error('Server run draft could not be persisted.');
+  if (!response.ok) {
+    const hint = response.status === 403
+      ? 'the run capability was lost (new tab or reload); start a new run'
+      : response.status === 404
+        ? 'the run no longer exists on the server'
+        : `HTTP ${response.status}`;
+    throw new Error(`Server run draft could not be persisted (${hint}).`);
+  }
 }
 
 export function saveServerRunDraftBase(
