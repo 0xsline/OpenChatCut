@@ -1,12 +1,25 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { TLSSocket } from 'node:tls';
 import type { EditorBootstrapInfo } from '../shared/editor-auth-transport.ts';
 import { isLoopbackAddress } from './loopback-address.ts';
+import { loadOrCreateMcpToken } from './mcp-token.ts';
+import { runtimeProfile } from './runtime-profile.ts';
 
 export const EDITOR_BOOTSTRAP_HEADER = 'x-openchatcut-editor-bootstrap';
 
-const generatedMcpToken = randomBytes(32).toString('base64url');
+/** Lazy so tests and the env override never touch the filesystem. */
+let persistentMcpToken: string | undefined;
+
+function resolvePersistentMcpToken(): string {
+  if (persistentMcpToken === undefined) {
+    const profile = runtimeProfile();
+    persistentMcpToken = loadOrCreateMcpToken(
+      profile.mode === 'isolated-dev' ? { profileId: profile.id } : {},
+    ).token;
+  }
+  return persistentMcpToken;
+}
 const LOCAL_EDITOR_HOSTS: Readonly<Record<string, true>> = {
   localhost: true,
   '127.0.0.1': true,
@@ -14,7 +27,7 @@ const LOCAL_EDITOR_HOSTS: Readonly<Record<string, true>> = {
 };
 
 export function externalMcpToken(): string {
-  return process.env.OPENCHATCUT_MCP_TOKEN?.trim() || generatedMcpToken;
+  return process.env.OPENCHATCUT_MCP_TOKEN?.trim() || resolvePersistentMcpToken();
 }
 
 function secretMatches(actual: string | undefined, expected: string): boolean {
