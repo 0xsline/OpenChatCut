@@ -14,9 +14,15 @@ let persistentMcpToken: string | undefined;
 function resolvePersistentMcpToken(): string {
   if (persistentMcpToken === undefined) {
     const profile = runtimeProfile();
-    persistentMcpToken = loadOrCreateMcpToken(
+    const result = loadOrCreateMcpToken(
       profile.mode === 'isolated-dev' ? { profileId: profile.id } : {},
-    ).token;
+    );
+    if (!result.persisted) {
+      // The MCP guide promises a stable token; when the filesystem breaks that
+      // promise the user deserves one line saying so and how to pin it.
+      console.warn('[mcp] token could not be persisted and will change on restart; set OPENCHATCUT_MCP_TOKEN to pin it');
+    }
+    persistentMcpToken = result.token;
   }
   return persistentMcpToken;
 }

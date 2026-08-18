@@ -6,16 +6,29 @@ import { dirname, join } from 'node:path';
 /** The documented external-MCP address; README and the MCP panel assume it. */
 export const CANONICAL_EMBEDDED_PORT = 5199;
 
+export interface EmbeddedPortLocation {
+  /** Overridable for tests; never for callers wiring the real server. */
+  readonly home?: string;
+  /** Isolated dev profiles keep their own memory, exactly like the MCP token:
+   *  the profile-scoped instance lock lets a packaged app and a dev checkout
+   *  run concurrently, and one memory slot shared between them would ping-pong
+   *  at every contended launch — the very instability this file removes. */
+  readonly profileId?: string;
+}
+
 /** Same HOME-anchored hidden root as the MCP token, and for the same reason:
  *  the user-chosen data dir may be a synced folder, and machine-local wiring
  *  state has no business following a sync service to another machine. */
-export function embeddedPortPath(home: string = homedir()): string {
-  return join(home, '.openchatcut', 'mcp-port');
+export function embeddedPortPath({ home = homedir(), profileId }: EmbeddedPortLocation = {}): string {
+  const root = profileId
+    ? join(home, '.openchatcut', 'dev-profiles', profileId)
+    : join(home, '.openchatcut');
+  return join(root, 'mcp-port');
 }
 
-export function readRememberedPort(home: string = homedir()): number | null {
+export function readRememberedPort(location: EmbeddedPortLocation = {}): number | null {
   try {
-    const port = Number(readFileSync(embeddedPortPath(home), 'utf8').trim());
+    const port = Number(readFileSync(embeddedPortPath(location), 'utf8').trim());
     // The canonical port is never remembered: it is always tried first anyway,
     // and remembering it would just shadow a stale write.
     if (!Number.isInteger(port) || port < 1024 || port > 65535 || port === CANONICAL_EMBEDDED_PORT) {
@@ -27,9 +40,9 @@ export function readRememberedPort(home: string = homedir()): number | null {
   }
 }
 
-export function rememberPort(port: number, home: string = homedir()): boolean {
+export function rememberPort(port: number, location: EmbeddedPortLocation = {}): boolean {
   try {
-    const path = embeddedPortPath(home);
+    const path = embeddedPortPath(location);
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     writeFileSync(path, `${port}\n`, { mode: 0o600 });
     return true;
@@ -38,10 +51,9 @@ export function rememberPort(port: number, home: string = homedir()): boolean {
   }
 }
 
-export interface ListenWithAffinityOptions {
+export interface ListenWithAffinityOptions extends EmbeddedPortLocation {
   /** Overridable for tests; the real server always uses the documented port. */
   readonly canonicalPort?: number;
-  readonly home?: string;
   readonly log?: (message: string) => void;
 }
 
@@ -58,7 +70,7 @@ export interface ListenWithAffinityOptions {
  */
 export async function listenWithAffinity(
   server: Server,
-  { canonicalPort = CANONICAL_EMBEDDED_PORT, home, log = console.warn }: ListenWithAffinityOptions = {},
+  { canonicalPort = CANONICAL_EMBEDDED_PORT, home, profileId, log = console.warn }: ListenWithAffinityOptions = {},
 ): Promise<number> {
   const listenOn = (port: number) => new Promise<number>((resolvePort, reject) => {
     const onError = (err: Error) => reject(err);
@@ -77,7 +89,7 @@ export async function listenWithAffinity(
   } catch (err) {
     if (!inUse(err)) throw err;
   }
-  const remembered = readRememberedPort(home);
+  const remembered = readRememberedPort({ home, profileId });
   if (remembered !== null) {
     try {
       const port = await listenOn(remembered);
@@ -88,7 +100,7 @@ export async function listenWithAffinity(
     }
   }
   const port = await listenOn(0);
-  rememberPort(port, home);
+  rememberPort(port, { home, profileId });
   log(`[embedded-server] port ${canonicalPort} in use — falling back to ${port}, kept for future launches; point external MCP clients at the origin logged below`);
   return port;
 }

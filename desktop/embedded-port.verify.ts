@@ -35,7 +35,7 @@ try {
   // fallback situation to remember.
   const direct = fresh();
   assert.equal(await listenWithAffinity(direct, { canonicalPort: canonical, home, log: silent }), canonical);
-  assert.equal(readRememberedPort(home), null, 'no fallback file when the canonical port worked');
+  assert.equal(readRememberedPort({ home }), null, 'no fallback file when the canonical port worked');
   await close(direct);
 
   // Canonical busy, nothing remembered: a random port is picked AND persisted,
@@ -48,8 +48,8 @@ try {
   const first = fresh();
   const fallback = await listenWithAffinity(first, { canonicalPort: canonical, home, log: silent });
   assert.notEqual(fallback, canonical);
-  assert.equal(readRememberedPort(home), fallback, 'the fallback is remembered');
-  assert.equal(statSync(embeddedPortPath(home)).mode & 0o777, 0o600, 'port file is owner-only');
+  assert.equal(readRememberedPort({ home }), fallback, 'the fallback is remembered');
+  assert.equal(statSync(embeddedPortPath({ home })).mode & 0o777, 0o600, 'port file is owner-only');
   await close(first);
 
   // Same conflict on the next launch: the SAME fallback comes back. This is the
@@ -72,7 +72,7 @@ try {
   const third = fresh();
   const rerolled = await listenWithAffinity(third, { canonicalPort: canonical, home, log: silent });
   assert.ok(rerolled !== canonical && rerolled !== fallback);
-  assert.equal(readRememberedPort(home), rerolled, 'the new fallback replaces the old one');
+  assert.equal(readRememberedPort({ home }), rerolled, 'the new fallback replaces the old one');
   await close(third);
   await close(fallbackBlocker);
 
@@ -88,12 +88,21 @@ try {
   await close(healed);
 
   // A corrupted or nonsensical port file is ignored rather than dialled.
-  writeFileSync(embeddedPortPath(home), 'pas-un-port\n');
-  assert.equal(readRememberedPort(home), null);
-  writeFileSync(embeddedPortPath(home), '80\n');
-  assert.equal(readRememberedPort(home), null, 'privileged ports are never remembered');
-  assert.ok(rememberPort(rerolled, home), 'a valid port can be written back');
-  assert.equal(readFileSync(embeddedPortPath(home), 'utf8').trim(), String(rerolled));
+  writeFileSync(embeddedPortPath({ home }), 'pas-un-port\n');
+  assert.equal(readRememberedPort({ home }), null);
+  writeFileSync(embeddedPortPath({ home }), '80\n');
+  assert.equal(readRememberedPort({ home }), null, 'privileged ports are never remembered');
+  assert.ok(rememberPort(rerolled, { home }), 'a valid port can be written back');
+  assert.equal(readFileSync(embeddedPortPath({ home }), 'utf8').trim(), String(rerolled));
+
+  // A dev profile keeps its own memory: the profile-scoped instance lock lets a
+  // packaged app and a dev checkout run at once, and a shared slot would
+  // ping-pong between them at every contended launch.
+  const profileId = '9b6a2f00-1234-4abc-8def-556677889900';
+  assert.ok(rememberPort(6001, { home, profileId }));
+  assert.equal(readRememberedPort({ home, profileId }), 6001);
+  assert.equal(readRememberedPort({ home }), rerolled, 'the default profile memory is untouched');
+  assert.ok(embeddedPortPath({ home, profileId }).includes('dev-profiles'), 'profile memory lives under its profile root');
 
   console.log('embedded-port.verify OK');
 } finally {

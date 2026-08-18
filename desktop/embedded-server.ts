@@ -15,6 +15,7 @@ import { proxyMiddleware, type ProxyRoute } from '../server/proxy.ts';
 import { parseEnvText } from './env-file.ts';
 import { createMiniConnect, type MiniConnect } from './mini-connect.ts';
 import { listenWithAffinity } from './embedded-port.ts';
+import { runtimeProfile } from '../server/runtime-profile.ts';
 import { distStaticMiddleware, uploadsMiddleware } from './static-files.ts';
 
 export interface EmbeddedServer {
@@ -106,6 +107,10 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   // then the fallback used last time it was busy, then a fresh random port that
   // becomes the remembered one. See listenWithAffinity for why the fallback has
   // to be stable: a random port per launch silently broke registered agents.
-  const port = await listenWithAffinity(server);
+  const profile = runtimeProfile();
+  const port = await listenWithAffinity(
+    server,
+    profile.mode === 'isolated-dev' ? { profileId: profile.id } : {},
+  );
   return { server, port, origin: `http://127.0.0.1:${port}` };
 }
