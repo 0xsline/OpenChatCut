@@ -6,6 +6,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { cp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ensureWindowsRemotionBinaries } from './remotion-binaries.ts';
 
 /** Find the chrome-headless-shell executable file in the distribution directory (the level varies with the platform, small-scale recursion). */
 export function findBundledBrowser(root: string, depth = 4): string | null {
@@ -44,9 +45,16 @@ export async function ensureWritableBundle({ resourcesPath, userDataPath, versio
   return dst;
 }
 
-/** One-stop packaged state: set two environment variables. It must be adjusted before the first rendering request (boot adjustment).*/
+/** Configure packaged render assets before the first rendering request. */
 export async function preparePackagedRuntime(paths: PackagedPaths): Promise<void> {
   process.env.CC_REMOTION_BUNDLE = await ensureWritableBundle(paths);
   const browser = findBundledBrowser(join(paths.resourcesPath, 'chrome-headless-shell'));
   if (browser) process.env.CC_BROWSER_EXECUTABLE = browser;
+  if (!process.env.CC_REMOTION_BINARIES_DIR) {
+    const binaries = await ensureWindowsRemotionBinaries({
+      userDataPath: paths.userDataPath,
+      version: paths.version,
+    });
+    if (binaries) process.env.CC_REMOTION_BINARIES_DIR = binaries;
+  }
 }

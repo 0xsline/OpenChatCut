@@ -100,6 +100,20 @@ jobs:
       - name: Ensure Remotion browser
         run: node -e "import('@remotion/renderer').then(m => m.ensureBrowser()).then(() => console.log('browser ready'))"
 
+      - name: Verify Windows hardware encoders
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npx tsx desktop/remotion-binaries.verify.ts
+          node remotion/direct-hardware.verify.mjs
+          $ffmpeg = node -p "require('ffmpeg-static')"
+          $encoders = & $ffmpeg -hide_banner -encoders 2>&1 | Out-String
+          foreach ($encoder in @('h264_nvenc', 'h264_qsv', 'h264_amf')) {
+            if ($encoders -notmatch [regex]::Escape($encoder)) {
+              throw "Bundled FFmpeg is missing $encoder"
+            }
+          }
+
       - name: Package
         run: npm run ${{ matrix.script }}
 

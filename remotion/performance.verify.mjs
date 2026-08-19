@@ -166,4 +166,7 @@ console.log('remotion performance verification passed');
   assert.match(render, /process\.platform === 'linux' \? 'angle-egl' : 'angle'/, 'linux defaults to angle-egl, others to angle');
   assert.match(render, /CC_RENDER_GL/, 'CC_RENDER_GL overrides the backend');
   assert.ok((render.match(/gl: resolveRenderGlBackend\(\)/g) ?? []).length >= 5, 'every render/still path uses the resolver');
+  assert.match(render, /CC_REMOTION_BINARIES_DIR/, 'packaged Windows may supply the complete FFmpeg directory');
+  assert.match(render, /directBinaries \? \{ binariesDirectory: directBinaries \} : \{\}/,
+    'only custom hardware encoding uses the alternate FFmpeg');
 }

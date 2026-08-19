@@ -12,7 +12,6 @@ import {
   h264GlobalArgs,
   shouldFallbackH264Encoder,
   resolveH264Encoder,
-  resolveHwDecodeArgs,
   type H264Encoder,
   type H264EncoderOutcome,
 } from '../media-acceleration.ts';
@@ -257,14 +256,12 @@ async function retimeH264(
   signal?: AbortSignal,
 ): Promise<H264EncoderOutcome> {
   const preferred = await resolveH264Encoder(ffmpegBin());
-  const hwDecode = await resolveHwDecodeArgs(ffmpegBin(), preferred);
   let fallbackReason: string | undefined;
   let lastError: unknown;
   for (const encoder of h264EncoderAttempts(preferred)) {
     try {
       const args = [
         ...base,
-        ...hwDecode,
         ...h264GlobalArgs(encoder),
         '-i', input,
         '-vf', h264FilterChain(encoder, [`fps=${targetFps}`]),

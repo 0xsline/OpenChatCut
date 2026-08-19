@@ -8,6 +8,7 @@ import {
   h264GlobalArgs,
   h264HardwareCandidates,
   h264ProbeArgs,
+  hwDecodeArgs,
   isHardwareH264Encoder,
   resolveH264TargetBitrate,
   resolveVaapiDevice,
@@ -24,6 +25,7 @@ assert.equal(isHardwareH264Encoder('libx264'), false);
 assert.equal(isHardwareH264Encoder('h264_vaapi'), true);
 assert.deepEqual(h264EncoderAttempts('h264_nvenc'), ['h264_nvenc', 'libx264']);
 assert.deepEqual(h264EncoderAttempts('libx264'), ['libx264']);
+assert.deepEqual(hwDecodeArgs('libx264'), [], 'software encoding must keep decoded frames in system memory');
 
 assert.equal(
   h264EncoderFallbackReason('h264_nvenc', new Error('/private/path: No NVENC capable devices found')),

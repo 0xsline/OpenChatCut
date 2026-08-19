@@ -16,7 +16,11 @@ import {
   resolveRenderConcurrency,
   withEncoderProfileFallback,
 } from './performance.mjs';
+import { renderDirectHardware } from './direct-hardware.mjs';
+import { assertMaterializedRenderSnapshot, normalizeH264Profile } from './render-contract.mjs';
 import { resolveRenderTimeout } from './render-timeout.mjs';
+
+export { assertMaterializedRenderSnapshot } from './render-contract.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY_POINT = path.join(REPO_ROOT, 'remotion', 'index.ts');
@@ -27,29 +31,6 @@ const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
 const UPLOAD_DIR = path.join(PUBLIC_DIR, 'media', 'uploads');
 const COMPOSITION_ID = 'timeline';
 const renderTimeoutInMilliseconds = () => resolveRenderTimeout();
-
-const H264_PROFILE_LABELS = {
-  h264_videotoolbox: 'Apple VideoToolbox',
-  h264_nvenc: 'NVIDIA NVENC',
-  h264_qsv: 'Intel Quick Sync Video',
-  h264_amf: 'AMD AMF',
-  h264_vaapi: 'Linux VA-API',
-  libx264: 'Software (libx264)',
-};
-
-function normalizeH264Profile(codec, profile) {
-  if (codec !== 'h264') return undefined;
-  const id = profile?.id;
-  if (typeof id !== 'string' || !Object.hasOwn(H264_PROFILE_LABELS, id)) {
-    return { id: 'libx264', label: H264_PROFILE_LABELS.libx264, hardware: false, transport: 'server' };
-  }
-  return {
-    id,
-    label: H264_PROFILE_LABELS[id],
-    hardware: id !== 'libx264',
-    transport: 'server',
-  };
-}
 
 // Bundling is expensive (webpack over the whole app + @babel/standalone), so we
 // build the serve bundle once and reuse the serveUrl across every render.
@@ -69,6 +50,7 @@ function resolveRenderGlBackend() {
   return process.platform === 'linux' ? 'angle-egl' : 'angle';
 }
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
+const binariesDirectory = () => process.env.CC_REMOTION_BINARIES_DIR || null;
 
 export function currentRenderConcurrency() {
   return resolveRenderConcurrency();
@@ -79,7 +61,7 @@ export function remotionFfmpegPath() {
     type: 'ffmpeg',
     indent: false,
     logLevel: 'error',
-    binariesDirectory: null,
+    binariesDirectory: binariesDirectory(),
   });
 }
 
@@ -124,163 +106,23 @@ export async function withAbortableCompositionSelection({
     await closeBrowser();
   }
 }
-const RENDER_MEDIA_FIELD = /(?:^|_)(?:src|url|path|cube|lut)$/i;
-const RENDER_MEDIA_FIELD_SUFFIX = /(?:Src|Url|Path)$/;
 
-function renderSnapshotRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
+function directHardwareRenderer(directBinaries, abortSignal) {
+  if (!directBinaries) return renderMedia;
+  return (attempt) => attempt.binariesDirectory
+    ? renderDirectHardware({ render: renderMedia, options: attempt, binariesDirectory: directBinaries, signal: abortSignal })
+    : renderMedia(attempt);
 }
-
-function renderSnapshotString(record, key) {
-  const value = record?.[key];
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
-function renderMediaField(key) {
-  return RENDER_MEDIA_FIELD.test(key) || RENDER_MEDIA_FIELD_SUFFIX.test(key);
-}
-
-/**
- * Defense in depth: inspect only the active timeline and sequence timelines it
- * can render. Server entrypoints materialize this same render-visible closure.
- */
-export function assertMaterializedRenderSnapshot(snapshot, operation = 'render', timelineId) {
-  const root = renderSnapshotRecord(snapshot);
-  if (!root) return;
-
-  const timelines = new Map();
-  const registerTimeline = (value, fallbackId) => {
-    const timeline = renderSnapshotRecord(value);
-    if (!timeline || !Array.isArray(timeline.items)) return;
-    const id = renderSnapshotString(timeline, 'id') ?? fallbackId;
-    if (id) timelines.set(id, timeline);
-  };
-  registerTimeline(root);
-  if (Array.isArray(root.timelines)) {
-    for (const timeline of root.timelines) registerTimeline(timeline);
-  }
-  for (const containerKey of ['sequenceTimelines', 'sequences', 'timelineById']) {
-    const container = renderSnapshotRecord(root[containerKey]);
-    if (!container) continue;
-    for (const [id, timeline] of Object.entries(container)) registerTimeline(timeline, id);
-  }
-
-  const assets = new Map();
-  const registerAssets = (value) => {
-    if (!Array.isArray(value)) return;
-    for (const candidate of value) {
-      const asset = renderSnapshotRecord(candidate);
-      const id = renderSnapshotString(asset, 'id');
-      if (asset && id) assets.set(id, asset);
-    }
-  };
-  registerAssets(root.assets);
-  for (const timeline of timelines.values()) registerAssets(timeline.assets);
-
-  const assertExternal = (source, field) => {
-    if (/^https?:\/\//i.test(source.trim())) {
-      throw new Error(`${operation}: external media at ${field} was not materialized`);
-    }
-  };
-  const scanned = new WeakSet();
-  const scanMediaFields = (value, fieldPrefix) => {
-    if (value === null || typeof value !== 'object' || scanned.has(value)) return;
-    scanned.add(value);
-    if (Array.isArray(value)) {
-      value.forEach((child, index) => scanMediaFields(child, `${fieldPrefix}[${index}]`));
-      return;
-    }
-    for (const [key, child] of Object.entries(value)) {
-      const field = fieldPrefix ? `${fieldPrefix}.${key}` : key;
-      if (typeof child === 'string' && /assetId$/i.test(key)) {
-        const asset = assets.get(child);
-        const assetSource = renderSnapshotString(asset, 'src');
-        if (assetSource) assertExternal(assetSource, `assets.${child}.src`);
-      } else if (typeof child === 'string' && renderMediaField(key)) {
-        assertExternal(child, field);
-      } else if (child && typeof child === 'object') {
-        scanMediaFields(child, field);
-      }
-    }
-  };
-
-  const visited = new Set();
-  const visitTimeline = (timeline, fallbackId) => {
-    if (visited.has(timeline)) return;
-    visited.add(timeline);
-    const id = renderSnapshotString(timeline, 'id') ?? fallbackId;
-    const prefix = id ? `timelines.${id}` : 'timeline';
-    const items = Array.isArray(timeline.items)
-      ? timeline.items.filter((item) => renderSnapshotRecord(item))
-      : [];
-    for (const item of items) {
-      const itemId = renderSnapshotString(item, 'id');
-      const itemPrefix = `${prefix}.items.${itemId ?? '(unknown)'}`;
-      scanMediaFields(item, itemPrefix);
-
-      if (Array.isArray(item.effects)) {
-        for (const effect of item.effects) {
-          const effectRecord = renderSnapshotRecord(effect);
-          const assetId = renderSnapshotString(effectRecord, 'assetId');
-          const fxDefs = renderSnapshotRecord(timeline.fxDefs);
-          const fxDef = assetId && fxDefs ? renderSnapshotRecord(fxDefs[assetId]) : null;
-          if (fxDef) scanMediaFields(fxDef, `${prefix}.fxDefs.${assetId}`);
-        }
-      }
-
-      if (renderSnapshotString(item, 'kind') === 'sequence') {
-        const nestedId = renderSnapshotString(item, 'timelineId');
-        const nested = nestedId ? timelines.get(nestedId) : undefined;
-        if (nested) visitTimeline(nested, nestedId);
-      }
-    }
-
-    if (Array.isArray(timeline.transitions)) {
-      for (const transition of timeline.transitions) {
-        const transitionRecord = renderSnapshotRecord(transition);
-        if (transitionRecord && transitionRecord.enabled !== false) {
-          scanMediaFields(transitionRecord, `${prefix}.transitions`);
-        }
-      }
-    }
-
-    const captionPayloads = [timeline.captions];
-    const tracks = renderSnapshotRecord(timeline.tracks);
-    if (tracks) {
-      for (const track of Object.values(tracks)) {
-        const trackRecord = renderSnapshotRecord(track);
-        if (trackRecord) captionPayloads.push(trackRecord.captions);
-      }
-    }
-    for (const captions of captionPayloads) {
-      const captionRecord = renderSnapshotRecord(captions);
-      if (captionRecord && captionRecord.enabled !== false) {
-        scanMediaFields(captionRecord, `${prefix}.captions`);
-      }
-    }
-  };
-
-  if (Array.isArray(root.items)) {
-    visitTimeline(root, renderSnapshotString(root, 'id'));
-    return;
-  }
-  const activeId = timelineId ?? renderSnapshotString(root, 'activeTimelineId');
-  const active = activeId ? timelines.get(activeId) : timelines.values().next().value;
-  if (active) visitTimeline(active, activeId);
-}
-
-
 
 /** Render with the selected probed engine, then make a truthful software retry. */
 async function renderMediaOptimized(options) {
-  const { h264Profile, vaapiDevice, ...renderOptions } = options;
+  const { abortSignal, h264Profile, vaapiDevice, ...renderOptions } = options;
   const profile = normalizeH264Profile(renderOptions.codec, h264Profile);
-  const hardwareAcceleration = remotionHardwareAcceleration(renderOptions.codec, {
-    encoder: profile?.id,
-  });
+  const hardwareAcceleration = remotionHardwareAcceleration(renderOptions.codec, { encoder: profile?.id });
   const customOverride = profile?.hardware && hardwareAcceleration === 'disable'
     ? h264FfmpegOverride(profile.id, { vaapiDevice })
     : undefined;
+  const directBinaries = customOverride ? binariesDirectory() : null;
   const automaticBitrate = profile?.hardware && !renderOptions.videoBitrate
     ? resolveH264VideoBitrate({
       width: renderOptions.composition.width,
@@ -295,15 +137,18 @@ async function renderMediaOptimized(options) {
     offthreadVideoThreads: offthreadVideoThreads(),
     hardwareAcceleration,
     ...(customOverride ? { ffmpegOverride: customOverride } : {}),
+    ...(directBinaries ? { binariesDirectory: directBinaries } : {}),
     ...(automaticBitrate ? { videoBitrate: automaticBitrate } : {}),
   };
-  if (!profile) return { result: await renderMedia(hardwareOptions), encoder: undefined };
+  const render = directHardwareRenderer(directBinaries, abortSignal);
+  if (!profile) return { result: await render(hardwareOptions), encoder: undefined };
   return withEncoderProfileFallback({
-    render: renderMedia,
+    render,
     hardwareOptions,
     softwareOptions: {
       ...hardwareOptions,
       hardwareAcceleration: 'disable',
+      binariesDirectory: undefined,
       ffmpegOverride: undefined,
       ...(automaticBitrate ? { videoBitrate: null } : {}),
     },
@@ -492,6 +337,7 @@ export async function renderTimeline({
       puppeteerInstance: browser,
       onProgress: onProgress ? ({ progress }) => onProgress(progress) : undefined,
       cancelSignal,
+      abortSignal: signal,
       timeoutInMilliseconds: renderTimeoutInMilliseconds(),
     }),
   });
@@ -559,6 +405,7 @@ export async function renderClip({
       puppeteerInstance: browser,
       timeoutInMilliseconds: renderTimeoutInMilliseconds(),
       cancelSignal,
+      abortSignal: signal,
     }),
   });
   signal?.throwIfAborted();

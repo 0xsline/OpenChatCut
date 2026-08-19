@@ -56,10 +56,10 @@ const encoderCache = new Map<string, Promise<H264Encoder>>();
 const compiledEncoderCache = new Map<string, Promise<boolean>>();
 const hwAccelsCache = new Map<string, Promise<Set<string>>>();
 
-/** 平台感知的解码硬加速参数。编码器已知时用同 API（解码/编码同硬件上下文），
- * 否则按平台通用选择。内部 hwaccel 在流不支持时自动回退软件解码，无格式风险：
- * 解码帧输出系统内存（nv12），与现有 CPU filter 链完全兼容。 */
+/** 平台感知的解码硬加速参数。软件编码必须使用系统内存帧；
+ * 硬件编码器已知时使用匹配 API，否则按平台选择通用解码器。 */
 export function hwDecodeArgs(encoder?: H264Encoder): string[] {
+  if (encoder === 'libx264') return [];
   if (encoder === 'h264_videotoolbox') return ['-hwaccel', 'videotoolbox'];
   if (encoder === 'h264_nvenc') return ['-hwaccel', 'cuda'];
   if (encoder === 'h264_qsv') return ['-hwaccel', 'qsv'];
