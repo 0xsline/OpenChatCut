@@ -23,20 +23,18 @@ import {
   type LlmProvider,
 } from '../shared/llm-providers.ts';
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
+import {
+  classifyStatus,
+  networkMessage,
+  sanitizeProbeText,
+  type ProbeResult,
+} from './key-probe-result.ts';
+export { classifyStatus, networkMessage, type ProbeResult } from './key-probe-result.ts';
 // Proxy-aware fetch: attaches the configured outbound proxy (keystore
 // PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
 const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
   fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
-
-
-export interface ProbeResult {
-  ok: boolean;
-  message: string;
-  status?: number;
-  latencyMs?: number;
-  models?: string[];
-}
 
 
 type Get = (name: KeyName) => string;
@@ -149,7 +147,7 @@ export function parseModelCatalog(bodyText: string): string[] {
 
 /** The provider's error copy is flattened before entering the results: line breaks and truncation are removed. Never splice any key values.*/
 export function sanitize(text: string): string {
-  return text.replace(/\s+/g, ' ').trim().slice(0, 140);
+  return sanitizeProbeText(text);
 }
 
 /** MiniMax: HTTP 200 may also cause authentication failure, the truth is in base_resp.status_code(0 = success).*/
@@ -428,33 +426,6 @@ export const PROBES: Record<string, ProbeDef> = {
     okText: mediaDirOkText,
   },
 };
-
-/** Non-2xx status → Conclusion that users can understand (authentication/address/current limiting/others). */
-export function classifyStatus(status: number, bodyText: string): ProbeResult {
-  if (status === 401 || status === 403) {
-    return { ok: false, status, message: `鉴权失败（HTTP ${status}）· Key 无效、过期或无此接口权限` };
-  }
-  if (status === 404) {
-    return { ok: false, status, message: '探测端点 404 · Base URL 可能填错（或该服务不认此探测路径）' };
-  }
-  if (status === 429) {
-    return { ok: true, status, message: '鉴权通过（HTTP 429 限流，说明 Key 有效）' };
-  }
-  const detail = sanitize(bodyText);
-  return { ok: false, status, message: `HTTP ${status}${detail ? ` · ${detail}` : ''}` };
-}
-
-/** Network layer failure (unable to connect/timeout) ≠ Key error, the text clearly distinguishes it, and prompts that a proxy may be required. */
-export function networkMessage(error: unknown): string {
-  const raw = error instanceof Error
-    ? `${error.name}: ${error.message}${error.cause instanceof Error ? `（${error.cause.message}）` : ''}`
-    : String(error);
-  // Note: undici comes with a 10s connection timeout, which is often triggered before our 12s overall gate, and does not write a dead number of seconds.
-  if (/timeout|abort/i.test(raw)) {
-    return '连接超时 · 服务不可达或网络受限（可能需代理），不代表 Key 错误';
-  }
-  return `网络不可达 · ${sanitize(raw)} · 本机连不上该服务（可能需代理），不代表 Key 错误`;
-}
 
 /** Temporarily stored overrides (in the whitelist, the empty string represents clearing for this test) overwrite the stored value.*/
 export function makeGetter(overrides: Record<string, unknown>): Get {

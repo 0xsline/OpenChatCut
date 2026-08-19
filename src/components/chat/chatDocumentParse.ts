@@ -5,11 +5,18 @@
 // ~2MB mammoth and ~1MB pdfjs chunks out of the main bundle until a
 // document is actually dropped (bundle-size exception to static imports).
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import {
+  assertChatDocumentPageCount,
+  assertChatDocumentSize,
+  assertChatDocumentTextLength,
+  validatedChatDocumentText,
+} from './chatDocumentLimits';
 
 export async function parseDocxText(data: ArrayBuffer): Promise<string> {
+  assertChatDocumentSize(data.byteLength);
   const mammoth = await import('mammoth');
   const result = await mammoth.extractRawText({ arrayBuffer: data });
-  const text = result.value.trim();
+  const text = validatedChatDocumentText(result.value);
   if (!text) {
     throw new Error('docx produced no readable text (images-only or malformed document)');
   }
@@ -17,11 +24,14 @@ export async function parseDocxText(data: ArrayBuffer): Promise<string> {
 }
 
 export async function parsePdfText(data: ArrayBuffer): Promise<string> {
+  assertChatDocumentSize(data.byteLength);
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const document = await pdfjs.getDocument({ data }).promise;
   const pages: string[] = [];
+  let characterCount = 0;
   try {
+    assertChatDocumentPageCount(document.numPages);
     for (let index = 1; index <= document.numPages; index += 1) {
       const page = await document.getPage(index);
       const content = await page.getTextContent();
@@ -29,7 +39,11 @@ export async function parsePdfText(data: ArrayBuffer): Promise<string> {
         .map((item) => ('str' in item ? item.str : ''))
         .join(' ')
         .trim();
-      if (line) pages.push(line);
+      if (line) {
+        characterCount += line.length + (pages.length ? 1 : 0);
+        assertChatDocumentTextLength(characterCount);
+        pages.push(line);
+      }
     }
   } finally {
     await document.cleanup().catch(() => undefined);
@@ -37,5 +51,5 @@ export async function parsePdfText(data: ArrayBuffer): Promise<string> {
   if (!pages.length) {
     throw new Error('pdf produced no readable text (scanned images or malformed document)');
   }
-  return pages.join('\n');
+  return validatedChatDocumentText(pages.join('\n'));
 }

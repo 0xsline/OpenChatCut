@@ -4,8 +4,6 @@ import {
   tool,
   type LanguageModelUsage,
   type ModelMessage,
-  type TextStreamPart,
-  type ToolSet,
 } from 'ai';
 import {
   normalizeLlmProvider,
@@ -27,7 +25,6 @@ import {
 } from './tool-policy';
 import { createServerLanguageModel, serverProviderOptions } from './model';
 import {
-  effectiveOutputTokenBudget,
   estimateTextTokens,
   type AgentContextUsage,
   type ContextPreparation,
@@ -36,7 +33,6 @@ import { toolResultModelOutput } from '../../src/agent/tool-result-output';
 import { redactTextForAgentRuntime } from '../../src/agent/runtime-artifact';
 import type { AgentToolSchema } from '../../src/agent/tool-schema';
 import { ToolActivation } from '../../src/agent/tool-activation';
-import { createInlineThinkingExtractor } from '../../src/agent/settings/agentSettings';
 import {
   buildServerRunPrompt,
   SERVER_RUN_AI_TIMEOUT,
@@ -53,59 +49,18 @@ import {
 } from './store';
 import { classifyLlmFailure, runServerTurnWithRetry } from './llm-retry';
 import { toolExecutionMode } from '../../src/agent/tools/execution-modes';
-
-// Streaming text persists in chunks of this size. The tail below one chunk
-// stays in the server's pending buffer and is force-flushed by the
-// time-driven flush in collectServerText every few seconds, so a mid-run
-// browser reload loses at most a couple of seconds of output.
-const TEXT_EVENT_CHARS = 8_192;
-export function resolveServerRunMaxOutputTokens(
-  requested: number,
-  capabilityLimit: number,
-  contextWindow: number,
-): number {
-  return Math.min(
-    requested,
-    effectiveOutputTokenBudget(capabilityLimit, contextWindow),
-  );
-}
-
-export function flushTextEvents(run: ServerRun, pending: string, force: boolean): string {
-  let remainder = pending;
-  while (remainder.length >= TEXT_EVENT_CHARS) {
-    pushRunEvent(run, 'text-delta', { text: remainder.slice(0, TEXT_EVENT_CHARS) });
-    remainder = remainder.slice(TEXT_EVENT_CHARS);
-  }
-  if (force && remainder) {
-    pushRunEvent(run, 'text-delta', { text: remainder });
-    return '';
-  }
-  return remainder;
-}
-export function flushThinkingEvents(run: ServerRun, pending: string, force: boolean): string {
-  let remainder = pending;
-  while (remainder.length >= TEXT_EVENT_CHARS) {
-    pushRunEvent(run, 'thinking-delta', { text: remainder.slice(0, TEXT_EVENT_CHARS) });
-    remainder = remainder.slice(TEXT_EVENT_CHARS);
-  }
-  if (force && remainder) {
-    pushRunEvent(run, 'thinking-delta', { text: remainder });
-    return '';
-  }
-  return remainder;
-}
-export function serverRunTextMetadata(
-  text: string,
-): { characterCount: number; utf8Bytes: number } {
-  return {
-    characterCount: text.length,
-    utf8Bytes: Buffer.byteLength(text),
-  };
-}
-
-
-
-
+import {
+  collectServerText,
+  resolveServerRunMaxOutputTokens,
+  serverRunTextMetadata,
+} from './executor-events';
+export {
+  flushTextEvents,
+  collectServerText,
+  flushThinkingEvents,
+  resolveServerRunMaxOutputTokens,
+  serverRunTextMetadata,
+} from './executor-events';
 function safeError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   return redactTextForAgentRuntime(raw).trim().slice(0, 1_200)
@@ -231,55 +186,6 @@ function measuredContextUsage(
     requestIndex,
     attemptIndex: 0,
   };
-}
-
-export async function collectServerText<TOOLS extends ToolSet>(
-  run: ServerRun,
-  stream: AsyncIterable<TextStreamPart<TOOLS>>,
-): Promise<string> {
-  const extractor = createInlineThinkingExtractor();
-  let text = '';
-  let pending = '';
-  let pendingThinking = '';
-  const appendVisible = (visible: string): void => {
-    if (!visible) return;
-    text += visible;
-    pending = flushTextEvents(run, pending + visible, false);
-  };
-  const appendThinking = (thinking: string): void => {
-    if (!thinking) return;
-    pendingThinking = flushThinkingEvents(run, pendingThinking + thinking, false);
-  };
-  // Force-flush the pending tail on a short timer: without it, a reply shorter
-  // than TEXT_EVENT_CHARS stays entirely in server memory until the turn ends,
-  // and a browser reload mid-run loses the whole in-flight text.
-  const flushTimer = setInterval(() => {
-    if (pending) pending = flushTextEvents(run, pending, true);
-    if (pendingThinking) pendingThinking = flushThinkingEvents(run, pendingThinking, true);
-  }, 2_000);
-  try {
-    for await (const part of stream) {
-      if (part.type === 'reasoning-delta' && part.text) {
-        // Native reasoning streams (DeepSeek/OpenAI/… reasoning_content) never
-        // appear in the visible text stream; forward them as thinking events.
-        appendThinking(part.text);
-        continue;
-      }
-      if (part.type !== 'text-delta' || !part.text) continue;
-      const split = extractor.push(part.text);
-      appendVisible(split.text);
-      appendThinking(split.thinking);
-    }
-  } finally {
-    clearInterval(flushTimer);
-  }
-  const tail = extractor.flush();
-  appendVisible(tail.text);
-  appendThinking(tail.thinking);
-  flushTextEvents(run, pending, true);
-  flushThinkingEvents(run, pendingThinking, true);
-  pushRunEvent(run, 'text-end', serverRunTextMetadata(text));
-  return text;
 }
 
 async function executeServerTurn(

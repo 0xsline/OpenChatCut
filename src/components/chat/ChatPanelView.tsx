@@ -49,11 +49,11 @@ function CollapsedPanel({ controller }: { controller: ChatPanelController }) {
   </>;
 }
 
-function CapabilityBanner({ controller }: { controller: ChatPanelController }) {
+export function CapabilityBanner({ controller }: { controller: ChatPanelController }) {
   const { props, t } = controller;
   const [dismissed, setDismissed] = useState(false);
-  if (dismissed || !props.onOpenSettings) return null;
   const missing = missingCreativeCaps();
+  if (dismissed || !props.onOpenSettings || missing.length === 0) return null;
   const names = missing.map((key) => t(CAPABILITY_LABELS[key] ?? key)).join('、');
   return <div className="cc-chat-capability-banner">
     <span>{t('以下能力未配置，相关功能暂不可用：')}{names}</span>

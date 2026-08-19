@@ -3,6 +3,11 @@ import { refPromptToken } from '../../agent/selection-refs';
 import type { MediaAsset } from '../../editor/types';
 import { kindOf } from '../../media/upload';
 import {
+  parseDocxText,
+  parsePdfText,
+} from './chatDocumentParse';
+import { assertChatDocumentSize, validatedChatDocumentText } from './chatDocumentLimits';
+import {
   attachChatAttachmentPlaceholder,
   beginChatAttachmentImport,
   failChatAttachmentImport,
@@ -37,8 +42,6 @@ interface AttachmentImportBinding {
   readonly setError: (message: string | null) => void;
 }
 
-import { parseDocxText, parsePdfText } from './chatDocumentParse';
-
 const DOCUMENT_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.srt', '.csv']);
 
 /** Text document attachments (issue #84): read straight into the composer as
@@ -57,12 +60,12 @@ async function importDocument(binding: AttachmentImportBinding, file: File): Pro
   const kind = chatDocumentKind(file);
   let text: string;
   try {
-    const data = await file.arrayBuffer();
-    if (kind === 'docx') text = await parseDocxText(data);
-    else if (kind === 'pdf') text = await parsePdfText(data);
-    else text = await file.text();
+    assertChatDocumentSize(file.size);
+    if (kind === 'docx') text = await parseDocxText(await file.arrayBuffer());
+    else if (kind === 'pdf') text = await parsePdfText(await file.arrayBuffer());
+    else text = validatedChatDocumentText(await file.text());
   } catch (error) {
-    binding.setError(error instanceof Error ? error.message : binding.t('文档解析失败'));
+    binding.setError(error instanceof Error ? binding.t(error.message) : binding.t('文档解析失败'));
     return;
   }
   const block = `[文档: ${file.name}]\n${text.trim()}\n`;

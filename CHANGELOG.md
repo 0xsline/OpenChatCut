@@ -64,8 +64,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Agent 本地路径导入：import_asset / import_folder 工具 + AGENT_IMPORT_ROOTS 白名单（#84）。
 - hf-cdn.sufy.com as a high-speed model download fallback source.
   新增 hf-cdn.sufy.com 高速模型下载源。
-- User-selectable project storage location with safe relocation for SQLite, media, and isolated profiles.
-  工程存储位置可自定义，迁移对 SQLite、素材与隔离 profile 安全。
+- User-selectable project storage location with safe media relocation; isolated development profiles stay isolated, and active SQLite stores are explicitly kept in place until snapshot-based relocation is available.
+  工程存储位置可自定义并安全迁移素材；隔离开发 profile 保持隔离，已启用的 SQLite 工程库会明确留在原目录，等待后续快照式迁移。
 - followup answers and run timing persist across reloads; server-run output flushes every 2s so reloads keep it.
   followup 答案与运行计时跨刷新持久化；服务端运行输出每 2 秒落盘，刷新不丢。
 
