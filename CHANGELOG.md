@@ -6,6 +6,24 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.8] - 2026-08-20
+
+### Added / 新增
+
+- Atlas Cloud text-to-music and Sonilo video-to-music/video-to-SFX providers are available from settings and native Agent tools, including asynchronous job recovery and license sidecars.
+  新增 Atlas Cloud 文生音乐与 Sonilo 视频配乐/视频音效，可从设置和 Agent 原生工具调用，并支持异步任务恢复与许可证旁车文件。
+- The Agent now surfaces missing creative capabilities with an in-editor settings entry and returns actionable diagnostics for unavailable editing tools.
+  Agent 现在会提示缺失的创作能力、提供编辑器内设置入口，并在编辑工具不可用时返回可执行的诊断步骤。
+
+### Fixed / 修复
+
+- Windows H.264 export now probes and uses NVIDIA NVENC, Intel Quick Sync, or AMD AMF when available, preserves automatic libx264 fallback, and avoids hardware-frame/CPU-filter conflicts during frame-rate conversion.
+  Windows H.264 导出会探测并优先使用 NVIDIA NVENC、Intel Quick Sync 或 AMD AMF，保留 libx264 自动回退，并修复帧率转换中的硬件帧与 CPU 滤镜冲突。
+- External MCP registration now keeps a stable token and fallback port across desktop restarts, including first-launch race handling and per-profile isolation.
+  外部 MCP 注册的令牌与备用端口现可跨桌面端重启保持稳定，并处理首次启动竞态与多 profile 隔离。
+- Sonilo source matching, streamed uploads, response parsing, and persisted sound jobs were hardened so large inputs and interrupted sessions recover predictably.
+  加固 Sonilo 素材匹配、流式上传、响应解析和音效任务持久化，使大素材与中断会话可稳定恢复。
+
 ## [0.2.7] - 2026-08-17
 
 ### Added / 新增
