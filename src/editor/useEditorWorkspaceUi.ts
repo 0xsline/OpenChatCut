@@ -43,6 +43,8 @@ export interface EditorWorkspaceDialogs {
   setShowVersions: Dispatch<SetStateAction<boolean>>;
   showShortcuts: boolean;
   setShowShortcuts: Dispatch<SetStateAction<boolean>>;
+  showSettings: boolean;
+  setShowSettings: Dispatch<SetStateAction<boolean>>;
   shortcutApiRef: RefObject<TimelineShortcutApi | null>;
   getPlayhead: () => number;
 }
@@ -60,7 +62,9 @@ export function useEditorWorkspaceDialogs({
 }: EditorWorkspaceDialogsInput): EditorWorkspaceDialogs {
   const [chatSeed, setChatSeed] = useState<EditorChatSeed | null>(null);
   const [showDesign, setShowDesign] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
+
   const [showShortcuts, setShowShortcuts] = useState(false);
   const shortcutApiRef = useRef<TimelineShortcutApi | null>(null);
   const getPlayhead = useCallback(() => playerRef.current?.getCurrentFrame() ?? 0, [playerRef]);
@@ -72,6 +76,8 @@ export function useEditorWorkspaceDialogs({
     setChatSeed,
     showDesign,
     setShowDesign,
+    showSettings,
+    setShowSettings,
     showVersions,
     setShowVersions,
     showShortcuts,

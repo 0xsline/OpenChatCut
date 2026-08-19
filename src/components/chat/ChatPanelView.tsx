@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { createPortal } from 'react-dom';
 import { theme } from '../../theme';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
@@ -14,6 +16,7 @@ import { EMPTY_PROJECT_STARTERS, QUICK_ACTIONS } from './chatPanelPresets';
 import type { DisplayMessage } from '../../agent/agent-session';
 import { readStoredServerRun } from '../../agent/serverRunSessionStorage';
 import type { ChatPanelController } from './chatPanelController';
+import { CAPABILITY_LABELS, missingCreativeCaps } from './capabilityBanner';
 
 const MESSAGE_WINDOW_SIZE = 40;
 
@@ -45,6 +48,21 @@ function CollapsedPanel({ controller }: { controller: ChatPanelController }) {
     </aside>
   </>;
 }
+
+function CapabilityBanner({ controller }: { controller: ChatPanelController }) {
+  const { props, t } = controller;
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed || !props.onOpenSettings) return null;
+  const missing = missingCreativeCaps();
+  const names = missing.map((key) => t(CAPABILITY_LABELS[key] ?? key)).join('、');
+  return <div className="cc-chat-capability-banner">
+    <span>{t('以下能力未配置，相关功能暂不可用：')}{names}</span>
+    <button type="button" onClick={props.onOpenSettings}>{t('去设置配置')}</button>
+    <button type="button" className="cc-chat-capability-banner-close" aria-label={t('关闭')}
+      onClick={() => setDismissed(true)}>×</button>
+  </div>;
+}
+
 
 function ChatHeader({ controller }: { controller: ChatPanelController }) {
   const { props, t, agent } = controller;
@@ -244,6 +262,7 @@ function ExpandedPanel({ controller }: { controller: ChatPanelController }) {
       }}
       style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `0.5px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
       <ChatHeader controller={controller} />
+      <CapabilityBanner controller={controller} />
       <MessageWorkspace controller={controller} />
       <ComposerSection controller={controller} />
     </aside>

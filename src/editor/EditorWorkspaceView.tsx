@@ -11,6 +11,7 @@ import { TimelineTabs } from '../components/timeline/TimelineTabs';
 import { Divider } from '../components/Divider';
 import { DesignStylePanel } from '../components/settings/DesignStylePanel';
 import { VersionHistory } from '../components/VersionHistory';
+import { SettingsDialog } from '../components/settings/SettingsDialog';
 import { ShortcutsDialog } from '../shortcuts/ShortcutsDialog';
 import { AppToastHost } from '../ui/AppToastHost';
 
@@ -22,6 +23,7 @@ export interface EditorWorkspaceViewProps {
   designStylePanel: ComponentProps<typeof DesignStylePanel> | null;
   versionHistory: ComponentProps<typeof VersionHistory> | null;
   shortcutsDialog: ComponentProps<typeof ShortcutsDialog> | null;
+  settingsDialog: ComponentProps<typeof SettingsDialog> | null;
   chatPanel: ComponentProps<typeof ChatPanel>;
   chatCollapsed: boolean;
   onResizeChat: ComponentProps<typeof Divider>['onResize'];
@@ -78,6 +80,7 @@ export function EditorWorkspaceView(props: EditorWorkspaceViewProps) {
     >
       <TopBar {...props.topBar} />
       {props.exportDialog && <ExportDialog {...props.exportDialog} />}
+      {props.settingsDialog && <SettingsDialog {...props.settingsDialog} />}
       {props.designStylePanel && <DesignStylePanel {...props.designStylePanel} />}
       {props.versionHistory && <VersionHistory {...props.versionHistory} />}
       {props.shortcutsDialog && <ShortcutsDialog {...props.shortcutsDialog} />}

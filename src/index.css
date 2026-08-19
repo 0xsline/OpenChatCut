@@ -293,6 +293,10 @@ button, input, select { font: inherit; }
 .cc-chat-send-btn { flex:0 0 28px; }
 .cc-chat-messages.empty { display:flex; align-items:center; justify-content:center; overflow:hidden; }
 .cc-chat-header { min-height:48px; display:flex; align-items:center; gap:8px; padding:6px 12px; box-sizing:border-box; border-bottom:0.5px solid var(--cc-border); }
+.cc-chat-capability-banner { display:flex; align-items:center; gap:6px; padding:6px 12px; background:color-mix(in srgb, var(--cc-accent) 8%, var(--cc-panel)); border-bottom:0.5px solid var(--cc-border); font-size:11px; color:var(--cc-text-dim); line-height:1.45; }
+.cc-chat-capability-banner span { flex:1; min-width:0; }
+.cc-chat-capability-banner > button:not(.cc-chat-capability-banner-close) { flex:0 0 auto; border:0.5px solid var(--cc-border); background:var(--cc-panel-alt); color:var(--cc-text); border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer; }
+.cc-chat-capability-banner-close { flex:0 0 auto; border:none; background:transparent; color:var(--cc-text-dim); padding:2px 4px; font-size:13px; cursor:pointer; line-height:1; }
 .cc-chat-brand { min-width:0; flex:1; display:flex; align-items:center; gap:8px; }
 .cc-chat-brand-copy { min-width:0; display:flex; flex-direction:column; color:var(--cc-text); line-height:1.15; }
 .cc-chat-brand-copy small { margin-top:2px; color:var(--cc-text-dim); font-size:9.5px; }

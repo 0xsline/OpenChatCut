@@ -263,7 +263,7 @@ try {
     callId: 'rejected:request-1:1',
     name: 'google_drive_search',
     args: { query: 'private files' },
-    result: { error: 'This OpenChatCut tool call is unavailable.' },
+    result: { error: 'This OpenChatCut tool call is unavailable. It was not part of this request (stale tool list, duplicate call, or malformed id). Tell the user to open the project and retry; if it persists, start a new run.' },
     success: false,
   });
   assert.deepEqual(events.find((event) => event.type === 'context-usage'), {

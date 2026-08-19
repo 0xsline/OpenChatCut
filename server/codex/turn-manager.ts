@@ -353,7 +353,7 @@ export class CodexTurnManager {
     const callId = identifier(request.params.callId);
     const name = identifier(request.params.tool);
     if (!callId || !name || !session.toolNames.has(name) || session.pendingTools.has(callId)) {
-      const message = 'This OpenChatCut tool call is unavailable.';
+      const message = 'This OpenChatCut tool call is unavailable. It was not part of this request (stale tool list, duplicate call, or malformed id). Tell the user to open the project and retry; if it persists, start a new run.'
       session.rejectedToolCalls += 1;
       session.emit({
         type: 'tool-end',
