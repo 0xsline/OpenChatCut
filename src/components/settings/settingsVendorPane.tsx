@@ -1,8 +1,4 @@
-// Right column of the settings panel: Select the provider's configuration page (header + field card + test connection row) and field rendering.
-import { invokeAction } from '../../shortcuts/actionRegistry';
-// Detach from SettingsDialog.tsx (500 line limit); the layout shell and left/center columns are still there.
-// "Test connection" goes to POST /api/keys/test: Combine the unsaved temporary values ​​of this page as overrides
-// Send to the server for detection (only effective this time, not dropped), the key value will never appear in the response.
+// Provider configuration page, field rendering, and connection tests.
 import { useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { t, useT } from '../../i18n/locale';
@@ -19,6 +15,7 @@ import { VisionModelPane } from './VisionModelPane';
 import { LocalAsrPane } from './LocalAsrPane';
 import { LocalModelPackPane } from './LocalModelPackPane';
 import { SemanticModelPackPane } from './SemanticModelPackPane';
+import { SettingsNoteAction } from './SettingsNoteAction.tsx';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
   type KeyStatusResponse, type SelectOption, type SettingsField, type SettingsVendorPage,
@@ -40,10 +37,7 @@ export interface FieldCtx {
 }
 
 const CAPABILITY_OVERRIDE_FIELD: SettingsField = {
-  name: MODEL_CAPABILITY_OVERRIDES_KEY,
-  label: '模型能力',
-  kind: 'text',
-  defaultLabel: '',
+  name: MODEL_CAPABILITY_OVERRIDES_KEY, label: '模型能力', kind: 'text', defaultLabel: '',
 };
 
 function capabilityOverridesValue(ctx: FieldCtx): string {
@@ -79,15 +73,7 @@ export function VendorPane({ page, hint, ctx }: {
       </div>
       <section style={fieldCardBox}>
         {page.note && <div style={pageNote}>{t(page.note)}</div>}
-        {page.noteAction && (
-          <button
-            type="button"
-            onClick={() => invokeAction(page.noteAction!.action, undefined, 'menu')}
-            style={{ alignSelf: 'flex-start', marginTop: 7, height: 24, padding: '0 10px', fontSize: 12, borderRadius: 3, border: `0.5px solid ${theme.border}`, background: theme.panel, color: theme.text, cursor: 'pointer' }}
-          >
-            {t(page.noteAction.label)}
-          </button>
-        )}
+        {page.noteAction && <SettingsNoteAction config={page.noteAction} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((f) => <FieldRow key={f.name} field={f} ctx={ctx} />)}
         </div>
@@ -130,15 +116,7 @@ function CodexVendorPane({ page, hint, ctx }: {
       <CodexAccountCard controller={ctx.codex} />
       <section style={fieldCardBox}>
         {page.note && <div style={pageNote}>{t(page.note)}</div>}
-        {page.noteAction && (
-          <button
-            type="button"
-            onClick={() => invokeAction(page.noteAction!.action, undefined, 'menu')}
-            style={{ alignSelf: 'flex-start', marginTop: 7, height: 24, padding: '0 10px', fontSize: 12, borderRadius: 3, border: `0.5px solid ${theme.border}`, background: theme.panel, color: theme.text, cursor: 'pointer' }}
-          >
-            {t(page.noteAction.label)}
-          </button>
-        )}
+        {page.noteAction && <SettingsNoteAction config={page.noteAction} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
         </div>
