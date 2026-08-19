@@ -240,8 +240,8 @@ export class ExternalBridgeRuntime {
     const session = this.currentProposalSession();
     const proposal = session?.proposal;
     if (!session || !proposal) return;
-    const run = this.requireRun(session.id);
-    await run.confirmOwnership();
+    const run = this.runs.get(session.id);
+    if (run) await run.confirmOwnership();
     throwIfExternalCallCancelled(signal);
     const context = this.getContext();
     const committed = await commitExternalProposal({
@@ -294,7 +294,8 @@ export class ExternalBridgeRuntime {
   async reject(): Promise<void> {
     const session = this.currentProposalSession();
     if (!session) return;
-    await this.requireRun(session.id).confirmOwnership();
+    const run = this.runs.get(session.id);
+    if (run) await run.confirmOwnership();
     await this.complete(session, 'rejected');
   }
 

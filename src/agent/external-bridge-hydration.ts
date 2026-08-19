@@ -1,5 +1,6 @@
 import type { ProjectDoc } from '../editor/types';
 import { replayActions } from '../editor/store';
+import { loadAgentRuntimeSidecar } from '../persist/agentRuntimeStore';
 import type { StoredExternalProposal } from '../persist/externalProposalStore';
 import type { ExternalBridgePersistence } from './external-proposal-apply';
 import {
@@ -118,7 +119,16 @@ export async function hydrateStoredExternalBridge(input: ExternalBridgeHydration
     ? await ExternalSessionRunLedger.resume(input.projectId, runId, input.executeTool)
     : null;
   if (runId && !run) {
-    throw new Error('External proposal is active in another editor or no longer resumable.');
+    const runRecordGone = !(await loadAgentRuntimeSidecar(input.projectId))
+      .runs.some((entry) => entry.runId === runId);
+    if (!runRecordGone) {
+      // The run still exists but is claimed by another active editor — do not
+      // steal ownership, and do not apply its proposal here.
+      throw new Error('External proposal is active in another editor or no longer resumable.');
+    }
+    // The run record is gone (e.g. the editor/server restarted before the run
+    // was persisted). The awaiting_review proposal is complete on disk, so keep
+    // it reviewable: apply/reject/discard work without the run ledger.
   }
   if (run) await prepareHydratedRun(run);
   input.install({ session, run });

@@ -286,6 +286,57 @@ const awaitingInfo = await reviewRuntime.execute(
   runtimeBinding,
 );
 assert.equal(sessionStatus(awaitingInfo), 'awaiting_review');
+
+// A persisted awaiting_review proposal whose agent run record is gone (e.g. the
+// editor/server restarted before the run was persisted) must stay reviewable
+// instead of orphaning the editor, and reject/apply must not require the run.
+const recoveredLive = makeDraft(base);
+const recoveredRuntime = new ExternalBridgeRuntime(
+  'runtime-project',
+  'runtime-editor',
+  () => ({
+    commands: recoveredLive.commands,
+    getState: recoveredLive.getState,
+    getDoc: recoveredLive.getDoc,
+    getCreativeMode: () => null,
+    templates: [],
+    audio: [],
+    getProjectId: () => 'runtime-project',
+  }),
+  () => undefined,
+);
+await recoveredRuntime.hydrate({
+  sessionId: reviewed.id,
+  clientName: reviewed.clientName,
+  approvalMode: 'manual',
+  status: 'awaiting_review',
+  baseRevision: reviewed.baseRevision,
+  createdAt: reviewed.createdAt,
+  operationCount: reviewed.operationCount,
+  agentRunId: 'run_missing_after_restart',
+  proposal: reviewed.proposal,
+});
+const recoveredInfo = await recoveredRuntime.execute(
+  'get_edit_session',
+  { editSessionId: reviewed.id },
+  runtimeBinding,
+);
+assert.equal(
+  sessionStatus(recoveredInfo),
+  'awaiting_review',
+  'an awaiting_review proposal whose run record is gone stays reviewable instead of throwing',
+);
+await recoveredRuntime.reject();
+const recoveredRejected = await recoveredRuntime.execute(
+  'get_edit_session',
+  { editSessionId: reviewed.id },
+  runtimeBinding,
+);
+assert.equal(
+  sessionStatus(recoveredRejected),
+  'rejected',
+  'rejecting a run-less recovered proposal does not require the run ledger',
+);
 assert(isExternalDraftTool('set_aspect_ratio'));
 assert(isExternalReadTool('read_project'));
 assert(isExternalReadTool('search_stock_media'));
