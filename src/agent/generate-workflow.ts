@@ -19,7 +19,7 @@ export const GENERATE_WORKFLOW = `
 - Use submit_sound only after the user explicitly requests a new/original/custom sound, or when the existing sound-effects library has no suitable result.
 - For ordinary whoosh, riser, impact, notification, click, ding, censor beep, record scratch, shutter, typing, or reaction sounds, use the existing library first.
 - Default provider elevenlabs (text prompt): default to 4 seconds and promptInfluence 0.3. Provider sonilo generates royalty-free SFX matched to a project video asset (the rendered cut, up to 3 minutes) via sourceAssetId — no prompt or duration controls.
-- submit_sound creates one media-pool audio asset only and does not place it on the timeline.
+- submit_sound creates one media-pool audio asset only and does not place it on the timeline. ElevenLabs returns the asset directly; Sonilo returns a jobId, so wait with track_progress before claiming the asset exists.
 
 ## Music generation
 - Use submit_music only after the user explicitly requests newly generated music; it starts an asynchronous generation job (Mureka, MiniMax, Atlas Cloud, or Sonilo).
@@ -36,7 +36,7 @@ export const GENERATE_WORKFLOW = `
 - submit_video returns immediately with a jobId. Call track_progress target=generation with action=status or action=wait; only a successful tracked result creates the media-pool video asset.
 
 ## Generation job progress
-- Use track_progress only with target=generation for submit_music/submit_video job IDs. action=params reads submitted settings, status is non-blocking, wait is explicitly bounded by timeoutSeconds, and resume retries a failed result download without regenerating.
+- Use track_progress only with target=generation for Sonilo submit_sound, submit_music, and submit_video job IDs. action=params reads submitted settings, status is non-blocking, wait is explicitly bounded by timeoutSeconds, and resume retries a failed result download without regenerating.
 - Do not claim a generated asset exists until track_progress reports succeeded and addedAssets includes it. Retrying track_progress is idempotent and never duplicates an existing asset.
 
 ## Export

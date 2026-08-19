@@ -2,7 +2,7 @@ import type { AgentContext } from '../context';
 import type { MediaAsset, ProjectDoc, Timeline, TimelineState } from '../../editor/types';
 import { submitImage } from '../../generate/image';
 import { submitMusic, type MusicGenerationSubmission } from '../../generate/music';
-import { submitSound } from '../../generate/sound';
+import { submitSound, type SoundGenerationSubmission } from '../../generate/sound';
 import { submitSubtitleExport, type SubmitSubtitleExportArgs } from '../../generate/subtitles';
 import { submitMediaExport, type SubmitMediaExportArgs } from '../../generate/media-export';
 import { trackGenerationProgress } from '../../generate/progress';
@@ -73,15 +73,37 @@ const submitVoiceHandler: Handler = async (args, ctx) => {
 };
 
 const submitSoundHandler: Handler = async (args, ctx) => {
-  const asset = await submitSound(buildSubmitSoundArgs(args), ctx.getState());
-  addAsset(ctx, asset);
-  return { ok: true, assetId: asset.id, name: asset.name, src: asset.src, durationInFrames: asset.durationInFrames, addedTo: 'media-pool' };
+  const input = buildSubmitSoundArgs(args);
+  if (input.provider !== 'sonilo') {
+    const asset = await submitSound(input, ctx.getState()) as MediaAsset;
+    addAsset(ctx, asset);
+    return { ok: true, assetId: asset.id, name: asset.name, src: asset.src, durationInFrames: asset.durationInFrames, addedTo: 'media-pool' };
+  }
+  const operationId = submissionOperationId(args);
+  const label = input.name || 'Generated SFX';
+  const submitArgs: Record<string, unknown> = { ...input };
+  await registerSubmissionIntent(ctx, operationId, 'submit_sound', label, submitArgs, 'sonilo', 'sonilo');
+  let submission: SoundGenerationSubmission;
+  try {
+    submission = await submitSound({ ...input, operationId }, ctx.getState()) as SoundGenerationSubmission;
+  } catch (error) {
+    const retryClass = await recordSubmissionFailure(ctx, operationId, error);
+    if (retryClass === 'provider-retryable') {
+      return {
+        status: 'pending', resumable: true, operationId, jobId: operationId, retryClass,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    throw error;
+  }
+  await trackSubmission(ctx, submission, label, 'submit_sound', submitArgs, 'sonilo');
+  return { ok: true, ...submission, next: `Call track_progress with target=generation and jobIds=${submission.jobId}.` };
 };
 
 async function registerSubmissionIntent(
   ctx: AgentContext,
   operationId: string,
-  toolName: 'submit_music' | 'submit_video',
+  toolName: 'submit_music' | 'submit_sound' | 'submit_video',
   label: string,
   submitArgs: Record<string, unknown>,
   provider?: string,
@@ -143,7 +165,7 @@ async function trackSubmission(
     sourceRevisions?: string[];
   },
   label: string,
-  toolName: 'submit_music' | 'submit_video',
+  toolName: 'submit_music' | 'submit_sound' | 'submit_video',
   submitArgs: Record<string, unknown>,
   model?: string,
 ): Promise<void> {
@@ -359,6 +381,8 @@ async function rerunGenerationHandler(args: GenerateArgs, ctx: AgentContext): Pr
     ? await submitVideoHandler(rerunArgs, ctx)
     : original.toolName === 'submit_music'
       ? await submitMusicHandler(rerunArgs, ctx)
+      : original.toolName === 'submit_sound'
+        ? await submitSoundHandler(rerunArgs, ctx)
       : { error: `generation operation ${original.operationId} uses unsupported rerun tool ${original.toolName}` };
   return result && typeof result === 'object' && !Array.isArray(result)
     ? { ...(result as Record<string, unknown>), rerunOf: original.operationId }

@@ -92,7 +92,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_sound',
-    description: 'Generate one sound-effect audio asset in the media pool: ElevenLabs synthesizes from a text prompt; Sonilo generates SFX from a project video asset (the rendered cut, up to 3 minutes) with no prompt. Does not place timeline items. For ordinary whooshes, clicks, impacts, dings, and similar editing sounds, use the existing library first.',
+    description: 'Generate one sound-effect audio asset in the media pool: ElevenLabs synthesizes synchronously from a text prompt; Sonilo submits an asynchronous SFX job from a project video asset (the rendered cut, up to 3 minutes) with no prompt. Sonilo returns a jobId for track_progress. Does not place timeline items. For ordinary whooshes, clicks, impacts, dings, and similar editing sounds, use the existing library first.',
     input_schema: {
       type: 'object',
       properties: {
@@ -184,7 +184,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'track_progress',
-    description: 'Inspect or wait for asynchronous generation jobs returned by submit_music and submit_video. Successful results are added to the project media pool exactly once.',
+    description: 'Inspect or wait for asynchronous generation jobs returned by Sonilo submit_sound, submit_music, and submit_video. Successful results are added to the project media pool exactly once.',
     input_schema: {
       type: 'object',
       properties: {

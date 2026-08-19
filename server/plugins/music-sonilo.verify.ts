@@ -82,7 +82,7 @@ assert.equal(soniloTaskId({}), undefined);
 
 const singleTrack = pickSoniloTracks({
   status: 'succeeded',
-  result: { audio: { url: 'https://cdn.example/a.m4a', license_id: 'lic-a' } },
+  audio: { url: 'https://cdn.example/a.m4a', license_id: 'lic-a' },
 });
 assert.deepEqual(singleTrack, [{ name: 'audio', url: 'https://cdn.example/a.m4a', licenseId: 'lic-a' }]);
 

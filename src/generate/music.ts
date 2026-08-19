@@ -1,4 +1,5 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
+import { findAssetByReference } from './asset-reference';
 
 export interface SubmitMusicArgs {
   operationId?: string;
@@ -57,10 +58,7 @@ export interface MusicGenerationSubmission {
 
 function resolveAsset(ref: string, state?: TimelineState, kind?: MediaAsset['kind']): MediaAsset {
   if (!state) throw new Error('project state required to resolve music source asset');
-  const clean = ref.replace(/^asset:\/\//, '').trim();
-  const asset = (state.assets ?? []).find(
-    (a) => a.id === clean || a.id.startsWith(clean) || a.name === clean || a.src === clean,
-  );
+  const asset = findAssetByReference(ref, state.assets ?? []);
   if (!asset) throw new Error(`music source asset not found: ${ref}`);
   if (kind && asset.kind !== kind) throw new Error(`music source asset is not ${kind}: ${ref}`);
   let pathname = asset.src;

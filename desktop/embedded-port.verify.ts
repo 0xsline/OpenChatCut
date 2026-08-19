@@ -31,11 +31,10 @@ try {
   await close(canonicalBlocker);
   servers.pop();
 
-  // Canonical free: bound directly, and nothing is remembered — there is no
-  // fallback situation to remember.
+  // Canonical free: bound directly and remembered as the stable endpoint.
   const direct = fresh();
   assert.equal(await listenWithAffinity(direct, { canonicalPort: canonical, home, log: silent }), canonical);
-  assert.equal(readRememberedPort({ home }), null, 'no fallback file when the canonical port worked');
+  assert.equal(readRememberedPort({ home }), canonical, 'the canonical endpoint is remembered too');
   await close(direct);
 
   // Canonical busy, nothing remembered: a random port is picked AND persisted,
@@ -76,16 +75,16 @@ try {
   await close(third);
   await close(fallbackBlocker);
 
-  // The conflict goes away: the canonical, documented address self-heals, even
-  // though a remembered fallback still exists on disk.
+  // The conflict goes away: the registered fallback remains stable instead of
+  // silently moving external clients back to the canonical address.
   await close(occupant);
-  const healed = fresh();
+  const stable = fresh();
   assert.equal(
-    await listenWithAffinity(healed, { canonicalPort: canonical, home, log: silent }),
-    canonical,
-    'the canonical port wins again as soon as it is free',
+    await listenWithAffinity(stable, { canonicalPort: canonical, home, log: silent }),
+    rerolled,
+    'the last registered endpoint wins while it remains available',
   );
-  await close(healed);
+  await close(stable);
 
   // A corrupted or nonsensical port file is ignored rather than dialled.
   writeFileSync(embeddedPortPath({ home }), 'pas-un-port\n');

@@ -1,5 +1,6 @@
 import type { MediaAsset, TimelineItem, TimelineState } from '../../editor/types';
 import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
+import { findAssetByReference } from '../../generate/asset-reference';
 import { reserveGenerationOperation } from '../../persist/jobRegistryStore';
 import type { AgentContext } from '../context';
 import { executeGenerateCommand } from './generate-tool-handlers';
@@ -13,8 +14,10 @@ const IDEMPOTENT_GENERATION_TOOLS: Record<string, true> = {
   submit_music: true,
   submit_video: true,
 };
-const DURABLE_GENERATION_TOOLS: Partial<Record<string, 'submit_music' | 'submit_video'>> = {
+type DurableGenerationTool = 'submit_music' | 'submit_sound' | 'submit_video';
+const DURABLE_GENERATION_TOOLS: Partial<Record<string, DurableGenerationTool>> = {
   submit_music: 'submit_music',
+  submit_sound: 'submit_sound',
   submit_video: 'submit_video',
 };
 const IDEMPOTENCY_WINDOW_MS = 60_000;
@@ -63,6 +66,9 @@ const GENERATION_REFERENCE_FIELDS: Partial<Record<string, readonly GenerationRef
   ],
   submit_music: [
     { name: 'referenceAssetId', resolver: 'music-asset' },
+    { name: 'sourceAssetId', resolver: 'music-asset' },
+  ],
+  submit_sound: [
     { name: 'sourceAssetId', resolver: 'music-asset' },
   ],
   submit_video: [
@@ -155,13 +161,7 @@ function resolveExactAssetId(ref: string, state: TimelineState): GenerationSourc
 }
 
 function resolveMusicAsset(ref: string, state: TimelineState): GenerationSourceIdentity[] {
-  const clean = ref.replace(/^asset:\/\//, '').trim();
-  const asset = (state.assets ?? []).find(
-    (candidate) => candidate.id === clean
-      || candidate.id.startsWith(clean)
-      || candidate.name === clean
-      || candidate.src === clean,
-  );
+  const asset = findAssetByReference(ref, state.assets ?? []);
   return asset ? [assetIdentity(asset)] : [];
 }
 
@@ -297,7 +297,9 @@ async function executeIdempotentGeneration(
     }
     if (accepted) acceptedSubmissions.delete(key);
     let executionArgs = args;
-    const durableTool = DURABLE_GENERATION_TOOLS[name];
+    const durableTool = name === 'submit_sound' && args.provider !== 'sonilo'
+      ? undefined
+      : DURABLE_GENERATION_TOOLS[name];
     if (durableTool) {
       const projectId = ctx.getProjectId?.();
       if (!projectId) {

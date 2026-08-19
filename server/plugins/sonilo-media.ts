@@ -1,8 +1,8 @@
 import { proxyDispatcher } from '../outbound-proxy.ts';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, openAsBlob } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -30,6 +30,10 @@ const SONILO_USER_AGENT = 'OpenChatCut';
 const TERMINAL_FAILURES = new Set(['failed', 'timeouted', 'cancelled']);
 const wait = (milliseconds: number) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
+function soniloTaskError(message: string, code: string, retryable: boolean): Error {
+  return Object.assign(new Error(message), { code, retryable });
+}
+
 export interface SoniloTrack {
   name?: string;
   url?: string;
@@ -43,6 +47,7 @@ export interface SoniloTask {
   status?: string;
   error?: string;
   failed_reason?: string;
+  audio?: SoniloTrack;
   result?: Record<string, unknown>;
   tracks?: SoniloTrack[];
 }
@@ -74,13 +79,16 @@ export function soniloTaskId(task: SoniloTask): string | undefined {
  * `license_id` is attached when the provider returns one. */
 export function pickSoniloTracks(task: SoniloTask): SoniloAudioTrack[] {
   const tracks: SoniloAudioTrack[] = [];
+  const urls = new Set<string>();
   const push = (name: string, candidate: unknown): void => {
     if (!candidate || typeof candidate !== 'object') return;
     const entry = candidate as SoniloTrack;
     const url = entry.url ?? entry.audio_url;
-    if (!url) return;
+    if (!url || urls.has(url)) return;
+    urls.add(url);
     tracks.push({ name: entry.name ?? name, url, licenseId: entry.license_id });
   };
+  push('audio', task.audio);
   for (const [index, entry] of (task.tracks ?? []).entries()) push(`track_${index + 1}`, entry);
   const result = task.result ?? {};
   for (const [key, value] of Object.entries(result)) {
@@ -139,10 +147,10 @@ export async function submitSoniloVideoTask(
   prompt?: string,
 ): Promise<string> {
   const { file, name } = localVideoUpload(uploadPath);
-  const bytes = await readFile(file);
-  if (!bytes.length) throw new Error('Sonilo source video is empty');
+  if (!(await stat(file)).size) throw new Error('Sonilo source video is empty');
   const form = new FormData();
-  form.append('file', new Blob([bytes], { type: mimeFor(file) }), name);
+  form.append('file', await openAsBlob(file, { type: mimeFor(file) }), name);
+  form.append('mode', 'async');
   if (prompt) form.append('prompt', prompt);
   const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, '')}${endpoint}`, {
     method: 'POST',
@@ -162,7 +170,9 @@ async function fetchSoniloTask(baseUrl: string, apiKey: string, taskId: string):
   });
   // 404 on the poll is the documented fail-fast signal (task not found/expired),
   // not a transient error worth retrying.
-  if (response.status === 404) throw new Error(`Sonilo task not found or expired: ${taskId}`);
+  if (response.status === 404) {
+    throw soniloTaskError(`Sonilo task not found or expired: ${taskId}`, 'sonilo_task_not_found', false);
+  }
   if (!response.ok) throw new Error(await soniloProviderError(response));
   return response.json() as Promise<SoniloTask>;
 }
@@ -174,15 +184,21 @@ export async function awaitSoniloTracks(baseUrl: string, apiKey: string, taskId:
     const task = await fetchSoniloTask(baseUrl, apiKey, taskId);
     if (task.status === 'succeeded') {
       const tracks = pickSoniloTracks(task);
-      if (!tracks.length) throw new Error('Sonilo succeeded without an audio track');
+      if (!tracks.length) {
+        throw soniloTaskError('Sonilo succeeded without an audio track', 'sonilo_result_missing', false);
+      }
       return tracks;
     }
     if (task.status && TERMINAL_FAILURES.has(task.status)) {
-      throw new Error(task.failed_reason || task.error || `Sonilo generation ${task.status}`);
+      throw soniloTaskError(
+        task.failed_reason || task.error || `Sonilo generation ${task.status}`,
+        'sonilo_provider_terminal',
+        false,
+      );
     }
     await wait(2_000);
   }
-  throw new Error('Sonilo generation timed out');
+  throw soniloTaskError('Sonilo generation timed out', 'sonilo_poll_timeout', true);
 }
 
 function audioExtFor(url: string, contentType: string | null): string {

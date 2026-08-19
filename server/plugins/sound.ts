@@ -8,6 +8,16 @@ import type { Plugin } from 'vite';
 
 import { uploadDir } from '../media-dir.ts';
 import {
+  createGenerationJob,
+  generationResultCheckpoint,
+  registerGenerationJobResumer,
+  requireGenerationResultUrls,
+  type GenerationJobSnapshot,
+  type GenerationResult,
+  type RegisterGenerationDownload,
+  type RegisterGenerationProviderTask,
+} from './generation-jobs.ts';
+import {
   SONILO_SFX_ENDPOINT,
   SONILO_SFX_MAX_VIDEO_SECONDS,
   assertSoniloVideoDuration,
@@ -43,6 +53,7 @@ interface SoundOptions {
 }
 
 interface SoundRequest {
+  operationId?: string;
   provider?: string;
   prompt?: string;
   durationSeconds?: number;
@@ -51,6 +62,8 @@ interface SoundRequest {
   outputFormat?: string;
   sourceAssetPath?: string;
   sourceAssetKind?: string;
+  name?: string;
+  sourceRevisions?: unknown;
 }
 
 export interface ValidSoundRequest {
@@ -61,6 +74,8 @@ export interface ValidSoundRequest {
   loop: boolean;
   outputFormat: string;
   sourceAssetPath?: string;
+  name: string;
+  sourceRevisions?: string[];
 }
 
 async function readJson(req: IncomingMessage): Promise<SoundRequest> {
@@ -96,6 +111,9 @@ export function validateSoundRequest(input: SoundRequest): ValidSoundRequest {
   const provider = String(input.provider ?? 'elevenlabs');
   if (provider !== 'elevenlabs' && provider !== 'sonilo') throw new Error('sound provider must be elevenlabs or sonilo');
   const prompt = String(input.prompt ?? '').trim();
+  const name = String(input.name ?? '').trim();
+  if (name.length > 200) throw new Error('sound name must be at most 200 characters');
+  const sourceRevisions = validateSourceRevisions(input.sourceRevisions);
   if (provider === 'sonilo') {
     // Sonilo video-to-SFX reads the cut itself — no prompt, no ElevenLabs
     // synthesis controls; the source video is the whole request.
@@ -106,7 +124,11 @@ export function validateSoundRequest(input: SoundRequest): ValidSoundRequest {
     if ([input.durationSeconds, input.promptInfluence, input.loop, input.outputFormat].some((value) => value !== undefined)) {
       throw new Error('ElevenLabs sound controls are not supported by sonilo');
     }
-    return { provider, prompt: '', promptInfluence: 0.3, loop: false, outputFormat: 'mp3_44100_128', sourceAssetPath: input.sourceAssetPath };
+    return {
+      provider, prompt: '', promptInfluence: 0.3, loop: false,
+      outputFormat: 'mp3_44100_128', sourceAssetPath: input.sourceAssetPath,
+      name: name || 'Generated SFX', sourceRevisions,
+    };
   }
   const durationSeconds = input.durationSeconds;
   const promptInfluence = input.promptInfluence ?? 0.3;
@@ -122,7 +144,19 @@ export function validateSoundRequest(input: SoundRequest): ValidSoundRequest {
   if (!Number.isFinite(promptInfluence) || promptInfluence < 0 || promptInfluence > 1) throw new Error('promptInfluence must be between 0 and 1');
   if (typeof loop !== 'boolean') throw new Error('loop must be a boolean');
   if (!OUTPUT_FORMATS.has(outputFormat)) throw new Error(`unsupported ElevenLabs outputFormat ${outputFormat}`);
-  return { provider, prompt, durationSeconds, promptInfluence, loop, outputFormat };
+  return {
+    provider, prompt, durationSeconds, promptInfluence, loop, outputFormat,
+    name: name || `Sound · ${prompt.slice(0, 36)}`, sourceRevisions,
+  };
+}
+
+function validateSourceRevisions(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 16
+    || value.some((revision) => typeof revision !== 'string' || !revision.trim())) {
+    throw new Error('sourceRevisions must be an array of non-empty strings');
+  }
+  return [...new Set(value.map((revision) => revision.trim()))];
 }
 
 const validate = validateSoundRequest;
@@ -184,36 +218,101 @@ async function saveAudio(bytes: Buffer, outputFormat: string): Promise<{ path: s
   return { path: `/media/uploads/${filename}`, durationSeconds: await probeDuration(file) };
 }
 
-// Sonilo video-to-SFX: async on the provider side (submit → poll), consumed
-// here within the synchronous /generate/sound contract — SFX for a ≤3-minute
-// cut completes well inside the request window, matching the ElevenLabs path.
-async function generateSoniloSound(
+async function generateSoniloSoundTracks(
   options: SoundOptions,
   input: ValidSoundRequest,
-): Promise<{ path: string; durationSeconds: number; licenseId?: string }> {
-  if (!options.soniloApiKey) throw new Error('Sonilo is not configured. Set SONILO_API_KEY in .env.local or 设置面板.');
-  const sourcePath = input.sourceAssetPath!;
-  await assertSoniloVideoDuration(sourcePath, SONILO_SFX_MAX_VIDEO_SECONDS, 'SFX');
+  registerProviderTask: RegisterGenerationProviderTask,
+  existingTaskId?: string,
+) {
   const baseUrl = options.soniloBaseUrl.replace(/\/$/, '');
-  const taskId = await submitSoniloVideoTask(baseUrl, options.soniloApiKey, SONILO_SFX_ENDPOINT, sourcePath);
-  const [primary] = await awaitSoniloTracks(baseUrl, options.soniloApiKey, taskId);
-  if (!primary) throw new Error('Sonilo returned no SFX track');
-  // Presigned result URL — downloaded without auth headers by design.
-  const saved = await saveSoniloAudioResponse(await fetchGeneratedResult(primary.url, 'audio'), primary.url);
-  if (primary.licenseId) await writeSoniloLicenseSidecar(saved.path, primary.licenseId);
-  return { ...saved, licenseId: primary.licenseId };
+  let taskId = existingTaskId;
+  if (!taskId) {
+    await assertSoniloVideoDuration(input.sourceAssetPath!, SONILO_SFX_MAX_VIDEO_SECONDS, 'SFX');
+    taskId = await submitSoniloVideoTask(
+      baseUrl, options.soniloApiKey, SONILO_SFX_ENDPOINT, input.sourceAssetPath!,
+    );
+    await registerProviderTask('sonilo', taskId);
+  }
+  return awaitSoniloTracks(baseUrl, options.soniloApiKey, taskId);
+}
+
+async function soniloSoundResult(
+  operationId: string,
+  input: ValidSoundRequest,
+  url: string,
+  licenseId?: string,
+): Promise<GenerationResult> {
+  const saved = await saveSoniloAudioResponse(await fetchGeneratedResult(url, 'audio'), url);
+  if (licenseId) await writeSoniloLicenseSidecar(saved.path, licenseId);
+  return { assetId: operationId, kind: 'audio', name: input.name, licenseId, ...saved };
+}
+
+async function runSoniloSoundOperation(
+  operationId: string,
+  input: ValidSoundRequest,
+  options: SoundOptions,
+  registerDownload: RegisterGenerationDownload,
+  registerProviderTask: RegisterGenerationProviderTask,
+  providerTaskId?: string,
+  storedResultUrls: readonly string[] = [],
+): Promise<GenerationResult> {
+  const checkpoint = generationResultCheckpoint(storedResultUrls, 1, providerTaskId);
+  let [url] = checkpoint.urls;
+  let licenseId: string | undefined;
+  if (!checkpoint.complete) {
+    const [primary] = await generateSoniloSoundTracks(options, input, registerProviderTask, providerTaskId);
+    if (!primary) throw new Error('Sonilo returned no SFX track');
+    url = primary.url;
+    licenseId = primary.licenseId;
+  }
+  [url] = requireGenerationResultUrls([url], 1);
+  const download = () => soniloSoundResult(operationId, input, url, licenseId);
+  await registerDownload(url, download, 0);
+  return download();
 }
 
 export function soundGenerationPlugin(options: SoundOptions): Plugin {
+  registerGenerationJobResumer('submit_sound', 'sonilo', async (
+    snapshot: GenerationJobSnapshot,
+    _update,
+    registerDownload,
+    registerProviderTask,
+  ) => runSoniloSoundOperation(
+    snapshot.operationId,
+    validateSoundRequest(snapshot.params as SoundRequest),
+    options,
+    registerDownload,
+    registerProviderTask,
+    snapshot.providerTaskId,
+    snapshot.resultUrls,
+  ));
   return {
     name: 'openchatcut-sound-generation',
     configureServer(server) {
       server.middlewares.use('/generate/sound', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
-          const input = validate(await readJson(req));
+          const raw = await readJson(req);
+          const input = validate(raw);
           if (input.provider === 'sonilo') {
-            sendJson(res, 200, await generateSoniloSound(options, input));
+            if (!options.soniloApiKey) throw new Error('Sonilo is not configured. Set SONILO_API_KEY in .env.local or 设置面板.');
+            const submitArgs = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'operationId'));
+            const submission = await createGenerationJob(
+              { kind: 'sound', model: 'v1', ...input },
+              (operationId, _update, registerDownload, registerProviderTask) => runSoniloSoundOperation(
+                operationId, input, options, registerDownload, registerProviderTask,
+              ),
+              {
+                operationId: raw.operationId,
+                provider: 'sonilo',
+                toolName: 'submit_sound',
+                label: input.name,
+                submitArgs,
+                sourceRevisions: input.sourceRevisions,
+                expectedResultCount: 1,
+              },
+            );
+            sendJson(res, 202, submission);
             return;
           }
           if (!options.apiKey) throw new Error('Sound generation is not configured. Set ELEVENLABS_API_KEY in .env.local.');

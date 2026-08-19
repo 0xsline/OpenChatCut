@@ -317,7 +317,7 @@ export type GenerationOperationReservation =
 export function reserveGenerationOperation(input: {
   projectId: string;
   idempotencyKey: string;
-  toolName: 'submit_music' | 'submit_video';
+  toolName: 'submit_music' | 'submit_sound' | 'submit_video';
   acceptedWindowMs: number;
 }): Promise<GenerationOperationReservation> {
   return enqueueProjectWrite(input.projectId, async () => {

@@ -29,9 +29,7 @@ export function embeddedPortPath({ home = homedir(), profileId }: EmbeddedPortLo
 export function readRememberedPort(location: EmbeddedPortLocation = {}): number | null {
   try {
     const port = Number(readFileSync(embeddedPortPath(location), 'utf8').trim());
-    // The canonical port is never remembered: it is always tried first anyway,
-    // and remembering it would just shadow a stale write.
-    if (!Number.isInteger(port) || port < 1024 || port > 65535 || port === CANONICAL_EMBEDDED_PORT) {
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) {
       return null;
     }
     return port;
@@ -60,13 +58,10 @@ export interface ListenWithAffinityOptions extends EmbeddedPortLocation {
 /**
  * Bind the embedded server to a port external agents can rely on.
  *
- * The canonical port comes first so the documented address self-heals the
- * moment whatever occupied it goes away. When it is taken, the port used the
- * LAST time this happened is tried before anything random: the usual occupant
- * is a long-lived neighbour (a dev server, another tool), so the conflict
- * repeats at every launch, and a random port each time silently broke every
- * registered MCP client. Only when both are busy does a fresh random port get
- * picked, and it immediately becomes the remembered one.
+ * The last successful port comes first so registered external clients keep a
+ * stable endpoint across restarts. The canonical port is used for first launch
+ * and as the fallback when a remembered non-canonical port is occupied. Only
+ * when both are busy is a fresh random port picked and remembered.
  */
 export async function listenWithAffinity(
   server: Server,
@@ -84,16 +79,20 @@ export async function listenWithAffinity(
   });
   const inUse = (err: unknown): boolean => (err as NodeJS.ErrnoException).code === 'EADDRINUSE';
 
-  try {
-    return await listenOn(canonicalPort);
-  } catch (err) {
-    if (!inUse(err)) throw err;
-  }
   const remembered = readRememberedPort({ home, profileId });
   if (remembered !== null) {
     try {
       const port = await listenOn(remembered);
-      log(`[embedded-server] port ${canonicalPort} in use — reusing remembered fallback ${port}`);
+      if (port !== canonicalPort) log(`[embedded-server] reusing stable MCP port ${port}`);
+      return port;
+    } catch (err) {
+      if (!inUse(err)) throw err;
+    }
+  }
+  if (remembered !== canonicalPort) {
+    try {
+      const port = await listenOn(canonicalPort);
+      rememberPort(port, { home, profileId });
       return port;
     } catch (err) {
       if (!inUse(err)) throw err;
@@ -101,6 +100,6 @@ export async function listenWithAffinity(
   }
   const port = await listenOn(0);
   rememberPort(port, { home, profileId });
-  log(`[embedded-server] port ${canonicalPort} in use — falling back to ${port}, kept for future launches; point external MCP clients at the origin logged below`);
+  log(`[embedded-server] preferred MCP ports are in use — falling back to ${port}, kept for future launches; point external MCP clients at the origin logged below`);
   return port;
 }
