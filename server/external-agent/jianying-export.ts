@@ -58,6 +58,10 @@ const DEFAULT_CAPCUT_STORE = join(
 );
 
 /** Resolve a clip src (/media/uploads/<name> or absolute path) to a local file. */
+export function expandHomeDir(dir: string): string {
+  return dir.replace(/^~(?=\/|$)/, process.env.HOME ?? '');
+}
+
 export function resolveMediaPath(src: string): string | undefined {
   const clean = String(src || '').trim();
   if (!clean) return undefined;
@@ -188,8 +192,7 @@ export async function exportJianyingDraft(raw: Partial<JianyingExportRequest>): 
   if (!draftName) {
     return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: 'invalid draft name' };
   }
-  const draftsDir = String(request.draftsDir || '').trim()
-    .replace(/^~(?=\/|$)/, process.env.HOME ?? '')
+  const draftsDir = expandHomeDir(String(request.draftsDir || '').trim())
     || DEFAULT_CAPCUT_STORE;
   const first = resolved[0];
   const firstStart = framesToSeconds(first.clip.startFrame, fps);

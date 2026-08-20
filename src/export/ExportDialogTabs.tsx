@@ -17,6 +17,7 @@ import {
 } from './useExportDialogModel';
 import type { ExportQaUiState, ExportTab } from './useExportWorkflow';
 import { fcpxmlBackgroundFillCount } from './fcpxml';
+import { loadJianYingDraftPreference, saveJianYingDraftPreference, type JianYingDraftStore } from './jianyingDraftPreference';
 import { useState } from 'react';
 
 /** macOS default store for the Chinese JianYing (剪映专业版) app; drafts in 6.0+
@@ -221,11 +222,18 @@ interface JianyingExportOutcome {
 
 function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
   const t = useT();
-  const [draftName, setDraftName] = useState(base);
-  const [store, setStore] = useState<'capcut' | 'jianying'>('capcut');
+  const initial = loadJianYingDraftPreference();
+  const [draftName, setDraftName] = useState(initial.draftName || base);
+  const [store, setStore] = useState<JianYingDraftStore>(initial.store);
+  const [customDir, setCustomDir] = useState(initial.customDir);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<JianyingExportOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const draftsDir = store === 'jianying' ? JIANYING_STORE : store === 'custom' ? customDir.trim() : '';
+  const updateStore = (next: JianYingDraftStore) => {
+    setStore(next);
+    saveJianYingDraftPreference({ store: next, customDir, draftName: draftName === base ? '' : draftName });
+  };
   const run = async () => {
     if (busy) return;
     setBusy(true);
@@ -244,7 +252,7 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
           name: item.name,
         })),
         captions: captionCues(state, state.captions),
-        draftsDir: store === 'jianying' ? JIANYING_STORE : '',
+        draftsDir,
       };
       const response = await fetch('/api/external-agent/jianying-export', {
         method: 'POST',
@@ -256,6 +264,7 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
         setError(data?.error ?? t('剪映草稿导出失败'));
         return;
       }
+      saveJianYingDraftPreference({ store, customDir, draftName: draftName.trim() });
       setOutcome(data);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -273,12 +282,27 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
       </Row>
       <Row label={t('目标草稿库')}>
         <Segmented
-          options={[{ value: 'capcut', label: 'CapCut 草稿库' }, { value: 'jianying', label: '剪映草稿库' }] as const}
+          options={[
+            { value: 'capcut', label: 'CapCut 草稿库' },
+            { value: 'jianying', label: '剪映草稿库' },
+            { value: 'custom', label: t('自定义路径') },
+          ] as const}
           value={store}
-          onChange={setStore}
+          onChange={updateStore}
         />
       </Row>
       {store === 'jianying' && <p className="cc-export-footnote">{JIANYING_STORE}</p>}
+      {store === 'custom' && (
+        <Row label={t('草稿库路径')}>
+          <input className="cc-export-select" placeholder="~/Movies/.../com.lveditor.draft"
+            value={customDir}
+            onChange={(event) => {
+              setCustomDir(event.target.value);
+              saveJianYingDraftPreference({ store, customDir: event.target.value, draftName: draftName === base ? '' : draftName });
+            }}
+            disabled={busy} />
+        </Row>
+      )}
       <p className="cc-export-footnote">
         {t('剪映 6.0 起草稿文件已加密，本工具生成明文草稿，建议使用剪映 5.9.0 或更早版本打开；CapCut 国际版不受此限制。')}
       </p>

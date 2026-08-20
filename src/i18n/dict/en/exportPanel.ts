@@ -194,4 +194,6 @@ export default {
   '{videos} 个视频 · {audios} 个音轨 · {captions} 条字幕': '{videos} videos · {audios} audio tracks · {captions} captions',
   '导出到剪映': 'Export to JianYing',
   '正在生成草稿…': 'Creating draft…',
+  '自定义路径': 'Custom path',
+  '草稿库路径': 'Draft store path',
 } as Record<string, string>;

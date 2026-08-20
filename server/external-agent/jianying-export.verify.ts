@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolveMediaPath } from './jianying-export.ts';
+import { expandHomeDir, resolveMediaPath } from './jianying-export.ts';
+
+assert.equal(expandHomeDir(''), '');
+assert.equal(expandHomeDir('/plain/path'), '/plain/path');
+assert.equal(expandHomeDir('~/Movies'), `${process.env.HOME}/Movies`);
+assert.equal(expandHomeDir('~other/path'), '~other/path');
+assert.equal(expandHomeDir('~/'), `${process.env.HOME}/`);
+assert.equal(expandHomeDir('~'), process.env.HOME);
 
 assert.equal(resolveMediaPath(''), undefined);
 assert.equal(resolveMediaPath('/media/uploads/../etc/passwd'), undefined);
