@@ -6,6 +6,22 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.9] - 2026-08-20
+
+### Added / 新增
+
+- Desktop native inference now records CPU/GPU capabilities and selects CoreML/Metal, DirectML, CUDA, WebGPU, or CPU per supported workload; Linux packages now include the native inference workers and ONNX Runtime.
+  桌面端原生推理现会记录 CPU/GPU 能力，并按工作负载选择 CoreML/Metal、DirectML、CUDA、WebGPU 或 CPU；Linux 安装包同步内置原生推理 worker 与 ONNX Runtime。
+
+### Fixed / 修复
+
+- Desktop imports again create durable managed media copies, keeping preview, normalization, and server-side export reachable after the original file moves or a removable volume is disconnected.
+  桌面端导入恢复为可持久的受管素材副本，原文件移动或移动磁盘断开后，预览、规范化与服务端导出仍可访问素材。
+- Media processing now applies software encoder thread limits to output encoders, keeps CFR compatibility normalization for large VFR sources, routes probes through the shared low-priority launcher, and releases settled multipart metadata queues.
+  媒体处理现会将软编码线程上限应用到输出编码器，为大型 VFR 素材保留 CFR 兼容性转换，通过共享低优先级启动器执行探测，并及时释放已结束的分片元数据队列。
+- The Agent run inspector refreshes its sidecar when opened, so the newest run, tool result, and context metrics appear immediately without reloading the editor.
+  Agent 运行检查器打开时会刷新旁车记录，无需重新加载编辑器即可显示最新运行、工具结果与上下文指标。
+
 ## [0.2.8] - 2026-08-20
 
 ### Added / 新增
