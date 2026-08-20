@@ -5,7 +5,7 @@ import {
   type AudioProps as BrowserAudioProps,
   type VideoProps as BrowserVideoProps,
 } from '@remotion/media';
-import { AbsoluteFill, Audio as ServerAudio, Img, Sequence, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Audio as ServerAudio, Img, OffthreadVideo, Sequence, useCurrentFrame, useRemotionEnvironment } from 'remotion';
 import { ClipFx } from '../gl/ClipFx';
 import { firstGlEffect } from '../gl/clipEffects';
 import { selectEffectPreviewAdapter, type SelectedPreviewStatusListener } from '../gl/previewAdapter';
@@ -33,9 +33,16 @@ function RuntimeAudio({ browserRenderer, ...props }: BrowserAudioProps & { brows
 }
 
 function RuntimeVideo({ browserRenderer, style, ...props }: RuntimeVideoProps) {
-  void browserRenderer;
-  const { objectFit, ...browserStyle } = style ?? {};
-  return <BrowserVideo {...props} style={browserStyle} objectFit={objectFit as BrowserVideoProps['objectFit']} />;
+  const { isPlayer } = useRemotionEnvironment();
+  if (browserRenderer || isPlayer) {
+    const { objectFit, ...browserStyle } = style ?? {};
+    return <BrowserVideo {...props} style={browserStyle} objectFit={objectFit as BrowserVideoProps['objectFit']} />;
+  }
+  // Server-side render (headless Chrome export): decode with ffmpeg. The
+  // @remotion/media WebCodecs path is frame-accurate for the Player and the
+  // in-browser fast export, but headless Chromium can hang its VideoDecoder on
+  // phone recordings (VFR 60.045fps, edit lists) and time out the render.
+  return <OffthreadVideo {...props} style={style} preservePitch />;
 }
 
 function MixedRuntimeAudio({ item, browserRenderer, volume, ...props }: Omit<BrowserAudioProps, 'src'> & {
@@ -256,7 +263,8 @@ export function BackgroundFillLayer({ item, frameOffset, canvasW, canvasH, brows
     <AbsoluteFill aria-hidden style={{ opacity, overflow: 'hidden', pointerEvents: 'none' }}>
       {effect
         ? <AbsoluteFill style={style}>
-            <ClipFx item={item} fit="cover" width={canvasW} height={canvasH} frameOffset={frameOffset} />
+            <ClipFx item={item} fit="cover" width={canvasW} height={canvasH} frameOffset={frameOffset}
+              browserRenderer={browserRenderer} />
           </AbsoluteFill>
         : item.kind === 'image'
           ? <Img src={item.src!} style={style} />
@@ -297,7 +305,8 @@ function EffectMediaFill({ props, trimBefore, volume }: {
     <>
       <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
         <ClipFx item={item} fit={fit === 'contain' ? 'cover' : fit} width={Math.max(1, Math.round(frame.width))}
-          height={Math.max(1, Math.round(frame.height))} frameOffset={frameOffset} onPreviewStatus={onPreviewStatus} />
+          height={Math.max(1, Math.round(frame.height))} frameOffset={frameOffset} browserRenderer={browserRenderer}
+          onPreviewStatus={onPreviewStatus} />
       </VisualClipSurface>
       {item.kind !== 'image' && !groupedAudio && <MixedRuntimeAudio item={item} browserRenderer={browserRenderer}
         trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={volume} />}

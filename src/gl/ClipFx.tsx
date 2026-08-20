@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AbsoluteFill, Img, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, OffthreadVideo, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Video as MediaVideo } from '@remotion/media';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { cubeSettled, ensureCube } from './fx/cube';
@@ -25,6 +25,7 @@ interface ClipFxProps {
   width: number;
   height: number;
   frameOffset?: number;
+  browserRenderer: boolean;
   onPreviewStatus?: SelectedPreviewStatusListener;
 }
 
@@ -61,7 +62,7 @@ function drawFit(ctx: CanvasRenderingContext2D, source: CanvasImageSource, fit: 
   ctx.drawImage(source, (W - dw) / 2, (H - dh) / 2, dw, dh);
 }
 
-export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewStatus }: ClipFxProps) {
+export function ClipFx({ item, fit, width, height, frameOffset = 0, browserRenderer, onPreviewStatus }: ClipFxProps) {
   const frame = useCurrentFrame() + frameOffset;
   const { fps } = useVideoConfig();
   const isRendering = getRemotionEnvironment().isRendering;
@@ -74,6 +75,12 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
   const hasRenderedRef = useRef(false);
   const [hasRendered, setHasRendered] = useState(false);
   const trimBefore = sourceFrameAt(item, frameOffset);
+  // Server-side render decodes the source with the same ffmpeg/OffthreadVideo
+  // path the baseline uses, so the GL pass consumes the identical ordinal
+  // frames and stays frame-aligned with non-effect clips. The browser (Player
+  // and fast export) keeps @remotion/media PTS decoding, which matches its own
+  // baseline; mixing the two decoders would skew fractional-rate sources by
+  // one frame (for example 30000/1001).
 
   const staging = useMemo(() => {
     const c = document.createElement('canvas');
@@ -210,8 +217,11 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
         {item.kind === 'image'
           // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
           ? <Img ref={imageRef} src={item.src!} style={{ width: '100%', height: '100%', objectFit: fit }} />
-          : <MediaVideo src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted
-              headless={isRendering} onVideoFrame={onVideoFrame} style={{ width: '100%', height: '100%' }} objectFit={fit} />}
+          : isRendering && !browserRenderer
+            ? <OffthreadVideo src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted
+                onVideoFrame={onVideoFrame} style={{ width: '100%', height: '100%' }} preservePitch />
+            : <MediaVideo src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted
+                headless={isRendering} onVideoFrame={onVideoFrame} style={{ width: '100%', height: '100%' }} objectFit={fit} />}
       </AbsoluteFill>
       <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: showingShaderFrame ? 1 : 0 }} />
     </AbsoluteFill>
