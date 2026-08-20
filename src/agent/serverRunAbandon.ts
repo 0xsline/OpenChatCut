@@ -17,7 +17,11 @@ export async function settleAbandonedServerRun(
     try {
       await requestServerRunCancellation(input.projectId, input.runId, input.capability);
     } catch (error) {
-      transportWarning = error instanceof Error ? error.message : String(error);
+      // 404 means the run no longer exists server-side (e.g. after a server
+      // restart): the cleanup goal is already met, so it is not a warning.
+      if ((error as { status?: number }).status !== 404) {
+        transportWarning = error instanceof Error ? error.message : String(error);
+      }
     }
   }
   await settleServerRun(input.projectId, input.runId, {

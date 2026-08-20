@@ -212,8 +212,6 @@ export default {
   '模式': 'Mode',
   '代理模式': 'Agent mode',
   '可编辑时间线，改动可撤销': 'Can edit the timeline; changes are undoable',
-  '问答模式': 'Q&A mode',
-  '只回答，不动时间线': 'Answers only — never touches the timeline',
   '模型': 'Model',
   '选择模型': 'Choose model',
   '当前模型：{name}': 'Current model: {name}',

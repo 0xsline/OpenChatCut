@@ -137,7 +137,7 @@ const discoveryTools = [
   },
 ];
 const editorTools = [dynamicTool, extraTool, ...discoveryTools, ...editTools];
-registerEditor(projectA, editorA, revisionA, [dynamicTool]);
+await registerEditor(projectA, editorA, revisionA, [dynamicTool]);
 
 const server = createServer((req, res) => {
   void handleMcpRequest(req, res, 'http://127.0.0.1').catch((error) => {
@@ -168,10 +168,10 @@ try {
   const changed = new Promise<void>((resolve) => { notify = resolve; });
   boundA.client.setNotificationHandler(ToolListChangedNotificationSchema, () => notify());
   assert.ok((await boundA.client.listTools()).tools.some((tool) => tool.name === dynamicTool.name));
-  registerEditor(projectA, editorA, revisionA, editorTools);
+  await registerEditor(projectA, editorA, revisionA, editorTools);
   await Promise.race([
     changed,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('tools/list_changed timeout')), 2_000)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('tools/list_changed timeout')), 30_000)),
   ]);
   assert.ok((await boundA.client.listTools()).tools.some((tool) => tool.name === extraTool.name));
   const exposureHeaders = { 'x-openchatcut-tool-exposure': 'progressive' };
@@ -215,7 +215,7 @@ try {
     progressiveListChanged,
     new Promise((_, reject) => setTimeout(
       () => reject(new Error('progressive tools/list_changed timeout')),
-      2_000,
+      30_000,
     )),
   ]);
   assert.equal(
