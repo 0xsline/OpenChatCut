@@ -11,6 +11,7 @@ import {
   isDesktopInferenceRequestId,
   isDesktopRhythmResponse,
   parseDesktopRhythmRequest,
+  type DesktopHardwareCapabilities,
   type DesktopInferenceCapabilities,
   type DesktopInferenceProgress,
   type DesktopRhythmRequest,
@@ -40,6 +41,7 @@ export interface NativeRhythmServiceOptions {
   readonly cacheDir: string;
   readonly platform?: NodeJS.Platform;
   readonly runtimeAvailable?: boolean;
+  readonly hardware?: DesktopHardwareCapabilities;
 }
 
 const require = createRequire(import.meta.url);
@@ -119,6 +121,7 @@ export class NativeRhythmService {
       transformerRuntime: false,
       rhythmRuntime: options.runtimeAvailable ?? onnxRuntimeAvailable(),
       ffmpegRuntime: true,
+      hardware: options.hardware,
     });
   }
 
@@ -192,6 +195,7 @@ export class NativeRhythmService {
     });
     worker.postMessage({ type: 'initialize', config: {
       platform: this.platform,
+      preferredBackend: this.capabilities.rhythm.preferredBackend ?? 'native-cpu',
       modelPath: pack.modelPath,
       filterbankPath: pack.filterbankPath,
     } });

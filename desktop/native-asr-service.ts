@@ -15,6 +15,7 @@ import {
   type DesktopAsrPreloadRequest,
   type DesktopAsrRequest,
   type DesktopAsrResponse,
+  type DesktopHardwareCapabilities,
   type DesktopInferenceCapabilities,
   type DesktopInferenceProgress,
   type DesktopModelLoadResponse,
@@ -47,6 +48,7 @@ export interface NativeAsrServiceOptions {
   readonly ffmpegPath?: string;
   readonly whisperCliPath?: string;
   readonly transformerRuntime?: boolean;
+  readonly hardware?: DesktopHardwareCapabilities;
 }
 
 export interface NativeAsrServiceDependencies {
@@ -171,6 +173,7 @@ export class NativeAsrService {
       platform: this.platform,
       transformerRuntime: options.transformerRuntime ?? transformerRuntimeAvailable(),
       ffmpegRuntime: ffmpegRuntimeAvailable(this.ffmpegPath),
+      hardware: options.hardware,
     });
     this.inspectModel = dependencies.inspectModel ?? inspectAsrModel;
     this.createWorker = dependencies.createWorker ?? createNativeAsrWorker;

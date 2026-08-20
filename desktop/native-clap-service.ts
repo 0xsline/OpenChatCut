@@ -13,6 +13,7 @@ import {
   parseDesktopClapRequest,
   type DesktopClapRequest,
   type DesktopClapResponse,
+  type DesktopHardwareCapabilities,
   type DesktopInferenceCapabilities,
   type DesktopInferenceProgress,
 } from '../shared/desktop-inference.ts';
@@ -40,6 +41,7 @@ export interface NativeClapServiceOptions {
   readonly cacheDir: string;
   readonly platform?: NodeJS.Platform;
   readonly transformerRuntime?: boolean;
+  readonly hardware?: DesktopHardwareCapabilities;
 }
 
 const require = createRequire(import.meta.url);
@@ -116,6 +118,7 @@ export class NativeClapService {
       platform: this.platform,
       transformerRuntime: options.transformerRuntime ?? transformerRuntimeAvailable(),
       ffmpegRuntime: true,
+      hardware: options.hardware,
     });
   }
 
@@ -194,7 +197,12 @@ export class NativeClapService {
     });
     worker.postMessage({
       type: 'initialize',
-      config: { origin: this.origin, cacheDir: this.cacheDir, platform: this.platform },
+      config: {
+        origin: this.origin,
+        cacheDir: this.cacheDir,
+        platform: this.platform,
+        preferredBackend: this.capabilities.clap.preferredBackend ?? 'native-cpu',
+      },
     });
     this.worker = worker;
     return worker;

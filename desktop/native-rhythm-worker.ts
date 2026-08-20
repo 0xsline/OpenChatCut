@@ -25,7 +25,8 @@ import {
 } from '../src/audio/intelligence/beatThisPreprocess.ts';
 
 interface NativeRhythmConfig {
-  readonly platform: 'darwin' | 'win32';
+  readonly platform: 'darwin' | 'win32' | 'linux';
+  readonly preferredBackend: DesktopInferenceBackend;
   readonly modelPath: string;
   readonly filterbankPath: string;
 }
@@ -47,7 +48,8 @@ const canceled = new Set<string>();
 function initialize(value: unknown): void {
   if (typeof value !== 'object' || value === null) throw new Error('invalid native rhythm configuration');
   const config = value as Partial<NativeRhythmConfig>;
-  if ((config.platform !== 'darwin' && config.platform !== 'win32')
+  if ((config.platform !== 'darwin' && config.platform !== 'win32' && config.platform !== 'linux')
+    || !isNativeRhythmBackend(config.preferredBackend)
     || typeof config.modelPath !== 'string' || !isAbsolute(config.modelPath)
     || typeof config.filterbankPath !== 'string' || !isAbsolute(config.filterbankPath)
     || basename(config.modelPath) !== RHYTHM_INFERENCE_CONTRACT.files.model.path
@@ -56,6 +58,16 @@ function initialize(value: unknown): void {
     throw new Error('invalid native rhythm configuration');
   }
   runtime = config as NativeRhythmConfig;
+}
+
+function isNativeRhythmBackend(value: unknown): value is DesktopInferenceBackend {
+  return value === 'coreml' || value === 'cuda' || value === 'directml' || value === 'native-cpu';
+}
+
+function executionProvider(backend: DesktopInferenceBackend): 'coreml' | 'cuda' | 'dml' | 'cpu' {
+  if (backend === 'coreml' || backend === 'cuda') return backend;
+  if (backend === 'directml') return 'dml';
+  return 'cpu';
 }
 
 function requireRuntime(): NativeRhythmConfig {
@@ -77,7 +89,7 @@ function report(requestId: string, progress: number): void {
 
 async function loadWithProvider(
   config: NativeRhythmConfig,
-  provider: 'coreml' | 'dml' | 'cpu',
+  provider: 'coreml' | 'cuda' | 'dml' | 'cpu',
   filterbank: Float32Array,
 ): Promise<LoadedRhythmModel> {
   const session = await ort.InferenceSession.create(config.modelPath, {
@@ -87,7 +99,8 @@ async function loadWithProvider(
   });
   const backend: DesktopInferenceBackend = provider === 'coreml'
     ? 'coreml'
-    : provider === 'dml' ? 'directml' : 'native-cpu';
+    : provider === 'cuda' ? 'cuda'
+      : provider === 'dml' ? 'directml' : 'native-cpu';
   return { backend, session, filterbank };
 }
 
@@ -101,7 +114,8 @@ async function createLoaded(requestId: string): Promise<LoadedRhythmModel> {
   const filterbank = new Float32Array(copied);
   throwIfCanceled(requestId);
   report(requestId, 0.1);
-  const preferred = config.platform === 'darwin' ? 'coreml' : 'dml';
+  const preferred = executionProvider(config.preferredBackend);
+  if (preferred === 'cpu') return loadWithProvider(config, preferred, filterbank);
   try {
     return await loadWithProvider(config, preferred, filterbank);
   } catch {

@@ -25,6 +25,7 @@ import { installEditorAuthIpc } from './editor-auth-ipc.ts';
 import { installDesktopUpdateIpc } from './update-ipc.ts';
 import { supportsDirectDesktopUpdates } from './update-service.ts';
 import { installDesktopInferenceIpc } from './native-inference-ipc.ts';
+import { detectDesktopHardwareProfile } from './native-hardware-profile.ts';
 import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
 import { importAgentPaths } from './agent-path-import.ts';
 import { getKey, setKeys } from '../server/keystore.ts';
@@ -325,9 +326,11 @@ async function boot(): Promise<void> {
     }
     return importAgentPaths({ paths, projectId: value.projectId, knownHashes });
   }));
+  const hardware = await detectDesktopHardwareProfile(app);
   const desktopInference = installDesktopInferenceIpc(
     origin,
     join(app.getPath('home'), '.openchatcut', 'asr-models'),
+    hardware,
   );
   app.once('before-quit', () => desktopInference.dispose());
   console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);

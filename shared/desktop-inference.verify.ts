@@ -18,6 +18,7 @@ import {
 } from './vector-inference-contract.ts';
 import {
   preferredNativeInferenceBackend,
+  preferredNativeModelBackend,
   preferredNativeRhythmBackend,
   resolveDesktopInferenceCapabilities,
 } from '../desktop/native-inference-policy.ts';
@@ -141,7 +142,33 @@ assert.equal(preferredNativeInferenceBackend('darwin'), 'native-metal');
 assert.equal(preferredNativeInferenceBackend('linux'), 'native-cpu');
 assert.equal(preferredNativeRhythmBackend('win32'), 'directml');
 assert.equal(preferredNativeRhythmBackend('darwin'), 'coreml');
-assert.equal(preferredNativeRhythmBackend('linux'), null);
+assert.equal(preferredNativeRhythmBackend('linux'), 'native-cpu');
+assert.equal(preferredNativeModelBackend('win32'), 'directml');
+assert.equal(preferredNativeModelBackend('darwin'), 'native-cpu');
+const linuxNvidiaHardware = {
+  platform: 'linux' as const,
+  arch: 'x64',
+  cpu: { model: 'Fixture CPU', logicalCores: 16, totalMemoryBytes: 32 * 1024 ** 3 },
+  hardwareAcceleration: true,
+  gpus: [{ active: true, vendor: 'nvidia' as const, vendorId: 0x10de }],
+  graphicsFeatures: {},
+};
+assert.equal(preferredNativeModelBackend('linux', linuxNvidiaHardware), 'cuda');
+assert.equal(preferredNativeRhythmBackend('linux', linuxNvidiaHardware), 'cuda');
+const windowsAmdHardware = {
+  ...linuxNvidiaHardware,
+  platform: 'win32' as const,
+  gpus: [{ active: true, vendor: 'amd' as const, vendorId: 0x1002 }],
+};
+assert.equal(preferredNativeModelBackend('win32', windowsAmdHardware), 'directml');
+assert.equal(preferredNativeRhythmBackend('win32', windowsAmdHardware), 'directml');
+const linuxCpuHardware = {
+  ...linuxNvidiaHardware,
+  hardwareAcceleration: false,
+  gpus: [],
+};
+assert.equal(preferredNativeModelBackend('linux', linuxCpuHardware), 'native-cpu');
+assert.equal(preferredNativeRhythmBackend('linux', linuxCpuHardware), 'native-cpu');
 const windows = resolveDesktopInferenceCapabilities({
   platform: 'win32',
   transformerRuntime: true,
@@ -157,8 +184,27 @@ const linux = resolveDesktopInferenceCapabilities({
   platform: 'linux',
   transformerRuntime: true,
   ffmpegRuntime: true,
+  rhythmRuntime: true,
+  hardware: linuxNvidiaHardware,
 });
+assert.equal(linux.semantic.preferredBackend, 'cuda');
+assert.equal(linux.rhythm.preferredBackend, 'cuda');
 assert.equal(isDesktopInferenceCapabilities(linux), true);
+const linuxAmd = resolveDesktopInferenceCapabilities({
+  platform: 'linux', transformerRuntime: true, rhythmRuntime: true, ffmpegRuntime: true,
+  hardware: {
+    ...linuxNvidiaHardware,
+    gpus: [{ active: true, vendor: 'amd', vendorId: 0x1002 }],
+  },
+});
+assert.equal(linuxAmd.semantic.available, false);
+assert.match(linuxAmd.semantic.reason ?? '', /browser WebGPU preferred/);
+const linuxCpu = resolveDesktopInferenceCapabilities({
+  platform: 'linux', transformerRuntime: true, rhythmRuntime: true, ffmpegRuntime: true,
+  hardware: linuxCpuHardware,
+});
+assert.equal(linuxCpu.semantic.available, true);
+assert.equal(linuxCpu.semantic.preferredBackend, 'native-cpu');
 const noFfmpeg = resolveDesktopInferenceCapabilities({
   platform: 'darwin',
   transformerRuntime: true,
@@ -176,6 +222,10 @@ const unavailable = resolveDesktopInferenceCapabilities({
 assert.match(unavailable.semantic.reason ?? '', /native ONNX runtime unavailable/);
 assert.equal(isDesktopInferenceCapabilities({ ...windows, semantic: { ...windows.semantic, contractId: 'old' } }), false);
 assert.equal(isDesktopInferenceCapabilities({ ...windows, version: 2 }), false);
+assert.equal(isDesktopInferenceCapabilities({
+  ...linux,
+  hardware: { ...linuxNvidiaHardware, gpus: [{ active: true, vendor: 'bogus' }] },
+}), false);
 
 const semanticVector = Array(SEMANTIC_INFERENCE_CONTRACT.embeddingDimension).fill(0);
 assert.equal(isDesktopSemanticResponse({
@@ -186,6 +236,11 @@ assert.equal(isDesktopSemanticResponse({
 assert.equal(isDesktopClapResponse({
   requestId: 'clap-embed-1234',
   backend: 'directml',
+  result: { type: 'embedding', vector: semanticVector },
+}), true);
+assert.equal(isDesktopClapResponse({
+  requestId: 'clap-cuda-1234',
+  backend: 'cuda',
   result: { type: 'embedding', vector: semanticVector },
 }), true);
 assert.equal(isDesktopRhythmResponse({

@@ -53,14 +53,20 @@ assert.equal(
 );
 
 const linux = await configFor('linux-x64');
+for (const worker of ['asr', 'semantic', 'clap', 'rhythm']) {
+  assert.ok(
+    linux.files?.includes(`desktop-dist/native-${worker}-worker.mjs`),
+    `Linux packages must ship the native ${worker} worker`,
+  );
+}
 assert.equal(
-  linux.files?.includes('desktop-dist/native-asr-worker.mjs'),
+  linux.files?.includes('!node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**'),
   false,
-  'unsupported Linux packages must not ship native inference workers',
+  'Linux packages must retain the target ONNX Runtime binary',
 );
 assert.ok(
-  linux.files?.includes('!node_modules/onnxruntime-node/**'),
-  'unsupported Linux packages must exclude ONNX Runtime entirely',
+  linux.files?.includes('!node_modules/onnxruntime-node/bin/napi-v6/win32/x64/**'),
+  'Linux packages must exclude foreign ONNX Runtime binaries',
 );
 assert.equal(
   linux.files?.includes('!node_modules/sqlite-vec-linux-x64/**'),
@@ -78,6 +84,13 @@ for (const foreignPackage of [
     `Linux x64 packages must exclude sqlite-vec-${foreignPackage}`,
   );
 }
+
+const linuxArm64 = await configFor('linux-arm64');
+assert.equal(
+  linuxArm64.files?.includes('!node_modules/onnxruntime-node/bin/napi-v6/linux/arm64/**'),
+  false,
+  'Linux arm64 packages must retain the arm64 ONNX Runtime binary',
+);
 
 const windows = await configFor('win32-x64');
 assert.equal(

@@ -17,8 +17,33 @@ export const DESKTOP_INFERENCE_CHANNELS = {
   progress: 'openchatcut:inference-progress',
 } as const;
 
-export type DesktopInferenceBackend = 'coreml' | 'directml' | 'native-cpu' | 'native-metal';
+export type DesktopInferenceBackend = 'coreml' | 'cuda' | 'directml' | 'native-cpu' | 'native-metal';
 export type DesktopAsrBackend = 'directml' | 'native-cpu' | 'native-metal';
+
+export type DesktopGpuVendor = 'amd' | 'apple' | 'intel' | 'microsoft' | 'nvidia' | 'unknown';
+
+export interface DesktopGpuDevice {
+  readonly active: boolean;
+  readonly vendor: DesktopGpuVendor;
+  readonly vendorId?: number;
+  readonly deviceId?: number;
+  readonly description?: string;
+}
+
+export interface DesktopHardwareCapabilities {
+  readonly platform: 'darwin' | 'win32' | 'linux' | 'unsupported';
+  readonly arch: string;
+  readonly cpu: {
+    readonly model: string;
+    readonly logicalCores: number;
+    readonly totalMemoryBytes: number;
+  };
+  readonly hardwareAcceleration: boolean;
+  readonly gpus: readonly DesktopGpuDevice[];
+  readonly graphicsFeatures: Readonly<Record<string, string>>;
+  readonly driverVendor?: string;
+  readonly driverVersion?: string;
+}
 
 interface DesktopModelCapability<ContractId extends string> {
   readonly available: boolean;
@@ -30,6 +55,7 @@ interface DesktopModelCapability<ContractId extends string> {
 export interface DesktopInferenceCapabilities {
   readonly version: 3;
   readonly platform: 'darwin' | 'win32' | 'linux' | 'unsupported';
+  readonly hardware?: DesktopHardwareCapabilities;
   readonly asr: DesktopModelCapability<typeof ASR_INFERENCE_CONTRACT.id>;
   readonly semantic: DesktopModelCapability<typeof SEMANTIC_INFERENCE_CONTRACT.id>;
   readonly clap: DesktopModelCapability<typeof CLAP_INFERENCE_CONTRACT.id>;

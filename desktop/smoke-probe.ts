@@ -62,12 +62,21 @@ export async function runDesktopSmokeProbe(
     semantic?: { available?: unknown };
     clap?: { available?: unknown };
     rhythm?: { available?: unknown };
+    hardware?: {
+      cpu?: { logicalCores?: unknown; totalMemoryBytes?: unknown };
+      gpus?: unknown;
+      hardwareAcceleration?: unknown;
+    };
   } | null;
   if (inference?.version !== 3
     || typeof inference.asr?.available !== 'boolean'
     || typeof inference.semantic?.available !== 'boolean'
     || typeof inference.clap?.available !== 'boolean'
-    || typeof inference.rhythm?.available !== 'boolean') {
+    || typeof inference.rhythm?.available !== 'boolean'
+    || !Array.isArray(inference.hardware?.gpus)
+    || typeof inference.hardware?.cpu?.logicalCores !== 'number'
+    || typeof inference.hardware?.cpu?.totalMemoryBytes !== 'number'
+    || typeof inference.hardware?.hardwareAcceleration !== 'boolean') {
     throw new Error('desktop native inference preload is unavailable');
   }
   console.log('[smoke] desktop native inference preload ok');

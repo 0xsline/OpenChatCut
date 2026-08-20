@@ -43,6 +43,7 @@ interface NativeSemanticWorkerConfig {
   readonly origin: string;
   readonly cacheDir: string;
   readonly platform: NodeJS.Platform;
+  readonly preferredBackend: DesktopInferenceBackend;
 }
 
 interface SharedSemanticInputs {
@@ -78,19 +79,35 @@ function initialize(value: unknown): void {
   const config = value as Partial<NativeSemanticWorkerConfig>;
   if (typeof config.origin !== 'string'
     || typeof config.cacheDir !== 'string' || config.cacheDir.length === 0
-    || typeof config.platform !== 'string') {
+    || typeof config.platform !== 'string'
+    || !isNativeModelBackend(config.preferredBackend)) {
     throw new Error('invalid native semantic configuration');
   }
   const origin = new URL(config.origin);
   if (origin.protocol !== 'http:' && origin.protocol !== 'https:') {
     throw new Error('invalid native semantic origin');
   }
-  runtime = { origin: origin.origin, cacheDir: config.cacheDir, platform: config.platform };
+  runtime = {
+    origin: origin.origin,
+    cacheDir: config.cacheDir,
+    platform: config.platform,
+    preferredBackend: config.preferredBackend,
+  };
   env.localModelPath = config.cacheDir;
   env.cacheDir = config.cacheDir;
   env.useFSCache = true;
   env.allowRemoteModels = false;
   env.allowLocalModels = true;
+}
+
+function isNativeModelBackend(value: unknown): value is DesktopInferenceBackend {
+  return value === 'cuda' || value === 'directml' || value === 'native-cpu';
+}
+
+function backendDevice(backend: DesktopInferenceBackend): 'cpu' | 'cuda' | 'dml' {
+  if (backend === 'directml') return 'dml';
+  if (backend === 'cuda') return 'cuda';
+  return 'cpu';
 }
 
 function requireRuntime(): NativeSemanticWorkerConfig {
@@ -139,7 +156,7 @@ async function loadModel(
   const model = await ChineseCLIPModel.from_pretrained(SEMANTIC_INFERENCE_CONTRACT.modelId, {
     revision: SEMANTIC_INFERENCE_CONTRACT.revision,
     dtype: SEMANTIC_INFERENCE_CONTRACT.dtype,
-    device: backend === 'directml' ? 'dml' : 'cpu',
+    device: backendDevice(backend),
     progress_callback: (value: unknown) => postProgress(requestId, value),
   });
   try {
@@ -153,11 +170,10 @@ async function loadModel(
 
 async function createLoadedModel(requestId: string): Promise<LoadedSemanticModel> {
   const inputs = await loadSharedInputs(requestId);
-  if (requireRuntime().platform !== 'win32') {
-    return loadModel(requestId, 'native-cpu', inputs);
-  }
+  const preferred = requireRuntime().preferredBackend;
+  if (preferred === 'native-cpu') return loadModel(requestId, preferred, inputs);
   try {
-    return await loadModel(requestId, 'directml', inputs);
+    return await loadModel(requestId, preferred, inputs);
   } catch {
     return loadModel(requestId, 'native-cpu', inputs);
   }

@@ -7,6 +7,7 @@ import {
   parseDesktopClapRequest,
   parseDesktopRhythmRequest,
   parseDesktopSemanticRequest,
+  type DesktopHardwareCapabilities,
   type DesktopInferenceProgress,
 } from '../shared/desktop-inference.ts';
 import { assertTrustedDesktopSenderUrl } from './page-origin.ts';
@@ -53,12 +54,16 @@ export interface InstalledDesktopInference {
   dispose(): void;
 }
 
-function createServices(trustedOrigin: string, cacheDir: string): NativeServices {
+function createServices(
+  trustedOrigin: string,
+  cacheDir: string,
+  hardware?: DesktopHardwareCapabilities,
+): NativeServices {
   return {
-    asr: new NativeAsrService({ cacheDir }),
-    semantic: new NativeSemanticService({ origin: trustedOrigin, cacheDir }),
-    clap: new NativeClapService({ origin: trustedOrigin, cacheDir }),
-    rhythm: new NativeRhythmService({ cacheDir }),
+    asr: new NativeAsrService({ cacheDir, hardware }),
+    semantic: new NativeSemanticService({ origin: trustedOrigin, cacheDir, hardware }),
+    clap: new NativeClapService({ origin: trustedOrigin, cacheDir, hardware }),
+    rhythm: new NativeRhythmService({ cacheDir, hardware }),
   };
 }
 
@@ -85,16 +90,22 @@ function requestInputBytes(request: object): number {
 class DesktopInferenceState {
   private readonly trustedOrigin: string;
   private readonly cacheDir: string;
+  private readonly hardware?: DesktopHardwareCapabilities;
   private services: NativeServices;
   private enabled = false;
   private readonly budget = new NativeInferenceBudget();
   private readonly residency = new NativeInferenceResidency();
   private readonly observedOwners = new Map<number, ObservedOwner>();
 
-  constructor(trustedOrigin: string, cacheDir: string) {
+  constructor(
+    trustedOrigin: string,
+    cacheDir: string,
+    hardware?: DesktopHardwareCapabilities,
+  ) {
     this.trustedOrigin = trustedOrigin;
     this.cacheDir = cacheDir;
-    this.services = createServices(trustedOrigin, cacheDir);
+    this.hardware = hardware;
+    this.services = createServices(trustedOrigin, cacheDir, hardware);
   }
 
   assertTrusted(event: IpcMainInvokeEvent): void {
@@ -236,7 +247,7 @@ class DesktopInferenceState {
   private resetServices(): void {
     for (const requestId of this.budget.requestIds()) this.cancelServices(requestId);
     this.disposeServices();
-    this.services = createServices(this.trustedOrigin, this.cacheDir);
+    this.services = createServices(this.trustedOrigin, this.cacheDir, this.hardware);
     this.residency.clear();
   }
 }
@@ -292,8 +303,9 @@ function registerInferenceHandlers(state: DesktopInferenceState): void {
 export function installDesktopInferenceIpc(
   trustedOrigin: string,
   cacheDir: string,
+  hardware?: DesktopHardwareCapabilities,
 ): InstalledDesktopInference {
-  const state = new DesktopInferenceState(trustedOrigin, cacheDir);
+  const state = new DesktopInferenceState(trustedOrigin, cacheDir, hardware);
   registerInferenceHandlers(state);
   return {
     dispose: () => {

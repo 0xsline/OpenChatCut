@@ -20,6 +20,7 @@ interface NativeClapWorkerConfig {
   readonly origin: string;
   readonly cacheDir: string;
   readonly platform: NodeJS.Platform;
+  readonly preferredBackend: DesktopInferenceBackend;
 }
 
 interface ActiveNativeClapWorkerConfig extends NativeClapWorkerConfig {
@@ -42,7 +43,8 @@ function initialize(value: unknown): void {
   const config = value as Partial<NativeClapWorkerConfig>;
   if (typeof config.origin !== 'string'
     || typeof config.cacheDir !== 'string' || config.cacheDir.length === 0
-    || (config.platform !== 'win32' && config.platform !== 'darwin')) {
+    || (config.platform !== 'win32' && config.platform !== 'darwin' && config.platform !== 'linux')
+    || !isNativeModelBackend(config.preferredBackend)) {
     throw new Error('invalid native CLAP configuration');
   }
   const parsedOrigin = new URL(config.origin);
@@ -55,6 +57,16 @@ function initialize(value: unknown): void {
   env.useFSCache = true;
   env.allowLocalModels = true;
   env.allowRemoteModels = false;
+}
+
+function isNativeModelBackend(value: unknown): value is DesktopInferenceBackend {
+  return value === 'cuda' || value === 'directml' || value === 'native-cpu';
+}
+
+function backendDevice(backend: DesktopInferenceBackend): 'cpu' | 'cuda' | 'dml' {
+  if (backend === 'directml') return 'dml';
+  if (backend === 'cuda') return 'cuda';
+  return 'cpu';
 }
 
 function requireRuntime(): ActiveNativeClapWorkerConfig {
@@ -109,7 +121,7 @@ async function loadModel(
 ): Promise<ClapAudioModelWithProjection> {
   return ClapAudioModelWithProjection.from_pretrained(CLAP_INFERENCE_CONTRACT.modelId, {
     revision: CLAP_INFERENCE_CONTRACT.revision,
-    device: selectedBackend === 'directml' ? 'dml' : 'cpu',
+    device: backendDevice(selectedBackend),
     dtype: CLAP_INFERENCE_CONTRACT.dtype,
     progress_callback: report,
   });
@@ -118,14 +130,12 @@ async function loadModel(
 async function loadPreferredModel(requestId: string): Promise<void> {
   const report = loadProgressReporter(requestId);
   await ensureProcessor(report);
-  const preferred: DesktopInferenceBackend = requireRuntime().platform === 'win32'
-    ? 'directml'
-    : 'native-cpu';
+  const preferred = requireRuntime().preferredBackend;
   try {
     model = await loadModel(preferred, report);
     backend = preferred;
   } catch (error) {
-    if (preferred !== 'directml') throw error;
+    if (preferred === 'native-cpu') throw error;
     model = await loadModel('native-cpu', report);
     backend = 'native-cpu';
   }

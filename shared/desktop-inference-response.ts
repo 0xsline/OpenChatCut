@@ -8,6 +8,7 @@ import type {
   DesktopAsrChunk,
   DesktopAsrResponse,
   DesktopClapResponse,
+  DesktopGpuDevice,
   DesktopInferenceBackend,
   DesktopInferenceCapabilities,
   DesktopInferenceProgress,
@@ -32,7 +33,43 @@ function isRequestId(value: unknown): value is string {
 }
 
 function isBackend(value: unknown): value is DesktopInferenceBackend {
-  return value === 'coreml' || value === 'directml' || value === 'native-cpu' || value === 'native-metal';
+  return value === 'coreml' || value === 'cuda' || value === 'directml'
+    || value === 'native-cpu' || value === 'native-metal';
+}
+
+function isHardwareCapabilities(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const hardware = value as NonNullable<DesktopInferenceCapabilities['hardware']>;
+  const cpu = hardware.cpu;
+  return (hardware.platform === 'darwin' || hardware.platform === 'win32'
+      || hardware.platform === 'linux' || hardware.platform === 'unsupported')
+    && typeof hardware.arch === 'string' && hardware.arch.length > 0 && hardware.arch.length <= 32
+    && typeof cpu?.model === 'string' && cpu.model.length <= 256
+    && Number.isSafeInteger(cpu.logicalCores) && cpu.logicalCores > 0
+    && Number.isSafeInteger(cpu.totalMemoryBytes) && cpu.totalMemoryBytes >= 0
+    && typeof hardware.hardwareAcceleration === 'boolean'
+    && Array.isArray(hardware.gpus) && hardware.gpus.length <= 16
+    && hardware.gpus.every(isGpuDevice)
+    && typeof hardware.graphicsFeatures === 'object' && hardware.graphicsFeatures !== null
+    && !Array.isArray(hardware.graphicsFeatures)
+    && Object.keys(hardware.graphicsFeatures).length <= 64
+    && Object.entries(hardware.graphicsFeatures).every(([key, entry]) =>
+      key.length <= 64 && typeof entry === 'string' && entry.length <= 64)
+    && (hardware.driverVendor === undefined
+      || (typeof hardware.driverVendor === 'string' && hardware.driverVendor.length <= 256))
+    && (hardware.driverVersion === undefined
+      || (typeof hardware.driverVersion === 'string' && hardware.driverVersion.length <= 256));
+}
+
+function isGpuDevice(value: unknown): value is DesktopGpuDevice {
+  if (typeof value !== 'object' || value === null) return false;
+  const gpu = value as DesktopGpuDevice;
+  return typeof gpu.active === 'boolean'
+    && ['amd', 'apple', 'intel', 'microsoft', 'nvidia', 'unknown'].includes(gpu.vendor)
+    && (gpu.vendorId === undefined || (Number.isSafeInteger(gpu.vendorId) && gpu.vendorId >= 0))
+    && (gpu.deviceId === undefined || (Number.isSafeInteger(gpu.deviceId) && gpu.deviceId >= 0))
+    && (gpu.description === undefined
+      || (typeof gpu.description === 'string' && gpu.description.length <= 256));
 }
 
 function isModelCapability(value: unknown, contractId: string): boolean {
@@ -60,7 +97,8 @@ export function isDesktopInferenceCapabilities(value: unknown): value is Desktop
     && isModelCapability(capabilities.asr, ASR_INFERENCE_CONTRACT.id)
     && isModelCapability(capabilities.semantic, SEMANTIC_INFERENCE_CONTRACT.id)
     && isModelCapability(capabilities.clap, CLAP_INFERENCE_CONTRACT.id)
-    && isModelCapability(capabilities.rhythm, RHYTHM_INFERENCE_CONTRACT.id);
+    && isModelCapability(capabilities.rhythm, RHYTHM_INFERENCE_CONTRACT.id)
+    && (capabilities.hardware === undefined || isHardwareCapabilities(capabilities.hardware));
 }
 
 function isDesktopAsrChunk(value: unknown): value is DesktopAsrChunk {

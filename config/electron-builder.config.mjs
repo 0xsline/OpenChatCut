@@ -27,7 +27,8 @@ const ONNX_RUNTIME_TARGETS = [
 const TARGET_COMPOSITOR = { 'darwin-arm64': 'darwin-arm64', 'darwin-x64': 'darwin-x64', 'win32-x64': 'win32-x64-msvc', 'linux-x64': 'linux-x64-gnu' };
 const target = process.env.CC_EB_TARGET ?? `${process.platform}-${process.arch}`;
 const keep = TARGET_COMPOSITOR[target] ?? target;
-const nativeInferenceSupported = target.startsWith('darwin-') || target.startsWith('win32-');
+const nativeInferenceSupported = target.startsWith('darwin-')
+  || target.startsWith('win32-') || target.startsWith('linux-');
 const keepOnnxRuntime = nativeInferenceSupported ? target.replace('-', '/').replace('-msvc', '') : null;
 const nativeInferenceWorkers = nativeInferenceSupported
   ? [
