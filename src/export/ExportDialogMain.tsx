@@ -100,13 +100,15 @@ export function ExportDialogMain({ state, model }: { state: TimelineState; model
           qualityMode={model.qualityMode} setQualityMode={model.setQualityMode}
           onToggle={workflow.toggleAutoQa} nleFormat={model.nleFormat}
           setNleFormat={model.setNleFormat} includeMg={model.includeMg}
-          setIncludeMg={model.setIncludeMg} mgCount={model.mgItems.length}
+          setIncludeMg={model.setIncludeMg} mgCount={model.mgItems.length} base={model.base}
         />
         <StructuredExportFailure model={model} />
       </div>
       <BackgroundExportJobs model={model} />
-      <ExportDestinationBar busy={!!workflow.busy} choosing={workflow.choosingDestination}
-        destination={workflow.destination} onChoose={workflow.chooseDestination} />
+      {model.tab !== 'jianying' && (
+        <ExportDestinationBar busy={!!workflow.busy} choosing={workflow.choosingDestination}
+          destination={workflow.destination} onChoose={workflow.chooseDestination} />
+      )}
       <ExportFooter tab={model.tab} outputName={model.outputName} videoSummary={model.videoSummary}
         disabled={model.disabled} workflow={workflow} />
     </main>

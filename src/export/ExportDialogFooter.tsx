@@ -89,11 +89,13 @@ export function ExportFooter({ tab, outputName, videoSummary, disabled, workflow
       {cancellable && (
         <button type="button" className="cc-export-cancel" onClick={cancelExport}>{t('取消')}</button>
       )}
-      <button type="button" className="cc-export-cta" onClick={() => void run()} disabled={disabled}>
-        {!busy && <Icon name={progress?.phase === 'completed' ? 'check' : 'download'} size={17} />}
-        {busy ? `${progress?.percent ?? 0}%` : progress?.phase === 'completed' ? t('完成')
-          : progress?.phase === 'failed' ? t('重试') : t(EXPORT_ACTION_LABELS[tab])}
-      </button>
+      {tab !== 'jianying' && (
+        <button type="button" className="cc-export-cta" onClick={() => void run()} disabled={disabled}>
+          {!busy && <Icon name={progress?.phase === 'completed' ? 'check' : 'download'} size={17} />}
+          {busy ? `${progress?.percent ?? 0}%` : progress?.phase === 'completed' ? t('完成')
+            : progress?.phase === 'failed' ? t('重试') : t(EXPORT_ACTION_LABELS[tab])}
+        </button>
+      )}
     </footer>
   );
 }
