@@ -30,7 +30,7 @@ type PopoverBox = { left: number; top: number; width: number; maxHeight: number 
 const compactNumber = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const mono: CSSProperties = { fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace' };
 
-function useRuntimeSidecar(projectId: string) {
+function useRuntimeSidecar(projectId: string, refreshKey: boolean) {
   const [sidecar, setSidecar] = useState<AgentRuntimeSidecar | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -52,7 +52,7 @@ function useRuntimeSidecar(projectId: string) {
     void refresh();
     const unsubscribe = subscribeAgentRuntime(projectId, () => { void refresh(); });
     return () => { alive = false; unsubscribe(); };
-  }, [projectId]);
+  }, [projectId, refreshKey]);
   return { sidecar, loading, failed };
 }
 
@@ -333,8 +333,8 @@ function InspectorContent({ sidecar, loading, failed, t }: {
 
 export function AgentRunInspector({ projectId }: { projectId: string }) {
   const t = useT();
-  const { sidecar, loading, failed } = useRuntimeSidecar(projectId);
   const [open, setOpen] = useState(false);
+  const { sidecar, loading, failed } = useRuntimeSidecar(projectId, open);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const box = usePopoverBox(open, triggerRef.current);
