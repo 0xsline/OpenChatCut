@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedKeystore } from '../keystore.ts';
 import { extractAudioPlugin } from './extract-audio.ts';
+
+const source = await readFile(new URL('./extract-audio.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(source, /\bspawn\(ffprobeBin\(\)/, 'ffprobe must use the shared low-priority process launcher');
 
 const directory = await mkdtemp(join(tmpdir(), 'openchatcut-extract-audio-'));
 const previousProbe = process.env.OPENCHATCUT_FFPROBE;

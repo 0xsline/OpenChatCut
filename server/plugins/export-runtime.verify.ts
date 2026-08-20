@@ -18,6 +18,7 @@ import {
   trackExportJobController,
 } from './export-runtime.ts';
 import { createGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
+import { ffmpegThreadArgs } from '../media-process.ts';
 
 assert.equal(resolveMaxActiveExports(undefined), 1);
 assert.equal(resolveMaxActiveExports('invalid'), 1);
@@ -31,11 +32,14 @@ assert.deepEqual(
 
 assert.deepEqual(
   retimeVideoEncodingArgs('vp8', 'libx264', 12_000_000),
-  ['-c:v', 'libvpx', '-b:v', '12000000'],
+  ['-c:v', 'libvpx', ...ffmpegThreadArgs(), '-b:v', '12000000'],
 );
 for (const encoder of ['h264_videotoolbox', 'h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_vaapi', 'libx264'] as const) {
   const args = retimeVideoEncodingArgs('h264', encoder, 12_000_000);
   assert.equal(args[args.indexOf('-b:v') + 1], '12000000', `${encoder} retime keeps the selected bitrate`);
+  if (encoder === 'libx264') {
+    assert.ok(args.indexOf('-threads') > args.indexOf('-c:v'), 'software encoder threads belong to the output option group');
+  }
 }
 
 const software = {

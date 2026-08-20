@@ -6,7 +6,6 @@
 // Runs on demand at transcription time; caches `<stem>.asr.ogg` (or .mp3).
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { rename, stat, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -75,7 +74,7 @@ function probeHasAudio(inputPath: string): Promise<boolean> {
       clearTimeout(timer);
       resolve(hasAudio);
     };
-    const probe = spawn(ffprobeBin(), [
+    const probe = spawnMediaProcess(ffprobeBin(), [
       '-v', 'error', '-select_streams', 'a',
       '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', inputPath,
     ], { stdio: ['ignore', 'pipe', 'ignore'] });

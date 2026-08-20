@@ -36,8 +36,8 @@ const TARGET_FLOOR_BITRATE_BPS = 1_500_000;
 const REFERENCE_PIXELS = 1920 * 1080;
 const VIDEO_AUDIO_BITRATE = '160k';
 const FFMPEG_TIMEOUT_MS = 60 * 60_000; // long masters
-// Soft cap for "efficient enough" masters: above this size the cost of a full
-// re-encode (VFR→CFR, optimization) dwarfs its benefit, so the source is kept.
+// Soft cap for optional optimization only; compatibility fixes such as VFR to
+// CFR conversion still run for large sources.
 const LARGE_SOURCE_BYTES = 1.5 * 1024 * 1024 * 1024;
 
 
@@ -313,10 +313,6 @@ export function normalizeReason(
   optimize: boolean,
 ): string | null {
   if (forceCfr || meta.variableFrameRate) {
-    // Multi-GiB VFR masters (game captures, screen recordings) are accepted
-    // as-is: a full software re-encode of a high-bitrate 2K source costs far
-    // more than the CFR correction earns, and preview proxies handle playback.
-    if (!forceCfr && meta.size > LARGE_SOURCE_BYTES) return null;
     const avg = meta.avgFrameRate?.toFixed(3) ?? 'unknown';
     const nominal = meta.nominalFrameRate?.toFixed(3) ?? 'unknown';
     return `variable frame rate detected (avg ${avg}, nominal ${nominal})`;

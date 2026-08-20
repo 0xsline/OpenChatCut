@@ -3,7 +3,11 @@
 // (Change points are selected first, those too close to each other are not repeated, too many candidates are evenly distributed in order, and discarded outside the window,
 // Exactly the same as uniform sampling when there are no candidates).
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { frameSeekArgs, pickDistinctTimes, sampleTimesMs } from './extract-frames.ts';
+
+const source = await readFile(new URL('./extract-frames.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(source, /\bspawn\(ffprobeBin\(\)/, 'ffprobe must use the shared low-priority process launcher');
 
 const inWindow = (times: number[], lo: number, hi: number): boolean =>
   times.every((t) => t >= lo && t < hi);

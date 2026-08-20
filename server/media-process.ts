@@ -20,7 +20,8 @@ export function ffmpegThreadCount(cores: number = availableParallelism()): numbe
   return Math.max(1, Math.ceil(cores * 0.75));
 }
 
-/** Global ffmpeg args placed before `-i`; ffprobe accepts them as well. */
+/** Codec-scoped thread option. Place it in each input or output option group
+ * that should be capped; an option before `-i` does not limit output encoders. */
 export function ffmpegThreadArgs(cores: number = availableParallelism()): string[] {
   return ['-threads', String(ffmpegThreadCount(cores))];
 }

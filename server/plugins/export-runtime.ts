@@ -213,7 +213,9 @@ export function retimeVideoEncodingArgs(
   encoder: H264Encoder,
   targetBitrate: number,
 ): string[] {
-  if (codec === 'vp8') return ['-c:v', 'libvpx', '-b:v', String(targetBitrate)];
+  if (codec === 'vp8') {
+    return ['-c:v', 'libvpx', ...ffmpegThreadArgs(), '-b:v', String(targetBitrate)];
+  }
   return h264EncodingArgs({ encoder, targetBitrate, softwarePreset: 'medium' });
 }
 

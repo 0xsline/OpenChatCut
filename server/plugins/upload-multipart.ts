@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, unlink } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
@@ -11,8 +11,15 @@ import { uploadDir } from '../media-dir.ts';
 import { maxUploadBytes } from './upload.ts';
 import { assembleHashedParts } from './upload-multipart-assembly.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
+import {
+  loadMeta,
+  MAX_PARTS,
+  multipartRoot,
+  saveMeta,
+  sessionDir,
+  type MultipartMeta,
+} from './upload-multipart-meta.ts';
 const DEFAULT_PART_SIZE = 8 * 1024 * 1024;
-const MAX_PARTS = 10_000;
 const DEFAULT_IDLE_TTL_MS = 2 * 60 * 60_000, DEFAULT_ABSOLUTE_TTL_MS = 24 * 60 * 60_000;
 const DEFAULT_ACTIVE_GRACE_MS = 2 * 60_000, DEFAULT_GC_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_ROUTE_GC_MS = 30_000;
@@ -36,10 +43,6 @@ function multipartLimits(): MultipartGcLimits {
     maxSessions: envLimit('UPLOAD_MULTIPART_MAX_SESSIONS', 32),
     maxBytes: envLimit('UPLOAD_MULTIPART_MAX_BYTES', defaultMaxBytes),
   };
-}
-interface MultipartMeta {
-  uploadId: string; name: string; ext: string; assetId?: string; contentType?: string;
-  size: number; partSize: number; partCount: number; createdAt: number; updatedAt: number;
 }
 export interface MultipartGcLimits { idleTtlMs: number; absoluteTtlMs: number; activeGraceMs: number; maxSessions: number; maxBytes: number }
 export interface MultipartSessionInfo { uploadId: string; createdAt: number; updatedAt: number; bytes: number; active?: boolean }
@@ -101,63 +104,7 @@ function readJson(req: IncomingMessage, max = 64 * 1024): Promise<unknown> {
     req.on('error', reject);
   });
 }
-function multipartRoot(): string { return join(uploadDir(), '.multipart'); }
-function sessionDir(uploadId: string): string { return join(multipartRoot(), uploadId); }
 function isSafeUploadId(id: string): boolean { return /^[a-zA-Z0-9_-]{8,80}$/.test(id); }
-function parseMeta(raw: unknown, uploadId: string): MultipartMeta | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Partial<MultipartMeta>;
-  const numbers = [value.size, value.partSize, value.partCount, value.createdAt];
-  if (value.uploadId !== uploadId || typeof value.name !== 'string' || typeof value.ext !== 'string' || !/^\.[a-z0-9]{1,16}$/.test(value.ext)
-    || !numbers.every((item) => typeof item === 'number' && Number.isFinite(item) && item > 0)
-    || (value.assetId !== undefined && !/^[a-zA-Z0-9_-]{1,80}$/.test(value.assetId)) || (value.contentType !== undefined && (typeof value.contentType !== 'string' || value.contentType.length > 200)) || !Number.isInteger(Number(value.partCount)) || value.partCount! > MAX_PARTS
-    || value.partCount !== Math.ceil(value.size! / value.partSize!)) return null;
-  const updatedAt = typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt)
-    ? value.updatedAt : value.createdAt;
-  return { ...value, updatedAt } as MultipartMeta;
-}
-async function loadMeta(uploadId: string): Promise<MultipartMeta | null> {
-  try {
-    return parseMeta(JSON.parse(await readFile(join(sessionDir(uploadId), 'meta.json'), 'utf8')), uploadId);
-  } catch {
-    return null;
-  }
-}
-const metaWriteQueues = new Map<string, Promise<void>>();
-function enqueueMetaWrite(uploadId: string, task: () => Promise<void>): Promise<void> {
-  const previous = metaWriteQueues.get(uploadId) ?? Promise.resolve();
-  const next = previous.then(task, task);
-  const tail = next.catch(() => {});
-  metaWriteQueues.set(uploadId, tail);
-  return next;
-}
-async function writeMeta(meta: MultipartMeta, tmp: string): Promise<void> {
-  await writeFile(tmp, JSON.stringify(meta), 'utf8');
-  let attempt = 0;
-  for (;;) {
-    try {
-      await rename(tmp, join(sessionDir(meta.uploadId), 'meta.json'));
-      return;
-    } catch (error) {
-      attempt += 1;
-      if (attempt >= 4 || !(error instanceof Error) || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
-    }
-  }
-}
-async function saveMeta(meta: MultipartMeta): Promise<void> {
-  const dir = sessionDir(meta.uploadId);
-  await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `.meta-${randomUUID()}.tmp`);
-  return enqueueMetaWrite(meta.uploadId, async () => {
-    try {
-      await writeMeta(meta, tmp);
-    } catch (error) {
-      await unlink(tmp).catch(() => {});
-      throw error;
-    }
-  });
-}
 function partPath(uploadId: string, part: number): string {
   return join(sessionDir(uploadId), `part-${String(part).padStart(5, '0')}`);
 }

@@ -162,7 +162,7 @@ async function timelineSlicePath(reference: ServerGenerationReference): Promise<
       await runSliceFfmpeg([
         ...common,
         '-an', '-vf', `setpts=PTS/${playbackRate}`,
-        '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
+        '-c:v', 'libx264', ...ffmpegThreadArgs(), '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
         output,
       ]);

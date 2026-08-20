@@ -28,6 +28,7 @@ assert.equal(shouldAutoRequestPreviewProxy('master', 'auto'), false);
 assert.equal(shouldAutoRequestPreviewProxy('balanced', 'auto'), true);
 assert.equal(shouldAutoRequestPreviewProxy('master', 'proxy'), true);
 assert.equal(shouldAutoRequestPreviewProxy('balanced', 'original'), false);
+assert.equal(shouldAutoRequestPreviewProxy('balanced'), false);
 assert.equal(shouldPreferMasterPreview('master', 'auto'), true);
 assert.equal(shouldPreferMasterPreview('balanced', 'auto'), false);
 assert.equal(shouldPreferMasterPreview('balanced', 'original'), true);

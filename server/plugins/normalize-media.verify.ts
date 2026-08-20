@@ -2,12 +2,11 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { access, copyFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { DEFAULT_UPLOAD_MAX_BYTES } from '../r2.ts';
 import { seedKeystore } from '../keystore.ts';
-import { writeUploadReference } from '../media-dir.ts';
 import { maxUploadBytes } from './upload-routes.ts';
 import { uploadMultipartPlugin } from './upload-multipart.ts';
 import {
@@ -20,6 +19,7 @@ import {
   resolveStreamPlan,
   type NormalizeEncodeContext,
 } from './normalize-media.ts';
+import { postNormalize, probeVideoFixture, waitFor } from './normalize-media-verify-helpers.ts';
 
 assert.equal(parseFrameRate('30/1'), 30);
 assert.ok(Math.abs((parseFrameRate('30000/1001') ?? 0) - 29.97002997) < 0.000001);
@@ -92,69 +92,6 @@ assert.equal(existingTargetRealpathCalls, 1, 'an existing target uses its own re
 for (const [name, binary] of [['ffmpeg', ffmpegBin()], ['ffprobe', ffprobeBin()]]) {
   const result = spawnSync(binary, ['-version'], { encoding: 'utf8' });
   assert.equal(result.status, 0, `${name} binary is not executable: ${result.error?.message ?? result.stderr}`);
-}
-
-interface VideoFixtureProbe {
-  duration: number;
-  frameCount: number;
-  avgFrameRate: number;
-  nominalFrameRate: number;
-}
-
-function probeVideoFixture(path: string): VideoFixtureProbe {
-  const result = spawnSync(ffprobeBin(), [
-    '-v', 'error',
-    '-show_entries', 'format=duration:stream=codec_type,duration,avg_frame_rate,r_frame_rate,nb_frames',
-    '-of', 'json',
-    path,
-  ], { encoding: 'utf8' });
-  assert.equal(result.status, 0, `failed to probe ${basename(path)}: ${result.stderr}`);
-  const payload: unknown = JSON.parse(result.stdout || '{}');
-  if (!payload || typeof payload !== 'object') {
-    throw new Error(`${basename(path)} returned an invalid ffprobe payload`);
-  }
-  const streams = 'streams' in payload && Array.isArray(payload.streams) ? payload.streams : [];
-  const video = streams.find(
-    (stream): stream is Record<string, unknown> => (
-      Boolean(stream)
-      && typeof stream === 'object'
-      && 'codec_type' in stream
-      && stream.codec_type === 'video'
-    ),
-  );
-  if (!video) throw new Error(`${basename(path)} has no video stream`);
-  const formatDuration = 'format' in payload
-    && payload.format
-    && typeof payload.format === 'object'
-    && 'duration' in payload.format
-    ? payload.format.duration
-    : undefined;
-  const duration = Number(formatDuration ?? video.duration);
-  const frameCount = Number(video.nb_frames);
-  const avgFrameRate = parseFrameRate(video.avg_frame_rate);
-  const nominalFrameRate = parseFrameRate(video.r_frame_rate);
-  if (!(duration > 0) || !(frameCount > 0) || !avgFrameRate || !nominalFrameRate) {
-    throw new Error(`${basename(path)} has incomplete timing metadata`);
-  }
-  return { duration, frameCount, avgFrameRate, nominalFrameRate };
-}
-
-async function postNormalize(origin: string, src: string, body: Record<string, unknown> = {}): Promise<Response> {
-  return fetch(`${origin}/api/normalize-media`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ src: `/media/uploads/${src}`, ...body }),
-  });
-}
-
-async function waitFor(predicate: () => boolean, message: string): Promise<void> {
-  const deadline = Date.now() + 5_000;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(message);
-    const delay = Promise.withResolvers<void>();
-    setTimeout(delay.resolve, 10);
-    await delay.promise;
-  }
 }
 
 const previousMediaDir = process.env.MEDIA_DIR;
@@ -372,26 +309,6 @@ try {
   assert.equal(accepted.normalized, false, 'compatible sources are not optimized merely for exceeding 1920px');
   assert.equal(accepted.path, '/media/uploads/compatible-large-frame.mp4');
   assert.deepEqual([accepted.width, accepted.height], [2048, 1152]);
-
-  const referencedSourcePath = join(testDir, 'referenced-master.mov');
-  await copyFile(vfrSourcePath, referencedSourcePath);
-  await writeUploadReference('referenced-master.mov', referencedSourcePath, testDir);
-  const referencedResponse = await postNormalize(origin, 'referenced-master.mov', { force: true });
-  const referencedText = await referencedResponse.text();
-  assert.equal(referencedResponse.status, 200, referencedText);
-  const referenced = JSON.parse(referencedText) as {
-    normalized: boolean;
-    path: string;
-    reason: string;
-  };
-  assert.equal(
-    referenced.normalized,
-    false,
-    'referenced sources are read-only and must never be replaced in place',
-  );
-  assert.equal(referenced.path, '/media/uploads/referenced-master.mov');
-  assert.match(referenced.reason, /read-only/);
-  await access(referencedSourcePath);
 
   const audioOnlyResponse = await fetch(`${origin}/api/normalize-media`, {
     method: 'POST',

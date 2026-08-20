@@ -44,10 +44,8 @@ function readPreviewSourceInitial(): PreviewSourceMode {
     const raw = localStorage.getItem(PREVIEW_SOURCE_KEY);
     if (raw === 'auto' || raw === 'original' || raw === 'proxy') return raw;
   } catch { /* private mode */ }
-  // Default to auto: high-resolution (>1080p) sources get a lightweight
-  // preview proxy in the background, which is the main lever against 2K/4K
-  // WebCodecs preview stalls. 'original' remains available per session.
-  return 'auto';
+  // Keep existing projects on their original media unless the user opts in.
+  return 'original';
 }
 
 function emit(): void {

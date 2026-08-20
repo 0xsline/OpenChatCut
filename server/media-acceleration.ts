@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
+import { ffmpegThreadArgs } from './media-process.ts';
 
 export type H264Encoder =
   | 'h264_videotoolbox'
@@ -406,7 +407,7 @@ export function h264EncodingArgs({
     : encoder === 'h264_qsv' || encoder === 'h264_amf' ? 'nv12' : 'yuv420p';
   const args = ['-c:v', encoder, '-pix_fmt', pixelFormat];
   if (encoder === 'libx264') {
-    args.push('-preset', softwarePreset);
+    args.push(...ffmpegThreadArgs(), '-preset', softwarePreset);
     if (!targetBitrate) return [...args, '-crf', String(softwareCrf)];
     const ceiling = maxBitrate ?? targetBitrate;
     return [...args,

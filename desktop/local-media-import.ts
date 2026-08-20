@@ -4,7 +4,7 @@ import { copyFile, mkdir, stat, unlink } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { ffmpegBin, ffprobeBin } from '../server/media-binaries.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../server/media-process.ts';
-import { resolveUploadFile, uploadDir, writeUploadReference } from '../server/media-dir.ts';
+import { resolveUploadFile, uploadDir } from '../server/media-dir.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
 import { sha256File } from '../shared/node-content-hash.ts';
 import {
@@ -34,23 +34,6 @@ const DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES: LocalMediaImportDependencies = {
   copyFile: (source, destination, mode) => copyFile(source, destination, mode),
   hashFile: sha256File,
 };
-
-/** Native desktop import without copying or hashing: register a read-only
- * reference to the original file (the app serves it in place and never
- * modifies or deletes it). Used by the file-picker bridge; the directory-watch
- * importer still materializes managed copies through importLocalMedia. */
-export async function importLocalMediaReference(
-  sourcePath: string,
-  originalName: string,
-  dependencies: Pick<LocalMediaImportDependencies, 'stat'> = DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES,
-): Promise<LocalMediaImport> {
-  const sourceInfo = await dependencies.stat(sourcePath);
-  if (!sourceInfo.isFile()) throw new Error('local media source must be a file');
-  const extension = extname(originalName).toLowerCase();
-  const storedName = `${randomUUID()}${extension}`;
-  await writeUploadReference(storedName, sourcePath);
-  return { src: `/media/uploads/${storedName}`, storedName, contentHash: '' };
-}
 
 type ProbeStream = {
   codec_name?: unknown;
@@ -114,7 +97,7 @@ export function transparentMovProxyArgs(source: string, destination: string): st
   return [
     '-y', '-i', source,
     '-map', '0:v:0', '-map', '0:a?',
-    '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p',
+    '-c:v', 'libvpx-vp9', ...ffmpegThreadArgs(), '-pix_fmt', 'yuva420p',
     '-metadata:s:v:0', 'alpha_mode=1', '-auto-alt-ref', '0',
     '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1',
     '-c:a', 'libopus',

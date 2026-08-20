@@ -15,7 +15,7 @@ import {
 } from 'electron';
 import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
-import { createTransparentMovProxy, importLocalMediaReference } from './local-media-import.ts';
+import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
 import {
   createLocalMediaImportHandler,
   LOCAL_MEDIA_IMPORT_CHANNEL,
@@ -192,7 +192,7 @@ function registerDesktopHandlers(trustedOrigin: string): void {
   }));
   ipcMain.handle(
     LOCAL_MEDIA_IMPORT_CHANNEL,
-    trustedDesktopHandler(trustedOrigin, createLocalMediaImportHandler(importLocalMediaReference)),
+    trustedDesktopHandler(trustedOrigin, createLocalMediaImportHandler(importLocalMedia)),
   );
   ipcMain.handle('openchatcut:transparent-mov-proxy', trustedDesktopHandler(trustedOrigin, async (_event, storedName: unknown) => {
     if (typeof storedName !== 'string') throw new Error('invalid local media name');

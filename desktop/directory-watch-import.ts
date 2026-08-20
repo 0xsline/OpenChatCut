@@ -1,23 +1,14 @@
-import { spawn } from 'node:child_process';
 import { copyFile, mkdir, realpath, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Stats } from 'node:fs';
-import type {
-  DirectoryImportedFile,
-  DirectoryImportMediaKind,
-} from '../shared/directory-import.ts';
+import type { DirectoryImportedFile, DirectoryImportMediaKind } from '../shared/directory-import.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
 import { sha256File } from '../shared/node-content-hash.ts';
 import { ffprobeBin } from '../server/media-binaries.ts';
+import { spawnMediaProcess } from '../server/media-process.ts';
 import { uploadDir } from '../server/media-dir.ts';
-import {
-  normalizeMediaFile,
-  type NormalizeMediaFileResult,
-} from '../server/media-normalization-runner.ts';
-import {
-  normalizationAbortError,
-  throwIfNormalizationAborted,
-} from '../server/media-normalization.ts';
+import { normalizeMediaFile, type NormalizeMediaFileResult } from '../server/media-normalization-runner.ts';
+import { normalizationAbortError, throwIfNormalizationAborted } from '../server/media-normalization.ts';
 import {
   createTransparentMovProxy,
   importLocalMedia,
@@ -265,7 +256,7 @@ function parseRational(value: unknown): number | undefined {
 function runProbeProcess(args: readonly string[], signal?: AbortSignal): Promise<string> {
   throwIfNormalizationAborted(signal);
   const deferred = Promise.withResolvers<string>();
-  const child = spawn(ffprobeBin(), [...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawnMediaProcess(ffprobeBin(), [...args], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
   let terminalError: Error | undefined;

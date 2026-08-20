@@ -3,7 +3,6 @@
 // stamp labels, and tile them into one JPEG without invoking Remotion.
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -82,7 +81,7 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<void> {
 
 async function probeDurationMs(path: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn(ffprobeBin(), [
+    const child = spawnMediaProcess(ffprobeBin(), [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'default=nw=1:nk=1',

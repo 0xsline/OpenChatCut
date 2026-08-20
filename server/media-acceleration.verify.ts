@@ -16,6 +16,7 @@ import {
   shouldFallbackH264Encoder,
   type H264Encoder,
 } from './media-acceleration.ts';
+import { ffmpegThreadArgs } from './media-process.ts';
 
 assert.deepEqual(h264HardwareCandidates('darwin'), ['h264_videotoolbox']);
 assert.deepEqual(h264HardwareCandidates('win32'), ['h264_nvenc', 'h264_qsv', 'h264_amf']);
@@ -75,7 +76,8 @@ assert.deepEqual(h264EncoderProfile('h264_qsv'), {
 });
 
 assert.deepEqual(h264EncodingArgs({ encoder: 'libx264' }), [
-  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'medium', '-crf', '18',
+  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...ffmpegThreadArgs(),
+  '-preset', 'medium', '-crf', '18',
 ]);
 assert.deepEqual(h264EncodingArgs({ encoder: 'h264_qsv', targetBitrate: 8_000_000 }), [
   '-c:v', 'h264_qsv', '-pix_fmt', 'nv12', '-b:v', '8000000',

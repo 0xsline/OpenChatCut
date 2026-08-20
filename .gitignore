@@ -90,5 +90,5 @@ public/whisper-cli/
 
 # Local npm cache
 .npm-cache/
-# etc directory
-etc
+# Root-level local runtime files
+/etc/

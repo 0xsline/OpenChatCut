@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { seedKeystore } from '../server/keystore.ts';
-import { deleteUploadReference, resolveUploadFile, uploadReferencePath } from '../server/media-dir.ts';
 import {
   hasAlphaPixelFormat,
   importLocalMedia,
-  importLocalMediaReference,
   isTransparentMovProbe,
   transparentMovProxyArgs,
 } from './local-media-import.ts';
@@ -18,6 +16,14 @@ import {
   importLocalMediaFromFile,
   LOCAL_MEDIA_IMPORT_CHANNEL,
 } from './local-media-bridge.ts';
+
+const mainSource = await readFile(new URL('./main.ts', import.meta.url), 'utf8');
+assert.match(
+  mainSource,
+  /createLocalMediaImportHandler\(importLocalMedia\)/,
+  'desktop main must import a durable managed copy',
+);
+assert.doesNotMatch(mainSource, /importLocalMediaReference/, 'desktop main must not bind reference-only imports');
 
 assert.equal(hasAlphaPixelFormat('yuva444p10le'), true, 'ProRes 4444 alpha must be detected');
 assert.equal(hasAlphaPixelFormat('gbrap12le'), true, 'planar RGB alpha must be detected');
@@ -48,6 +54,7 @@ assert.equal(args[audioCodecIndex + 1], 'libopus', 'WebM proxy audio must use br
 assert.ok(args.includes('yuva420p'), 'proxy must preserve alpha');
 assert.ok(args.includes('alpha_mode=1'), 'proxy must label VP9 alpha for Chromium');
 assert.equal(args.includes('libx264'), false, 'H.264 would discard alpha');
+assert.ok(args.indexOf('-threads') > args.indexOf('-c:v'), 'VP9 encoder threads belong to the output option group');
 
 const previousMediaDir = process.env.MEDIA_DIR;
 const testRoot = await mkdtemp(join(tmpdir(), 'openchatcut-local-import-'));
@@ -117,49 +124,6 @@ try {
     'multi-GiB imports skip the full-file SHA-256 pass to avoid doubling disk I/O',
   );
   assert.equal(importedLarge.contentHash, '', 'large imports report no content hash (dedup disabled)');
-
-  const referencedSourcePath = join(testRoot, 'referenced-original.mov');
-  await writeFile(referencedSourcePath, originalContents);
-  const referencedImport = await importLocalMediaReference(referencedSourcePath, 'referenced-master.mov');
-  assert.equal(
-    referencedImport.contentHash,
-    '',
-    'reference imports skip the full-file SHA-256 entirely',
-  );
-  assert.equal(referencedImport.src, `/media/uploads/${referencedImport.storedName}`);
-  assert.equal(referencedImport.storedName.endsWith('.mov'), true);
-  await access(uploadReferencePath(uploadDirectory, referencedImport.storedName));
-  assert.equal(
-    resolveUploadFile(referencedImport.storedName),
-    referencedSourcePath,
-    'reference imports resolve back to the original path, not a managed copy',
-  );
-  const referencedCopy = join(uploadDirectory, referencedImport.storedName);
-  await assert.rejects(
-    access(referencedCopy),
-    { code: 'ENOENT' },
-    'reference imports must not materialize a managed copy',
-  );
-  assert.deepEqual(
-    await readFile(referencedSourcePath),
-    originalContents,
-    'reference imports never copy or rewrite the original',
-  );
-  assert.equal(
-    await deleteUploadReference(referencedImport.storedName),
-    1,
-    'deleting a reference removes exactly one registry record',
-  );
-  assert.equal(
-    resolveUploadFile(referencedImport.storedName),
-    null,
-    'a deleted reference stops resolving',
-  );
-  assert.deepEqual(
-    await readFile(referencedSourcePath),
-    originalContents,
-    'deleting a reference must never touch the original file',
-  );
 
   const bridgeFile = { name: 'camera-original.mov' } as File;
   const bridgeSourcePath = join(testRoot, 'camera-original.mov');
