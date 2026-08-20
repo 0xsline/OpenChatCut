@@ -105,7 +105,13 @@ assert.ok(
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
   scripts: Record<string, string>;
+  devDependencies: Record<string, string>;
 };
+assert.equal(
+  packageJson.devDependencies['electron-builder'],
+  '26.15.7',
+  'Windows NSIS packaging must retain the BCJ extraction fix shipped in electron-builder 26.15.6+',
+);
 assert.match(
   packageJson.scripts['desktop:build:main'],
   /native-rhythm-worker\.ts.*native-rhythm-worker\.mjs/,
