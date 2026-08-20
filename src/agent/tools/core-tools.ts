@@ -6,6 +6,7 @@ import { prepareTemplate } from '../../template-host';
 import { generateAgentText } from '../client';
 import { designStyleHint } from '../systemPrompt';
 import { execCoreDataTool } from './core-data-tools';
+import { execJianyingExport } from './jianying-export-tool';
 
 type Args = Record<string, unknown>;
 
@@ -132,6 +133,8 @@ export async function execCoreTool(
   if (name === 'ToolSearch') return searchTools(args, schemas);
   const dataResult = execCoreDataTool(name, args, ctx);
   if (dataResult !== undefined) return dataResult;
+  const jianyingResult = await execJianyingExport(name, args, ctx);
+  if (jianyingResult !== undefined) return jianyingResult;
   if (name === 'list_templates' || name === 'search_templates' || name === 'add_motion_graphic') {
     return execTemplateCatalog(name, args, ctx);
   }
