@@ -123,17 +123,40 @@ async function loadMeta(uploadId: string): Promise<MultipartMeta | null> {
     return null;
   }
 }
+const metaWriteQueues = new Map<string, Promise<void>>();
+function enqueueMetaWrite(uploadId: string, task: () => Promise<void>): Promise<void> {
+  const previous = metaWriteQueues.get(uploadId) ?? Promise.resolve();
+  const next = previous.then(task, task);
+  const tail = next.catch(() => {});
+  metaWriteQueues.set(uploadId, tail);
+  return next;
+}
+async function writeMeta(meta: MultipartMeta, tmp: string): Promise<void> {
+  await writeFile(tmp, JSON.stringify(meta), 'utf8');
+  let attempt = 0;
+  for (;;) {
+    try {
+      await rename(tmp, join(sessionDir(meta.uploadId), 'meta.json'));
+      return;
+    } catch (error) {
+      attempt += 1;
+      if (attempt >= 4 || !(error instanceof Error) || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+    }
+  }
+}
 async function saveMeta(meta: MultipartMeta): Promise<void> {
   const dir = sessionDir(meta.uploadId);
   await mkdir(dir, { recursive: true });
   const tmp = join(dir, `.meta-${randomUUID()}.tmp`);
-  try {
-    await writeFile(tmp, JSON.stringify(meta), 'utf8');
-    await rename(tmp, join(dir, 'meta.json'));
-  } catch (error) {
-    await unlink(tmp).catch(() => {});
-    throw error;
-  }
+  return enqueueMetaWrite(meta.uploadId, async () => {
+    try {
+      await writeMeta(meta, tmp);
+    } catch (error) {
+      await unlink(tmp).catch(() => {});
+      throw error;
+    }
+  });
 }
 function partPath(uploadId: string, part: number): string {
   return join(sessionDir(uploadId), `part-${String(part).padStart(5, '0')}`);
