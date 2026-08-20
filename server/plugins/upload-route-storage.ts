@@ -13,7 +13,7 @@ import {
   deleteUploadObject, putUploadFile, r2Config, UploadTooLargeError,
 } from '../r2.ts';
 import {
-  enqueueUploadMutation, isSafeUploadName, uploadReadDirs,
+  deleteUploadReference, enqueueUploadMutation, isSafeUploadName, uploadReadDirs,
 } from '../media-dir.ts';
 import { deleteMediaPreviewDerivatives } from './media-preview.ts';
 import { contentLengthOf, sendError, sendJson } from './upload-route-http.ts';
@@ -80,6 +80,13 @@ async function handleDeleteUpload(req: IncomingMessage, res: ServerResponse): Pr
         } catch (error) {
           failures.push(error);
         }
+      }
+      // Referenced media never materialize a managed copy; only the record is
+      // removed (the user's original file stays untouched).
+      try {
+        await deleteUploadReference(name);
+      } catch (error) {
+        failures.push(error);
       }
       try {
         r2Removed = await deleteUploadObject(name, rollbackToken);

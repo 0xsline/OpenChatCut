@@ -7,8 +7,8 @@ import {
   presignGetUpload, presignPutUpload, r2Config, r2PresignEnabled, UploadTooLargeError,
 } from '../r2.ts';
 import {
-  isSafeUploadName, resolveOrHydrateUploadFile, serveDiskFile, syncLegacyUploads,
-  uploadReadDirs,
+  isSafeUploadName, resolveOrHydrateUploadFile, resolveUploadReference, serveDiskFile,
+  syncLegacyUploads, uploadReadDirs,
 } from '../media-dir.ts';
 import { isIsolatedDevProfile } from '../runtime-profile.ts';
 import { sha256File } from '../../shared/node-content-hash.ts';
@@ -132,7 +132,9 @@ async function handleHydrate(
       return;
     }
     if (!resolved.cached) logger.info(`[upload/hydrate] ${name} (${resolved.bytes} bytes)`);
-    const contentHash = await sha256File(resolved.file);
+    // Referenced originals are never hashed: re-reading a multi-GiB master on
+    // every hydrate would reintroduce the import cost the reference removed.
+    const contentHash = resolveUploadReference(name) ? '' : await sha256File(resolved.file);
     sendJson(res, 200, {
       ok: true,
       path: `/media/uploads/${name}`,

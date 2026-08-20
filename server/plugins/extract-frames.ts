@@ -12,6 +12,7 @@ import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { formatTimeLabel, tileContactSheet } from '../frame-grid.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { resolveHwDecodeArgs } from '../media-acceleration.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 
 const MAX_JSON = 32 * 1024;
 const MAX_SAMPLES = 20;
@@ -57,7 +58,7 @@ function uploadNameFromSrc(src: string): string | null {
 
 function run(cmd: string, args: string[], timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawnMediaProcess(cmd, [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
@@ -122,8 +123,8 @@ function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promis
     const hwDecode = await resolveHwDecodeArgs(ffmpegBin(), undefined);
     return new Promise((resolve) => {
       const times: number[] = [];
-    const child = spawn(ffmpegBin(), [
-      '-nostdin', '-hide_banner',
+    const child = spawnMediaProcess(ffmpegBin(), [
+      '-nostdin', '-hide_banner', ...ffmpegThreadArgs(),
       ...hwDecode,
       '-ss', String(Math.max(0, fromMs) / 1000),
       '-t', String(Math.max(0, toMs - fromMs) / 1000),

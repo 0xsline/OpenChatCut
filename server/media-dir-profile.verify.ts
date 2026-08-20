@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   checkMediaDir,
+  deleteUploadReference,
   resolveUploadFile,
+  resolveUploadReference,
   syncLegacyUploads,
   uploadDir,
   uploadReadDirs,
+  uploadReferencePath,
+  writeUploadReference,
 } from './media-dir.ts';
 import { resolveRuntimeProfile } from './runtime-profile.ts';
 import { assertProfileSensitiveSettingsPatch } from './plugins/settings.ts';
@@ -42,6 +46,50 @@ try {
   await mkdir(profileA.mediaDir, { recursive: true });
   await writeFile(join(profileA.mediaDir, name), 'profile-a');
   assert.equal(resolveUploadFile(name, profileA, customDir), join(profileA.mediaDir, name));
+
+  const referenceName = 'referenced-camera.mov';
+  const referencedOriginal = join(fixture, 'originals', 'camera.mov');
+  await mkdir(join(fixture, 'originals'), { recursive: true });
+  await writeFile(referencedOriginal, 'original snapshot');
+  await writeUploadReference(referenceName, referencedOriginal, profileA.mediaDir);
+  assert.equal(
+    uploadReferencePath(profileA.mediaDir, referenceName),
+    join(profileA.mediaDir, '.references', `${referenceName}.json`),
+  );
+  assert.equal(
+    resolveUploadFile(referenceName, profileA, customDir),
+    referencedOriginal,
+    'references resolve through the profile read roots when no managed copy exists',
+  );
+  assert.equal(resolveUploadReference(referenceName, profileA, customDir), referencedOriginal);
+  assert.equal(
+    resolveUploadFile(referenceName, profileB, customDir),
+    null,
+    'isolated profiles never see another profile\'s reference records',
+  );
+  await writeFile(join(profileB.mediaDir, referenceName), 'managed copy');
+  await writeUploadReference(referenceName, referencedOriginal, profileB.mediaDir);
+  assert.equal(
+    resolveUploadFile(referenceName, profileB, customDir),
+    join(profileB.mediaDir, referenceName),
+    'managed copies take precedence over reference records',
+  );
+  await assert.rejects(writeUploadReference(referenceName, 'relative/camera.mov', profileA.mediaDir), /absolute path/);
+  assert.equal(
+    await deleteUploadReference(referenceName, profileA, customDir),
+    1,
+    'deleting a reference removes exactly one registry record',
+  );
+  assert.equal(
+    resolveUploadFile(referenceName, profileA, customDir),
+    null,
+    'a deleted reference stops resolving',
+  );
+  assert.deepEqual(
+    await readFile(referencedOriginal),
+    Buffer.from('original snapshot'),
+    'deleting a reference must never touch the original file',
+  );
 
   const forbiddenProbe = join(fixture, 'must-not-be-created');
   assert.deepEqual(await checkMediaDir(forbiddenProbe, profileA), {

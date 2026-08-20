@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process';
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ffmpegBin } from '../media-binaries.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { isSafeUploadName } from '../media-dir.ts';
 import {
   h264EncoderAttempts,
@@ -183,7 +183,7 @@ export async function withExportPermit<T>(
 
 function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'], signal });
+    const child = spawnMediaProcess(ffmpegBin(), [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'], signal });
     let stderr = '';
     let settled = false;
     let timeoutError: Error | undefined;

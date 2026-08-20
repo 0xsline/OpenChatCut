@@ -10,6 +10,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ffmpegBin } from './media-binaries.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from './media-process.ts';
 
 export { ffmpegBin } from './media-binaries.ts';
 
@@ -31,7 +32,7 @@ export interface TileOptions {
 
 function run(cmd: string, args: string[], timeoutMs = 120_000): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawnMediaProcess(cmd, [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

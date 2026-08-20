@@ -1,9 +1,9 @@
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { realpath, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import {
   h264EncoderAttempts,
+  h264EncoderFallbackReason,
   h264EncodingArgs,
   isHardwareH264Encoder,
   probeEncoderQualityMode,
@@ -16,6 +16,7 @@ import {
   normalizationAbortError,
   throwIfNormalizationAborted,
 } from './media-normalization-admission.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from './media-process.ts';
 export {
   createNormalizeAdmission,
   normalizationAbortError,
@@ -35,6 +36,9 @@ const TARGET_FLOOR_BITRATE_BPS = 1_500_000;
 const REFERENCE_PIXELS = 1920 * 1080;
 const VIDEO_AUDIO_BITRATE = '160k';
 const FFMPEG_TIMEOUT_MS = 60 * 60_000; // long masters
+// Soft cap for "efficient enough" masters: above this size the cost of a full
+// re-encode (VFR→CFR, optimization) dwarfs its benefit, so the source is kept.
+const LARGE_SOURCE_BYTES = 1.5 * 1024 * 1024 * 1024;
 
 
 export function createNormalizeTempPath(
@@ -86,7 +90,7 @@ function run(
 ): Promise<{ stdout: string; stderr: string }> {
   throwIfNormalizationAborted(signal);
   const deferred = Promise.withResolvers<{ stdout: string; stderr: string }>();
-  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawnMediaProcess(cmd, [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
   let settled = false;
@@ -309,6 +313,10 @@ export function normalizeReason(
   optimize: boolean,
 ): string | null {
   if (forceCfr || meta.variableFrameRate) {
+    // Multi-GiB VFR masters (game captures, screen recordings) are accepted
+    // as-is: a full software re-encode of a high-bitrate 2K source costs far
+    // more than the CFR correction earns, and preview proxies handle playback.
+    if (!forceCfr && meta.size > LARGE_SOURCE_BYTES) return null;
     const avg = meta.avgFrameRate?.toFixed(3) ?? 'unknown';
     const nominal = meta.nominalFrameRate?.toFixed(3) ?? 'unknown';
     return `variable frame rate detected (avg ${avg}, nominal ${nominal})`;
@@ -328,7 +336,7 @@ export function normalizeReason(
     if (meta.sourceBitrate > efficient) return 'source bitrate exceeds efficient threshold';
   }
   // Very large files even if "compatible" (e.g. long 1080p high quality) — soft cap ~1.5GB
-  if (meta.size > 1.5 * 1024 * 1024 * 1024) return 'source file larger than 1.5GB';
+  if (meta.size > LARGE_SOURCE_BYTES) return 'source file larger than 1.5GB';
   return null;
 }
 
@@ -368,7 +376,7 @@ async function encodeTranscodedVideo(
         maxBitrate: options.targetBitrate,
         bufferSize: options.targetBitrate * 2,
         softwarePreset: 'veryfast',
-        ...(proxyQuality ? { hardwareQuality: 23 } : {}),
+        ...(proxyQuality ? { hardwareQuality: 23, qualityMode: proxyQuality } : {}),
       }),
       '-profile:v', 'high',
       ...(options.convertToCfr ? ['-fps_mode', 'cfr'] : []),
@@ -381,7 +389,7 @@ async function encodeTranscodedVideo(
       throwIfNormalizationAborted(signal);
       lastError = error;
       if (!isHardwareH264Encoder(encoder)) throw error;
-      console.warn(`[normalize-media] ${encoder} failed; falling back to libx264`);
+      console.warn(`[normalize-media] ${encoder} failed (${h264EncoderFallbackReason(encoder, error)}); falling back to libx264`);
       await unlink(outputPath).catch(() => {});
     }
   }
@@ -401,9 +409,14 @@ export async function encodeNormalized(
   signal?: AbortSignal,
 ): Promise<void> {
   const ffmpeg = ffmpegBin();
+  // Resolve the encoder before building decode args: NVIDIA NVENC requires
+  // `-hwaccel cuda`, not the platform-default d3d11va, or encode fails with
+  // "CreateInputBuffer failed" once the 64x64 probe bug is fixed.
+  const preferred = await resolveH264Encoder(ffmpeg);
+  throwIfNormalizationAborted(signal);
   const commonArgs = [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-    ...(await resolveHwDecodeArgs(ffmpeg, undefined)),
+    ...(await resolveHwDecodeArgs(ffmpeg, preferred)),
     '-i', inputPath, '-map', '0:v:0',
     ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),
   ];

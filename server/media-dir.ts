@@ -2,9 +2,10 @@
 // The default profile preserves MEDIA_DIR → worktree default → R2 read-through semantics
 // and legacy-copy behavior. Isolated development profiles use only their profile media
 // directory: no legacy fallback, legacy copy, MEDIA_DIR override, or R2 read-through.
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { getKey, type KeyName } from './keystore.ts';
@@ -62,7 +63,9 @@ export function isCustomUploadDir(profile: RuntimeProfile = runtimeProfile()): b
   return uploadDir(profile) !== profile.mediaDir;
 }
 
-/** Resolve an upload only through the active profile's ordered local read roots. */
+/** Resolve an upload through the active profile's ordered local read roots; a
+ * miss falls back to a read-only reference record (native desktop imports keep
+ * the original file in place instead of copying it into managed storage). */
 export function resolveUploadFile(
   name: string,
   profile: RuntimeProfile = runtimeProfile(),
@@ -73,7 +76,72 @@ export function resolveUploadFile(
     const file = join(d, name);
     if (existsSync(file)) return file;
   }
+  return resolveUploadReference(name, profile, configuredMediaDir);
+}
+
+// ── Read-only references: desktop native imports keep the original in place ──
+
+export function uploadReferencePath(directory: string, name: string): string {
+  return join(directory, '.references', `${name}.json`);
+}
+
+/** Resolve an upload through a reference record written by the desktop native
+ * bridge. Records are written only after validating an absolute original path,
+ * and resolution re-validates: safe name, absolute path, file still present. */
+export function resolveUploadReference(
+  name: string,
+  profile: RuntimeProfile = runtimeProfile(),
+  configuredMediaDir?: string,
+): string | null {
+  if (!isSafeUploadName(name)) return null;
+  for (const directory of uploadReadDirs(profile, configuredMediaDir)) {
+    const record = uploadReferencePath(directory, name);
+    if (!existsSync(record)) continue;
+    try {
+      const stored = JSON.parse(readFileSync(record, 'utf8')) as { path?: unknown };
+      if (typeof stored.path !== 'string' || !isAbsolute(stored.path)) return null;
+      if (!existsSync(stored.path)) return null;
+      return stored.path;
+    } catch {
+      return null;
+    }
+  }
   return null;
+}
+
+/** Persist a read-only reference (safe upload name → absolute original path).
+ * The referenced file is never copied, re-encoded, or deleted by the app. */
+export async function writeUploadReference(
+  name: string,
+  path: string,
+  directory: string = uploadDir(),
+): Promise<void> {
+  if (!isSafeUploadName(name)) throw new Error('unsafe upload reference name');
+  if (!isAbsolute(path)) throw new Error('upload reference must be an absolute path');
+  await mkdir(join(directory, '.references'), { recursive: true });
+  const record = uploadReferencePath(directory, name);
+  const part = `${record}.${randomUUID()}.part`;
+  await writeFile(part, JSON.stringify({ path }), { flag: 'wx' });
+  await rename(part, record);
+}
+
+/** Remove reference records only — the referenced original is never touched. */
+export async function deleteUploadReference(
+  name: string,
+  profile: RuntimeProfile = runtimeProfile(),
+  configuredMediaDir?: string,
+): Promise<number> {
+  if (!isSafeUploadName(name)) return 0;
+  let removed = 0;
+  for (const directory of uploadReadDirs(profile, configuredMediaDir)) {
+    try {
+      await unlink(uploadReferencePath(directory, name));
+      removed += 1;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  return removed;
 }
 
 export interface ResolvedUploadFile {

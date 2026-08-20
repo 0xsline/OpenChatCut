@@ -95,6 +95,24 @@ assert.deepEqual(h264EncodingArgs({
 }), [
   '-c:v', 'h264_vaapi', '-pix_fmt', 'vaapi', '-b:v', '8000000',
 ]);
+assert.deepEqual(h264EncodingArgs({
+  encoder: 'h264_nvenc',
+  targetBitrate: 8_000_000,
+  hardwareQuality: 23,
+  qualityMode: 'cqp',
+}), [
+  '-c:v', 'h264_nvenc', '-pix_fmt', 'yuv420p',
+  '-rc_mode', 'CQP', '-global_quality', '23',
+]);
+assert.deepEqual(h264EncodingArgs({
+  encoder: 'h264_nvenc',
+  targetBitrate: 8_000_000,
+  hardwareQuality: 23,
+  qualityMode: 'legacy-qp',
+}), [
+  '-c:v', 'h264_nvenc', '-pix_fmt', 'yuv420p',
+  '-rc', 'constqp', '-qp', '23',
+]);
 assert.equal(resolveH264TargetBitrate({ width: 854, height: 480, fps: 30 }), 4_000_000);
 assert.equal(resolveH264TargetBitrate({ width: 1920, height: 1080, fps: 30 }), 10_000_000);
 assert.equal(resolveH264TargetBitrate({ width: 1920, height: 1080, fps: 60 }), 20_000_000);

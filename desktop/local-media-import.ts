@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { copyFile, mkdir, stat, unlink } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { ffmpegBin, ffprobeBin } from '../server/media-binaries.ts';
-import { uploadDir } from '../server/media-dir.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from '../server/media-process.ts';
+import { resolveUploadFile, uploadDir, writeUploadReference } from '../server/media-dir.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
 import { sha256File } from '../shared/node-content-hash.ts';
 import {
@@ -18,6 +18,11 @@ export interface LocalMediaImport {
   contentHash: string;
 }
 
+/** Sources above this size skip the full-file SHA-256: the second pass over
+ * multi-GiB masters costs more than content-addressed dedup can save, and the
+ * import pipeline (copy + normalize + ASR) already saturates disk I/O. */
+const LARGE_HASH_SKIP_BYTES = 1.5 * 1024 * 1024 * 1024;
+
 export interface LocalMediaImportDependencies {
   stat(path: string): Promise<{ isFile(): boolean; size: number }>;
   copyFile(source: string, destination: string, mode: number): Promise<void>;
@@ -29,6 +34,23 @@ const DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES: LocalMediaImportDependencies = {
   copyFile: (source, destination, mode) => copyFile(source, destination, mode),
   hashFile: sha256File,
 };
+
+/** Native desktop import without copying or hashing: register a read-only
+ * reference to the original file (the app serves it in place and never
+ * modifies or deletes it). Used by the file-picker bridge; the directory-watch
+ * importer still materializes managed copies through importLocalMedia. */
+export async function importLocalMediaReference(
+  sourcePath: string,
+  originalName: string,
+  dependencies: Pick<LocalMediaImportDependencies, 'stat'> = DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES,
+): Promise<LocalMediaImport> {
+  const sourceInfo = await dependencies.stat(sourcePath);
+  if (!sourceInfo.isFile()) throw new Error('local media source must be a file');
+  const extension = extname(originalName).toLowerCase();
+  const storedName = `${randomUUID()}${extension}`;
+  await writeUploadReference(storedName, sourcePath);
+  return { src: `/media/uploads/${storedName}`, storedName, contentHash: '' };
+}
 
 type ProbeStream = {
   codec_name?: unknown;
@@ -45,7 +67,7 @@ function run(
 ): Promise<string> {
   throwIfNormalizationAborted(signal);
   const deferred = Promise.withResolvers<string>();
-  const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawnMediaProcess(command, [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
   let terminalError: Error | undefined;
@@ -117,8 +139,10 @@ export async function importLocalMedia(
   // Either path creates an inode independent from the source.
   await dependencies.copyFile(sourcePath, destination, constants.COPYFILE_FICLONE);
   try {
-    const contentHash = normalizeSha256Hash(await dependencies.hashFile(destination));
-    if (!contentHash) throw new Error('local media hash must be a SHA-256 hex digest');
+    const contentHash = sourceInfo.size > LARGE_HASH_SKIP_BYTES
+      ? ''
+      : normalizeSha256Hash(await dependencies.hashFile(destination));
+    if (contentHash !== '' && !contentHash) throw new Error('local media hash must be a SHA-256 hex digest');
     return { src: `/media/uploads/${storedName}`, storedName, contentHash };
   } catch (error) {
     await unlink(destination).catch(() => {});
@@ -132,7 +156,8 @@ export async function createTransparentMovProxy(
   signal?: AbortSignal,
 ): Promise<{ src: string } | null> {
   if (extname(storedName).toLowerCase() !== '.mov' || basename(storedName) !== storedName) return null;
-  const source = join(uploadDir(), storedName);
+  const source = resolveUploadFile(storedName);
+  if (!source) return null;
   const probe = JSON.parse(await run(ffprobeBin(), [
     '-v', 'error', '-select_streams', 'v:0',
     '-show_entries', 'stream=codec_name,profile,pix_fmt:stream_tags=alpha_mode',

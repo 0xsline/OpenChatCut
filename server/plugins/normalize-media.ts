@@ -2,7 +2,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { extname } from 'node:path';
-import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { isSafeUploadName, resolveUploadFile, resolveUploadReference, uploadDir } from '../media-dir.ts';
 import {
   NormalizeAdmissionFullError,
   type NormalizeAdmission,
@@ -219,6 +219,18 @@ async function handleNormalizeRequest(
   const inputPath = resolveUploadFile(name);
   if (!inputPath) {
     sendJson(res, 404, { error: `media not found: ${name}` });
+    return;
+  }
+  // Referenced sources live outside managed storage and are read-only:
+  // normalization publishes over the input path, which would replace (and
+  // for force requests) destroy the user's original file — refuse instead.
+  if (resolveUploadReference(name)) {
+    sendJson(res, 200, {
+      ok: true,
+      path: src,
+      normalized: false,
+      reason: 'referenced source is read-only (native desktop import); not normalized',
+    });
     return;
   }
   const extension = extname(name).toLowerCase();

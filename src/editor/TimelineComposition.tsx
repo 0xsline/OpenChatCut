@@ -148,11 +148,12 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
     return 10 ** ((config.audioRouting?.duckDepthDb ?? -12) / 20);
   };
   const fit: AspectFit = state.fit ?? 'contain';
-  // Preview mounts each clip 2s in advance (freezes first frame + transparency): video elements seek/decode in advance, GL compiles in advance,
+  // Preview mounts each clip 1s in advance (freezes first frame + transparency): video elements seek/decode in advance, GL compiles in advance,
   // Eliminate the "last frame stuck" caused by cold start of three media elements at the starting point of the cut point/transition window in the same frame.
   // Headless export renders deterministically frame by frame, preheating will only slow down the export, set to 0.
+  // A 2s premount window multiplied the decoding cost of every 2K/4K clip; 1s still covers element warm-up.
   const environment = getRemotionEnvironment();
-  const premountFrames = environment.isRendering ? 0 : Math.round(state.fps * 2);
+  const premountFrames = environment.isRendering ? 0 : Math.round(state.fps * 1);
   const videoAudioGroups = continuousVideoAudioGroups(ordered, state.transitions);
   const groupedVideoIds = new Set(videoAudioGroups.flatMap((group) => group.map((item) => item.id)));
 

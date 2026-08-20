@@ -9,6 +9,7 @@ import { extname, join } from 'node:path';
 
 import { ffmpegBin } from '../media-binaries.ts';
 import { resolveHwDecodeArgs } from '../media-acceleration.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { isSafeUploadName, mimeFor, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import type { VideoRequest } from './video-validation.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
@@ -71,7 +72,7 @@ const derivativeJobs = new Map<string, Promise<string>>();
 
 function runSliceFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawnMediaProcess(ffmpegBin(), [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     const timer = setTimeout(() => child.kill('SIGKILL'), 5 * 60_000);
     child.stderr.on('data', (chunk) => { stderr = (stderr + String(chunk)).slice(-4_000); });

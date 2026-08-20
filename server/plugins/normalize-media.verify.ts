@@ -7,6 +7,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { DEFAULT_UPLOAD_MAX_BYTES } from '../r2.ts';
 import { seedKeystore } from '../keystore.ts';
+import { writeUploadReference } from '../media-dir.ts';
 import { maxUploadBytes } from './upload-routes.ts';
 import { uploadMultipartPlugin } from './upload-multipart.ts';
 import {
@@ -371,6 +372,26 @@ try {
   assert.equal(accepted.normalized, false, 'compatible sources are not optimized merely for exceeding 1920px');
   assert.equal(accepted.path, '/media/uploads/compatible-large-frame.mp4');
   assert.deepEqual([accepted.width, accepted.height], [2048, 1152]);
+
+  const referencedSourcePath = join(testDir, 'referenced-master.mov');
+  await copyFile(vfrSourcePath, referencedSourcePath);
+  await writeUploadReference('referenced-master.mov', referencedSourcePath, testDir);
+  const referencedResponse = await postNormalize(origin, 'referenced-master.mov', { force: true });
+  const referencedText = await referencedResponse.text();
+  assert.equal(referencedResponse.status, 200, referencedText);
+  const referenced = JSON.parse(referencedText) as {
+    normalized: boolean;
+    path: string;
+    reason: string;
+  };
+  assert.equal(
+    referenced.normalized,
+    false,
+    'referenced sources are read-only and must never be replaced in place',
+  );
+  assert.equal(referenced.path, '/media/uploads/referenced-master.mov');
+  assert.match(referenced.reason, /read-only/);
+  await access(referencedSourcePath);
 
   const audioOnlyResponse = await fetch(`${origin}/api/normalize-media`, {
     method: 'POST',

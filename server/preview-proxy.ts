@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { existsSync } from 'node:fs';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { ffmpegBin, ffprobeBin } from './media-binaries.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from './media-process.ts';
 
 const PROBE_TIMEOUT_MS = 60_000;
 const PROXY_TIMEOUT_MS = 30 * 60_000;
@@ -40,7 +40,7 @@ export function runPreviewProcess(
   timeoutMs: number,
 ): Promise<PreviewProcessOutput> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawnMediaProcess(command, [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let timedOut = false;

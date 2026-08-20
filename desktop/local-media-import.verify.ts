@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { seedKeystore } from '../server/keystore.ts';
+import { deleteUploadReference, resolveUploadFile, uploadReferencePath } from '../server/media-dir.ts';
 import {
   hasAlphaPixelFormat,
   importLocalMedia,
+  importLocalMediaReference,
   isTransparentMovProbe,
   transparentMovProxyArgs,
 } from './local-media-import.ts';
@@ -111,10 +113,53 @@ try {
   assert.equal(importedLarge.storedName.endsWith('.mp4'), true);
   assert.equal(
     simulatedHashPath,
-    join(uploadDirectory, importedLarge.storedName),
-    'large imports hash the copied destination through the injected streaming boundary',
+    '',
+    'multi-GiB imports skip the full-file SHA-256 pass to avoid doubling disk I/O',
   );
-  assert.equal(importedLarge.contentHash, 'a'.repeat(64), 'injected SHA-256 is normalized to lowercase');
+  assert.equal(importedLarge.contentHash, '', 'large imports report no content hash (dedup disabled)');
+
+  const referencedSourcePath = join(testRoot, 'referenced-original.mov');
+  await writeFile(referencedSourcePath, originalContents);
+  const referencedImport = await importLocalMediaReference(referencedSourcePath, 'referenced-master.mov');
+  assert.equal(
+    referencedImport.contentHash,
+    '',
+    'reference imports skip the full-file SHA-256 entirely',
+  );
+  assert.equal(referencedImport.src, `/media/uploads/${referencedImport.storedName}`);
+  assert.equal(referencedImport.storedName.endsWith('.mov'), true);
+  await access(uploadReferencePath(uploadDirectory, referencedImport.storedName));
+  assert.equal(
+    resolveUploadFile(referencedImport.storedName),
+    referencedSourcePath,
+    'reference imports resolve back to the original path, not a managed copy',
+  );
+  const referencedCopy = join(uploadDirectory, referencedImport.storedName);
+  await assert.rejects(
+    access(referencedCopy),
+    { code: 'ENOENT' },
+    'reference imports must not materialize a managed copy',
+  );
+  assert.deepEqual(
+    await readFile(referencedSourcePath),
+    originalContents,
+    'reference imports never copy or rewrite the original',
+  );
+  assert.equal(
+    await deleteUploadReference(referencedImport.storedName),
+    1,
+    'deleting a reference removes exactly one registry record',
+  );
+  assert.equal(
+    resolveUploadFile(referencedImport.storedName),
+    null,
+    'a deleted reference stops resolving',
+  );
+  assert.deepEqual(
+    await readFile(referencedSourcePath),
+    originalContents,
+    'deleting a reference must never touch the original file',
+  );
 
   const bridgeFile = { name: 'camera-original.mov' } as File;
   const bridgeSourcePath = join(testRoot, 'camera-original.mov');

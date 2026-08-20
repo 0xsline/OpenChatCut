@@ -7,12 +7,12 @@
 // strength maps to afftdn nr (noise reduction dB): 0 → light, 100 → aggressive.
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { spawn } from 'node:child_process';
 import { constants, existsSync } from 'node:fs';
 import { copyFile, stat, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 
 const MAX_JSON = 8 * 1024;
 const FFMPEG_TIMEOUT_MS = 30 * 60_000;
@@ -83,7 +83,7 @@ export function voiceIsolationArtifactName(
 
 function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawnMediaProcess('ffmpeg', [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

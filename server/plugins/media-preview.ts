@@ -1,6 +1,5 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +8,7 @@ import { extname, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, serveDiskFile, uploadDir, uploadReadDirs } from '../media-dir.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { resolveHwDecodeArgs } from '../media-acceleration.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { derivativeQueue, type DerivativeWork } from '../derivative-queue.ts';
 import { handlePreviewProxy, handlePreviewProxyFile, runPreviewProcess } from '../preview-proxy.ts';
 import { capturePreviewGenerationEpoch, invalidatePreviewGenerations, isPreviewGenerationCurrent } from '../preview-cache-epoch.ts';
@@ -149,7 +149,7 @@ function abortError(): Error {
 
 function run(cmd: string, args: string[], signal: AbortSignal, timeoutMs = FFMPEG_TIMEOUT_MS): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawnMediaProcess(cmd, [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     let timedOut = false;
     const abort = () => child.kill('SIGKILL');
@@ -228,8 +228,9 @@ function computePeaks(file: string, durationMs: number, signal: AbortSignal): Pr
     binMax: 0, inBin: 0, carry: null,
   };
   return new Promise((resolve, reject) => {
-    const child = spawn(ffmpegBin(), [
+    const child = spawnMediaProcess(ffmpegBin(), [
       '-nostdin', '-hide_banner', '-loglevel', 'error',
+      ...ffmpegThreadArgs(),
       '-i', file, '-vn', '-ac', '1', '-ar', String(PCM_RATE), '-f', 's16le', '-',
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
