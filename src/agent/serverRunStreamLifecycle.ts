@@ -79,10 +79,13 @@ async function settleStaleRecovery(
     clearStoredServerRun(projectId, runId);
     releaseServerRunOwnership(projectId, runId);
     resetAbandonedRun(state);
+    const friendlyDetail = /^server run metadata failed: HTTP 404$/.test(detail)
+      ? '服务端任务记录已不存在（编辑器服务可能已重启）'
+      : detail;
     state.appendMessage({
       role: 'error',
-      text: `之前的服务端任务已安全中断并清除恢复状态。${detail
-        ? ` ${detail}` : ''}${transportWarning ? ` 传输清理警告：${transportWarning}` : ''}`,
+      text: `之前的服务端任务已安全中断并清除恢复状态。${friendlyDetail
+        ? ` ${friendlyDetail}` : ''}${transportWarning ? ` 传输清理警告：${transportWarning}` : ''}`,
     });
   } catch (error) {
     state.refs.staleRecoveryRun.current = null;

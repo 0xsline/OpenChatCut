@@ -558,7 +558,6 @@ export function ChatComposer(props: ChatComposerProps) {
       {pop === 'mode' && (
         <ComposerPopover width={172} anchor={popAnchor} onClose={closePop}>
           {modeRow('agent', t('代理模式'), t('可编辑时间线，改动可撤销'))}
-          {modeRow('ask', t('问答模式'), t('只回答，不动时间线'))}
         </ComposerPopover>
       )}
       {pop === 'model' && (
