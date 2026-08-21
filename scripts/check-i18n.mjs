@@ -26,6 +26,7 @@ const ALLOWED_DATA_LITERALS = new Set([
   'src/components/settings/VisionModelPane.tsx::图片与时间线帧由所选视觉模型理解后以文本注入。',
   'src/components/settings/VisionModelPane.tsx::禁用',
   'src/components/settings/VisionModelPane.tsx::不描述图片，一律剥离。',
+  'src/components/settings/VisionModelPane.tsx::xAI (订阅登录)',
 ]);
 const ALLOWED_RAW_RENDER_LITERALS = new Set([
   'src/components/TopBar.tsx::中',

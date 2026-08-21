@@ -1,23 +1,41 @@
-// Language status + t(): The original Chinese text is the key (no additional key namespace is created), if the en dictionary cannot be found, it will fall back to Chinese.
+// Language status + t(): The original Chinese text is the key (no additional key namespace is created),
+// if the active-language dictionary cannot be found, it will fall back to Chinese.
 // Never go blank. Switch persistence localStorage('cc.locale'), subscription rerendering (useSyncExternalStore).
 // Rules: Use useT() (subscription switching) in React components; pure helper modules can directly import { t }
 //  — As long as the component that renders its output calls useT(), it will be recalculated when switching languages.
 // LLM interface (systemPrompt/tool ​​description/skill content) and persistent dynamic history tags do not enter i18n.
+// Default language: the saved choice wins; otherwise the system language (zh/ru), and English for everything else.
 import { useSyncExternalStore } from 'react';
 import { EN } from './dict/en';
 import EN_DATA from './dict/en/templates-data';
+import { RU } from './dict/ru';
 import { ZH_DATA } from './dict/zh';
 
-export type Locale = 'zh' | 'en';
+export type Locale = 'zh' | 'en' | 'ru';
+
+export const ALL_LOCALES: readonly Locale[] = ['zh', 'en', 'ru'];
 
 const STORAGE_KEY = 'cc.locale';
 
+function systemLocale(): Locale {
+  try {
+    const tag = String(navigator.language ?? '').toLowerCase();
+    if (tag.startsWith('zh')) return 'zh';
+    if (tag.startsWith('ru')) return 'ru';
+    return 'en';
+  } catch {
+    return 'en';
+  }
+}
+
 function readInitial(): Locale {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'zh';
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'zh' || stored === 'en' || stored === 'ru') return stored;
   } catch {
-    return 'zh';
+    // Private mode / storage disabled → system language below.
   }
+  return systemLocale();
 }
 
 let current: Locale = readInitial();
@@ -33,13 +51,13 @@ export function setLocale(next: Locale): void {
   try {
     localStorage.setItem(STORAGE_KEY, next);
   } catch { /* If the private mode cannot be saved, it will only affect this session */ }
-  document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
+  document.documentElement.lang = next === 'zh' ? 'zh-CN' : next === 'ru' ? 'ru' : 'en';
   subscribers.forEach((notify) => notify());
 }
 
 /** t('Selected {n}', { n: 3 }) - The Chinese original text is the key; the placeholder {name} has the same name in both languages. */
 export function t(zh: string, params?: Record<string, string | number>): string {
-  const raw = current === 'en' ? (EN[zh] ?? zh) : zh;
+  const raw = current === 'en' ? (EN[zh] ?? zh) : current === 'ru' ? (RU[zh] ?? zh) : zh;
   if (!params) return raw;
   return raw.replace(/\{(\w+)\}/g, (match, key: string) => (key in params ? String(params[key]) : match));
 }

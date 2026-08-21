@@ -1,3 +1,5 @@
+import type { Locale } from '../i18n/locale';
+
 export interface MobileUploadRecord {
   id: string;
   name: string;
@@ -21,7 +23,7 @@ async function sessionRequest(path: string, init?: RequestInit): Promise<MobileU
   return body;
 }
 
-export function createMobileUploadSession(locale: 'zh' | 'en'): Promise<MobileUploadSession> {
+export function createMobileUploadSession(locale: Locale): Promise<MobileUploadSession> {
   return sessionRequest(`/sessions?locale=${locale}`, { method: 'POST' });
 }
 
