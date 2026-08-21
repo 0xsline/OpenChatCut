@@ -28,7 +28,7 @@ interface MediaPoolGridProps {
   canRelink: boolean;
   onOpenFolder: (id: string) => void;
   onOpenParent: () => void;
-  onDropFiles: (files: FileList, folderId?: string) => void;
+  onDropTransfer: (transfer: DataTransfer, folderId?: string) => void;
   onMoveAsset: (id: string, folderId?: string) => void;
   onMoveAssets?: (ids: string[], folderId?: string) => void;
   onOpenFavorites: () => void;
@@ -193,7 +193,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
                   parentId={entry.parentId}
                   parentName={entry.parentName}
                   onOpen={props.onOpenParent}
-                  onDropFiles={props.onDropFiles}
+                  onDropTransfer={props.onDropTransfer}
                   onMoveAsset={props.onMoveAsset}
                   onMoveAssets={props.onMoveAssets}
                 />
@@ -203,7 +203,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
                   folder={entry.folder}
                   onOpen={props.onOpenFolder}
                   onFocusChange={props.setFocusedFolderId}
-                  onDropFiles={props.onDropFiles}
+                  onDropTransfer={props.onDropTransfer}
                   onMoveAsset={props.onMoveAsset}
                   onMoveAssets={props.onMoveAssets}
                   onOpenMenu={props.onOpenFolderMenu}

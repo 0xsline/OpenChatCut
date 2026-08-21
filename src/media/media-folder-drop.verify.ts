@@ -29,4 +29,17 @@ assert.deepEqual(placements, [
   { ids: ['asset-1'], folderId: targetFolderId },
 ], 'placeholder 与 ready 两个阶段必须归入同一个拖放目标文件夹');
 
+const nestedPlacements: Array<{ ids: string[]; folderId?: string }> = [];
+await importMediaBatch({
+  files: [{ name: 'day-1.mov' } as File, { name: 'day-2.mov' } as File],
+  targetFolderIds: ['folder-day-1', 'folder-day-2'],
+  onImport: async (file) => ({ id: file.name, name: file.name }) as MediaAsset,
+  onMoveAssets: (ids, folderId) => nestedPlacements.push({ ids, folderId }),
+  onProgress: () => undefined,
+});
+assert.deepEqual(nestedPlacements, [
+  { ids: ['day-1.mov'], folderId: 'folder-day-1' },
+  { ids: ['day-2.mov'], folderId: 'folder-day-2' },
+], '每个素材必须保留导入目录中的文件夹层级');
+
 console.log('media-folder-drop.verify: placeholder and ready preserve the target folder');

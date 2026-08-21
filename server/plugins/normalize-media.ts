@@ -1,8 +1,10 @@
 // POST /api/normalize-media — compatibility normalization with opt-in media optimization.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
-import { extname } from 'node:path';
-import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { basename, extname, join } from 'node:path';
+import {
+  isSafeUploadName, resolveUploadFile, resolveUploadReference, uploadDir,
+} from '../media-dir.ts';
 import {
   NormalizeAdmissionFullError,
   type NormalizeAdmission,
@@ -155,6 +157,7 @@ interface NormalizeRouteContext {
   readonly body: NormalizeRequestBody;
   readonly src: string;
   readonly inputPath: string;
+  readonly outputPath?: string;
   readonly options: NormalizeMediaPluginOptions;
   readonly logger: { info(message: string): void; error(message: string): void };
 }
@@ -165,6 +168,8 @@ async function normalizeVideoRequest(context: NormalizeRouteContext): Promise<vo
     const result = await normalizeMediaFile({
       inputPath: context.inputPath,
       publicSrc: context.src,
+      outputPath: context.outputPath,
+      preserveInput: context.outputPath !== undefined,
       force: context.body.force,
       optimize: context.body.optimize,
       forceCfr: context.body.forceCfr,
@@ -230,7 +235,11 @@ async function handleNormalizeRequest(
     sendJson(res, 200, { ok: true, path: src, normalized: false, reason: 'skip non-video extension' });
     return;
   }
-  await normalizeVideoRequest({ req, res, body, src, inputPath, options, logger });
+  const referenced = resolveUploadReference(name);
+  const outputPath = referenced
+    ? join(uploadDir(), `${basename(name, extension)}.normalized.mp4`)
+    : undefined;
+  await normalizeVideoRequest({ req, res, body, src, inputPath, outputPath, options, logger });
 }
 
 export function normalizeMediaPlugin(options: NormalizeMediaPluginOptions = {}): Plugin {

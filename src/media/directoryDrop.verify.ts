@@ -5,6 +5,7 @@ import {
   DIRECTORY_SCAN_MAX_FILES,
   hasDirectoryEntries,
 } from './directoryDrop';
+import { materializeDirectoryFolders } from './useMediaPoolFileImport';
 
 function fileEntry(file: File): FileSystemFileEntry {
   return {
@@ -64,17 +65,23 @@ function transfer(items: DataTransferItem[], files: File[] = []): DataTransfer {
   const result = await collectDroppedFiles(flat);
   assert.equal(result.scanned, false, 'flat drops must not enter recursive classification');
   assert.deepEqual(result.files, [avi, mpeg], 'flat DataTransfer.files must pass through unchanged');
+  assert.deepEqual(result.folderPaths, [[], []], 'flat files stay in the current media folder');
 }
 
 {
   const supported = new File(['video'], 'nested.mp4', { type: 'video/mp4' });
   const unsupported = new File(['text'], 'notes.txt', { type: 'text/plain' });
-  const nested = directoryEntry('folder', [fileEntry(supported), fileEntry(unsupported)]);
+  const nested = directoryEntry('folder', [
+    directoryEntry('cuts', [fileEntry(supported)]),
+    fileEntry(unsupported),
+  ]);
   const dropped = transfer([item(nested)]);
   assert.equal(hasDirectoryEntries(dropped), true, 'an actual directory entry enables recursion');
   const result = await collectDroppedFiles(dropped);
   assert.equal(result.scanned, true);
   assert.deepEqual(result.files, [supported]);
+  assert.deepEqual(result.folderPaths, [['folder', 'cuts']], 'directory hierarchy must be retained');
+  assert.deepEqual(result.directories, [['folder'], ['folder', 'cuts']], 'nested folders must be retained');
   assert.equal(result.unsupportedFiles, 1, 'unsupported directory files must be reported explicitly');
 }
 
@@ -94,4 +101,23 @@ function transfer(items: DataTransferItem[], files: File[] = []): DataTransfer {
   const result = await collectDroppedFiles(transfer([item(directoryEntry('large', files))]));
   assert.equal(result.files.length, DIRECTORY_SCAN_MAX_FILES);
   assert.equal(result.limitReached, true, 'directory traversal must stop after 400 files');
+}
+
+{
+  const created: string[] = [];
+  const folderIds = materializeDirectoryFolders({
+    files: [{ name: 'a.mp4' } as File, { name: 'b.mp4' } as File],
+    folderPaths: [['travel', 'day-1'], ['travel', 'day-2']],
+    directories: [['travel'], ['travel', 'day-1'], ['travel', 'day-2']],
+    scanned: true,
+    unsupportedFiles: 0,
+    limitReached: false,
+    depthReached: false,
+  }, 'current', (name, parentId) => {
+    const id = `${parentId}/${name}`;
+    created.push(id);
+    return id;
+  });
+  assert.deepEqual(created, ['current/travel', 'current/travel/day-1', 'current/travel/day-2']);
+  assert.deepEqual(folderIds, ['current/travel/day-1', 'current/travel/day-2']);
 }

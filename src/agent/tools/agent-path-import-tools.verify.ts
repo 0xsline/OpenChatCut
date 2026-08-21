@@ -36,7 +36,7 @@ const desktopBridge = {
   calls: [] as Array<{ paths: readonly string[]; projectId: string }>,
   async importAgentPaths(request: { paths: readonly string[]; projectId: string; knownHashes: readonly string[] }) {
     this.calls.push(request);
-    return { imported: [], errors: [] };
+    return { imported: [], errors: [], unsupportedFiles: [], duplicateCount: 0 };
   },
 };
 (globalThis as unknown as { window?: unknown }).window = { openChatCutDesktop: desktopBridge };
@@ -73,7 +73,7 @@ const projectCtx = {
 (globalThis as unknown as { window?: unknown }).window = {
   openChatCutDesktop: {
     async importAgentPaths(_request: { paths: readonly string[]; projectId: string; knownHashes: readonly string[] }) {
-      return { imported: [{ ...importedFile, importId: 'import-1' }], errors: [] };
+      return { imported: [{ ...importedFile, importId: 'import-1' }], errors: [], unsupportedFiles: [], duplicateCount: 0 };
     },
   },
 };
@@ -84,6 +84,47 @@ try {
   assert.equal(addedAssets[0]!.name, 'A001.mp4', 'asset name preserved');
   const listed = (result as { imported?: Array<{ name: string }> }).imported;
   assert.equal(listed?.[0]?.name, 'A001.mp4', 'result lists the asset');
+} finally {
+  delete (globalThis as unknown as { window?: unknown }).window;
+}
+
+// ── Missing roots are actionable and never reported as a successful import ──
+(globalThis as unknown as { window?: unknown }).window = {
+  openChatCutDesktop: {
+    async importAgentPaths() {
+      return {
+        imported: [], unsupportedFiles: [], duplicateCount: 0,
+        errors: [{
+          path: '/Volumes/素材盘',
+          code: 'IMPORT_ROOTS_NOT_CONFIGURED' as const,
+          error: '尚未添加本地素材目录。请在“设置 → 本地素材目录”中添加。',
+        }],
+      };
+    },
+  },
+};
+try {
+  const result = await execAgentPathImportTool('import_folder', { path: '/Volumes/素材盘' }, projectCtx);
+  assert.equal(result.code, 'IMPORT_ROOTS_NOT_CONFIGURED');
+  assert.match(String(result.error), /设置.*本地素材目录/);
+  assert.equal('ok' in result, false, 'configuration failure is not a successful tool result');
+} finally {
+  delete (globalThis as unknown as { window?: unknown }).window;
+}
+
+// ── Unsupported documents are distinguished from known media ──
+(globalThis as unknown as { window?: unknown }).window = {
+  openChatCutDesktop: {
+    async importAgentPaths() {
+      return { imported: [], errors: [], unsupportedFiles: ['说明.md'], duplicateCount: 2 };
+    },
+  },
+};
+try {
+  const result = await execAgentPathImportTool('import_folder', { path: '/Volumes/素材盘' }, projectCtx);
+  assert.deepEqual(result.unsupportedFiles, ['说明.md']);
+  assert.equal(result.duplicateCount, 2);
+  assert.equal(result.skippedDuplicates, false, 'mixed skipped reasons are not mislabeled');
 } finally {
   delete (globalThis as unknown as { window?: unknown }).window;
 }

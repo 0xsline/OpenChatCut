@@ -10,6 +10,7 @@ interface MediaImportLifecycle {
 interface ImportMediaBatchOptions {
   files: readonly File[];
   targetFolderId?: string;
+  targetFolderIds?: readonly (string | undefined)[];
   onImport: (
     file: File,
     onProgress?: (ratio: number) => void,
@@ -27,6 +28,7 @@ interface ImportMediaBatchOptions {
 export async function importMediaBatch({
   files,
   targetFolderId,
+  targetFolderIds,
   onImport,
   onMoveAssets,
   onProgress,
@@ -48,7 +50,8 @@ export async function importMediaBatch({
       resolveStarted();
     };
     const placeAsset = (asset: MediaAsset) => {
-      if (targetFolderId) onMoveAssets([asset.id], targetFolderId);
+      const folderId = targetFolderIds?.[index] ?? targetFolderId;
+      if (folderId) onMoveAssets([asset.id], folderId);
       settleStarted();
     };
     const recordFailure = (reason: unknown) => {

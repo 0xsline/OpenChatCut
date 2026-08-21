@@ -1,19 +1,18 @@
-import { copyFile, mkdir, realpath, stat, unlink } from 'node:fs/promises';
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { mkdir, realpath, stat, unlink } from 'node:fs/promises';
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Stats } from 'node:fs';
 import type { DirectoryImportedFile, DirectoryImportMediaKind } from '../shared/directory-import.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
-import { sha256File } from '../shared/node-content-hash.ts';
 import { ffprobeBin } from '../server/media-binaries.ts';
 import { spawnMediaProcess } from '../server/media-process.ts';
-import { uploadDir } from '../server/media-dir.ts';
+import { resolveUploadFile, uploadDir } from '../server/media-dir.ts';
+import { mediaReferenceManifestPath } from '../server/media-references.ts';
 import { normalizeMediaFile, type NormalizeMediaFileResult } from '../server/media-normalization-runner.ts';
 import { normalizationAbortError, throwIfNormalizationAborted } from '../server/media-normalization.ts';
 import {
   createTransparentMovProxy,
   importLocalMedia,
   type LocalMediaImport,
-  type LocalMediaImportDependencies,
 } from './local-media-import.ts';
 
 const KIND_BY_EXTENSION: Record<string, DirectoryImportMediaKind> = {
@@ -51,6 +50,7 @@ export interface DirectoryImportDependencies {
   readonly canonicalUploadDirectory: () => Promise<string>;
   readonly importLocalMedia: typeof importLocalMedia;
   readonly createTransparentMovProxy: typeof createTransparentMovProxy;
+  readonly resolveUpload: typeof resolveUploadFile;
   readonly normalizeVideo: (
     inputPath: string,
     publicSrc: string,
@@ -97,51 +97,26 @@ export class DirectoryDestinationChangedError extends Error {
   }
 }
 
-interface DirectoryCopyDependencies {
-  readonly copyFile: (source: string, destination: string, mode: number) => Promise<void>;
-  readonly unlink: (path: string) => Promise<void>;
-}
-
-export async function copyDirectoryMediaFile(
-  source: string,
-  destination: string,
-  mode: number,
-  dependencies: DirectoryCopyDependencies = { copyFile, unlink },
-): Promise<void> {
-  try {
-    await dependencies.copyFile(source, destination, mode);
-  } catch (error) {
-    try {
-      await dependencies.unlink(destination);
-    } catch (cleanupError) {
-      if ((cleanupError as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw new AggregateError([error, cleanupError], 'directory media copy cleanup failed');
-      }
-    }
-    throw error;
-  }
-}
-
-const DIRECTORY_LOCAL_MEDIA_DEPENDENCIES: LocalMediaImportDependencies = {
-  stat: (path) => stat(path),
-  copyFile: copyDirectoryMediaFile,
-  hashFile: sha256File,
-};
-
 function importDirectoryLocalMedia(sourcePath: string, name: string): Promise<LocalMediaImport> {
-  return importLocalMedia(sourcePath, name, DIRECTORY_LOCAL_MEDIA_DEPENDENCIES);
+  return importLocalMedia(sourcePath, name);
 }
 function normalizeDirectoryVideo(
   inputPath: string,
   publicSrc: string,
   signal: AbortSignal,
 ): Promise<NormalizeMediaFileResult> {
+  const sourceName = basename(publicSrc);
+  const outputPath = join(
+    uploadDir(), `${basename(sourceName, extname(sourceName))}.normalized.mp4`,
+  );
   return normalizeMediaFile({
     inputPath,
     publicSrc,
+    outputPath,
+    preserveInput: true,
     signal,
     publishR2: false,
-    uploadsDirectory: dirname(inputPath),
+    uploadsDirectory: uploadDir(),
   });
 }
 
@@ -154,6 +129,7 @@ const DEFAULT_DEPENDENCIES: DirectoryImportDependencies = {
   canonicalUploadDirectory: canonicalCurrentUploadDirectory,
   importLocalMedia: importDirectoryLocalMedia,
   createTransparentMovProxy,
+  resolveUpload: resolveUploadFile,
   normalizeVideo: normalizeDirectoryVideo,
   probeMedia: probeDirectoryMedia,
   unlink,
@@ -225,7 +201,10 @@ function cleanupCandidates(
   if (extname(storedName).toLowerCase() === '.mov') {
     names.add(`${basename(storedName, '.mov')}.alpha.webm`);
   }
-  return [...directories].flatMap((directory) => [...names].map((name) => join(directory, name)));
+  return [...directories].flatMap((directory) => [
+    ...[...names].map((name) => join(directory, name)),
+    mediaReferenceManifestPath(directory, storedName),
+  ]);
 }
 
 export async function removeDirectoryImportFiles(
@@ -347,7 +326,8 @@ async function resolveDirectoryPublication(
   kind: DirectoryImportMediaKind,
   imported: LocalMediaImport,
 ): Promise<ResolvedDirectoryPublication> {
-  const storedPath = join(request.pinnedUploadDirectory, imported.storedName);
+  const storedPath = dependencies.resolveUpload(imported.storedName);
+  if (!storedPath) throw new Error('referenced directory media is offline');
   if (kind !== 'video') {
     const probe = await checked(
       dependencies.probeMedia(storedPath, kind, request.signal), request.cancelled,
@@ -371,12 +351,12 @@ async function resolveDirectoryPublication(
   );
   await assertPinnedDestination(request.pinnedUploadDirectory, dependencies, request.cancelled);
   const finalPath = await checked(dependencies.realpath(normalized.outputPath), request.cancelled);
-  if (!isPathInside(request.pinnedUploadDirectory, finalPath)) {
+  if (normalized.normalized && !isPathInside(request.pinnedUploadDirectory, finalPath)) {
     throw new Error('normalized directory media escaped the pinned destination');
   }
   return {
     src: normalized.path,
-    storedName: basename(finalPath),
+    storedName: normalized.normalized ? basename(finalPath) : imported.storedName,
     probe: {
       durationSeconds: normalized.durationSeconds,
       width: normalized.width,

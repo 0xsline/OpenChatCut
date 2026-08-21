@@ -14,6 +14,7 @@ import {
   runtimeProfile,
   type RuntimeProfile,
 } from './runtime-profile.ts';
+import { resolveMediaReference } from './media-references.ts';
 
 export const DEFAULT_UPLOAD_DIR = join(process.cwd(), 'public', 'media', 'uploads');
 
@@ -72,6 +73,23 @@ export function resolveUploadFile(
   for (const d of uploadReadDirs(profile, configuredMediaDir)) {
     const file = join(d, name);
     if (existsSync(file)) return file;
+    const referenced = resolveMediaReference(d, name);
+    if (referenced) return referenced;
+  }
+  return null;
+}
+
+/** Return the external source only when the winning upload entry is a reference. */
+export function resolveUploadReference(
+  name: string,
+  profile: RuntimeProfile = runtimeProfile(),
+  configuredMediaDir?: string,
+): string | null {
+  if (!isSafeUploadName(name)) return null;
+  for (const directory of uploadReadDirs(profile, configuredMediaDir)) {
+    if (existsSync(join(directory, name))) return null;
+    const referenced = resolveMediaReference(directory, name);
+    if (referenced) return referenced;
   }
   return null;
 }

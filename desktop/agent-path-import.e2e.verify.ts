@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm, stat, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, stat, realpath, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { seedKeystore } from '../server/keystore.ts';
+import { resolveUploadFile } from '../server/media-dir.ts';
+import { mediaReferenceManifestPath } from '../server/media-references.ts';
 import { importAgentPaths, pathAllowedByRoots } from './agent-path-import.ts';
 import { canonicalCurrentUploadDirectory } from './directory-watch-import.ts';
 
 // End-to-end main-process import for issue #84 Feature B: a real file inside
-// the whitelist lands in the upload directory with fingerprinting; outside
+// the whitelist lands in the media pool as a reference with fingerprinting; outside
 // paths and duplicates are handled without error. CI-safe (no GUI): the
 // desktop main process is plain Node file logic.
 
@@ -40,6 +42,7 @@ const importRoot = await realpath(join(workRoot, '素材盘'));
 const sourceName = '访谈素材.wav';
 const sourcePath = join(importRoot, sourceName);
 await writeFile(sourcePath, silentWavBytes());
+await writeFile(join(importRoot, '剪辑说明.md'), '# 文稿');
 
 const uploadDir = await canonicalCurrentUploadDirectory();
 const cleanup = new Set<string>();
@@ -50,7 +53,8 @@ try {
     projectId: 'verify-project',
     knownHashes: [],
   });
-  assert.match(unconfigured.errors[0]?.error ?? '', /AGENT_IMPORT_ROOTS is not configured/, 'unconfigured roots explain themselves');
+  assert.equal(unconfigured.errors[0]?.code, 'IMPORT_ROOTS_NOT_CONFIGURED');
+  assert.match(unconfigured.errors[0]?.error ?? '', /\.env\.local/, 'unconfigured roots explain the next action');
 
   seedKeystore({ AGENT_IMPORT_ROOTS: importRoot });
 
@@ -68,9 +72,24 @@ try {
   assert.match(imported.contentHash, /^[0-9a-f]{64}$/, 'SHA-256 fingerprint present');
   assert.ok(imported.src.startsWith('/media/uploads/'), `published src (${imported.src})`);
   const storedPath = join(uploadDir, imported.storedName);
-  cleanup.add(storedPath);
-  assert.equal((await stat(storedPath)).isFile(), true, 'copy landed in the upload directory');
+  cleanup.add(mediaReferenceManifestPath(uploadDir, imported.storedName));
+  await assert.rejects(stat(storedPath), { code: 'ENOENT' }, 'Agent import must not copy media bytes');
+  assert.equal(resolveUploadFile(imported.storedName), sourcePath, 'the pool URL resolves to the source');
   assert.ok(imported.durationSeconds != null && imported.durationSeconds > 0, 'probe reports a duration');
+
+  if (process.platform !== 'win32') {
+    const rootAlias = join(workRoot, '素材盘-link');
+    await symlink(importRoot, rootAlias, 'dir');
+    seedKeystore({ AGENT_IMPORT_ROOTS: rootAlias });
+    const throughAlias = await importAgentPaths({
+      paths: [join(rootAlias, sourceName)],
+      projectId: 'verify-project',
+      knownHashes: [imported.contentHash],
+    });
+    assert.equal(throughAlias.errors.length, 0, 'symlinked roots resolve before containment checks');
+    assert.equal(throughAlias.duplicateCount, 1, 'symlinked /tmp-style paths reach the importer');
+    seedKeystore({ AGENT_IMPORT_ROOTS: importRoot });
+  }
 
   // ── Duplicate (same content hash) is skipped silently ──
   const duplicate = await importAgentPaths({
@@ -80,6 +99,15 @@ try {
   });
   assert.equal(duplicate.imported.length, 0, 'duplicate is not re-imported');
   assert.equal(duplicate.errors.length, 0, 'duplicate is not an error');
+  assert.equal(duplicate.duplicateCount, 1, 'duplicate count is explicit');
+
+  // ── Unsupported documents are reported instead of looking like duplicates ──
+  const folder = await importAgentPaths({
+    paths: [importRoot],
+    projectId: 'verify-project',
+    knownHashes: [imported.contentHash],
+  });
+  assert.deepEqual(folder.unsupportedFiles, ['剪辑说明.md'], 'unsupported document name is reported');
 
   // ── Path outside the roots is rejected with a clear error ──
   const outside = join(workRoot, 'outside.wav');
@@ -90,7 +118,8 @@ try {
     knownHashes: [],
   });
   assert.equal(rejected.imported.length, 0, 'outside path imports nothing');
-  assert.match(rejected.errors[0]?.error ?? '', /outside the configured import roots/, 'outside path explains the whitelist');
+  assert.equal(rejected.errors[0]?.code, 'PATH_OUTSIDE_IMPORT_ROOTS');
+  assert.match(rejected.errors[0]?.error ?? '', /已添加的目录/, 'outside path explains the configured roots');
   assert.equal(pathAllowedByRoots([importRoot], outside), false, 'containment check agrees');
 
   console.log('agent-path-import.e2e.verify: whitelisted import, dedupe, and rejection passed');

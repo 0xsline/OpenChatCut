@@ -79,7 +79,7 @@ export function MediaPoolPanel({
   const t = useT();
   const musicAnalysis = useMusicAnalysisCards(assets);
   const [error, setError] = useState<string | null>(null);
-  const fileImport = useMediaPoolFileImport({ onImport, onMoveAssets, setError, t });
+  const fileImport = useMediaPoolFileImport({ onImport, onMoveAssets, onCreateFolder, setError, t });
   const {
     inputRef, busy, setBusy, uploadRatio, canPickDirectory,
     pickFiles, pickDirectory, handleDrop,
@@ -408,7 +408,7 @@ export function MediaPoolPanel({
         canRelink={!!onRelinkAsset}
         onOpenFolder={openFolder}
         onOpenParent={openParent}
-        onDropFiles={(files, folderId) => void pickFiles(files, folderId)}
+        onDropTransfer={(transfer, folderId) => void handleDrop(transfer, folderId)}
         onMoveAsset={(id, folderId) => onMoveAssets([id], folderId)}
         onMoveAssets={(ids, folderId) => onMoveAssets(ids, folderId)}
         onOpenFavorites={openFavorites}

@@ -280,26 +280,17 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     key: 'cloud', title: '存储', icon: 'cloud',
     groups: [
-      { key: 'storage', title: '媒体存储', hint: '工程与素材的本地保存目录，与可选的 R2 云备份。',
+      { key: 'storage', title: '默认工程位置', hint: '新工程和生成素材的默认保存位置，以及可选的 R2 云备份。',
         vendors: [
-          { key: 'storage/projects', vendor: 'localdisk', title: '工程存储目录',
-            note: '工程、历史版本与素材的存放位置。默认放在应用数据目录里；'
-              + '改到你自己的目录（外置硬盘、同步盘）后，卸载或重装应用都不会动到作品。'
-              + '保存时会把现有数据复制到新目录（原目录保留不删），重启应用后生效。',
+          { key: 'storage/projects', vendor: 'localdisk', title: '默认工程位置',
+            note: '新建工程、历史版本和应用生成的素材保存在这里。桌面端从外部拖入的文件和文件夹保留在原位置，'
+              + '工程只建立引用；浏览器运行时会上传托管副本。修改后重启应用生效。',
             fields: [
-              directory('OPENCHATCUT_DATA_DIR', '工程存储目录', '应用默认数据目录',
+              directory('OPENCHATCUT_DATA_DIR', '默认工程位置', '应用默认数据目录',
                 '桌面端点击“选择目录”；也可手动输入绝对路径（可用 ~/ 开头）。清除后回到默认目录。'),
             ] },
-          { key: 'storage/local', vendor: 'localdisk', title: '本地磁盘',
-            note: '桌面端默认把素材存入系统应用数据目录，浏览器开发版默认使用 public/media/uploads/。'
-              + '可选择任意本机目录或外置硬盘；保存后旧目录中的素材会复制到新目录（原文件保留），'
-              + '工程里的素材地址不变，预览与渲染导出都会跟随新目录。',
-            fields: [
-              directory('MEDIA_DIR', '素材保存目录', '系统默认素材目录',
-                '桌面端点击“选择目录”；浏览器中也可手动输入绝对路径。清除后回到当前运行环境的默认目录。'),
-            ] },
           { key: 'storage/r2', vendor: 'r2', title: 'Cloudflare R2',
-            note: '未配置时素材只存本机（「本地磁盘」页的目录）。配置后：每次上传同步写入 R2（桶保持私有，'
+            note: '未配置时素材只存本机。配置后：每次上传同步写入 R2（桶保持私有，'
               + '读取经本地服务回源，src 路径不变）；本机缺文件时自动从云端取回。改动即时生效。'
               + 'R2 控制台建桶 → R2 API Token（Object Read & Write）即可拿到下面四个值。',
             fields: [

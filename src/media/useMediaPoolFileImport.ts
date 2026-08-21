@@ -28,6 +28,7 @@ type ImportMedia = (
 interface UseMediaPoolFileImportOptions {
   onImport: ImportMedia;
   onMoveAssets: (ids: string[], folderId?: string) => void;
+  onCreateFolder: (name: string, parentId?: string) => string;
   setError: (error: string | null) => void;
   t: typeof translate;
 }
@@ -62,9 +63,35 @@ function isPickerCancellation(reason: unknown): boolean {
 }
 
 type PickFiles = MediaPoolFileImportState['pickFiles'];
+type ImportFiles = (
+  files: FileList | readonly File[] | null,
+  folderId?: string,
+  targetFolderIds?: readonly (string | undefined)[],
+) => Promise<boolean>;
+
+export function materializeDirectoryFolders(
+  result: DirectoryScanResult,
+  parentFolderId: string | undefined,
+  createFolder: (name: string, parentId?: string) => string,
+): readonly (string | undefined)[] {
+  const idsByPath = new Map<string, string>();
+  const paths = [...result.directories, ...result.folderPaths];
+  const folderIds = paths.map((path) => {
+    let parentId = parentFolderId;
+    for (const name of path) {
+      const key = JSON.stringify([parentId ?? null, name]);
+      const id = idsByPath.get(key) ?? createFolder(name, parentId);
+      idsByPath.set(key, id);
+      parentId = id;
+    }
+    return parentId;
+  });
+  return folderIds.slice(result.directories.length);
+}
 
 function useDirectoryFileActions(
-  pickFiles: PickFiles,
+  importFiles: ImportFiles,
+  onCreateFolder: UseMediaPoolFileImportOptions['onCreateFolder'],
   setError: (error: string | null) => void,
   t: typeof translate,
 ): Pick<MediaPoolFileImportState, 'pickDirectory' | 'handleDrop'> {
@@ -74,8 +101,9 @@ function useDirectoryFileActions(
       setError(notice ?? t('文件夹中没有支持的媒体文件。'));
       return;
     }
-    if (await pickFiles(result.files, folderId) && notice) setError(notice);
-  }, [pickFiles, setError, t]);
+    const targetFolderIds = materializeDirectoryFolders(result, folderId, onCreateFolder);
+    if (await importFiles(result.files, folderId, targetFolderIds) && notice) setError(notice);
+  }, [importFiles, onCreateFolder, setError, t]);
   const pickDirectory = useCallback(async (folderId?: string) => {
     try {
       const result = await pickMediaFolder();
@@ -86,7 +114,7 @@ function useDirectoryFileActions(
   }, [importResult, setError]);
   const handleDrop = useCallback(async (transfer: DataTransfer, folderId?: string) => {
     if (!hasDirectoryEntries(transfer)) {
-      await pickFiles(transfer.files, folderId);
+      await importFiles(transfer.files, folderId);
       return;
     }
     try {
@@ -94,23 +122,23 @@ function useDirectoryFileActions(
     } catch (reason) {
       setError(mediaImportErrorMessage(reason));
     }
-  }, [importResult, pickFiles, setError]);
+  }, [importFiles, importResult, setError]);
   return { pickDirectory, handleDrop };
 }
 
 export function useMediaPoolFileImport(options: UseMediaPoolFileImportOptions): MediaPoolFileImportState {
-  const { onImport, onMoveAssets, setError, t } = options;
+  const { onImport, onMoveAssets, onCreateFolder, setError, t } = options;
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [uploadRatio, setUploadRatio] = useState<number | null>(null);
-  const pickFiles = useCallback<PickFiles>(async (files, folderId) => {
+  const importFiles = useCallback<ImportFiles>(async (files, folderId, targetFolderIds) => {
     if (!files?.length) return true;
     setBusy(true);
     setError(null);
     setUploadRatio(0);
     try {
       const completionErrors = await importMediaBatch({
-        files: Array.from(files), targetFolderId: folderId, onImport, onMoveAssets,
+        files: Array.from(files), targetFolderId: folderId, targetFolderIds, onImport, onMoveAssets,
         onProgress: (ratio) => setUploadRatio((current) => Math.max(current ?? 0, ratio)),
       });
       if (completionErrors.length) throw completionErrors[0];
@@ -125,7 +153,10 @@ export function useMediaPoolFileImport(options: UseMediaPoolFileImportOptions): 
       if (inputRef.current) inputRef.current.value = '';
     }
   }, [onImport, onMoveAssets, setError]);
-  const directory = useDirectoryFileActions(pickFiles, setError, t);
+  const pickFiles = useCallback<PickFiles>((files, folderId) => (
+    importFiles(files, folderId)
+  ), [importFiles]);
+  const directory = useDirectoryFileActions(importFiles, onCreateFolder, setError, t);
   return {
     inputRef, busy, setBusy, uploadRatio, canPickDirectory: canPickMediaFolder(),
     pickFiles, ...directory,

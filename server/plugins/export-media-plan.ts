@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { access, mkdir, open, rename, stat, unlink, type FileHandle } from 'node:fs/promises';
+import { access, mkdir, open, rename, rm, stat, unlink, type FileHandle } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -17,11 +17,13 @@ import {
   isSafeUploadName,
   resolveOrHydrateUploadFile,
   resolveUploadFile,
+  resolveUploadReference,
   uploadDir,
   type ResolvedUploadFile,
 } from '../media-dir.ts';
 import { resolveProductAsset } from '../product-assets.ts';
 import { safePublicFetch } from '../safe-public-fetch.ts';
+import { materializeExportReferences } from './export-reference-materialization.ts';
 
 const MAX_MATERIALIZED_MEDIA_BYTES = 10 * 1024 * 1024 * 1024;
 const MIME_EXTENSIONS: Readonly<Record<string, string>> = {
@@ -53,6 +55,7 @@ export interface ServerExportMediaOptions {
   uploadDirectory?: string;
   fetcher?: typeof safePublicFetch;
   resolveUpload?: (name: string) => string | null;
+  resolveUploadReference?: (name: string) => string | null;
   hydrateUpload?: (name: string, signal?: AbortSignal) => Promise<ResolvedUploadFile | null>;
   maxMaterializedBytes?: number;
   signal?: AbortSignal;
@@ -67,7 +70,7 @@ export interface MaterializedServerExportMedia<Value> {
 
 type ResolvedServerExportMediaOptions = Required<Pick<
   ServerExportMediaOptions,
-  'publicDirectory' | 'uploadDirectory' | 'fetcher' | 'resolveUpload' | 'hydrateUpload' | 'maxMaterializedBytes'
+  'publicDirectory' | 'uploadDirectory' | 'fetcher' | 'resolveUpload' | 'resolveUploadReference' | 'hydrateUpload' | 'maxMaterializedBytes'
 >> & Pick<ServerExportMediaOptions, 'signal'>;
 
 async function readableFile(path: string): Promise<boolean> {
@@ -106,7 +109,7 @@ async function cleanupPaths(paths: readonly string[]): Promise<void> {
   await Promise.all(paths.map(async (path) => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        await unlink(path);
+        await rm(path, { recursive: true, force: true });
         return;
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return;
@@ -354,6 +357,7 @@ function resolvedOptions(options: ServerExportMediaOptions): ResolvedServerExpor
     uploadDirectory: resolve(options.uploadDirectory ?? uploadDir()),
     fetcher: options.fetcher ?? safePublicFetch,
     resolveUpload: options.resolveUpload ?? resolveUploadFile,
+    resolveUploadReference: options.resolveUploadReference ?? resolveUploadReference,
     hydrateUpload: options.hydrateUpload
       ?? ((name, signal) => resolveOrHydrateUploadFile(name, undefined, signal)),
     maxMaterializedBytes,
@@ -396,6 +400,15 @@ export async function materializeServerExportMedia<Value>(
     )).filter((issue): issue is ExportMediaIssue => issue !== null);
     resolved.signal?.throwIfAborted();
     if (localIssues.length > 0) throw preflightFailure(localIssues);
+
+    const referenced = await materializeExportReferences(
+      localReferences,
+      resolved.uploadDirectory,
+      resolved.resolveUploadReference,
+      resolved.signal,
+    );
+    for (const [source, publicPath] of referenced.replacements) replacements.set(source, publicPath);
+    localPaths.push(...referenced.localPaths);
 
     const remoteIssues: ExportMediaIssue[] = [];
     const attemptedRemoteSources = new Set<string>();

@@ -30,7 +30,7 @@ assert.doesNotMatch(panel, /useDirectoryImport\(/, 'media-tab unmount must not o
 assert.match(panel, /directoryImport: UseDirectoryImportState/, 'media pool consumes watch controls as state');
 assert.match(
   fileImport,
-  /if \(!hasDirectoryEntries\(transfer\)\)[\s\S]*?pickFiles\(transfer\.files, folderId\)/,
+  /if \(!hasDirectoryEntries\(transfer\)\)[\s\S]*?importFiles\(transfer\.files, folderId\)/,
   'flat DataTransfer.files must bypass recursive collection and keep the established importer',
 );
 assert.doesNotMatch(

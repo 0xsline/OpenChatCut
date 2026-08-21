@@ -6,14 +6,14 @@
 import type { AgentContext } from '../context';
 import type { AgentToolSchema } from '../tool-schema';
 import { directoryFileToAsset } from '../../media/directoryImportAsset';
-import type { DirectoryImportedFile } from '../../../shared/directory-import';
+import type { AgentPathImportResult } from '../../../shared/directory-import';
 
 export const AGENT_PATH_IMPORT_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'import_asset',
     description: [
       'Import ONE local media file (video/audio/image) by its absolute disk path into the media pool.',
-      'Desktop app only; the path must be inside the allowed import roots configured via AGENT_IMPORT_ROOTS.',
+      'Desktop app only; the path must be inside an allowed AGENT_IMPORT_ROOTS directory.',
       'Returns the imported pool asset(s); duplicates already in the pool are skipped.',
     ].join(' '),
     input_schema: {
@@ -28,8 +28,9 @@ export const AGENT_PATH_IMPORT_SCHEMAS: AgentToolSchema[] = [
     name: 'import_folder',
     description: [
       'Import every supported media file inside a local directory (recursive, bounded) into the media pool.',
-      'Desktop app only; the directory must be inside the allowed import roots configured via AGENT_IMPORT_ROOTS.',
-      'Returns the imported pool assets and any per-file errors; duplicates already in the pool are skipped.',
+      'Desktop app only; the directory must be inside an allowed AGENT_IMPORT_ROOTS directory.',
+      'Returns imported assets, duplicate counts, unsupported file names, and per-file errors.',
+      'Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -50,10 +51,7 @@ interface DesktopPathImportApi {
     paths: readonly string[];
     projectId: string;
     knownHashes: readonly string[];
-  }): Promise<{
-    imported: ReadonlyArray<Omit<DirectoryImportedFile, 'importId'>>;
-    errors: readonly { path: string; error: string }[];
-  }>;
+  }): Promise<AgentPathImportResult>;
 }
 
 function desktopApi(): DesktopPathImportApi | null {
@@ -90,6 +88,14 @@ export async function execAgentPathImportTool(
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
+  if (!result.imported.length && result.errors.length) {
+    const first = result.errors[0]!;
+    return {
+      error: first.error,
+      ...(first.code ? { code: first.code } : {}),
+      errors: result.errors.slice(0, 20),
+    };
+  }
   const assets = await Promise.all(result.imported.map((file) => directoryFileToAsset(
     { ...file, importId: crypto.randomUUID() },
     state.fps,
@@ -98,7 +104,10 @@ export async function execAgentPathImportTool(
   return {
     ok: true,
     imported: assets.map((asset) => ({ id: asset.id, name: asset.name, kind: asset.kind, src: asset.src })),
-    skippedDuplicates: !result.imported.length && result.errors.length === 0,
+    duplicateCount: result.duplicateCount,
+    skippedDuplicates: result.duplicateCount > 0
+      && !assets.length && !result.errors.length && !result.unsupportedFiles.length,
+    ...(result.unsupportedFiles.length ? { unsupportedFiles: result.unsupportedFiles.slice(0, 50) } : {}),
     ...(result.errors.length ? { errors: result.errors.slice(0, 20) } : {}),
   };
 }

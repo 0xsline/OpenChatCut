@@ -40,6 +40,8 @@ export interface NormalizeMediaFileResult {
 export interface NormalizeMediaFileOptions {
   readonly inputPath: string;
   readonly publicSrc: string;
+  readonly outputPath?: string;
+  readonly preserveInput?: boolean;
   readonly force?: boolean;
   readonly optimize?: boolean;
   readonly forceCfr?: boolean;
@@ -170,8 +172,22 @@ async function publishNormalized(
   inputPath: string,
   outputPath: string,
   tempPath: string,
+  preserveInput: boolean,
   signal?: AbortSignal,
 ): Promise<string> {
+  if (preserveInput) {
+    if (outputPath === inputPath) throw new Error('preserved normalization requires a separate output path');
+    await unlink(outputPath).catch(() => {});
+    throwIfNormalizationAborted(signal);
+    try {
+      await rename(tempPath, outputPath);
+      throwIfNormalizationAborted(signal);
+      return outputPath;
+    } catch (error) {
+      await unlink(outputPath).catch(() => {});
+      throw error;
+    }
+  }
   return outputPath === inputPath || basename(outputPath) === basename(inputPath)
     ? publishSamePath(inputPath, tempPath, signal)
     : publishNewPath(inputPath, outputPath, tempPath, signal);
@@ -256,7 +272,7 @@ async function encodePlannedMedia(
 export async function normalizeMediaFile(
   options: NormalizeMediaFileOptions,
 ): Promise<NormalizeMediaFileResult> {
-  const outputPath = resolveNormalizeOutputPath(options.inputPath);
+  const outputPath = options.outputPath ?? resolveNormalizeOutputPath(options.inputPath);
   const admission = options.admission ?? normalizeAdmission;
   let release: ReleaseNormalizePermit | undefined;
   let tempPath: string | undefined;
@@ -268,7 +284,9 @@ export async function normalizeMediaFile(
     tempPath = createNormalizeTempPath(outputPath);
     options.logInfo?.(`[normalize-media] ${basename(options.inputPath)}: ${plan.reason}`);
     await encodePlannedMedia(options, plan, outputPath, tempPath);
-    const finalPath = await publishNormalized(options.inputPath, outputPath, tempPath, options.signal);
+    const finalPath = await publishNormalized(
+      options.inputPath, outputPath, tempPath, options.preserveInput === true, options.signal,
+    );
     tempPath = undefined;
     await refreshNormalizedR2(finalPath, options);
     await cleanStaleAudioCaches(outputPath, options);

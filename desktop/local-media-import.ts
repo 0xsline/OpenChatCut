@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import { copyFile, mkdir, stat, unlink } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { ffmpegBin, ffprobeBin } from '../server/media-binaries.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../server/media-process.ts';
 import { resolveUploadFile, uploadDir } from '../server/media-dir.ts';
+import { registerMediaReference } from '../server/media-references.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
 import { sha256File } from '../shared/node-content-hash.ts';
 import {
@@ -20,19 +20,19 @@ export interface LocalMediaImport {
 
 /** Sources above this size skip the full-file SHA-256: the second pass over
  * multi-GiB masters costs more than content-addressed dedup can save, and the
- * import pipeline (copy + normalize + ASR) already saturates disk I/O. */
+ * import pipeline (hash + normalize + ASR) already saturates disk I/O. */
 const LARGE_HASH_SKIP_BYTES = 1.5 * 1024 * 1024 * 1024;
 
 export interface LocalMediaImportDependencies {
-  stat(path: string): Promise<{ isFile(): boolean; size: number }>;
-  copyFile(source: string, destination: string, mode: number): Promise<void>;
+  stat(path: string): Promise<{ isFile(): boolean; size: number; mtimeMs: number }>;
   hashFile(path: string): Promise<string>;
+  registerReference(directory: string, name: string, sourcePath: string): Promise<void>;
 }
 
 const DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES: LocalMediaImportDependencies = {
   stat: (path) => stat(path),
-  copyFile: (source, destination, mode) => copyFile(source, destination, mode),
   hashFile: sha256File,
+  registerReference: registerMediaReference,
 };
 
 type ProbeStream = {
@@ -115,22 +115,16 @@ export async function importLocalMedia(
   const extension = extname(originalName).toLowerCase();
   const storedName = `${randomUUID()}${extension}`;
   const directory = uploadDir();
-  const destination = join(directory, storedName);
-  await mkdir(directory, { recursive: true });
-  // COPYFILE_FICLONE attempts a copy-on-write clone and transparently falls
-  // back to a regular copy when the filesystem does not support cloning.
-  // Either path creates an inode independent from the source.
-  await dependencies.copyFile(sourcePath, destination, constants.COPYFILE_FICLONE);
-  try {
-    const contentHash = sourceInfo.size > LARGE_HASH_SKIP_BYTES
-      ? ''
-      : normalizeSha256Hash(await dependencies.hashFile(destination));
-    if (contentHash !== '' && !contentHash) throw new Error('local media hash must be a SHA-256 hex digest');
-    return { src: `/media/uploads/${storedName}`, storedName, contentHash };
-  } catch (error) {
-    await unlink(destination).catch(() => {});
-    throw error;
+  const contentHash = sourceInfo.size > LARGE_HASH_SKIP_BYTES
+    ? ''
+    : normalizeSha256Hash(await dependencies.hashFile(sourcePath));
+  if (contentHash !== '' && !contentHash) throw new Error('local media hash must be a SHA-256 hex digest');
+  const finalInfo = await dependencies.stat(sourcePath);
+  if (!finalInfo.isFile() || finalInfo.size !== sourceInfo.size || finalInfo.mtimeMs !== sourceInfo.mtimeMs) {
+    throw new Error('local media source changed during import');
   }
+  await dependencies.registerReference(directory, storedName, sourcePath);
+  return { src: `/media/uploads/${storedName}`, storedName, contentHash };
 }
 
 /** Return null for ordinary MOV files and never replace or remove the original. */

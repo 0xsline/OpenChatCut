@@ -1,8 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ViteDevServer } from 'vite';
-import {
-  constants as fsConstants, createReadStream, existsSync, type Stats,
-} from 'node:fs';
+import { constants as fsConstants, createReadStream, type Stats } from 'node:fs';
 import {
   copyFile, link, open, readFile, rename, stat, unlink, writeFile, type FileHandle,
 } from 'node:fs/promises';
@@ -12,7 +10,10 @@ import { pipeline } from 'node:stream/promises';
 import {
   deleteUploadObject, putUploadFile, r2Config, UploadTooLargeError,
 } from '../r2.ts';
-import { enqueueUploadMutation, isSafeUploadName, uploadReadDirs } from '../media-dir.ts';
+import {
+  enqueueUploadMutation, isSafeUploadName, resolveUploadFile, uploadReadDirs,
+} from '../media-dir.ts';
+import { deleteMediaReference } from '../media-references.ts';
 import { deleteMediaPreviewDerivatives } from './media-preview.ts';
 import { contentLengthOf, sendError, sendJson } from './upload-route-http.ts';
 
@@ -20,9 +21,7 @@ type Logger = ViteDevServer['config']['logger'];
 type CloudState = 'ok' | 'off' | 'failed' | 'exists';
 
 function diskUpload(name: string): string | undefined {
-  return uploadReadDirs()
-    .map((directory) => join(directory, name))
-    .find((path) => existsSync(path));
+  return resolveUploadFile(name) ?? undefined;
 }
 async function mirrorUpload(
   name: string,
@@ -73,6 +72,7 @@ async function handleDeleteUpload(req: IncomingMessage, res: ServerResponse): Pr
             } catch (error) {
               if (fileErrorCode(error) !== 'ENOENT') throw error;
             }
+            if (await deleteMediaReference(directory, name)) removed += 1;
             await clearUploadOwner(directory, name);
           }
         } catch (error) {

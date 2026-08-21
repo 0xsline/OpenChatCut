@@ -11,6 +11,7 @@ import {
   uploadReadDirs,
 } from '../media-dir.ts';
 import { isIsolatedDevProfile } from '../runtime-profile.ts';
+import { listMediaReferences } from '../media-references.ts';
 import { sha256File } from '../../shared/node-content-hash.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
 import {
@@ -96,6 +97,11 @@ async function handleUploadList(req: IncomingMessage, res: ServerResponse): Prom
         if (!isSafeUploadName(name) || seen.has(name)) continue;
         const info = await stat(join(directory, name)).catch(() => null);
         if (info?.isFile()) seen.set(name, { name, bytes: info.size, mtimeMs: info.mtimeMs });
+      }
+      for (const reference of await listMediaReferences(directory)) {
+        if (isSafeUploadName(reference.name) && !seen.has(reference.name)) {
+          seen.set(reference.name, reference);
+        }
       }
     }
     sendJson(res, 200, { files: [...seen.values()].sort((a, b) => b.mtimeMs - a.mtimeMs) });

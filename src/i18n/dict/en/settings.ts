@@ -33,7 +33,6 @@ export default {
   '在线图库': 'Stock Media',
   '转写 / 口播剪辑': 'Transcription / Script Editing',
   '存储': 'Storage',
-  '媒体存储': 'Media Storage',
   '增强工具': 'Power Tools',
   '沙箱执行': 'Sandbox Execution',
   '网页抓取': 'Web Scraping',
@@ -90,7 +89,6 @@ export default {
   '音色资源 ID': 'Voice resource ID',
   '视频模型': 'Video model',
   '音乐模型': 'Music model',
-  '素材保存目录': 'Media storage directory',
   '云同步': 'Cloud sync',
   'Bucket 名': 'Bucket name',
   '模板 ID（可选）': 'Template ID (optional)',
@@ -141,10 +139,6 @@ export default {
   '填写完整 API 前缀（可含 /v1、/v1beta/openai 等路径）；切换厂商会重置地址与模型，并立即生效。': 'Enter the full API prefix, including paths such as /v1 or /v1beta/openai. Switching providers resets the Base URL and model and takes effect immediately.',
   '默认值仅对内置模型准确；自定义、OpenRouter 或本地模型请填写模型实际上限（4,096–4,000,000）。':
     'The default is exact only for the built-in model. For custom, OpenRouter, or local models, enter the model’s actual limit (4,096–4,000,000).',
-  '桌面端默认把素材存入系统应用数据目录，浏览器开发版默认使用 public/media/uploads/。可选择任意本机目录或外置硬盘；保存后旧目录中的素材会复制到新目录（原文件保留），工程里的素材地址不变，预览与渲染导出都会跟随新目录。':
-    'The desktop app stores media in its system application-data directory by default; browser development uses public/media/uploads/. Choose any local folder or external drive. Saving copies media from the old directory to the new one (originals kept); project URLs stay unchanged, and preview, render, and export follow the new directory.',
-  '桌面端点击“选择目录”；浏览器中也可手动输入绝对路径。清除后回到当前运行环境的默认目录。':
-    'On desktop, click “Choose Folder”; in a browser, you can also enter an absolute path manually. Clearing returns to the current environment’s default directory.',
   '未配置时素材只存本机（「本地磁盘」页的目录）。配置后：每次上传同步写入 R2（桶保持私有，读取经本地服务回源，src 路径不变）；本机缺文件时自动从云端取回。改动即时生效。R2 控制台建桶 → R2 API Token（Object Read & Write）即可拿到下面四个值。':
     'Without this, media lives only on this machine (the Local Disk directory). Once configured: every upload also writes to R2 (bucket stays private, reads go through the local server, src paths unchanged); missing local files are fetched from the cloud automatically. Changes apply immediately. Create a bucket in the R2 console, then an R2 API Token (Object Read & Write) to get the four values below.',
   '停用后新上传只存本地（密钥保留、已上云文件不受影响）；重新启用即恢复写穿。': 'When off, new uploads stay local only (keys kept, files already in the cloud unaffected); re-enable to resume write-through.',
@@ -486,10 +480,14 @@ export default {
   '确认清理': 'Confirm cleanup',
   '清理中…': 'Cleaning up…',
   '已清理 {removed} 个旧 JSON 文件': 'Removed {removed} old JSON files',
-  '工程存储目录': 'Project storage folder',
+  '默认工程位置': 'Default project location',
   '应用默认数据目录': 'Default app data folder',
-  '工程与素材的本地保存目录，与可选的 R2 云备份。': 'Where projects and media are stored locally, plus optional R2 cloud backup.',
-  '工程、历史版本与素材的存放位置。默认放在应用数据目录里；改到你自己的目录（外置硬盘、同步盘）后，卸载或重装应用都不会动到作品。保存时会把现有数据复制到新目录（原目录保留不删），重启应用后生效。': 'Where projects, version history and media are kept. Defaults to the app data folder; point it at a folder of your own (external drive, synced folder) and uninstalling or reinstalling the app never touches your work. Saving copies the existing data to the new folder (the old one is kept, not deleted); takes effect after a restart.',
+  '新工程和生成素材的默认保存位置，以及可选的 R2 云备份。':
+    'The default location for new projects and generated media, plus optional R2 cloud backup.',
+  '新建工程、历史版本和应用生成的素材保存在这里。桌面端从外部拖入的文件和文件夹保留在原位置，工程只建立引用；浏览器运行时会上传托管副本。修改后重启应用生效。':
+    'New projects, version history, and app-generated media are stored here. In the desktop app, external files and folders stay in place and are referenced; browser sessions upload a managed copy. Changes take effect after restarting the app.',
+  '未配置时素材只存本机。配置后：每次上传同步写入 R2（桶保持私有，读取经本地服务回源，src 路径不变）；本机缺文件时自动从云端取回。改动即时生效。R2 控制台建桶 → R2 API Token（Object Read & Write）即可拿到下面四个值。':
+    'Without this, media stays on this machine. Once configured, uploads are also written to R2; missing local files are restored through the local service while source URLs stay unchanged. Changes apply immediately. Create a bucket and an Object Read & Write API token in R2 to get the four values below.',
   '桌面端点击“选择目录”；也可手动输入绝对路径（可用 ~/ 开头）。清除后回到默认目录。': 'On desktop, click "Choose folder"; you can also type an absolute path (~/ accepted). Clear it to return to the default folder.',
   '已保存 · 重启应用后新的工程存储目录才会生效': 'Saved · the new project storage folder takes effect after a restart',
   '该模型不在内置目录，以上数值为估算（上下文 {context} / 输出 {output}）。若与实际不符，点「展开」手动修改。': 'This model is not in the built-in catalog, so these values are estimates (context {context} / output {output}). If they do not match the real model, expand and adjust them manually.',

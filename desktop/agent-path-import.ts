@@ -3,11 +3,12 @@
 // scan/import of explicitly requested paths — bounded by the user-configured
 // AGENT_IMPORT_ROOTS whitelist so an agent can never read arbitrary disks.
 import { basename, dirname } from 'node:path';
-import { stat, readdir } from 'node:fs/promises';
+import { realpath, stat, readdir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { getKey } from '../server/keystore.ts';
 import type {
   AgentPathImportRequest,
+  AgentPathImportError,
   AgentPathImportResult,
   DirectoryImportedFile,
 } from '../shared/directory-import.ts';
@@ -37,6 +38,19 @@ function authorizedRoots(): readonly string[] {
     .filter(Boolean);
 }
 
+async function canonicalRoots(roots: readonly string[]): Promise<string[]> {
+  const resolved = await Promise.all(roots.map((root) => realpath(root).catch(() => null)));
+  return resolved.filter((root): root is string => root !== null);
+}
+
+function outsideRootsError(path: string, roots: readonly string[]): AgentPathImportError {
+  return {
+    path,
+    code: 'PATH_OUTSIDE_IMPORT_ROOTS',
+    error: `该路径不在已添加的本地素材目录中。已添加的目录：${roots.join(', ')}`,
+  };
+}
+
 interface CandidatePlan {
   readonly path: string;
   readonly name: string;
@@ -45,40 +59,47 @@ interface CandidatePlan {
 
 async function planCandidates(paths: readonly string[]): Promise<{
   candidates: CandidatePlan[];
-  errors: Array<{ path: string; error: string }>;
+  errors: AgentPathImportError[];
 }> {
   const candidates: CandidatePlan[] = [];
-  const errors: Array<{ path: string; error: string }> = [];
-  const roots = authorizedRoots();
+  const errors: AgentPathImportError[] = [];
+  const configuredRoots = authorizedRoots();
+  const roots = await canonicalRoots(configuredRoots);
+  if (!configuredRoots.length) return {
+    candidates,
+    errors: paths.map((path) => ({ path, code: 'IMPORT_ROOTS_NOT_CONFIGURED',
+      error: 'AGENT_IMPORT_ROOTS 尚未配置。请在 .env.local 中填写允许 Agent 访问的绝对路径。' })),
+  };
   for (const path of paths) {
-    if (!roots.length) {
-      errors.push({ path, error: 'AGENT_IMPORT_ROOTS is not configured; set the allowed media root directories (comma-separated) in Settings or .env.local first' });
+    if (!pathAllowedByRoots(configuredRoots, path)) {
+      errors.push(outsideRootsError(path, configuredRoots));
       continue;
     }
-    if (!pathAllowedByRoots(roots, path)) {
-      errors.push({ path, error: `path is outside the configured import roots (${roots.join(', ')})` });
-      continue;
-    }
-    let info;
+    let canonicalPath: string;
     try {
-      info = await stat(path);
+      canonicalPath = await realpath(path);
     } catch (error) {
       errors.push({ path, error: error instanceof Error ? error.message : String(error) });
       continue;
     }
+    if (!pathAllowedByRoots(roots, canonicalPath)) {
+      errors.push(outsideRootsError(path, configuredRoots));
+      continue;
+    }
+    const info = await stat(canonicalPath);
     if (info.isDirectory()) {
       try {
-        const scanned = await scanImportDirectory(path, {
+        const scanned = await scanImportDirectory(canonicalPath, {
           readdir: (dir) => readdir(dir, { withFileTypes: true }) as Promise<Dirent[]>,
         });
         for (const candidate of scanned) {
-          candidates.push({ path: candidate.path, name: candidate.name, root: path });
+          candidates.push({ path: candidate.path, name: candidate.name, root: canonicalPath });
         }
       } catch (error) {
         errors.push({ path, error: error instanceof Error ? error.message : String(error) });
       }
     } else if (info.isFile()) {
-      candidates.push({ path, name: basename(path), root: dirname(path) });
+      candidates.push({ path: canonicalPath, name: basename(path), root: dirname(canonicalPath) });
     } else {
       errors.push({ path, error: 'not a file or directory' });
     }
@@ -93,6 +114,8 @@ export async function importAgentPaths(
 ): Promise<AgentPathImportResult> {
   const { candidates, errors } = await planCandidates(request.paths);
   const imported: Array<Omit<DirectoryImportedFile, 'importId'>> = [];
+  const unsupportedFiles: string[] = [];
+  let duplicateCount = 0;
   const pinnedUploadDirectory = await canonicalCurrentUploadDirectory();
   for (const candidate of candidates) {
     const candidateRequest: DirectoryCandidateRequest = {
@@ -110,13 +133,14 @@ export async function importAgentPaths(
         imported.push(result.prepared.file);
       } else if (result.status === 'retry') {
         errors.push({ path: candidate.path, error: 'import failed and can be retried' });
+      } else if (result.status === 'unsupported') {
+        unsupportedFiles.push(candidate.name);
       } else {
-        // unchanged / duplicate / unsupported: not an error for the agent —
-        // the file is already known or intentionally skipped.
+        duplicateCount += 1;
       }
     } catch (error) {
       errors.push({ path: candidate.path, error: error instanceof Error ? error.message : String(error) });
     }
   }
-  return { imported, errors };
+  return { imported, errors, unsupportedFiles, duplicateCount };
 }

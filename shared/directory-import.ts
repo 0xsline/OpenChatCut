@@ -26,9 +26,21 @@ export interface AgentPathImportRequest {
   readonly knownHashes: readonly string[];
 }
 
+export type AgentPathImportErrorCode =
+  | 'IMPORT_ROOTS_NOT_CONFIGURED'
+  | 'PATH_OUTSIDE_IMPORT_ROOTS';
+
+export interface AgentPathImportError {
+  readonly path: string;
+  readonly error: string;
+  readonly code?: AgentPathImportErrorCode;
+}
+
 export interface AgentPathImportResult {
   readonly imported: ReadonlyArray<Omit<DirectoryImportedFile, 'importId'>>;
-  readonly errors: readonly { path: string; error: string }[];
+  readonly errors: readonly AgentPathImportError[];
+  readonly unsupportedFiles: readonly string[];
+  readonly duplicateCount: number;
 }
 
 export interface DirectoryWatchStartResult {

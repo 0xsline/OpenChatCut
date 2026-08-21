@@ -292,7 +292,7 @@ interface FolderDropTargetProps {
   targetFolderId?: string;
   onActivate: () => void;
   onFocusChange: (focused: boolean) => void;
-  onDropFiles: (files: FileList, folderId?: string) => void;
+  onDropTransfer: (transfer: DataTransfer, folderId?: string) => void;
   onMoveAsset: (id: string, folderId?: string) => void;
   onMoveAssets?: (ids: string[], folderId?: string) => void;
   /** Optional ⋯ / right-click menu (child folders only). */
@@ -303,7 +303,7 @@ interface MediaFolderCardProps {
   folder: MediaFolder;
   onOpen: (id: string) => void;
   onFocusChange: (id: string | null) => void;
-  onDropFiles: (files: FileList, folderId?: string) => void;
+  onDropTransfer: (transfer: DataTransfer, folderId?: string) => void;
   onMoveAsset: (id: string, folderId?: string) => void;
   onMoveAssets?: (ids: string[], folderId?: string) => void;
   onOpenMenu?: (folderId: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
@@ -312,7 +312,7 @@ interface MediaFolderCardProps {
 /** Shared droppable folder tile (child folder or "up one level"). */
 function FolderDropTarget({
   label, ariaLabel, className, icon, targetFolderId,
-  onActivate, onFocusChange, onDropFiles, onMoveAsset, onMoveAssets, onOpenMenu,
+  onActivate, onFocusChange, onDropTransfer, onMoveAsset, onMoveAssets, onOpenMenu,
 }: FolderDropTargetProps) {
   const t = useT();
   // Use a div (not <button>): Chromium often refuses HTML5 drops onto buttons,
@@ -352,15 +352,16 @@ function FolderDropTarget({
         event.preventDefault();
         event.stopPropagation();
         // Match setMediaAssetDrag effectAllowed "copyMove": external files copy, pool assets move.
-        event.dataTransfer.dropEffect = event.dataTransfer.files.length > 0 ? 'copy' : 'move';
+        const external = Array.from(event.dataTransfer.items).some((item) => item.kind === 'file');
+        event.dataTransfer.dropEffect = external ? 'copy' : 'move';
         event.currentTarget.classList.add('is-drop-target');
       }}
       onDrop={(event) => {
         event.preventDefault();
         event.stopPropagation();
         event.currentTarget.classList.remove('is-drop-target');
-        if (event.dataTransfer.files.length) {
-          onDropFiles(event.dataTransfer.files, targetFolderId);
+        if (Array.from(event.dataTransfer.items).some((item) => item.kind === 'file')) {
+          onDropTransfer(event.dataTransfer, targetFolderId);
           return;
         }
         const ids = assetIdsFromFolderDrop(event);
@@ -390,7 +391,7 @@ function FolderDropTarget({
 }
 
 export const MediaFolderCard = memo(function MediaFolderCard({
-  folder, onOpen, onFocusChange, onDropFiles, onMoveAsset, onMoveAssets, onOpenMenu,
+  folder, onOpen, onFocusChange, onDropTransfer, onMoveAsset, onMoveAssets, onOpenMenu,
 }: MediaFolderCardProps) {
   return (
     <FolderDropTarget
@@ -400,7 +401,7 @@ export const MediaFolderCard = memo(function MediaFolderCard({
       targetFolderId={folder.id}
       onActivate={() => onOpen(folder.id)}
       onFocusChange={(focused) => onFocusChange(focused ? folder.id : null)}
-      onDropFiles={onDropFiles}
+      onDropTransfer={onDropTransfer}
       onMoveAsset={onMoveAsset}
       onMoveAssets={onMoveAssets}
       onOpenMenu={onOpenMenu
@@ -415,14 +416,14 @@ interface MediaParentFolderCardProps {
   parentId?: string;
   parentName: string;
   onOpen: () => void;
-  onDropFiles: (files: FileList, folderId?: string) => void;
+  onDropTransfer: (transfer: DataTransfer, folderId?: string) => void;
   onMoveAsset: (id: string, folderId?: string) => void;
   onMoveAssets?: (ids: string[], folderId?: string) => void;
 }
 
 /** Inside a subfolder: open / drop back to the parent (or pool root). */
 export const MediaParentFolderCard = memo(function MediaParentFolderCard({
-  parentId, parentName, onOpen, onDropFiles, onMoveAsset, onMoveAssets,
+  parentId, parentName, onOpen, onDropTransfer, onMoveAsset, onMoveAssets,
 }: MediaParentFolderCardProps) {
   const t = useT();
   return (
@@ -434,7 +435,7 @@ export const MediaParentFolderCard = memo(function MediaParentFolderCard({
       targetFolderId={parentId}
       onActivate={onOpen}
       onFocusChange={() => undefined}
-      onDropFiles={onDropFiles}
+      onDropTransfer={onDropTransfer}
       onMoveAsset={onMoveAsset}
       onMoveAssets={onMoveAssets}
     />

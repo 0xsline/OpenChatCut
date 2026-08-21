@@ -5142,7 +5142,7 @@
     },
     {
       "name": "import_asset",
-      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; the path must be inside the allowed import roots configured via AGENT_IMPORT_ROOTS. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
+      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; the path must be inside an allowed AGENT_IMPORT_ROOTS directory. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5158,7 +5158,7 @@
     },
     {
       "name": "import_folder",
-      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; the directory must be inside the allowed import roots configured via AGENT_IMPORT_ROOTS. Returns the imported pool assets and any per-file errors; duplicates already in the pool are skipped.",
+      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; the directory must be inside an allowed AGENT_IMPORT_ROOTS directory. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
       "input_schema": {
         "type": "object",
         "properties": {
