@@ -23,6 +23,7 @@ import {
   type LlmProvider,
 } from '../shared/llm-providers.ts';
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
+import { xaiOauthAccessToken } from './xai-oauth-session.ts';
 import {
   classifyStatus,
   networkMessage,
@@ -242,6 +243,19 @@ const groqProbe: ProbeDef = {
   }),
 };
 
+/** xAI media pages: one probe for image and video; the subscription session
+ * token takes priority over the configured LLM API key. */
+const xaiMediaProbe: ProbeDef = {
+  needs: [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
+  run: (get) => {
+    const token = xaiOauthAccessToken() || get('LLM_XAI_API_KEY');
+    return fetchWithProxy(`${base(get, 'LLM_XAI_BASE_URL', 'https://api.x.ai/v1')}/models`, {
+      signal: t(), headers: token ? bearer(token) : {},
+    });
+  },
+  models: parseModelCatalog,
+};
+
 const elevenLabsProbe: ProbeDef = {
   needs: [['ELEVENLABS_API_KEY']],
   run: (get) => fetch(`${base(get, 'ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io')}/v1/models`, {
@@ -276,6 +290,7 @@ export const PROBES: Record<string, ProbeDef> = {
   'image/gemini': geminiMediaProbe,
   'image/minimax': minimaxProbe,
   'image/byteplus': byteplusProbe,
+  'image/xai': xaiMediaProbe,
   'image/wavespeed': {
     needs: [['WAVESPEED_API_KEY']],
     run: (get) => fetch(`${base(get, 'WAVESPEED_BASE_URL', 'https://api.wavespeed.ai')}/api/v3/balance`, {
@@ -287,7 +302,6 @@ export const PROBES: Record<string, ProbeDef> = {
   'voice/gemini': geminiMediaProbe,
   'voice/mistral': mistralMediaProbe,
   'voice/cartesia': cartesiaProbe,
-  // openpeech does not have free probing endpoints, synthesizing 1 word is the minimum real verification (the cost is negligible).
   'voice/doubao': {
     needs: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
     run: (get) => fetch(`${base(get, 'DOUBAO_TTS_BASE_URL', 'https://openspeech.bytedance.com')}/api/v3/tts/unidirectional`, {
@@ -340,6 +354,7 @@ export const PROBES: Record<string, ProbeDef> = {
   },
   'video/hailuo': minimaxProbe,
   'video/byteplus': byteplusProbe,
+  'video/xai': xaiMediaProbe,
   'music/mureka': {
     needs: [['MUREKA_API_KEY']],
     run: (get) => fetch(`${base(get, 'MUREKA_BASE_URL', 'https://api.mureka.ai')}/v1/account/billing`, {

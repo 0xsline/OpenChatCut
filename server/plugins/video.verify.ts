@@ -307,4 +307,26 @@ const flBody = hailuoRequestBody(fl, 'MiniMax-Hailuo-02', 'data:image/jpeg;base6
 assert.equal(flBody.resolution, '1080P');
 assert.equal(flBody.last_frame_image, 'data:image/jpeg;base64,b');
 
+const grok = validateVideoRequest({ model: 'grok-imagine-video', prompt: 'a cat on a windowsill', durationSeconds: 10, ratio: '9:16', resolution: '720p' });
+assert.equal(grok.model, 'grok-imagine-video');
+assert.equal(grok.durationSeconds, 10);
+assert.equal(grok.ratio, '9:16');
+assert.equal(grok.resolution, '720p');
+assert.throws(
+  () => validateVideoRequest({ model: 'grok-imagine-video', prompt: 'x', durationSeconds: 20 }),
+  /durationSeconds must be between 1 and 15/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'grok-imagine-video', prompt: 'x', ratio: '21:9' }),
+  /does not support ratio/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'grok-imagine-video', prompt: 'x', firstFramePath: '/media/uploads/a.jpg' }),
+  /text-to-video only/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'grok-imagine-video', prompt: 'x', generateAudio: false }),
+  /supported by seedance2\/byteplus only/,
+);
+
 console.log('video.check: ok (seedance 480p + kling base/feature + hailuo)');

@@ -228,6 +228,8 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   'gpt-image-2': [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
   'nano-banana': [['GEMINI_API_KEY']],
   'image-01': [['MINIMAX_API_KEY']],
+  'grok-imagine': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
+  'grok-imagine-video': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
   elevenlabs: [['ELEVENLABS_API_KEY']],
   doubao: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
   minimax: [['MINIMAX_API_KEY']],

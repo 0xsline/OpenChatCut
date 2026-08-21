@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增 xAI Grok 内置 Agent 供应商（默认 grok-4.6，api.x.ai OpenAI 兼容接口），提供标准设置页、API Key 配置、连接测试、模型发现与模型能力目录条目。
 - Added xAI subscription sign-in (SuperGrok / X Premium+): login is owned by the official Grok CLI (`grok login`); OpenChatCut imports the session server-side, refreshes it automatically through auth.x.ai, and streams Grok over the subscription token. Session credentials never reach the browser, and the API-key provider remains available as a fallback.
   新增 xAI 订阅登录（SuperGrok / X Premium+）：登录由官方 Grok CLI 负责（终端运行 grok login），OpenChatCut 在服务端导入会话并经 auth.x.ai 自动续期，以订阅会话令牌运行 Grok。会话凭据不会进入浏览器，API Key 供应商继续作为兜底。
+- Added xAI Grok Imagine image and video generation (`grok-imagine` / `grok-imagine-video`): settings pages, connection tests, agent tool schemas, skill references, and the generation job pipeline all carry xAI as a first-class provider. Images are returned as base64 (no CDN download); video runs through the async job model with proxy-aware result downloads. Auth prefers the subscription session and falls back to `LLM_XAI_API_KEY`.
+  新增 xAI Grok Imagine 生图与生视频（`grok-imagine` / `grok-imagine-video`）：设置页、连接测试、Agent 工具 schema、技能参考与生成任务管线均把 xAI 作为一等供应商。生图以 base64 返回（免 CDN 下载）；生视频走异步任务模型，结果下载支持代理。鉴权优先订阅会话，回退 `LLM_XAI_API_KEY`。
 
 
 ## [0.2.9] - 2026-08-20

@@ -5,11 +5,11 @@ import { MINIMAX_LANGUAGE_BOOSTS } from '../../../shared/media-provider-params';
 export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_image',
-    description: 'Generate one or more AI images (gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, or BytePlus Seedream), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.',
+    description: 'Generate one or more AI images (gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, or xAI Grok Imagine), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.',
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana', 'image-01', 'wavespeed', 'byteplus'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet).' },
+        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana', 'image-01', 'wavespeed', 'byteplus', 'grok-imagine'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K).' },
         prompt: { type: 'string', description: 'Detailed description of the image to generate.' },
         name: { type: 'string', description: 'Short descriptive asset name shown in the media pool.' },
         addToTimeline: { type: 'boolean', description: 'Defaults to true. Set false when the user asks to keep the result in the media pool/library only or says not to modify the timeline.' },
@@ -146,16 +146,16 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_video',
-    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, or BytePlus Seedance video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
+    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, or xAI Grok Imagine video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2.' }, // minimax: hailuo enum
+        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames.' }, // minimax: hailuo enum
         prompt: { type: 'string', description: 'Required for normal generation and Kling intelligence; omit for Kling customize.' },
         name: { type: 'string' },
-        durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only).' }, // minimax: hailuo durations
-        ratio: { type: 'string', description: 'Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1. Do not send for hailuo.' },
-        resolution: { type: 'string', enum: ['480p', '512p', '720p', '1080p', '4k'], description: 'Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro.' },
+        durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video.' }, // minimax: hailuo durations
+        ratio: { type: 'string', description: 'Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1. grok-imagine-video: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3. Do not send for hailuo.' },
+        resolution: { type: 'string', enum: ['480p', '512p', '720p', '1080p', '4k'], description: 'Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p.' },
         mode: { type: 'string', enum: ['std', 'pro'], description: 'Kling only; std=720p, pro=1080p.' },
         firstFrame: { type: 'string', description: 'Project image asset ID, asset:// ID, short unique ID prefix, or same-project asset path.' },
         lastFrame: { type: 'string', description: 'Project image asset reference; requires firstFrame. Supported on seedance2, kling, and hailuo (not with multi-ref on seedance2).' },

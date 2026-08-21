@@ -86,4 +86,25 @@ assert.throws(
   /too many reference images/,
 );
 
+
+const grok = validateImageRequest({ model: 'grok-imagine', prompt: 'a corgi surfing', aspectRatio: '9:16', imageSize: '2K', count: 4 });
+assert.equal(grok.model, 'grok-imagine');
+assert.equal(grok.aspectRatio, '9:16');
+assert.equal(grok.count, 4);
+assert.throws(
+  () => validateImageRequest({ model: 'grok-imagine', prompt: 'x', imageSize: '4K' }),
+  /imageSize must be 1K or 2K/,
+);
+assert.throws(
+  () => validateImageRequest({ model: 'grok-imagine', prompt: 'x', aspectRatio: '21:9' }),
+  /does not support aspect ratio/,
+);
+assert.throws(
+  () => validateImageRequest({ model: 'grok-imagine', prompt: 'x', count: 5 }),
+  /at most 4 images/,
+);
+assert.throws(
+  () => validateImageRequest({ model: 'grok-imagine', prompt: 'x', referencePaths: ['/media/uploads/a.jpg'] }),
+  /too many reference images/,
+);
 console.log('image.check: ok (provider-specific official parameters)');

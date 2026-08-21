@@ -209,6 +209,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'image-01', label: 'MiniMax' },
           { value: 'wavespeed', label: 'WaveSpeed' },
           { value: 'byteplus', label: 'BytePlus · Seedream' },
+          { value: 'grok-imagine', label: 'xAI Grok Imagine' },
         ]),
         vendors: [
           { key: 'image/openai', vendor: 'openai', title: 'OpenAI', fields: [
@@ -228,6 +229,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           ] },
           byteplusPage('image', modelText('BYTEPLUS_IMAGE_MODEL', '生图模型', 'seedream-4-5-251128',
             '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedream'),
+          { key: 'image/xai', vendor: 'xai', title: 'xAI · Grok Imagine',
+            note: '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成图片。文生图：最多 4 张，1K / 2K。',
+            fields: [
+              modelText('XAI_IMAGE_MODEL', '生图模型', 'grok-imagine-image-2.0',
+                '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
+            ] },
         ] },
       VOICE_SETTINGS_GROUP,
       { key: 'video', title: '生视频', hint: 'submit_video · 文 / 图生视频，任一厂商即可。',
@@ -236,6 +243,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'kling', label: '可灵' },
           { value: 'hailuo', label: 'MiniMax 海螺' },
           { value: 'byteplus', label: 'BytePlus · Seedance' },
+          { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
         ]),
         vendors: [
           { key: 'video/seedance', vendor: 'seedance', title: 'Seedance · 火山', fields: [
@@ -252,6 +260,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             ['MiniMax-Hailuo-02', 'MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'S2V-01']), 'MiniMax 海螺', 'hailuo'),
           byteplusPage('video', modelText('BYTEPLUS_VIDEO_MODEL', '视频模型', 'seedance-1-5-pro-251215',
             '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedance'),
+          { key: 'video/xai', vendor: 'xai', title: 'xAI · Grok Imagine (视频)',
+            note: '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成视频。文生视频：1–15 秒，自带音轨，480p / 720p / 1080p。',
+            fields: [
+              modelText('XAI_VIDEO_MODEL', '视频模型', 'grok-imagine-video-1.5',
+                '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
+            ] },
         ] },
       { key: 'music', title: '生音乐', hint: 'submit_music · 文字 / 成片生成配乐，任一厂商即可。',
         route: routeSelect('PREFERRED_MUSIC_VENDOR', [
