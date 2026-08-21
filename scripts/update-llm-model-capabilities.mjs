@@ -15,6 +15,7 @@ const PROVIDERS = {
   minimax: 'minimax',
   xiaomi: 'xiaomi',
   mistral: 'mistral',
+  xai: 'xai',
   openrouter: 'openrouter',
 };
 // BytePlus ModelArk has no models.dev provider. Hand-vendored from the

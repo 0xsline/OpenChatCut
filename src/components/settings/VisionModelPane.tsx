@@ -40,6 +40,8 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   minimax: 'MiniMax',
   xiaomi: 'Xiaomi',
   mistral: 'Mistral',
+  xai: 'xAI',
+  'xai-oauth': 'xAI (订阅登录)',
   openrouter: 'OpenRouter',
   ollama: 'Ollama',
   lmstudio: 'LM Studio',

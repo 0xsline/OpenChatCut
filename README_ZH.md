@@ -397,7 +397,7 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 |---|---|
 | 前端 | React 19、TypeScript 6、Vite 8 |
 | 编辑核心 | 不可变时间线状态、命令层、提案式应用 |
-| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral 与兼容接口）、Agent Skills、MCP SDK |
+| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral、xAI Grok（API Key 或 SuperGrok/X Premium+ 订阅登录）与兼容接口）、Agent Skills、MCP SDK |
 | 预览与视觉 | Remotion Player、WebGL / GLSL |
 | 服务端 | Vite / Electron 双宿主插件、服务端密钥仓 |
 | 持久化 | `~/.openchatcut` 下的本机共享工程库、IndexedDB 缓存、可配置本地素材目录、可选 Cloudflare R2 |
