@@ -282,8 +282,8 @@ async function streamResponseToFile(response: Response, file: string, emptyMessa
   if ((await stat(file)).size === 0) throw new Error(emptyMessage);
 }
 
-export async function saveVideo(url: string): Promise<{ path: string; durationSeconds: number; width?: number; height?: number }> {
-  const response = await fetchGeneratedResult(url, 'video');
+export async function saveVideo(url: string, fetchImpl?: NonNullable<Parameters<typeof fetchGeneratedResult>[2]>['fetchImpl']): Promise<{ path: string; durationSeconds: number; width?: number; height?: number }> {
+  const response = await fetchGeneratedResult(url, 'video', { fetchImpl });
   const dir = uploadDir();
   await mkdir(dir, { recursive: true });
   const filename = `${randomUUID()}.mp4`;
@@ -300,8 +300,8 @@ export async function saveVideo(url: string): Promise<{ path: string; durationSe
   }
 }
 
-export async function saveImageUrl(url: string): Promise<string> {
-  const response = await fetchGeneratedResult(url, 'image');
+export async function saveImageUrl(url: string, fetchImpl?: NonNullable<Parameters<typeof fetchGeneratedResult>[2]>['fetchImpl']): Promise<string> {
+  const response = await fetchGeneratedResult(url, 'image', { fetchImpl });
   const contentType = response.headers.get('content-type') ?? '';
   const urlExt = extname(new URL(url).pathname).slice(1).toLowerCase();
   const ext = contentType.includes('webp') || urlExt === 'webp' ? 'webp'

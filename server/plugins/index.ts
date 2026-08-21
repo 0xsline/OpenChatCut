@@ -140,6 +140,15 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get byteplusModel() {
         return getKey("BYTEPLUS_IMAGE_MODEL") || "seedream-4-5-251128";
       },
+      get xaiBaseUrl() {
+        return getKey("LLM_XAI_BASE_URL") || "https://api.x.ai/v1";
+      },
+      get xaiApiKey() {
+        return getKey("LLM_XAI_API_KEY");
+      },
+      get xaiImageModel() {
+        return getKey("XAI_IMAGE_MODEL") || "grok-imagine-image-2.0";
+      },
     }),
     voiceGenerationPlugin({
       get elevenBaseUrl() {
@@ -291,6 +300,15 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       },
       get byteplusApiKey() {
         return getKey("BYTEPLUS_API_KEY");
+      },
+      get xaiBaseUrl() {
+        return getKey("LLM_XAI_BASE_URL") || "https://api.x.ai/v1";
+      },
+      get xaiApiKey() {
+        return getKey("LLM_XAI_API_KEY");
+      },
+      get xaiVideoModel() {
+        return getKey("XAI_VIDEO_MODEL") || "grok-imagine-video-1.5";
       },
       get byteplusModel() {
         return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";

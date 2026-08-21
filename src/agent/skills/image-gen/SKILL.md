@@ -1,7 +1,7 @@
 ---
 name: image-gen
 description: |
-  AI image generation via gpt-image-2, nano-banana, and MiniMax image-01. Use when the user wants to generate or create an image / picture / still.
+  AI image generation via gpt-image-2, nano-banana, MiniMax image-01, and xAI Grok Imagine. Use when the user wants to generate or create an image / picture / still.
 user-invocable: true
 ---
 
@@ -16,6 +16,7 @@ Generate AI images via `submit_image` (configured provider keys only). Prefer on
 | `gpt-image-2` | [references/gpt-image-2.md](references/gpt-image-2.md) | Best text rendering, strongest prompt adherence | 16 |
 | `nano-banana` | [references/nano-banana.md](references/nano-banana.md) | Strongest reference-image fidelity | 14 |
 | `image-01` | [references/image-01.md](references/image-01.md) | MiniMax stills / live style; one subject reference via R2 | 1 |
+| `grok-imagine` | [references/grok-imagine.md](references/grok-imagine.md) | xAI Grok Imagine; text-to-image, ≤4 outputs, 1K/2K | 0 |
 
 - Default: `gpt-image-2` when that key is on.
 - Reference-heavy → `nano-banana`.

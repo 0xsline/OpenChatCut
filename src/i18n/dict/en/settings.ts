@@ -229,6 +229,11 @@ export default {
   '使用 SuperGrok 或 X Premium+ 订阅登录：官方 Grok CLI 管理登录与凭据（终端运行 grok login），OpenChatCut 导入会话并自动续期，不会读取或显示 OAuth 凭据。':
     'Sign in with your SuperGrok or X Premium+ subscription: the official Grok CLI owns login and credentials (run grok login in a terminal); OpenChatCut imports the session and refreshes it automatically, and never reads or displays OAuth credentials.',
   'xAI · Grok (订阅登录)': 'xAI · Grok (Subscription sign-in)',
+  '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成图片。文生图：最多 4 张，1K / 2K。':
+    'Generates images with your xAI subscription session (SuperGrok / X Premium+, preferred) or LLM_XAI_API_KEY. Text-to-image: up to 4 images, 1K / 2K.',
+  '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成视频。文生视频：1–15 秒，自带音轨，480p / 720p / 1080p。':
+    'Generates videos with your xAI subscription session (SuperGrok / X Premium+, preferred) or LLM_XAI_API_KEY. Text-to-video: 1–15s, audio track included, 480p / 720p / 1080p.',
+  'xAI · Grok Imagine (视频)': 'xAI · Grok Imagine (Video)',
   '验证地址与密钥，并读取该接口可用的模型': 'Verifies the endpoint and key, then loads the models available from that API',
   '选择模型': 'Choose model',
   '测试请求失败 ({n})': 'Test request failed ({n})',

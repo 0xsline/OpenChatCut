@@ -4,7 +4,7 @@ export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -34,7 +34,7 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video';
   prompt: string;
   durationSeconds: number;
   durationSpecified: boolean;
@@ -170,13 +170,36 @@ function validateKling(input: ValidVideoRequest): ValidVideoRequest {
   return input;
 }
 
+/** xAI Grok Imagine Video (text-to-video): 1–15s, its own ratio set, 480/720/1080p.
+ * Audio is always generated; no reference or editing options in this integration. */
+function validateGrok(input: ValidVideoRequest): ValidVideoRequest {
+  if (!input.prompt || input.prompt.length > 4000) throw new Error('grok-imagine-video prompt is required and must be at most 4000 characters');
+  if (input.durationSeconds < 1 || input.durationSeconds > 15) throw new Error('grok-imagine-video durationSeconds must be between 1 and 15');
+  if (!['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3'].includes(input.ratio)) {
+    throw new Error(`grok-imagine-video does not support ratio ${input.ratio}`);
+  }
+  if (input.resolution && !['480p', '720p', '1080p'].includes(input.resolution)) throw new Error('grok-imagine-video resolution must be 480p, 720p, or 1080p');
+  if (input.firstFramePath || input.lastFramePath || input.refImagePaths.length || input.refVideoPaths.length || input.refAudioPaths.length) {
+    throw new Error('grok-imagine-video is text-to-video only; references and frames are not supported');
+  }
+  if (input.mode || input.shotType || input.multiPrompts?.length || input.refVideoMode) {
+    throw new Error('multi-shot and editing options are not supported by grok-imagine-video');
+  }
+  rejectSeedanceOptions(input);
+  if (input.promptOptimizer !== undefined || input.fastPretreatment !== undefined) {
+    throw new Error('promptOptimizer/fastPretreatment are supported by hailuo only');
+  }
+  return input;
+}
+
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
-  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus') {
-    throw new Error('model must be seedance2, kling, hailuo, or byteplus');
+  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video') {
+    throw new Error('model must be seedance2, kling, hailuo, byteplus, or grok-imagine-video');
   }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);
   if (normalized.model === 'hailuo') return validateHailuo(normalized);
   if (normalized.model === 'kling') return validateKling(normalized);
+  if (normalized.model === 'grok-imagine-video') return validateGrok(normalized);
   return validateSeedance(normalized);
 }

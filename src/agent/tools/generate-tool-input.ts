@@ -215,10 +215,12 @@ const klingVideo = (args: GenerateArgs): SubmitVideoArgs => ({
 const hailuoVideo = (args: GenerateArgs): SubmitVideoArgs => ({
   ...videoBase(args, 'hailuo'), promptOptimizer: bool(args.promptOptimizer), fastPretreatment: bool(args.fastPretreatment),
 });
+// xAI Grok Imagine Video: text-to-video only — the base fields are the whole surface.
+const grokVideo = (args: GenerateArgs): SubmitVideoArgs => videoBase(args, 'grok-imagine-video');
 
-const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo } as const;
+const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
-  const model = args.model === 'kling' || args.model === 'hailuo' || args.model === 'byteplus' ? args.model : 'seedance2';
+  const model = args.model === 'kling' || args.model === 'hailuo' || args.model === 'byteplus' || args.model === 'grok-imagine-video' ? args.model : 'seedance2';
   return VIDEO_STRATEGIES[model](args);
 }
 
