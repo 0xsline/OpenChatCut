@@ -10,8 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added / 新增
 
-- Added xAI Grok as a built-in Agent provider (grok-4.6 default, OpenAI-compatible API at api.x.ai), with the standard settings page, API key configuration, connection testing, model discovery, and model-capability catalog entries. OAuth subscription login is not included; configure an API key as with any other provider.
-  新增 xAI Grok 内置 Agent 供应商（默认 grok-4.6，api.x.ai OpenAI 兼容接口），提供标准设置页、API Key 配置、连接测试、模型发现与模型能力目录条目。不包含 OAuth 订阅登录，与其他供应商一样配置 API Key 使用。
+- Added xAI Grok as a built-in Agent provider (grok-4.6 default, OpenAI-compatible API at api.x.ai), with the standard settings page, API key configuration, connection testing, model discovery, and model-capability catalog entries.
+  新增 xAI Grok 内置 Agent 供应商（默认 grok-4.6，api.x.ai OpenAI 兼容接口），提供标准设置页、API Key 配置、连接测试、模型发现与模型能力目录条目。
+- Added xAI subscription sign-in (SuperGrok / X Premium+): login is owned by the official Grok CLI (`grok login`); OpenChatCut imports the session server-side, refreshes it automatically through auth.x.ai, and streams Grok over the subscription token. Session credentials never reach the browser, and the API-key provider remains available as a fallback.
+  新增 xAI 订阅登录（SuperGrok / X Premium+）：登录由官方 Grok CLI 负责（终端运行 grok login），OpenChatCut 在服务端导入会话并经 auth.x.ai 自动续期，以订阅会话令牌运行 Grok。会话凭据不会进入浏览器，API Key 供应商继续作为兜底。
 
 
 ## [0.2.9] - 2026-08-20

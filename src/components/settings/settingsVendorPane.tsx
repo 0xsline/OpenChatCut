@@ -11,6 +11,7 @@ import { shouldRenderModelPicker } from './codexReasoning';
 import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
 import { ModelCapabilityEditor } from './ModelCapabilityEditor';
+import { XaiOauthVendorPane } from './XaiOauthVendorPane';
 import { VisionModelPane } from './VisionModelPane';
 import { LocalAsrPane } from './LocalAsrPane';
 import { LocalModelPackPane } from './LocalModelPackPane';
@@ -34,8 +35,9 @@ export interface FieldCtx {
   modelOptions: Record<string, readonly string[]>;
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
   codex: CodexSettingsController;
+  /** Re-read /api/keys and push the result to the agent runtime (used by connection-style pages after login/logout). */
+  refreshStatus: () => Promise<void>;
 }
-
 const CAPABILITY_OVERRIDE_FIELD: SettingsField = {
   name: MODEL_CAPABILITY_OVERRIDES_KEY, label: '模型能力', kind: 'text', defaultLabel: '',
 };
@@ -58,6 +60,7 @@ export function VendorPane({ page, hint, ctx }: {
 }) {
   const t = useT();
   if (page.connection === 'codex') return <CodexVendorPane page={page} hint={hint} ctx={ctx} />;
+  if (page.connection === 'xai-oauth') return <XaiOauthVendorPane page={page} hint={hint} ctx={ctx} />;
   if (page.key === 'llm/vision') return <VisionModelPane />;
   if (page.kind === 'local-models') return <LocalModelsPane page={page} fields={page.fields} ctx={ctx} />;
   const on = vendorConfigured(ctx.status, page, ctx.codex.status);
@@ -192,7 +195,7 @@ async function requestProbe(page: SettingsVendorPage, ctx: FieldCtx, translate: 
   return { body, staged };
 }
 
-function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: FieldCtx }) {
+export function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: FieldCtx }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProbeShown | null>(null);

@@ -218,6 +218,17 @@ export default {
   '测试连接': 'Test connection',
   '测试代理连接': 'Test proxy connection',
   '测试并读取模型': 'Test & load models',
+  '会话有效期至': 'Session valid until',
+  '导入登录状态': 'Import login',
+  '重新导入': 'Re-import',
+  '注销': 'Sign out',
+  '请先在终端运行官方 Grok CLI 登录，再回到这里导入登录状态：':
+    'Sign in with the official Grok CLI in a terminal first, then import the login here:',
+  '订阅（SuperGrok 或 X Premium+）登录成功后，grok login 会把会话写入本机。':
+    'After signing in with your subscription (SuperGrok or X Premium+), grok login stores the session locally.',
+  '使用 SuperGrok 或 X Premium+ 订阅登录：官方 Grok CLI 管理登录与凭据（终端运行 grok login），OpenChatCut 导入会话并自动续期，不会读取或显示 OAuth 凭据。':
+    'Sign in with your SuperGrok or X Premium+ subscription: the official Grok CLI owns login and credentials (run grok login in a terminal); OpenChatCut imports the session and refreshes it automatically, and never reads or displays OAuth credentials.',
+  'xAI · Grok (订阅登录)': 'xAI · Grok (Subscription sign-in)',
   '验证地址与密钥，并读取该接口可用的模型': 'Verifies the endpoint and key, then loads the models available from that API',
   '选择模型': 'Choose model',
   '测试请求失败 ({n})': 'Test request failed ({n})',

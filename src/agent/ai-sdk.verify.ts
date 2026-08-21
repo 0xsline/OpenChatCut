@@ -105,7 +105,8 @@ for (const preset of LLM_PROVIDER_PRESETS) {
   assert.equal(normalizeLlmProvider(preset.id), preset.id);
   assert.equal(defaultModelForProvider(preset.id), preset.defaultModel);
   assert.doesNotThrow(() => new URL(preset.baseUrl));
-  // Providers with official exclusive packages use the official package (provider id varies from package to package); the rest are openai-compatible
+  // Providers with official exclusive packages use the official package (provider id varies from package to package); the rest are openai-compatible.
+  // The xAI subscription provider rides the OpenAI Responses adapter by design.
   const DEDICATED_PROVIDER_IDS: Record<string, string> = {
     anthropic: 'anthropic.messages',
     openai: 'openai.responses',
@@ -114,6 +115,7 @@ for (const preset of LLM_PROVIDER_PRESETS) {
     qwen: 'alibaba.chat',
     deepseek: 'deepseek.chat',
     mistral: 'mistral.chat',
+    'xai-oauth': 'openai.responses',
   };
   assert.equal(
     (await getLanguageModel(preset.id, 'test-model')).provider,

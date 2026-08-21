@@ -192,6 +192,7 @@ function useFieldContext(
   values: Values,
   setValues: React.Dispatch<React.SetStateAction<Values>>,
   reveal: boolean,
+  refreshStatus: () => Promise<void>,
 ): FieldCtx {
   const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
   const [autoClearedEffort, setAutoClearedEffort] = useState<string | null>(null);
@@ -219,7 +220,7 @@ function useFieldContext(
       : { ...previous, [field.name]: '' });
   };
   return {
-    status, values, reveal, onStage, onToggleClear, modelOptions, codex,
+    status, values, reveal, onStage, onToggleClear, modelOptions, codex, refreshStatus,
     onModelsDiscovered: (name, models) => {
       setModelOptions((previous) => ({ ...previous, [name]: [...new Set(models)] }));
     },
@@ -237,7 +238,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [values, setValues] = useState<Values>({});
   const { group, page, selectGroup, selectVendor } = useTreeSelection();
   const [reveal, setReveal] = useState(false);
-  const ctx = useFieldContext(status, values, setValues, reveal);
+  const refreshStatus = async (): Promise<void> => {
+    try {
+      const response = await fetch('/api/keys');
+      const next = (await response.json()) as KeyStatusResponse;
+      setStatus(next);
+      applySavedToAgent(next);
+    } catch {
+      // Keep the stale snapshot; the next save or dialog open refreshes it.
+    }
+  };
+  const ctx = useFieldContext(status, values, setValues, reveal, refreshStatus);
   useEffect(() => {
     if (!status?.models) return;
     syncTranscriptionPreferences(status.models);

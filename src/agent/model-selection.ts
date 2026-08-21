@@ -100,7 +100,9 @@ function apiChoices(
       model,
       ...(preset.id === 'openai'
         ? { openAiApiMode: models.LLM_OPENAI_API_MODE === 'chat' ? 'chat' : 'responses' }
-        : {}),
+        : preset.id === 'xai-oauth'
+          ? { openAiApiMode: 'responses' as const }
+          : {}),
       capabilities: modelCapabilities(identity),
     }];
   });

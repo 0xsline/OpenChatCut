@@ -111,7 +111,27 @@ const CODEX_PAGE: SettingsVendorPage = {
   ],
 };
 
+const XAI_OAUTH_PAGE: SettingsVendorPage = {
+  key: 'llm/xai-oauth',
+  vendor: 'xai-oauth',
+  title: 'xAI · Grok (订阅登录)',
+  connection: 'xai-oauth',
+  note: '使用 SuperGrok 或 X Premium+ 订阅登录：官方 Grok CLI 管理登录与凭据（终端运行 grok login），OpenChatCut 导入会话并自动续期，不会读取或显示 OAuth 凭据。',
+  fields: [
+    {
+      name: 'LLM_XAI_OAUTH_MODEL',
+      label: '模型',
+      kind: 'text',
+      defaultLabel: 'grok-4.6',
+      discoverableModel: true,
+      note: '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。',
+      options: [{ value: 'grok-4.6', label: 'grok-4.6' }],
+    },
+  ],
+};
+
 const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.flatMap((preset) => {
+  if (preset.id === 'xai-oauth') return [XAI_OAUTH_PAGE];
   const page = llmPage(preset);
   return preset.id === 'openai' ? [page, CODEX_PAGE] : [page];
 });
@@ -400,6 +420,9 @@ export function vendorConfigured(
 ): boolean {
   if (page.connection === 'codex') {
     return Boolean(codexStatus?.installed && codexStatus.account?.type === 'chatgpt');
+  }
+  if (page.connection === 'xai-oauth') {
+    return Boolean(status?.keys?.LLM_XAI_OAUTH_API_KEY?.configured);
   }
   if (!status) return false;
   if (isLocalLlmProvider(page.vendor)) {

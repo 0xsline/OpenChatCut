@@ -8,6 +8,7 @@ import {
   type LlmProvider,
 } from '../../shared/llm-providers.ts';
 import { resolveLlmProviderConfig } from '../llm-config.ts';
+import { xaiOauthAccessToken } from '../xai-oauth-session.ts';
 import { proxyMiddleware } from '../proxy.ts';
 
 function keyReader(name: string): string {
@@ -25,6 +26,13 @@ export function llmTarget(req?: IncomingMessage): string {
 
 export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
+  if (config.provider === 'xai-oauth') {
+    // The subscription session token is refreshed server-side; fall back to a
+    // manually configured key in the same slot for API-key-only accounts.
+    const sessionToken = xaiOauthAccessToken();
+    const token = sessionToken || config.apiKey;
+    return token ? { authorization: `Bearer ${token}` } : {};
+  }
   if (!config.apiKey) return {};
   const protocol = protocolForProvider(config.provider);
   if (protocol === 'anthropic') return { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' };
@@ -35,6 +43,11 @@ export function llmHeaders(req?: IncomingMessage): Record<string, string> {
 export function llmErrorMessage(status: number, req?: IncomingMessage): string {
   const provider = llmProviderForRequest(req);
   const label = llmProviderPreset(provider).label;
+  if (provider === 'xai-oauth' && (status === 401 || status === 403)) {
+    return status === 403
+      ? 'xAI 拒绝了订阅会话的 API 访问（当前订阅档位可能未开放）。可升级订阅，或改在“设置 → Agent 模型 → xAI Grok”页配置 API Key 使用。'
+      : 'xAI 订阅会话已失效。请在终端运行 grok login 重新登录，然后在“设置 → Agent 模型 → xAI Grok (订阅登录)”页点击导入。';
+  }
   if (status === 401 || status === 403) {
     return `${label} 认证失败。请在“设置 → Agent 模型”中检查 API Key。`;
   }

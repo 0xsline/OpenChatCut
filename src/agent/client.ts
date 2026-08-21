@@ -51,7 +51,7 @@ type OpenAiProvider = {
 };
 
 const factoryPromises = new Map<LlmProvider, Promise<ModelFactory>>();
-let openAiProviderPromise: Promise<OpenAiProvider> | null = null;
+const openAiProviderPromises = new Map<LlmProvider, Promise<OpenAiProvider>>();
 
 function providerOptions(provider: LlmProvider): ProviderOptions {
   return {
@@ -94,25 +94,29 @@ function providerFactory(provider: LlmProvider): Promise<ModelFactory> {
   return created;
 }
 
-function openAiProvider(): Promise<OpenAiProvider> {
-  if (openAiProviderPromise) return openAiProviderPromise;
-  openAiProviderPromise = import('@ai-sdk/openai')
-    .then(({ createOpenAI }) => createOpenAI(providerOptions('openai')))
+function openAiProvider(provider: LlmProvider): Promise<OpenAiProvider> {
+  const existing = openAiProviderPromises.get(provider);
+  if (existing) return existing;
+  const created = import('@ai-sdk/openai')
+    .then(({ createOpenAI }) => createOpenAI(providerOptions(provider)))
     .catch((error: unknown) => {
-      openAiProviderPromise = null;
+      openAiProviderPromises.delete(provider);
       throw error;
     });
-  return openAiProviderPromise;
+  openAiProviderPromises.set(provider, created);
+  return created;
 }
-
 export async function getLanguageModel(
   provider: LlmProvider = PROVIDER,
   model: string = MODEL,
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
 ): Promise<ConfiguredLanguageModel> {
   if (protocolForProvider(provider) === 'openai') {
-    const openai = await openAiProvider();
-    return openAiApiMode === 'chat' ? openai.chat(model) : openai.responses(model);
+    const openai = await openAiProvider(provider);
+    // The xAI subscription session speaks the Responses API only; the global
+    // OpenAI chat/responses toggle must not switch it to chat completions.
+    const mode = provider === 'xai-oauth' ? 'responses' : openAiApiMode;
+    return mode === 'chat' ? openai.chat(model) : openai.responses(model);
   }
   return (await providerFactory(provider))(model);
 }
@@ -131,6 +135,7 @@ export function getLanguageModelProviderOptions(
   if (provider === 'minimax') {
     return { minimax: { reasoning_split: true } };
   }
+  if (provider === 'xai-oauth') return undefined;
   return protocolForProvider(provider) === 'openai' && openAiApiMode === 'responses'
     ? { openai: { store: false } }
     : undefined;
