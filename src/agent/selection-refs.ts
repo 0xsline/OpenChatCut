@@ -19,7 +19,7 @@ import { isCjkText, speakerLabel } from '../transcript/segment';
 import { hasOperationalTranscript } from '../transcript/types';
 
 /** Media-pool / template mention kinds (the pre-existing @ reference). */
-export type AssetRefKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg' | 'template';
+export type AssetRefKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg' | 'document' | 'file' | 'template';
 
 // ── metadata per reference type ─────────────────────────────────────────────
 

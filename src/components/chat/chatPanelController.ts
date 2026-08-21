@@ -31,6 +31,7 @@ import {
 import { createChatAttachmentImporter, type ChatMediaImporter } from './chatAttachmentImport';
 import type { ChatMode, RefItem } from './ChatComposer';
 import { editorDragReferences } from './editorDragReference';
+import { readProjectAssetDocuments } from '../../media/projectFile';
 import {
   cancelChatAttachmentImportByReference,
   createChatAttachmentLifecycleState,
@@ -296,8 +297,20 @@ function useReferenceActions(ctx: AgentContext, composer: ChatComposerController
     composer.commitSelectedRefs(next);
   }, [composer]);
   const onDropEditorItem = useCallback((payload: EditorDragPayload) => {
-    editorDragReferences(payload, ctx.getDoc().assets ?? []).forEach(insertRef);
-  }, [ctx, insertRef]);
+    const assets = ctx.getDoc().assets ?? [];
+    const existingIds = new Set(composer.selectedRefsRef.current.map((reference) => reference.id));
+    const references = editorDragReferences(payload, assets);
+    references.forEach(insertRef);
+    const documents = assets.filter((asset) => !existingIds.has(asset.id)
+      && references.some((reference) => reference.id === asset.id) && asset.kind === 'document');
+    if (!documents.length) return;
+    void readProjectAssetDocuments(documents).then((result) => {
+      if (result.blocks.length) composer.setInput((value) => (
+        value.trim() ? `${value}\n${result.blocks.join('\n')}` : result.blocks.join('\n')
+      ));
+      composer.setPasteError(result.errors[0] ?? null);
+    });
+  }, [composer, ctx, insertRef]);
   return { insertRef, removeRef, onComposerChange, onDropEditorItem };
 }
 

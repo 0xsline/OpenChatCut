@@ -11,5 +11,7 @@ assert.equal(canDropMediaAsset({ kind: 'gif' }, 'video'), true);
 assert.equal(canDropMediaAsset({ kind: 'audio' }, 'audio'), true);
 assert.equal(canDropMediaAsset({ kind: 'image' }, 'audio'), false);
 assert.equal(canDropMediaAsset({ kind: 'audio' }, 'video'), false);
+assert.equal(canDropMediaAsset({ kind: 'document' }, 'video'), false);
+assert.equal(canDropMediaAsset({ kind: 'file' }, 'audio'), false);
 
 console.log('media drag: payload validation and track compatibility OK');

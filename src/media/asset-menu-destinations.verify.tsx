@@ -96,6 +96,13 @@ try {
   assert.match(markup, /aria-label="添加 7月7日.mp4 到时间线"/);
   assert.match(markup, /aria-label="添加 7月7日.mp4 到 AI 对话框"/);
 
+  const documentMarkup = renderToStaticMarkup(createElement(AssetMenuDestinations, {
+    assetName: 'script.md',
+    onAddChat: () => undefined,
+  }));
+  assert.match(documentMarkup, />AI 对话框</);
+  assert.doesNotMatch(documentMarkup, />时间线</);
+
   const blankMenuMarkup = renderToStaticMarkup(createElement(BlankMediaMenuActions, {
     clipboardCount: 2,
     visibleCount: 3,

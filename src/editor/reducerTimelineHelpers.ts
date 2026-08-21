@@ -38,7 +38,9 @@ export type RelinkableTimelineItem = TimelineItem & Pick<MediaAssetRelinkPatch, 
   captureClock?: MediaAsset['captureClock'];
 };
 
-export function isRelinkableMediaKind(kind: TimelineItem['kind']): kind is MediaAsset['kind'] {
+export function isRelinkableMediaKind(
+  kind: TimelineItem['kind'],
+): kind is Extract<MediaAsset['kind'], TimelineItem['kind']> {
   return kind === 'video'
     || kind === 'image'
     || kind === 'audio'
@@ -147,4 +149,3 @@ export function retimePatchForItem(s: TimelineState, target: TimelineItem, actio
     srcInFrame,
   };
 }
-

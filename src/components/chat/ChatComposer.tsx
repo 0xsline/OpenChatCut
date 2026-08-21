@@ -83,7 +83,7 @@ interface ChatComposerProps {
 
 
 const REF_ICON: Record<RefItem['kind'], IconName> = {
-  video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image',
+  video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image', document: 'text', file: 'paperclip',
   audio: 'fileHeadphone', 'motion-graphic': 'sparkles', template: 'sparkles',
   'library-resource': 'sparkles',
   // selection-mode picks (item / time / region / transcript references)

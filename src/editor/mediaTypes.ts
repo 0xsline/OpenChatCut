@@ -1,7 +1,12 @@
 import type { TranscriptCarrier } from '../transcript/types.js';
 
 /** An imported media file in the project's media pool. */
-export type MediaAssetKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg';
+export type MediaAssetKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg' | 'document' | 'file';
+export type TimelineMediaAssetKind = Exclude<MediaAssetKind, 'document' | 'file'>;
+
+export function isTimelineMediaAssetKind(kind: MediaAssetKind): kind is TimelineMediaAssetKind {
+  return kind !== 'document' && kind !== 'file';
+}
 
 /** ingest-time ASR state on a pool asset ("upload and transcribe": transcribe is automatically triggered after ingest is dropped from the library,
  * asset marked "Transscription completed/failed"). Drives the media-pool badge + track_progress readiness. */

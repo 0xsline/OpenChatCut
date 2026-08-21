@@ -2,6 +2,7 @@ import { copyTranscriptIdentity } from '../transcript/identity';
 import type { AtomicAction, ProjectDispatch } from './reduce';
 import { maxOrder, projectReduce } from './reduce';
 import { sourceRevisionOf } from './mediaSourceRevision';
+import { isTimelineMediaAssetKind } from './mediaTypes';
 import { planOverwrite } from './overwrite';
 import {
   resolveTimelineRenderPlan,
@@ -212,6 +213,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       },
       addAsset: (asset: MediaAsset) => dispatch({ type: 'addAsset', asset }),
       addMediaItem: (asset, at) => {
+        if (!isTimelineMediaAssetKind(asset.kind)) throw new Error(`${asset.name} is not timeline media`);
         const item = asset.kind === 'motion-graphic'
           ? {
               id: uid('item'),

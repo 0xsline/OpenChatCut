@@ -15,14 +15,17 @@ const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.opus', '.fla
 export function kindOfDescriptor(rawName: string, rawType = ''): MediaKind | null {
   const name = rawName.toLowerCase();
   const type = rawType.toLowerCase();
+  const dot = name.lastIndexOf('.');
+  const hasExtension = dot >= 0 && dot < name.length - 1;
   if (type === 'image/gif' || name.endsWith('.gif')) return 'gif';
   if (type === 'image/svg+xml' || name.endsWith('.svg')) return 'svg';
-  if (type.startsWith('video/')) return 'video';
-  if (type.startsWith('image/')) return 'image';
-  if (type.startsWith('audio/')) return 'audio';
   if (VIDEO_EXTENSIONS.some((extension) => name.endsWith(extension))) return 'video';
   if (IMAGE_EXTENSIONS.some((extension) => name.endsWith(extension))) return 'image';
   if (AUDIO_EXTENSIONS.some((extension) => name.endsWith(extension))) return 'audio';
+  if (hasExtension) return null;
+  if (type.startsWith('video/')) return 'video';
+  if (type.startsWith('image/')) return 'image';
+  if (type.startsWith('audio/')) return 'audio';
   return null;
 }
 

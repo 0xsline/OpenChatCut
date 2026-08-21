@@ -3,10 +3,10 @@ import { refPromptToken } from '../../agent/selection-refs';
 import type { MediaAsset } from '../../editor/types';
 import { kindOf } from '../../media/upload';
 import {
-  parseDocxText,
-  parsePdfText,
-} from './chatDocumentParse';
-import { assertChatDocumentSize, validatedChatDocumentText } from './chatDocumentLimits';
+  projectDocumentKind,
+  projectDocumentPromptBlock,
+  readProjectDocument,
+} from '../../media/projectFile';
 import {
   attachChatAttachmentPlaceholder,
   beginChatAttachmentImport,
@@ -42,34 +42,17 @@ interface AttachmentImportBinding {
   readonly setError: (message: string | null) => void;
 }
 
-const DOCUMENT_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.srt', '.csv']);
-
 /** Text document attachments (issue #84): read straight into the composer as
  * editable text; no media-pool asset is created. */
-export function chatDocumentKind(file: File): 'text' | 'docx' | 'pdf' | null {
-  const lower = file.name.toLowerCase();
-  const dot = lower.lastIndexOf('.');
-  const ext = dot >= 0 ? lower.slice(dot) : '';
-  if (DOCUMENT_EXTENSIONS.has(ext)) return 'text';
-  if (ext === '.docx') return 'docx';
-  if (ext === '.pdf') return 'pdf';
-  return null;
-}
+export const chatDocumentKind = projectDocumentKind;
 
 async function importDocument(binding: AttachmentImportBinding, file: File): Promise<void> {
-  const kind = chatDocumentKind(file);
-  let text: string;
   try {
-    assertChatDocumentSize(file.size);
-    if (kind === 'docx') text = await parseDocxText(await file.arrayBuffer());
-    else if (kind === 'pdf') text = await parsePdfText(await file.arrayBuffer());
-    else text = validatedChatDocumentText(await file.text());
+    const block = projectDocumentPromptBlock(file.name, await readProjectDocument(file));
+    binding.updateInput((value) => (value.trim() ? `${value}\n${block}` : block));
   } catch (error) {
     binding.setError(error instanceof Error ? binding.t(error.message) : binding.t('文档解析失败'));
-    return;
   }
-  const block = `[文档: ${file.name}]\n${text.trim()}\n`;
-  binding.updateInput((value) => (value.trim() ? `${value}\n${block}` : block));
 }
 
 

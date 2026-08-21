@@ -20,7 +20,7 @@ import { DirectoryImportActions } from './DirectoryImportActions';
 
 export type MediaToolbarMenu = 'sort' | 'filter' | 'actions' | null;
 const SORT_OPTIONS = [['newest', '最新导入'], ['name', '名称 A–Z'], ['duration', '时长']] as const;
-const FILTER_OPTIONS = [['all', '全部'], ['video', '视频'], ['image', '图片'], ['gif', 'GIF'], ['svg', 'SVG'], ['audio', '音频']] as const;
+const FILTER_OPTIONS = [['all', '全部'], ['video', '视频'], ['image', '图片'], ['gif', 'GIF'], ['svg', 'SVG'], ['audio', '音频'], ['document', '文档'], ['file', '其他文件']] as const;
 
 interface MediaPoolToolbarProps {
   scopeId: string;

@@ -24,7 +24,7 @@ interface AssetMenuPortalProps {
   onRelink: () => void;
   onRemove: () => void;
   onMove: (folderId?: string) => void;
-  onAddTimeline: () => void;
+  onAddTimeline?: () => void;
   onAddChat: () => void;
   /** Transcribe the menu's asset selection (enabled when any is transcribable). */
   onTranscribe?: () => void;
@@ -65,7 +65,7 @@ export function BlankMediaMenuActions(props: BlankMediaMenuActionsProps) {
       <option value="newest">{t('最新导入')}</option><option value="name">{t('名称 A–Z')}</option><option value="duration">{t('时长')}</option>
     </select></label>
     <label><span>{t('筛选')}</span><select aria-label={t('筛选素材')} value={props.type} onChange={(event) => props.onType(event.target.value as MediaTypeFilter)}>
-      <option value="all">{t('全部')}</option><option value="video">{t('视频')}</option><option value="image">{t('图片')}</option><option value="audio">{t('音频')}</option>
+      <option value="all">{t('全部')}</option><option value="video">{t('视频')}</option><option value="image">{t('图片')}</option><option value="audio">{t('音频')}</option><option value="document">{t('文档')}</option><option value="file">{t('其他文件')}</option>
     </select></label>
   </>;
 }

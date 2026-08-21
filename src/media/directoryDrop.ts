@@ -1,5 +1,3 @@
-import { kindOfDescriptor } from './mediaProbe';
-
 interface WindowWithDirectoryPicker {
   showDirectoryPicker?(options?: { mode?: 'read' | 'readwrite' }): Promise<FileSystemDirectoryHandle>;
 }
@@ -49,10 +47,6 @@ function collectFile(file: File, state: DirectoryScanState, folderPath: readonly
     return;
   }
   state.visitedFiles += 1;
-  if (kindOfDescriptor(file.name, file.type) === null) {
-    state.unsupportedFiles += 1;
-    return;
-  }
   state.files.push(file);
   state.folderPaths.push([...folderPath]);
 }

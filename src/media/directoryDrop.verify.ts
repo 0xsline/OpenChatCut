@@ -70,19 +70,21 @@ function transfer(items: DataTransferItem[], files: File[] = []): DataTransfer {
 
 {
   const supported = new File(['video'], 'nested.mp4', { type: 'video/mp4' });
-  const unsupported = new File(['text'], 'notes.txt', { type: 'text/plain' });
+  const document = new File(['text'], 'notes.txt', { type: 'text/plain' });
+  const other = new File(['psd'], 'poster.psd', { type: 'application/octet-stream' });
   const nested = directoryEntry('folder', [
     directoryEntry('cuts', [fileEntry(supported)]),
-    fileEntry(unsupported),
+    fileEntry(document),
+    fileEntry(other),
   ]);
   const dropped = transfer([item(nested)]);
   assert.equal(hasDirectoryEntries(dropped), true, 'an actual directory entry enables recursion');
   const result = await collectDroppedFiles(dropped);
   assert.equal(result.scanned, true);
-  assert.deepEqual(result.files, [supported]);
-  assert.deepEqual(result.folderPaths, [['folder', 'cuts']], 'directory hierarchy must be retained');
+  assert.deepEqual(result.files, [supported, document, other]);
+  assert.deepEqual(result.folderPaths, [['folder', 'cuts'], ['folder'], ['folder']], 'every file must retain its directory hierarchy');
   assert.deepEqual(result.directories, [['folder'], ['folder', 'cuts']], 'nested folders must be retained');
-  assert.equal(result.unsupportedFiles, 1, 'unsupported directory files must be reported explicitly');
+  assert.equal(result.unsupportedFiles, 0, 'project folders accept document and opaque files');
 }
 
 {

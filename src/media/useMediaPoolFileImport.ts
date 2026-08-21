@@ -98,7 +98,7 @@ function useDirectoryFileActions(
   const importResult = useCallback(async (result: DirectoryScanResult, folderId?: string) => {
     const notice = directoryNotice(result, t);
     if (!result.files.length) {
-      setError(notice ?? t('文件夹中没有支持的媒体文件。'));
+      setError(notice ?? t('文件夹中没有文件。'));
       return;
     }
     const targetFolderIds = materializeDirectoryFolders(result, folderId, onCreateFolder);

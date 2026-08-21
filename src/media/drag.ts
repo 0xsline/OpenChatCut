@@ -1,5 +1,6 @@
 import type { DragEvent } from 'react';
 import type { MediaAsset, TrackKind } from '../editor/types';
+import { isTimelineMediaAssetKind } from '../editor/mediaTypes';
 import { setEditorDrag } from '../editor/editorDrag';
 
 const MEDIA_DRAG_MIME = 'application/x-openchatcut-media-asset';
@@ -14,7 +15,8 @@ interface MediaDragPayload {
   assetId: string;
 }
 
-export function mediaAssetTrackKind(asset: Pick<MediaAsset, 'kind'>): 'video' | 'audio' {
+export function mediaAssetTrackKind(asset: Pick<MediaAsset, 'kind'>): 'video' | 'audio' | null {
+  if (!isTimelineMediaAssetKind(asset.kind)) return null;
   return asset.kind === 'audio' ? 'audio' : 'video';
 }
 
@@ -32,7 +34,7 @@ export function setMediaAssetDrag(
     assetKind: asset.kind,
   });
   event.dataTransfer.setData(MEDIA_DRAG_MIME, JSON.stringify({ v: 1, assetId: asset.id }));
-  event.dataTransfer.setData(MEDIA_DRAG_KIND_MIME[kind], '1');
+  if (kind) event.dataTransfer.setData(MEDIA_DRAG_KIND_MIME[kind], '1');
   // copyMove: timeline drop uses copy; media-pool folder drop uses move.
   // effectAllowed "copy" alone rejects folder dropEffect "move" in Chromium.
   event.dataTransfer.effectAllowed = 'copyMove';

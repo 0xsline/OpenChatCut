@@ -3,9 +3,10 @@ import { t } from '../i18n/locale';
 import { putMediaBlob } from '../persist/mediaBlobStore';
 import { extractAudioForAsr } from '../transcript/provider';
 import { extractAsrFromFile } from '../transcript/client-asr-extract';
-import { kindOf, probeMediaFile, type MediaKind, type MediaMetadata } from './mediaProbe';
+import { kindOf, probeMediaFile, type MediaMetadata } from './mediaProbe';
 import { createMediaSourceRevision } from '../editor/mediaSourceRevision';
 import { normalizeSha256Hash } from '../../shared/content-hash';
+import { projectFileAssetKind } from './projectFile';
 import {
   normalizeUploadedMediaLocation,
   type UploadedMediaLocation,
@@ -32,7 +33,7 @@ export interface ImportMediaHooks {
   onUploaded?: (info: {
     id: string;
     src: string;
-    kind: MediaKind;
+    kind: MediaAssetKind;
     sourceContentHash?: string;
     name: string;
     sourceRevision: string;
@@ -112,7 +113,7 @@ export async function transferDesktopLocalMedia(
 }
 
 export function shouldNormalizeImportedVideo(
-  kind: MediaKind,
+  kind: MediaAssetKind,
   desktopImport: DesktopLocalMediaImport | null,
 ): boolean {
   return kind === 'video' && desktopImport?.proxyKind !== 'alpha-webm';
@@ -216,7 +217,7 @@ interface PreparedMediaImport {
   file: File;
   fps: number;
   id: string;
-  kind: MediaKind;
+  kind: MediaAssetKind;
   sourceFilename: string;
   originalFilePath?: string;
   sourceSize: number;
@@ -248,8 +249,8 @@ function originalPathOf(file: File): string | undefined {
 }
 
 async function prepareMediaImport(file: File, fps: number): Promise<PreparedMediaImport> {
-  const kind = kindOf(file);
-  if (!kind) throw new Error(t('不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）'));
+  const mediaKind = kindOf(file);
+  const kind = mediaKind ?? projectFileAssetKind(file);
   return {
     file,
     fps,
@@ -259,7 +260,7 @@ async function prepareMediaImport(file: File, fps: number): Promise<PreparedMedi
     originalFilePath: originalPathOf(file),
     sourceSize: file.size,
     sourceModifiedAt: file.lastModified,
-    meta: await probeMediaFile(file, kind, fps),
+    meta: mediaKind ? await probeMediaFile(file, mediaKind, fps) : { durationInFrames: 1 },
   };
 }
 
@@ -270,13 +271,13 @@ function placeholderAsset(prepared: PreparedMediaImport, blobUrl: string): Media
     name: sourceFilename,
     sourceFilename,
     originalFilePath,
-    kind: kind as MediaAssetKind,
+    kind,
     src: blobUrl,
     durationInFrames: meta.durationInFrames,
     sourceRevision: createMediaSourceRevision({
       src: `file:${sourceFilename}`,
       name: sourceFilename,
-      kind: kind as MediaAssetKind,
+      kind,
       sourceSize,
       sourceModifiedAt,
       durationInFrames: meta.durationInFrames,
@@ -304,7 +305,7 @@ async function uploadPreparedMedia(
   const sourceRevision = createMediaSourceRevision({
     src: transferred.src,
     name: sourceFilename,
-    kind: kind as MediaAssetKind,
+    kind,
     sourceContentHash: transferred.sourceContentHash,
     sourceSize,
     sourceModifiedAt,
@@ -378,7 +379,7 @@ function readyAsset(
     name: prepared.sourceFilename,
     sourceFilename: prepared.sourceFilename,
     originalFilePath: prepared.originalFilePath,
-    kind: prepared.kind as MediaAssetKind,
+    kind: prepared.kind,
     ...readySource,
     sourceRevision: uploaded.sourceRevision,
     sourceContentHash: uploaded.sourceContentHash,

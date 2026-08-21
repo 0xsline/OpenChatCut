@@ -2507,6 +2507,22 @@
           "max"
         ]
       },
+      "deepseek-v4-flash-vision-exp": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 384000,
+        "input": [
+          "text",
+          "image"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": [
+          "low",
+          "high",
+          "max"
+        ]
+      },
       "deepseek-v4-pro": {
         "contextWindowTokens": 1000000,
         "maxInputTokens": null,

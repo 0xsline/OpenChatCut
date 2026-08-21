@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { MediaAsset } from '../editor/types';
 import { matchRelinkFile } from './mediaRelinkMatch';
 
 const file = (name: string, type = ''): File => new File([new Uint8Array([1])], name, { type });
@@ -6,7 +7,7 @@ const file = (name: string, type = ''): File => new File([new Uint8Array([1])], 
 const asset = (name: string, extra: Partial<{ sourceFilename: string; kind: string }> = {}) => ({
   name,
   sourceFilename: extra.sourceFilename,
-  kind: (extra.kind ?? 'image') as 'video' | 'image' | 'audio' | 'gif' | 'svg',
+  kind: (extra.kind ?? 'image') as MediaAsset['kind'],
 });
 
 async function main(): Promise<void> {
@@ -31,6 +32,10 @@ async function main(): Promise<void> {
   assert.equal(
     matchRelinkFile(asset('素材', { kind: 'video' }), [file('素材.mp4'), file('素材.mp3')])?.name,
     '素材.mp4',
+  );
+  assert.equal(
+    matchRelinkFile(asset('脚本', { kind: 'document' }), [file('脚本.psd'), file('脚本.md')])?.name,
+    '脚本.md',
   );
 
   // 4. Ambiguous stems with no kind match → null (no silent wrong relink).

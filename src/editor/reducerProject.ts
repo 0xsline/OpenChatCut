@@ -4,6 +4,7 @@ import { fitItemToDuration } from './clipFit';
 import { reconcileTransitions } from './transitionReconcile';
 import { sequenceGraphError, sequenceReferencesTo } from './sequenceGraph';
 import { revisionAfterRelink, sourceRevisionOf, withMediaSourceRevision } from './mediaSourceRevision';
+import { isTimelineMediaAssetKind } from './mediaTypes';
 import { normalizeSha256Hash } from '../../shared/content-hash.js';
 import { canonicalizeMediaAsset } from './mediaContentIdentity.js';
 import { mapTimelineAssetItems, removeAssetFromTimeline, timelineItemUsesAsset } from './mediaAssetUsage';
@@ -176,7 +177,8 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         };
         const relinkTimelineItem = (item: TimelineItem): TimelineItem => {
           if (!isRelinkableMediaKind(item.kind)) return item;
-          const timing = relinkTiming(item, a.durationInFrames, a.kind ?? item.kind);
+          const replacementKind = a.kind && isTimelineMediaAssetKind(a.kind) ? a.kind : item.kind;
+          const timing = relinkTiming(item, a.durationInFrames, replacementKind);
           if (!timing) return item;
           const {
             denoisedSrc: _staleDenoisedSrc,
@@ -197,7 +199,7 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
             name: a.name ?? item.name,
             width: a.width ?? item.width,
             height: a.height ?? item.height,
-            kind: a.kind ?? item.kind,
+            kind: replacementKind,
             transcriptStale: sourceChanged && item.transcript?.length ? true : item.transcriptStale,
           });
         };

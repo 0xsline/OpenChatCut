@@ -101,7 +101,9 @@ function normalizeSourceMetadata<T extends object>(value: T): T {
   } as T;
 }
 
-function isMediaAssetKind(kind: TimelineItem['kind']): kind is MediaAsset['kind'] {
+function isMediaAssetKind(
+  kind: TimelineItem['kind'],
+): kind is Extract<MediaAsset['kind'], TimelineItem['kind']> {
   return kind !== 'text' && kind !== 'solid' && kind !== 'sequence';
 }
 
@@ -180,7 +182,8 @@ export function isMediaAsset(value: unknown): value is MediaAsset {
   const asset = value as Partial<MediaAsset>;
   return typeof asset.id === 'string'
     && typeof asset.name === 'string'
-    && (asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'audio' || asset.kind === 'motion-graphic')
+    && (asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'audio'
+      || asset.kind === 'motion-graphic' || asset.kind === 'document' || asset.kind === 'file')
     && typeof asset.src === 'string'
     && finite(asset.durationInFrames) && asset.durationInFrames > 0
     && (asset.kind !== 'motion-graphic' || typeof asset.code === 'string');

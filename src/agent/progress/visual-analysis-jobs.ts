@@ -38,13 +38,13 @@ export function enqueueVisualAnalysis(
 ): void {
   const sourceRevision = sourceRevisionOf(asset);
   if (!asset.src) return;
-  if (asset.kind === 'audio') {
+  if (asset.kind === 'audio' || asset.kind === 'document' || asset.kind === 'file') {
     jobs.set(asset.id, {
       assetId: asset.id,
       sourceRevision,
       status: 'succeeded',
       sampleCount: 0,
-      note: 'audio has no frames; visual-analysis is a no-op',
+      note: `${asset.kind} has no frames; visual-analysis is a no-op`,
     });
     return;
   }

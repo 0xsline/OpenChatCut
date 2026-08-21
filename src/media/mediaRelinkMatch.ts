@@ -1,5 +1,6 @@
 import type { MediaAsset } from '../editor/types';
 import { kindOfDescriptor } from './mediaProbe';
+import { projectFileAssetKind } from './projectFile';
 
 /**
  * Folder relink matching: exact filename first (case-insensitive), then
@@ -23,6 +24,8 @@ export function matchRelinkFile(
   });
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
-  const kindMatch = candidates.find((file) => kindOfDescriptor(file.name, file.type) === asset.kind);
+  const kindMatch = candidates.find((file) => (
+    kindOfDescriptor(file.name, file.type) ?? projectFileAssetKind(file)
+  ) === asset.kind);
   return kindMatch ?? null;
 }

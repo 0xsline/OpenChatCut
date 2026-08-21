@@ -3,6 +3,7 @@ import { Icon, type IconName } from '../components/icons';
 import { MusicAnalysisBadge } from '../audio/intelligence/MusicAnalysisBadge';
 import type { MusicAnalysisCardState } from '../audio/intelligence/useMusicAnalysisCards';
 import type { MediaAsset, MediaFolder } from '../editor/types';
+import { isTimelineMediaAssetKind } from '../editor/mediaTypes';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
 import { setMediaAssetDrag } from './drag';
@@ -122,6 +123,8 @@ function AssetPreview({ asset, fps, active, onLoadError, onLoadSuccess }: AssetP
     );
   }
   if (asset.kind === 'motion-graphic') return <MgThumb asset={asset} fps={fps} active={active} />;
+  if (asset.kind === 'document') return <Icon name="text" size={32} strokeWidth={1.35} />;
+  if (asset.kind === 'file') return <Icon name="paperclip" size={32} strokeWidth={1.35} />;
   return <Icon name="music" size={32} strokeWidth={1.35} />;
 }
 
@@ -163,7 +166,7 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
           props.onOpenMenu(asset.id, event.currentTarget as HTMLElement);
         }
       }}
-      onDoubleClick={() => { if (!missing) props.onAdd(asset); }}
+      onDoubleClick={() => { if (!missing && isTimelineMediaAssetKind(asset.kind)) props.onAdd(asset); }}
       onContextMenu={(event) => {
         if (event.target instanceof Element && event.target.closest('[data-music-analysis-control]')) return;
         event.preventDefault();
@@ -197,7 +200,11 @@ function AssetThumbArea(props: MediaAssetCardProps) {
     <div className="cc-asset-thumb-wrap">
       <button
         className="cc-asset-thumb"
-        title={missing ? t('点击重新链接') : t('单击选中，双击加入时间线，或拖到指定轨道：{name}', { name: asset.name })}
+        title={missing
+          ? t('点击重新链接')
+          : t(isTimelineMediaAssetKind(asset.kind)
+            ? '单击选中，双击加入时间线，或拖到指定轨道：{name}'
+            : '单击选中，或拖到 AI 对话框：{name}', { name: asset.name })}
         style={missing ? undefined : { cursor: 'grab' }}
         onClick={() => { if (missing && props.canRelink) props.onRelink(asset.id); }}
       >
@@ -215,6 +222,10 @@ function AssetThumbArea(props: MediaAssetCardProps) {
 function AssetListIcon({ asset }: { asset: MediaAsset }) {
   const name: IconName = asset.kind === 'audio'
     ? 'music'
+    : asset.kind === 'document'
+      ? 'text'
+      : asset.kind === 'file'
+        ? 'paperclip'
     : asset.kind === 'motion-graphic'
       ? 'sparkles'
       : asset.kind === 'gif' || asset.kind === 'svg'
@@ -243,7 +254,7 @@ function AssetBadges(props: MediaAssetCardProps) {
       {(asset.kind === 'gif' || asset.kind === 'svg') && <span className="cc-asset-audio-mark cc-asset-kind-mark">{asset.kind.toUpperCase()}</span>}
       {props.used && <span className="cc-asset-used-dot" title={t('正在时间线中使用')} aria-label={t('正在时间线中使用')} />}
       {aspectLabel && <span className="cc-asset-ratio">{aspectLabel}</span>}
-      <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, props.fps)}</span>
+      {isTimelineMediaAssetKind(asset.kind) && <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, props.fps)}</span>}
       <button
         type="button"
         className="cc-asset-favorite"

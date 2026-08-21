@@ -4,7 +4,7 @@ import type { MediaAssetKind } from './types';
 export const EDITOR_DRAG_MIME = 'application/x-openchatcut-editor-item';
 
 const MEDIA_KINDS = new Set<MediaAssetKind>([
-  'video', 'image', 'audio', 'motion-graphic', 'gif', 'svg',
+  'video', 'image', 'audio', 'motion-graphic', 'gif', 'svg', 'document', 'file',
 ]);
 
 const LIBRARY_KINDS = new Set<LibraryDragKind>([

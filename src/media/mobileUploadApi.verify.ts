@@ -6,5 +6,6 @@ assert.equal(kindOfDescriptor('voice', 'audio/mpeg'), 'audio');
 assert.equal(kindOfDescriptor('sticker.gif', 'application/octet-stream'), 'gif');
 assert.equal(kindOfDescriptor('IMG_0001.HEIC', 'application/octet-stream'), 'image');
 assert.equal(kindOfDescriptor('payload.exe', 'application/octet-stream'), null);
+assert.equal(kindOfDescriptor('design.psd', 'image/vnd.adobe.photoshop'), null);
 
 console.log('mobileUploadApi.verify: ok');

@@ -4,6 +4,7 @@ import { enqueueVisualAnalysis, refreshVisualAnalysis } from '../agent/progress/
 import { appendManualLane, identifyManualCues, isManualCaptionEntry, newManualCaptions } from '../captions/manualCaptions';
 import { placeMediaAssets, reflowPlacedMediaItems } from '../editor/mediaAssetPlacement';
 import { sourceRevisionOf } from '../editor/mediaSourceRevision';
+import { isTimelineMediaAssetKind } from '../editor/mediaTypes';
 import type { EditorCommands } from '../editor/store';
 import { captionsOnTrack, defaultTrackId, trackKind, type MediaAsset, type ProjectDoc, type TimelineState, type TrackId } from '../editor/types';
 import type { Tpl } from '../types';
@@ -14,6 +15,7 @@ import { createImportContentIdentityHooks } from './importContentIdentity';
 import { findMediaNameConflict, MediaImportCancelledError } from './mediaImportConflict';
 import { mediaAssetRelinkPatch, uploadedMediaRelinkPatch } from './mediaAssetRelink';
 import { importUploadedMedia } from './mobileImport';
+import { readProjectAssetDocuments } from './projectFile';
 import type { MobileUploadRecord } from './mobileUploadApi';
 import { createImportTranscriptionGate, createMediaAssetsChatSeed, importMedia, readyMediaAssetsForPaste, type ImportMediaHooks, type ImportTranscriptionStart } from './upload';
 import { enqueueTranscription, getTranscribeJob, shouldTranscribe, untranscribedTimelineItemIdsForRevision, type TranscribeJob } from '../transcript/transcribe-jobs';
@@ -415,9 +417,11 @@ function useTimelineImports(
     dropFilesToTimeline(files, trackId, startFrame, { commands, stateRef, startAssetTranscription: start, t })
   ), [commands, start, stateRef, t]);
   const addMediaAssetsToTimeline = useCallback((assets: MediaAsset[]) => {
+    const timelineAssets = assets.filter((asset) => isTimelineMediaAssetKind(asset.kind));
+    if (!timelineAssets.length) return;
     placeMediaAssets({
-      assetIds: assets.map((asset) => asset.id),
-      assets,
+      assetIds: timelineAssets.map((asset) => asset.id),
+      assets: timelineAssets,
       startFrame: getPlayhead(),
       add: (asset, frame) => commands.addMediaItem(asset, { startFrame: frame }),
       select: commands.selectItems,
@@ -449,11 +453,16 @@ function useMediaPaste(options: EditorMediaIngestOptions) {
 
 function useMediaAISeeds(options: EditorMediaIngestOptions) {
   const { setChatCollapsed, setChatSeed, t } = options;
-  const useMediaAI = useCallback((assets: MediaAsset[]) => {
+  const useMediaAI = useCallback(async (assets: MediaAsset[]) => {
     const seed = createMediaAssetsChatSeed(assets);
     if (!seed) return;
     setChatCollapsed(false);
-    setChatSeed(seed);
+    const documents = await readProjectAssetDocuments(assets);
+    if (documents.errors[0]) showAppToast(documents.errors[0], { error: true });
+    setChatSeed({
+      ...seed,
+      text: documents.blocks.length ? `${seed.text}\n${documents.blocks.join('\n')}` : seed.text,
+    });
   }, [setChatCollapsed, setChatSeed]);
   const useTemplateAI = useCallback((tpl: Tpl) => {
     setChatCollapsed(false);

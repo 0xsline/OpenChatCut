@@ -51,6 +51,20 @@ import { verifySourceMetadataMigration } from './migrations.verify.source-metada
 }
 
 {
+  const current = migrateProjectDoc(v3);
+  assert.ok(current);
+  const migrated = migrateProjectDoc({
+    ...current,
+    assets: [
+      ...current.assets,
+      { id: 'doc', name: 'script.md', kind: 'document', src: '/media/uploads/script.md', durationInFrames: 1 },
+      { id: 'file', name: 'design.psd', kind: 'file', src: '/media/uploads/design.psd', durationInFrames: 1 },
+    ],
+  });
+  assert.deepEqual(migrated?.assets.slice(-2).map((asset) => asset.kind), ['document', 'file']);
+}
+
+{
   const progress: Array<[number, number]> = [];
   const migrated = runProjectMigrations(v3, {
     onProgress: (event) => progress.push([event.fromVersion, event.toVersion]),

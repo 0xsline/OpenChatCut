@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  listVisionModels,
   resolveModelCapabilities,
   type ModelIdentity,
 } from './model-capabilities';
@@ -33,5 +34,10 @@ assert.equal(unknown.contextWindowTokens.source, 'provider-fallback', 'unknown i
 assert.equal(unknown.contextWindowTokens.estimated, true, 'fallback is marked estimated');
 assert.equal(unknown.contextWindowTokens.value, 409_600, 'fallback context uses the catalog-grounded estimate');
 assert.equal(unknown.maxOutputTokens.value, 65_536, 'fallback output uses the catalog-grounded estimate');
+
+const deepseekVision = resolveModelCapabilities(identity('deepseek', 'deepseek-v4-flash-vision-exp'));
+assert.equal(deepseekVision.supportsImages.value, true, 'DeepSeek vision input reaches the multimodal path');
+assert.equal(deepseekVision.supportsImages.source, 'catalog');
+assert.ok(listVisionModels('deepseek').includes('deepseek-v4-flash-vision-exp'));
 
 console.log('model-capabilities.verify: snapshot prefix matching passed');
