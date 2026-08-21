@@ -6,6 +6,7 @@ import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createMistral } from '@ai-sdk/mistral';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { createXai } from '@ai-sdk/xai';
 import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
 import type { LanguageModel } from 'ai';
 import type { AgentCacheMode } from '../../src/agent/settings/agentSettings';
@@ -43,6 +44,7 @@ function providerFactory(
     case 'qwen': return createAlibaba(options);
     case 'deepseek': return createDeepSeek(options);
     case 'mistral': return createMistral(options);
+    case 'xai': return createXai(options);
     default: return createOpenAICompatible({ name: provider, ...options });
   }
 }

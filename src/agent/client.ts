@@ -78,6 +78,8 @@ async function createProviderFactory(provider: LlmProvider): Promise<ModelFactor
       return (await import('@ai-sdk/deepseek')).createDeepSeek(options);
     case 'mistral':
       return (await import('@ai-sdk/mistral')).createMistral(options);
+    case 'xai':
+      return (await import('@ai-sdk/xai')).createXai(options);
     default: {
       const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
       return createOpenAICompatible({ name: provider, ...options });

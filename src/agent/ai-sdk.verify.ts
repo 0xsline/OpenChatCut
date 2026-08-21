@@ -115,6 +115,7 @@ for (const preset of LLM_PROVIDER_PRESETS) {
     qwen: 'alibaba.chat',
     deepseek: 'deepseek.chat',
     mistral: 'mistral.chat',
+    xai: 'xai.responses',
     'xai-oauth': 'openai.responses',
   };
   assert.equal(
@@ -149,6 +150,7 @@ try {
     ['openai', 'gpt-test', undefined],
     ['openai', 'gpt-chat-test', 'chat'],
     ['kimi', 'kimi-test', undefined],
+    ['xai', 'grok-test', undefined],
   ] as const) {
     await assert.rejects(generateText({
       model: await getLanguageModel(provider, model, openAiApiMode),
@@ -168,6 +170,7 @@ assert.deepEqual(serialized.map(({ url, body, provider }) => ({
   { path: '/llm/responses', model: 'gpt-test', provider: 'openai' },
   { path: '/llm/chat/completions', model: 'gpt-chat-test', provider: 'openai' },
   { path: '/llm/chat/completions', model: 'kimi-test', provider: 'kimi' },
+  { path: '/llm/responses', model: 'grok-test', provider: 'xai' },
 ]);
 
 const legacy = normalizeLlmMessages([
