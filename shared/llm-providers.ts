@@ -101,6 +101,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'mistral-large-latest',
   },
   {
+    id: 'xai',
+    label: 'xAI · Grok',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.x.ai/v1',
+    defaultModel: 'grok-4.6',
+  },
+  {
     id: 'openrouter',
     label: 'OpenRouter',
     protocol: 'openai-compatible',

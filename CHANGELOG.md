@@ -6,6 +6,14 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added / 新增
+
+- Added xAI Grok as a built-in Agent provider (grok-4.6 default, OpenAI-compatible API at api.x.ai), with the standard settings page, API key configuration, connection testing, model discovery, and model-capability catalog entries. OAuth subscription login is not included; configure an API key as with any other provider.
+  新增 xAI Grok 内置 Agent 供应商（默认 grok-4.6，api.x.ai OpenAI 兼容接口），提供标准设置页、API Key 配置、连接测试、模型发现与模型能力目录条目。不包含 OAuth 订阅登录，与其他供应商一样配置 API Key 使用。
+
+
 ## [0.2.9] - 2026-08-20
 
 ### Added / 新增

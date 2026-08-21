@@ -7810,6 +7810,185 @@
         "reasoning": true,
         "reasoningEfforts": []
       }
+    },
+    "xai": {
+      "grok-4.20-0309-non-reasoning": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 30000,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": true,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "grok-4.20-0309-reasoning": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 30000,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "grok-4.20-multi-agent-0309": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 30000,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": false,
+        "reasoning": true,
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "grok-4.3": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 30000,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "grok-4.5": {
+        "contextWindowTokens": 500000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 500000,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "grok-4.6": {
+        "contextWindowTokens": 500000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 500000,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "grok-build-0.1": {
+        "contextWindowTokens": 256000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 256000,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "grok-imagine-image": {
+        "contextWindowTokens": 8000,
+        "maxInputTokens": null,
+        "maxOutputTokens": null,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": false,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "grok-imagine-image-2.0": {
+        "contextWindowTokens": 8000,
+        "maxInputTokens": null,
+        "maxOutputTokens": null,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": false,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "grok-imagine-image-quality": {
+        "contextWindowTokens": 8000,
+        "maxInputTokens": null,
+        "maxOutputTokens": null,
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "supportsTools": false,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "grok-imagine-video": {
+        "contextWindowTokens": 1024,
+        "maxInputTokens": null,
+        "maxOutputTokens": null,
+        "input": [
+          "text",
+          "image",
+          "video",
+          "pdf"
+        ],
+        "supportsTools": false,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "grok-imagine-video-1.5": {
+        "contextWindowTokens": 1024,
+        "maxInputTokens": null,
+        "maxOutputTokens": null,
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "pdf"
+        ],
+        "supportsTools": false,
+        "reasoning": false,
+        "reasoningEfforts": []
+      }
     }
   }
 }
