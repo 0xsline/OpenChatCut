@@ -474,6 +474,9 @@ export async function nextEditorCancellation(
   signal: AbortSignal,
   registrationCapability?: string | null,
 ): Promise<ExternalEditorCancellation | null> {
+  // Refresh the editor online lease so an idle editor waiting for cancellations
+  // is not erroneously marked offline.
+  if (!(await touchEditor(projectId, editorInstanceId, undefined, registrationCapability))) return null;
   if (registrationCapability !== undefined
     && !editorRegistrationMatches(projectId, editorInstanceId, registrationCapability)) return null;
   const key = editorKey(projectId, editorInstanceId);

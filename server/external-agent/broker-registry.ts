@@ -10,7 +10,7 @@ import {
   type ExternalToolSchema,
 } from './broker-types.ts';
 
-const ONLINE_MS = 35_000;
+const ONLINE_MS = 45_000;
 
 function capabilityMatches(actual: string, candidate: string | null | undefined): boolean {
   if (typeof candidate !== 'string' || candidate.length !== actual.length) return false;
