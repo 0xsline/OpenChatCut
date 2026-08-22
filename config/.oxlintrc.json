@@ -16,6 +16,7 @@
   },
   "ignorePatterns": [
     "public/mediapipe/**",
+    "public/models/**",
     "../public/mediapipe/**"
   ]
 }
