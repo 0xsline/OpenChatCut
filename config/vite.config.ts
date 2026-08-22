@@ -57,6 +57,30 @@ function excludeUserMediaFromBuild(): Plugin {
   };
 }
 
+/**
+ * Dev-only: Vite's `?import` rewrite breaks ort-web's dynamic import of the
+ * prebuilt wasm loader in public/models (public files are not transformable).
+ * Serve those .mjs files verbatim before Vite's transform middleware. The
+ * production static server ignores query strings, so build output is untouched.
+ */
+function serveOrtWasmLoader(): Plugin {
+  return {
+    name: 'openchatcut-ort-wasm-loader',
+    apply: 'serve',
+    enforce: 'pre',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = (req.url ?? '').split('?')[0];
+        if (!/^\/models\/silero-vad\/.+\.mjs$/.test(pathname)) { next(); return; }
+        const file = resolve(process.cwd(), 'public', pathname.replace(/^\//, ''));
+        if (!existsSync(file)) { next(); return; }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/javascript');
+        res.end(readFileSync(file));
+      });
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -123,7 +147,7 @@ export default defineConfig(({ mode }) => {
     // public/ = user runtime only (media/uploads). Product static files live in assets/
     // and are served/copied by productAssetsPlugin (URLs unchanged: /fonts, /thumbnails, …).
     publicDir: 'public',
-    plugins: [react(), productAssetsPlugin(), excludeUserMediaFromBuild(), ...serverPlugins()],
+    plugins: [serveOrtWasmLoader(), react(), productAssetsPlugin(), excludeUserMediaFromBuild(), ...serverPlugins()],
     server: {
       port: 5199,
       strictPort: true,

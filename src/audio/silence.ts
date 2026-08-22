@@ -133,6 +133,8 @@ export async function analyzeClipSilence(
 ): Promise<SilenceSpan[]> {
   const featureEnabled = context.featureEnabled ?? vadSilenceRemovalEnabled();
   if (!featureEnabled) return [];
+  const { installSileroVad } = await import('./silero-vad');
+  installSileroVad();
   const res = await fetch(src, { signal: context.signal });
   if (!res.ok) throw new Error(`加载音频失败: ${src} (HTTP ${res.status})`);
   const arrayBuffer = await res.arrayBuffer();
