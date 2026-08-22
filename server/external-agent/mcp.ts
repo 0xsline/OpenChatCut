@@ -296,6 +296,12 @@ function makeServer(baseUrl: string, session: McpSession): Server {
         && error.outcome === 'stale'
       ) {
         markMcpSessionStale(session, error.message);
+        // Close the transport after the error response is sent so the client
+        // does not keep sending requests against a permanently-stale session.
+        void delayImmediate().then(() => {
+          if (session.server) void session.server.close().catch(() => undefined);
+          else void session.transport.close().catch(() => undefined);
+        });
       }
       const result = mcpToolError(error);
       return {
@@ -346,7 +352,9 @@ export function pruneMcpSessions(now = Date.now()): void {
   }
 }
 
-setInterval(() => pruneMcpSessions(), 10 * 60 * 1000).unref?.();
+setInterval(() => {
+  try { pruneMcpSessions(); } catch { /* interval must not die */ }
+}, 10 * 60 * 1000).unref?.();
 
 onRegisteredToolsChanged(() => {
   for (const session of sessions.values()) {
@@ -404,7 +412,9 @@ async function startMcpSession(
       session.id = sessionId;
       session.lastUsed = Date.now();
       sessions.set(sessionId, session);
-      pruneMcpSessions(session.lastUsed);
+      // Defer pruning so the initialization callback stays fast and a
+      // concurrent onsessioninitialized cannot race with the eviction loop.
+      void delayImmediate().then(() => pruneMcpSessions(session.lastUsed));
     },
   });
   session = {
