@@ -16,6 +16,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增 xAI 订阅登录（SuperGrok / X Premium+）：登录由官方 Grok CLI 负责（终端运行 grok login），OpenChatCut 在服务端导入会话并经 auth.x.ai 自动续期，以订阅会话令牌运行 Grok。会话凭据不会进入浏览器，API Key 供应商继续作为兜底。
 - Added xAI Grok Imagine image and video generation (`grok-imagine` / `grok-imagine-video`): settings pages, connection tests, agent tool schemas, skill references, and the generation job pipeline all carry xAI as a first-class provider. Images are returned as base64 (no CDN download); video runs through the async job model with proxy-aware result downloads. Auth prefers the subscription session and falls back to `LLM_XAI_API_KEY`.
   新增 xAI Grok Imagine 生图与生视频（`grok-imagine` / `grok-imagine-video`）：设置页、连接测试、Agent 工具 schema、技能参考与生成任务管线均把 xAI 作为一等供应商。生图以 base64 返回（免 CDN 下载）；生视频走异步任务模型，结果下载支持代理。鉴权优先订阅会话，回退 `LLM_XAI_API_KEY`。
+- Added local Silero VAD (onnx-community silero-vad ONNX via onnxruntime-web) as the silence-removal evidence runner: with `VITE_ENABLE_VAD_SILENCE_REMOVAL` enabled, silence trimming only removes spans the model confirms are non-speech. The flag stays off by default; the model loads lazily on first use.
+  新增本地 Silero VAD（onnx-community silero-vad ONNX，经 onnxruntime-web 推理）作为静音删除的证据来源：开启 `VITE_ENABLE_VAD_SILENCE_REMOVAL` 后，仅删除模型确认不含语音的静音段。开关默认关闭，模型首次使用时才加载。
 
 
 ## [0.2.9] - 2026-08-20
