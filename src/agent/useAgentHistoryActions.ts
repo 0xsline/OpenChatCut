@@ -52,7 +52,7 @@ export async function clearAgentHistory(state: AgentHookState, projectId: string
       : t('请确认没有其他 Agent 正在运行，并重试。');
     state.setMessages((current) => [...current, {
       role: 'error',
-      text: `${t('无法清空上下文与运行记录。')}${detail}`,
+      text: `${t('无法清空上下文与运行记录。')}\n${detail}`,
     }]);
     return;
   }

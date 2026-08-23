@@ -22,8 +22,11 @@ import {
   type KeyStatusResponse, type SelectOption, type SettingsField, type SettingsVendorPage,
   type StagedValues as Values,
 } from './settingsSchema';
-export const ON = theme.success; // Status green → Semantic token (graphite value ≈ original #4caf7d, light skin automatically changes to dark green)
-export const WARN = '#f77';    // Error / Clear warning (retain the original panel error color)
+import {
+  browseBtn, clearBtn, fieldCardBox, fieldHead, fieldHint, input, ON, pageNote,
+  pane, select, sourceTag, testBtn, testMsg, testRow, WARN,
+} from './settingsVendorPane.styles';
+export { ON, WARN } from './settingsVendorPane.styles';
 
 /** Field rendering shared context: server status + temporary storage + plain text switch + temporary storage/clear callback. */
 export interface FieldCtx {
@@ -466,38 +469,3 @@ function SelectInput({ field, status, shown, options, onStage }: {
     </select>
   );
 }
-
-// ── Style ───────────────────────────────────────────────────────────
-
-const pane: React.CSSProperties = {
-  flex: 1, minWidth: 0, overflowY: 'auto', padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12,
-};
-  const fieldCardBox: React.CSSProperties = { background: theme.bg, border: `0.5px solid ${theme.border}`, borderRadius: 4, padding: '11px 13px' };
-const pageNote: React.CSSProperties = { fontSize: 10.5, color: theme.textDim };
-const fieldHead: React.CSSProperties = {
-  fontSize: 11.5, color: theme.text, display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between',
-};
-const input: React.CSSProperties = {
-  font: 'inherit', fontSize: 12.5, background: theme.panelAlt, color: theme.text,
-  border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '6px 9px', width: '100%', outline: 'none',
-};
-const select: React.CSSProperties = { ...input, cursor: 'pointer', colorScheme: 'var(--cc-color-scheme)' };
-const sourceTag: React.CSSProperties = { fontSize: 10, color: theme.textDim, border: `0.5px solid ${theme.border}`, borderRadius: 4, padding: '0 5px' };
-const clearBtn: React.CSSProperties = {
-  font: 'inherit', fontSize: 10.5, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', flex: '0 0 auto', textDecoration: 'underline',
-};
-const browseBtn: React.CSSProperties = {
-  font: 'inherit', fontSize: 11.5, color: theme.text, background: theme.panelAlt,
-  border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '6px 11px',
-  cursor: 'pointer', flex: '0 0 auto', whiteSpace: 'nowrap',
-};
-const fieldHint: React.CSSProperties = { fontSize: 10.5, color: theme.textDim };
-const testRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, minHeight: 26 };
-const testBtn: React.CSSProperties = {
-  font: 'inherit', fontSize: 11.5, background: 'transparent', color: theme.text,
-  border: `0.5px solid ${theme.border}`, borderRadius: 4, padding: '4px 11px', flex: '0 0 auto',
-};
-const testMsg: React.CSSProperties = {
-  flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box',
-  WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-};

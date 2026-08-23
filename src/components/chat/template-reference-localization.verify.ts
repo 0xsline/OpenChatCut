@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { createElement, createRef } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
-import { tData } from '../../i18n/locale.ts';
+import { setLocale, tData } from '../../i18n/locale.ts';
 import { TEMPLATES } from '../../editor/initial.ts';
 import type { RefItem } from './ChatComposer.tsx';
 
+setLocale('zh');
 for (const template of TEMPLATES) {
   const alreadyChinese = /[\u3400-\u9fff]/.test(template.name);
   assert.equal(

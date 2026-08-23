@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { theme, themeAlpha } from '../../theme';
+import { theme } from '../../theme';
 import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import { VendorIcon } from './vendorIcons';
@@ -34,6 +34,11 @@ import {
   type KeyStatusResponse, type SettingsCategory, type SettingsField, type SettingsGroup,
   type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
+import {
+  bodyRow, btnGhost, btnPrimary, catRow, chevronBox, code, dot, foot, footMsg,
+  head, iconBtn, licenseLink, navLabel, navRowStyle, overlay, panel, revealLabel,
+  routeBox, sidebar, sidebarNote, treeScroll, vendorCol,
+} from './SettingsDialog.styles';
 
 // Global settings modal, three columns: left = "Classification → Capability" two-level collapsible tree (capability row = status indicator + name);
 // Center = list of providers under the current capability (generating four capabilities with a "default provider" route select at the top);
@@ -47,8 +52,6 @@ import {
 // values are shared globally by field name and the switching tree nodes are not cleared (MINIMAX_* instant synchronization across capability pages).
 // The right column (vendor configuration page + field rendering + test connection) is in settingsVendorPane.tsx.
 const CLOSE_CONFIRM_MS = 2000;
-const TREE_WIDTH = 200;
-const VENDOR_COL_WIDTH = 185;
 
 // ── hooks ─────────────────────────────────────────────────────────────────
 
@@ -434,74 +437,3 @@ function FooterBar({ reveal, onReveal, message, dirty, saving, onClose, onSave }
     </footer>
   );
 }
-
-// ── style ───────────────────────────────────────────────────────────
-
-/** Shared by left tree capability row/middle column provider row: selected accent left bar + panelAlt bottom. */
-function navRowStyle(active: boolean, hovered: boolean): React.CSSProperties {
-  return {
-    font: 'inherit', fontSize: 12, display: 'flex', alignItems: 'center', gap: 7,
-    width: '100%', padding: '6px 9px', borderRadius: 6, cursor: 'pointer', textAlign: 'left',
-    border: 'none', borderLeft: `2px solid ${active ? theme.accent : 'transparent'}`,
-    background: active || hovered ? theme.panelAlt : 'transparent',
-    color: active ? theme.text : theme.textDim,
-  };
-}
-
-function dot(on: boolean): React.CSSProperties {
-  return { width: 7, height: 7, borderRadius: '50%', background: on ? ON : theme.borderLight, flex: '0 0 auto' };
-}
-
-const overlay: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: themeAlpha.shadow(0.62), display: 'grid', placeItems: 'center',
-  zIndex: 200, padding: 24, fontFamily: 'Geist, system-ui, -apple-system, sans-serif',
-};
-const panel: React.CSSProperties = {
-  width: 'min(940px, 100%)', height: 'min(640px, 86vh)', display: 'flex', flexDirection: 'column',
-    background: theme.panel, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 6,
-  boxShadow: `0 24px 64px ${themeAlpha.shadow(0.5)}`, overflow: 'hidden',
-};
-const head: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px 13px 20px', borderBottom: `0.5px solid ${theme.border}`,
-};
-const bodyRow: React.CSSProperties = { display: 'flex', flex: 1, minHeight: 0 };
-const sidebar: React.CSSProperties = {
-  width: TREE_WIDTH, flex: '0 0 auto', display: 'flex', flexDirection: 'column',
-  borderRight: `0.5px solid ${theme.border}`, overflow: 'hidden',
-};
-const treeScroll: React.CSSProperties = {
-  flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 8px',
-};
-const catRow: React.CSSProperties = {
-  font: 'inherit', fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
-  width: '100%', padding: '7px 9px 7px 7px', borderRadius: 6, cursor: 'pointer',
-  border: 'none', background: 'transparent', color: theme.text,
-};
-const chevronBox: React.CSSProperties = { display: 'inline-flex', color: theme.textDim, transition: 'transform 0.15s', flex: '0 0 auto' };
-const navLabel: React.CSSProperties = {
-  flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-};
-const sidebarNote: React.CSSProperties = {
-  margin: 0, padding: '10px 12px', fontSize: 10.5, lineHeight: 1.6, color: theme.textDim, borderTop: `0.5px solid ${theme.border}`,
-};
-const vendorCol: React.CSSProperties = {
-  width: VENDOR_COL_WIDTH, flex: '0 0 auto', minWidth: 0, minHeight: 0, overflowY: 'auto',
-  display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 8px', borderRight: `0.5px solid ${theme.border}`,
-};
-const routeBox: React.CSSProperties = { padding: '0 2px 10px', marginBottom: 6, borderBottom: `0.5px solid ${theme.border}` };
-const foot: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px 12px 20px', borderTop: `0.5px solid ${theme.border}`, background: theme.panel,
-};
-const footMsg: React.CSSProperties = {
-  flex: 1, minWidth: 0, textAlign: 'right', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-};
-const revealLabel: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: theme.textDim, cursor: 'pointer', userSelect: 'none',
-};
-const licenseLink: React.CSSProperties = {
-  color: theme.textDim, fontSize: 11.5, textDecoration: 'underline', textUnderlineOffset: 2,
-};
-const iconBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', padding: 4, borderRadius: 5, display: 'inline-flex' };
-  const btnGhost: React.CSSProperties = { font: 'inherit', fontSize: 12.5, background: 'transparent', color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 4, padding: '6px 13px', cursor: 'pointer' };
-  const btnPrimary: React.CSSProperties = { font: 'inherit', fontSize: 12.5, fontWeight: 600, background: theme.accent, color: theme.onAccent, border: 'none', borderRadius: 4, padding: '6px 16px' };
-const code: React.CSSProperties = { fontFamily: 'ui-monospace, monospace', fontSize: 10, background: theme.panelAlt, padding: '1px 4px', borderRadius: 4 };

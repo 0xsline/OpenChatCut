@@ -12,7 +12,6 @@ const WASM_PATH = '/models/silero-vad/';
 const VAD_SAMPLE_RATE = 16_000;
 const WINDOW_SIZE = 512; // 32ms @16kHz — Silero VAD's native window
 const MERGE_GAP_WINDOWS = 2;
-const RUN_BATCH_WINDOWS = 64;
 
 let sessionPromise: Promise<ort.InferenceSession> | null = null;
 let installed = false;
@@ -67,16 +66,20 @@ export function vadSpansFromProbabilities(
   const spans: VadTimeSpan[] = [];
   let start = -1;
   let lastSpeech = -1;
-  let confidenceSum = 0;
-  let confidenceCount = 0;
+  let spanConfidenceSum = 0;
+  let spanConfidenceCount = 0;
+  let totalConfidenceSum = 0;
+  let totalConfidenceCount = 0;
   const closeSpan = (endWindow: number): void => {
     if (start < 0) return;
     spans.push({
       startMs: Math.round(start * windowMs),
       endMs: Math.round((endWindow + 1) * windowMs),
-      confidence: Math.round((confidenceSum / confidenceCount) * 1000) / 1000,
+      confidence: Math.round((spanConfidenceSum / spanConfidenceCount) * 1000) / 1000,
     });
     start = -1;
+    spanConfidenceSum = 0;
+    spanConfidenceCount = 0;
   };
   for (let i = 0; i < probabilities.length; i += 1) {
     if (probabilities[i] >= threshold) {
@@ -86,14 +89,16 @@ export function vadSpansFromProbabilities(
         start = i;
       }
       lastSpeech = i;
-      confidenceSum += probabilities[i];
-      confidenceCount += 1;
+      spanConfidenceSum += probabilities[i];
+      spanConfidenceCount += 1;
+      totalConfidenceSum += probabilities[i];
+      totalConfidenceCount += 1;
     } else if (start >= 0 && i - lastSpeech > gap) {
       closeSpan(lastSpeech);
     }
   }
   closeSpan(probabilities.length - 1);
-  const confidence = confidenceCount > 0 ? confidenceSum / confidenceCount : 0;
+  const confidence = totalConfidenceCount > 0 ? totalConfidenceSum / totalConfidenceCount : 0;
   return { spans, confidence };
 }
 
@@ -108,35 +113,20 @@ async function runSileroVad(
   const windowCount = Math.floor(mono.length / WINDOW_SIZE);
   if (windowCount === 0) return { speechSpans: [], confidence: 0 };
   const probabilities = new Float32Array(windowCount);
-  const batchCount = Math.ceil(windowCount / RUN_BATCH_WINDOWS);
-  for (let batch = 0; batch < batchCount; batch += 1) {
+  let state: ort.Tensor = new ort.Tensor('float32', new Float32Array(2 * 128), [2, 1, 128]);
+  const sampleRateTensor = new ort.Tensor(
+    'int64', BigInt64Array.from([BigInt(VAD_SAMPLE_RATE)]), [],
+  );
+  for (let window = 0; window < windowCount; window += 1) {
     if (signal?.aborted) throw new Error('VAD cancelled');
-    const first = batch * RUN_BATCH_WINDOWS;
-    const count = Math.min(RUN_BATCH_WINDOWS, windowCount - first);
-    const input = new Float32Array(count * WINDOW_SIZE);
-    for (let row = 0; row < count; row += 1) {
-      const offset = (first + row) * WINDOW_SIZE;
-      input.set(mono.subarray(offset, offset + WINDOW_SIZE), row * WINDOW_SIZE);
-    }
-    const feeds: Record<string, ort.Tensor> = {};
-    for (const name of session.inputNames) {
-      if (name === 'state') {
-        // Zero LSTM state per batch (batch dim = window count): boundary
-        // artifacts at 2s intervals are negligible for silence gating and
-        // keep batches independent.
-        feeds[name] = new ort.Tensor('float32', new Float32Array(2 * count * 128), [2, count, 128]);
-      } else if (name === 'sr') {
-        feeds[name] = new ort.Tensor('int64', BigInt64Array.from([BigInt(VAD_SAMPLE_RATE)]), [1]);
-      } else {
-        feeds[name] = new ort.Tensor('float32', input, [count, WINDOW_SIZE]);
-      }
-    }
-    const output = await session.run(feeds);
-    const probName = session.outputNames.find((n) => n !== 'state') ?? session.outputNames[0];
-    const data = output[probName].data as Float32Array;
-    for (let row = 0; row < count; row += 1) {
-      probabilities[first + row] = Math.min(1, Math.max(0, data[row]));
-    }
+    const offset = window * WINDOW_SIZE;
+    const input = new ort.Tensor(
+      'float32', mono.slice(offset, offset + WINDOW_SIZE), [1, WINDOW_SIZE],
+    );
+    const output = await session.run({ input, state, sr: sampleRateTensor });
+    const probability = (output.output.data as Float32Array)[0];
+    probabilities[window] = Math.min(1, Math.max(0, probability));
+    state = output.stateN;
   }
   const { spans, confidence } = vadSpansFromProbabilities(probabilities, threshold);
   return { speechSpans: spans, confidence };

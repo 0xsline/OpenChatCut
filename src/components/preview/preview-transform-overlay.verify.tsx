@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { PlayerRef } from '@remotion/player';
 import type { RefObject } from 'react';
 import type { TimelineItem, TimelineState } from '../../editor/types';
+import { t } from '../../i18n/locale';
 import { PreviewTransformOverlay } from './PreviewTransformOverlay';
 import { fitPreviewCanvasSize } from './previewCanvasGeometry';
 
@@ -82,7 +83,7 @@ assert.match(
 // A selected editable clip exposes one compact transform frame and nine handles.
 {
   const markup = renderToStaticMarkup(<PreviewTransformOverlay state={stateOf()} {...props} />);
-  assert.match(markup, /aria-label="预览画布片段变换"/);
+  assert.ok(markup.includes(`aria-label="${t('预览画布片段变换')}"`));
   assert.match(markup, /data-preview-selection="card"/);
   assert.equal((markup.match(/data-preview-handle="scale-[0-3]"/g) ?? []).length, 4, '四个角都应可等比缩放');
   assert.equal((markup.match(/data-preview-handle="crop-[nsew]"/g) ?? []).length, 4, '四边中点应可裁切遮盖');

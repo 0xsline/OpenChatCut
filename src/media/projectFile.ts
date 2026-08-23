@@ -9,6 +9,8 @@ const TEXT_EXTENSIONS = new Set([
 
 export const PROJECT_DOCUMENT_MAX_BYTES = 10 * 1_024 * 1_024;
 export const PROJECT_DOCUMENT_MAX_TEXT_CHARS = 100_000;
+export const PROJECT_DOCUMENT_MAX_COUNT = 8;
+export const PROJECT_DOCUMENT_MAX_TOTAL_PROMPT_CHARS = 200_000;
 export const PROJECT_PDF_MAX_PAGES = 100;
 
 function extensionOf(name: string): string {
@@ -86,7 +88,40 @@ export async function readProjectDocument(file: File): Promise<string> {
 }
 
 export function projectDocumentPromptBlock(name: string, text: string): string {
-  return `[文档: ${name}]\n${text.trim()}\n`;
+  const escapeMarkup = (value: string) => value
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  return `<imported_document name="${escapeMarkup(name)}">\n${escapeMarkup(text.trim())}\n</imported_document>\n`;
+}
+
+async function collectProjectDocumentBlocks<T>(
+  items: readonly T[],
+  read: (item: T) => Promise<string>,
+) {
+  const blocks: string[] = [];
+  const errors: string[] = [];
+  if (items.length > PROJECT_DOCUMENT_MAX_COUNT) {
+    errors.push(`一次最多读取 ${PROJECT_DOCUMENT_MAX_COUNT} 个文档`);
+  }
+  let promptChars = 0;
+  for (const item of items.slice(0, PROJECT_DOCUMENT_MAX_COUNT)) {
+    try {
+      const block = await read(item);
+      if (promptChars + block.length > PROJECT_DOCUMENT_MAX_TOTAL_PROMPT_CHARS) {
+        errors.push('文档文本总量不能超过 200,000 个字符');
+        break;
+      }
+      promptChars += block.length;
+      blocks.push(block);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return { blocks, errors };
+}
+
+export function readProjectDocumentFiles(files: readonly File[]) {
+  return collectProjectDocumentBlocks(files, async (file) =>
+    projectDocumentPromptBlock(file.name, await readProjectDocument(file)));
 }
 
 export async function readProjectAssetDocument(
@@ -102,11 +137,5 @@ export async function readProjectAssetDocument(
 
 export async function readProjectAssetDocuments(assets: readonly MediaAsset[]) {
   const documents = assets.filter((asset) => asset.kind === 'document');
-  const settled = await Promise.allSettled(documents.map(readProjectAssetDocument));
-  return {
-    blocks: settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []),
-    errors: settled.flatMap((result) => result.status === 'rejected'
-      ? [result.reason instanceof Error ? result.reason.message : String(result.reason)]
-      : []),
-  };
+  return collectProjectDocumentBlocks(documents, readProjectAssetDocument);
 }

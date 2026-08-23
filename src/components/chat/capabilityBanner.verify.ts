@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CAPABILITY_LABELS, missingCreativeCaps } from './capabilityBanner.ts';
+import { CAPABILITY_LABELS, formatCapabilityNames, missingCreativeCaps } from './capabilityBanner.ts';
 import { applyLiveCaps } from '../../agent/capabilities';
 import type { ChatPanelController } from './chatPanelController.ts';
 import { CapabilityBanner } from './ChatPanelView.tsx';
@@ -15,6 +15,8 @@ assert.deepEqual(allMissing, ['transcription', 'image', 'voice', 'video', 'music
 for (const key of allMissing) {
   assert.ok(CAPABILITY_LABELS[key], `label for ${key}`);
 }
+assert.equal(formatCapabilityNames(['A', 'B'], 'zh'), 'A、B');
+assert.equal(formatCapabilityNames(['A', 'B'], 'ru'), 'A и B');
 
 // Every creative capability enabled → banner hides.
 applyLiveCaps({ transcription: true, image: true, voice: true, video: true, music: true, sound: true });

@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { theme } from '../../theme';
-import { getLocale, tData, useT } from '../../i18n/locale';
-import type { AgentReference } from '../../agent/context';
-import type { AgentContextUsage } from '../../agent/context-compaction';
-import { isSelectionRefKind } from '../../agent/selection-refs';
+import { localizedCatalogText, useT } from '../../i18n/locale';
 import { Icon, type IconName } from '../icons';
 import { MenuDrillHeader } from '../timeline/MenuDrillHeader';
 import { findSkill, setCustomSkills, allCreativeSkills } from '../../agent/skills/skills-catalog';
 import type { SkillDefinition } from '../../agent/skills/skill-types';
 import { loadCustomSkills } from '../../persist/skillStore';
-import type { AgentSettings } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import {
   ComposerMoreMenu,
@@ -21,9 +17,13 @@ import { ComposerModelPicker } from './ComposerModelPicker';
 import { useComposerModelView } from './useComposerModelView';
 import { hasPendingComposerAttachment, shouldSubmitComposerOnKeyDown } from './composerSubmitGate';
 import { WorkflowPickerContent } from './WorkflowPickerContent';
-import { hasEditorDrag, parseEditorDrag, type EditorDragPayload } from '../../editor/editorDrag';
+import { hasEditorDrag, parseEditorDrag } from '../../editor/editorDrag';
 import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 import { AgentComposerSettings } from './AgentComposerSettings';
+import { ComposerSlashPopover, ComposerStatus } from './ChatComposerOverlays';
+import { REF_ICON, type ChatComposerProps, type ChatMode, type RefItem } from './ChatComposerContract';
+
+export type { ChatMode, RefItem } from './ChatComposerContract';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -31,77 +31,11 @@ const COMPOSER_H_MAX = 420;
 const COMPOSER_H_DEFAULT = 112;
 export const WORKFLOW_POPOVER_WIDTH = 400;
 
-export type ChatMode = 'agent' | 'ask';
-
-export type RefItem = AgentReference;
-
-interface ChatComposerProps {
-  value: string;
-  onChange: (s: string) => void;
-  onSubmit: () => void;
-  onStop: () => void;
-  onEnhance: () => void;
-  agentSettings: AgentSettings;
-  patchAgent: (patch: Partial<AgentSettings>) => void;
-  enhancing: boolean;
-  running: boolean;
-  mode: ChatMode;
-  onModeChange: (m: ChatMode) => void;
-  autoApply: boolean;
-  contextUsage: AgentContextUsage | null;
-  onAutoApplyChange: (v: boolean) => void;
-  /** Select mode: pick clips / canvas regions / transcript
-   * spans / ruler times as structured references for the next message. */
-  selecting: boolean;
-  onToggleSelecting: () => void;
-  /** active creative-mode skill id (agent_skill), or null = universal */
-  creativeMode: string | null;
-  onCreativeModeChange: (id: string | null) => void;
-  references: RefItem[];
-  onInsertRef: (reference: RefItem) => void;
-  /** Structured @ refs attached to the next send (chat_context_entry). */
-  selectedRefs?: RefItem[];
-  onRemoveRef?: (id: string) => void;
-  /** Paste supported files (video/image/audio/gif/svg) straight into the chat.
-   * Semantics: Files attached to the chat box are first imported into the media pool and then automatically attached to @ref (not directly uploaded to the timeline). */
-  onPasteFiles?: (files: File[]) => void;
-  /** Finder drops use the same progressive import-and-attach path as paste. */
-  onDropFiles?: (files: File[]) => void;
-  /** true while a pasted file is importing into the pool */
-  pasting?: boolean;
-  /** Number of attachment placeholders that have not resolved to ready pool assets. */
-  pendingAttachmentCount?: number;
-  /** last paste import error, or null */
-  pasteError?: string | null;
-  onDismissPasteError?: () => void;
-  /** Editor cards become structured references; sending remains explicit. */
-  onDropEditorItem?: (payload: EditorDragPayload) => void;
-  taRef: RefObject<HTMLTextAreaElement | null>;
-  placeholder?: string;
-}
-
-
-
-const REF_ICON: Record<RefItem['kind'], IconName> = {
-  video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image', document: 'text', file: 'paperclip',
-  audio: 'fileHeadphone', 'motion-graphic': 'sparkles', template: 'sparkles',
-  'library-resource': 'sparkles',
-  // selection-mode picks (item / time / region / transcript references)
-  item: 'film', timepoint: 'clock', timerange: 'clock',
-  'canvas-region': 'aspect', 'transcript-selection': 'text',
-};
-
-function referenceChipText(reference: RefItem): string {
-  if (isSelectionRefKind(reference.kind)) return reference.name;
-  const displayName = reference.kind === 'template' ? tData(reference.name) : reference.name;
-  return `@${displayName}`;
-}
-
 export function ChatComposer(props: ChatComposerProps) {
   const t = useT();
   // The skill catalog comes with its own official English name, which can be used directly in English without duplication in the dictionary; the summary is only in Chinese, so use t().
   const skillName = (s: { name: string; nameZh: string }): string =>
-    (getLocale() === 'en' ? s.name : s.nameZh);
+    localizedCatalogText(s.name, s.nameZh);
   const {
     value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
     autoApply, onAutoApplyChange, contextUsage, selecting, onToggleSelecting,
@@ -396,82 +330,16 @@ export function ChatComposer(props: ChatComposerProps) {
       >
         <span className="cc-chat-composer-resize-grip" aria-hidden />
       </div>
-      {activeSkill && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }} title={t('当前创作工作流，随消息发送')}>
-          <span
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%',
-              fontSize: 11, lineHeight: 1.2, padding: '2px 6px', borderRadius: 999,
-              background: theme.panel, border: `0.5px solid ${theme.accent}`, color: theme.text,
-            }}
-          >
-            <Icon name="wand" size={12} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {t('创作模式：{name}', { name: skillName(activeSkill) })}
-            </span>
-            <button
-              type="button"
-              title={t('取消创作模式')}
-              onClick={() => onCreativeModeChange(null)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textDim, padding: 0, lineHeight: 0, display: 'grid' }}
-            >
-              <Icon name="x" size={11} />
-            </button>
-          </span>
-        </div>
-      )}
-      {selectedRefs.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }} title={t('发送时以 chat_context_entry 结构化注入')}>
-          {selectedRefs.map((r) => (
-            <span
-              key={r.id}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%',
-                fontSize: 11, lineHeight: 1.2, padding: '2px 6px', borderRadius: 999,
-                background: theme.panel, border: `0.5px solid ${theme.borderLight}`, color: theme.text,
-              }}
-            >
-              <Icon name={REF_ICON[r.kind]} size={12} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referenceChipText(r)}</span>
-              {onRemoveRef && (
-                <button
-                  type="button"
-                  title={t('移除引用')}
-                  onClick={() => onRemoveRef(r.id)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textDim, padding: 0, lineHeight: 0, display: 'grid' }}
-                >
-                  <Icon name="x" size={11} />
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-      {(attachmentsPending || pasteError) && (
-        <div
-          id="cc-chat-composer-import-status"
-          role="status"
-          aria-live="polite"
-          style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11.5 }}
-        >
-          {attachmentsPending && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: theme.accent }}>
-              <Icon name="sparkles" size={12} /> {pendingReason}
-            </span>
-          )}
-          {pasteError && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: theme.accent, minWidth: 0 }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pasteError}</span>
-              {onDismissPasteError && (
-                <button type="button" title={t('关闭')} onClick={onDismissPasteError}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.accent, padding: 0, lineHeight: 0, display: 'grid', flexShrink: 0 }}>
-                  <Icon name="x" size={11} />
-                </button>
-              )}
-            </span>
-          )}
-        </div>
-      )}
+      <ComposerStatus
+        activeSkill={activeSkill}
+        selectedRefs={selectedRefs}
+        attachmentsPending={attachmentsPending}
+        pendingReason={pendingReason}
+        pasteError={pasteError}
+        onCancelSkill={() => onCreativeModeChange(null)}
+        onRemoveRef={onRemoveRef}
+        onDismissPasteError={onDismissPasteError}
+      />
       <textarea
         ref={taRef}
         data-cc-chat-composer
@@ -601,57 +469,20 @@ export function ChatComposer(props: ChatComposerProps) {
         </ComposerPopover>
       )}
       {slashOpen && slashMatchQuery !== null && (
-        <ComposerPopover
+        <ComposerSlashPopover
           width={WORKFLOW_POPOVER_WIDTH}
-          className="cc-chat-popover--workflow"
-          ariaLabel={t('技能命令补全')}
+          explicit={slashExplicit}
+          query={slashMatchQuery}
+          value={value}
+          matches={slashMatches}
+          activeIndex={slashIndex}
+          creativeMode={creativeMode}
           anchor={taRef.current}
+          listRef={slashListRef}
           onClose={() => { setSlashOpen(false); setSlashIndex(-1); }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 12px 6px' }}>
-            <Icon name="wand" size={14} />
-            <strong style={{ fontSize: 12.5 }}>{slashExplicit ? t('技能命令') : t('创作工作流')}</strong>
-            <code style={{ marginLeft: 'auto', fontSize: 10.5, color: theme.textDim }}>{value}</code>
-          </div>
-          <div ref={slashListRef} style={{ maxHeight: 264, overflowY: 'auto', padding: '2px 6px 8px' }}>
-            {slashMatches.length === 0 && (
-              <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>
-                {slashExplicit
-                  ? t('未知技能“{query}”，按 / 查看全部创作工作流', { query: slashMatchQuery.trim() })
-                  : t('没有匹配“{query}”的创作工作流', { query: slashMatchQuery.trim() })}
-              </div>
-            )}
-            {slashMatches.map((s, index) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => activateSlash(s)}
-                onMouseEnter={() => setSlashIndex(index)}
-                onMouseLeave={() => { if (slashIndex === index) setSlashIndex(-1); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
-                  background: index === slashIndex ? theme.panel : 'none', border: 'none', borderRadius: 3,
-                  padding: '7px 10px', cursor: 'pointer', color: theme.text,
-                }}
-              >
-                <span style={{ color: theme.textDim, lineHeight: 0 }}><Icon name="wand" size={15} /></span>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
-                    <strong style={{ fontSize: 12.5 }}>{skillName(s)}</strong>
-                    <code style={{ fontSize: 10, color: theme.textDim }}>/{s.slug}</code>
-                  </span>
-                  <span style={{ display: 'block', fontSize: 10.5, color: theme.textDim, lineHeight: 1.4, marginTop: 1 }}>
-                    {t(s.summary)}
-                  </span>
-                </span>
-                {creativeMode === s.id && <Icon name="check" size={12} strokeWidth={2.4} />}
-              </button>
-            ))}
-            <div style={{ fontSize: 10, color: theme.textDim, padding: '6px 10px 2px', letterSpacing: 0.4 }}>
-              {t('Tab / Enter 补全并激活 · Esc 退出')}
-            </div>
-          </div>
-        </ComposerPopover>
+          onActivate={activateSlash}
+          onHover={setSlashIndex}
+        />
       )}
       {pop === 'more' && (
         <ComposerPopover anchor={popAnchor} onClose={closePop}>

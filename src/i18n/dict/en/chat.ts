@@ -23,6 +23,8 @@ export default {
   '文档大小不能超过 10 MB': 'Documents must be 10 MB or smaller',
   'PDF 页数不能超过 100 页': 'PDF documents must contain at most 100 pages',
   '文档文本不能超过 100,000 个字符': 'Document text must contain at most 100,000 characters',
+  '一次最多读取 8 个文档': 'Read at most 8 documents at a time',
+  '文档文本总量不能超过 200,000 个字符': 'Combined document text must contain at most 200,000 characters',
   '文档解析失败': 'Document parsing failed',
   '导入失败': 'Import failed',
   'Agent 修改记录': 'Agent change log',
@@ -399,4 +401,5 @@ export default {
   '语音合成': 'Voice',
   '视频生成': 'Video generation',
   '音乐生成': 'Music',
+  '音效生成': 'Sound effect generation',
 } as Record<string, string>;

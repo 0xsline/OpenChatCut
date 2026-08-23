@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { t } from '../i18n/locale';
 import { isExpiredMultipartSessionError, retryExpiredMultipartSession } from './upload';
 
 assert.equal(isExpiredMultipartSessionError(new Error('upload session not found or expired')), true);
@@ -18,7 +19,7 @@ await assert.rejects(
     retryExpiredMultipartSession(async () => {
       throw new Error('upload session not found or expired');
     }),
-  /上传会话已失效，请重新导入/,
+  (error: unknown) => error instanceof Error && error.message === t('上传会话已失效，请重新导入'),
 );
 
 console.log('upload-session-recovery.verify: stale sessions retry once');

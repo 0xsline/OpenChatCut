@@ -377,9 +377,12 @@ async function completeCopiedCandidate(
 ): Promise<DirectoryCandidateResult> {
   if (request.cancelled()) throw new DirectoryImportCancelledError();
   await assertPinnedDestination(request.pinnedUploadDirectory, dependencies, request.cancelled);
-  const hash = normalizeSha256Hash(imported.contentHash);
-  if (!hash) throw new Error('directory import returned an invalid content hash');
-  if (request.knownHashes.has(hash)) {
+  const normalizedHash = normalizeSha256Hash(imported.contentHash);
+  if (imported.contentHash !== '' && !normalizedHash) {
+    throw new Error('directory import returned an invalid content hash');
+  }
+  const hash = normalizedHash ?? '';
+  if (hash && request.knownHashes.has(hash)) {
     await removeDirectoryImportFiles(createdPaths, dependencies);
     return { status: 'duplicate', fingerprint: stable.fingerprint };
   }

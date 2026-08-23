@@ -16,11 +16,10 @@ import {
   materializeVideoReferences,
   mediaDataUrl,
   providerMediaUrl,
-  saveImageUrl,
-  saveVideo,
   ServerReferencePreflightError,
 } from './video-media.ts';
-import { xaiOauthAccessToken } from '../xai-oauth-session.ts';
+import { generateGrokVideo } from './grok-video-provider.ts';
+import { saveVideoResults } from './video-result-save.ts';
 import {
   hailuoApiResolution, seedanceApiResolution, validateVideoRequest, videoSeconds,
   type KlingVideoReferType, type ValidVideoRequest, type VideoRequest,
@@ -173,55 +172,6 @@ async function generateSeedance(
 
 /** xAI Grok Imagine Video (text-to-video): async request_id + polling. The
  * subscription session token takes priority over the configured API key. */
-async function generateGrok(
-  input: ValidVideoRequest,
-  options: VideoOptions,
-  registerProviderTask: RegisterGenerationProviderTask,
-  existingTaskId?: string,
-): Promise<string> {
-  const baseUrl = options.xaiBaseUrl.replace(/\/$/, '');
-  const token = xaiOauthAccessToken() || options.xaiApiKey;
-  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-  let taskId = existingTaskId;
-  if (!taskId) {
-    const startedResponse = await fetchWithProxy(`${baseUrl}/videos/generations`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: options.xaiVideoModel,
-        prompt: input.prompt,
-        duration: input.durationSeconds,
-        aspect_ratio: input.ratio,
-        resolution: input.resolution ?? '480p',
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!startedResponse.ok) throw new Error(await providerError(startedResponse));
-    const started = await startedResponse.json() as { request_id?: unknown };
-    taskId = String(started.request_id ?? '');
-    if (!taskId) throw new Error('grok-imagine-video did not return a request id');
-    await registerProviderTask('grok-imagine-video', taskId);
-  }
-  if (!taskId) throw new Error('grok-imagine-video provider task id is unavailable');
-  const deadline = Date.now() + 15 * 60_000;
-  while (Date.now() < deadline) {
-    const poll = await fetchWithProxy(`${baseUrl}/videos/${encodeURIComponent(taskId)}`, {
-      headers, signal: AbortSignal.timeout(20_000),
-    });
-    if (!poll.ok) throw new Error(await providerError(poll));
-    const current = await poll.json() as { status?: unknown; video?: { url?: unknown } };
-    const status = String(current.status ?? '');
-    if (status === 'done') {
-      const url = current.video?.url;
-      if (typeof url !== 'string' || !url) throw new Error('grok-imagine-video succeeded without a video URL');
-      return url;
-    }
-    if (VIDEO_FAILURES.has(status)) throw new Error(`grok-imagine-video generation ${status}`);
-    await wait(3_000);
-  }
-  throw new Error('grok-imagine-video generation timed out');
-}
-
 function seedanceConfig(model: 'seedance2' | 'byteplus', options: VideoOptions): SeedanceConfig {
   return model === 'seedance2'
     ? {
@@ -431,22 +381,6 @@ async function generateHailuo(
   throw new Error('hailuo generation timed out');
 }
 
-async function saveVideoResults(
-  jobId: string,
-  name: string,
-  videoUrl: string,
-  lastFrameUrl?: string,
-  fetchImpl?: Parameters<typeof saveVideo>[1],
-): Promise<GenerationResult | GenerationResult[]> {
-  const video = { assetId: jobId, kind: 'video' as const, name, ...await saveVideo(videoUrl, fetchImpl) };
-  if (!lastFrameUrl) return video;
-  const path = await saveImageUrl(lastFrameUrl, fetchImpl);
-  return [video, {
-    assetId: `${jobId}:last-frame`, kind: 'image', name: `${name} · Last frame`, path,
-    durationSeconds: 5,
-  }];
-}
-
 async function runVideoOperation(
   operationId: string,
   name: string,
@@ -472,7 +406,7 @@ async function runVideoOperation(
       );
     } else {
       const url = input.model === 'grok-imagine-video'
-        ? await generateGrok(input, options, registerProviderTask, providerTaskId)
+        ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
         : input.model === 'kling'
           ? await generateKling(input, options, registerProviderTask, providerTaskId)
           : await generateHailuo(input, options, registerProviderTask, providerTaskId);

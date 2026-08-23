@@ -39,7 +39,9 @@ export async function handleMobileUploadControl(
   try {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (req.method === 'POST' && url.pathname === '/sessions') {
-      sendJson(res, 201, await service.createSession(url.searchParams.get('locale') === 'en' ? 'en' : 'zh'));
+      const requestedLocale = url.searchParams.get('locale');
+      const locale = requestedLocale === 'en' || requestedLocale === 'ru' ? requestedLocale : 'zh';
+      sendJson(res, 201, await service.createSession(locale));
       return;
     }
     const match = /^\/sessions\/([0-9a-f-]+)$/.exec(url.pathname);

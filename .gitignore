@@ -63,6 +63,7 @@ AGENTS.md
 .claude/
 # Impeccable design-hook state and configuration
 .impeccable/
+.browser4-cli/
 # Private working documents such as TODOs and design notes; publishable docs belong elsewhere
 docs/
 # Local model-optimization plan / notes (was mistakenly committed; keep out of the public repo)

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { t } from '../i18n/locale';
 import {
   findMediaNameConflict,
   isMediaImportCancelled,
@@ -19,8 +20,11 @@ assert.equal(normalizeMediaName('  旅行封面.PNG  '), '旅行封面.png');
 assert.equal(normalizeMediaName('ＡＢＣ.mp4'), 'abc.mp4');
 assert.equal(findMediaNameConflict([{ id: 'a', name: '旅行封面.PNG' }], '旅行封面.png')?.id, 'a');
 assert.equal(isMediaImportCancelled(new MediaImportCancelledError()), true);
-assert.equal(mediaImportErrorMessage(new Error('part 3 failed (503)')), '上传第 3 个分片失败（503）');
-assert.equal(mediaImportErrorMessage(new Error('unexpected internal failure')), '导入素材失败，请重试');
+assert.equal(
+  mediaImportErrorMessage(new Error('part 3 failed (503)')),
+  t('上传第 {part} 个分片失败（{status}）', { part: 3, status: 503 }),
+);
+assert.equal(mediaImportErrorMessage(new Error('unexpected internal failure')), t('导入素材失败，请重试'));
 
 const oldMaster: MediaAsset = {
   id: 'asset-master',

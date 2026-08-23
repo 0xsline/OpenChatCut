@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { validateImageRequest } from './image.ts';
+import { callGrokImageProvider } from './image-provider-clients.ts';
 
 const basic = validateImageRequest({ prompt: 'a cat' });
 assert.equal(basic.model, 'gpt-image-2');
@@ -107,4 +108,22 @@ assert.throws(
   () => validateImageRequest({ model: 'grok-imagine', prompt: 'x', referencePaths: ['/media/uploads/a.jpg'] }),
   /too many reference images/,
 );
+assert.throws(
+  () => validateImageRequest({ model: 'grok-imagine', prompt: 'x', width: 1024, height: 1024 }),
+  /custom width\/height are not supported/,
+);
+
+const originalFetch = globalThis.fetch;
+let grokRequest: Record<string, unknown> | null = null;
+globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  grokRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+  return new Response(JSON.stringify({ data: [{ b64_json: 'aGVsbG8=' }] }), {
+    headers: { 'content-type': 'application/json' },
+  });
+}) as typeof fetch;
+await callGrokImageProvider('https://api.x.ai/v1', 'test-key', 'grok-imagine-image', {
+  prompt: 'portrait', count: 1, aspectRatio: '9:16', imageSize: '2K',
+});
+globalThis.fetch = originalFetch;
+assert.equal(grokRequest?.aspect_ratio, '9:16', 'Grok receives the requested aspect ratio');
 console.log('image.check: ok (provider-specific official parameters)');

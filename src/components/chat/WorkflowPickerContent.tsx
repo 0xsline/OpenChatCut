@@ -1,4 +1,4 @@
-import { getLocale, useT } from '../../i18n/locale';
+import { localizedCatalogText, useT } from '../../i18n/locale';
 import { CREATIVE_SKILLS, allCreativeSkills } from '../../agent/skills/skills-catalog';
 import { Icon } from '../icons';
 
@@ -18,7 +18,7 @@ export function WorkflowPickerContent({
   const t = useT();
   const builtinIds = new Set(CREATIVE_SKILLS.map((skill) => skill.id));
   const skillName = (skill: { name: string; nameZh: string }) => (
-    getLocale() === 'en' ? skill.name : skill.nameZh
+    localizedCatalogText(skill.name, skill.nameZh)
   );
 
   return (

@@ -1,6 +1,6 @@
 import type { AgentRuntimeModule, LLMMessage } from './runtime';
 import type { AgentReference } from './context';
-import { getLocale } from '../i18n/locale';
+import { getLocale, localeLanguageName } from '../i18n/locale';
 
 export interface AgentRetryOptions {
   readonly askOnly?: boolean;
@@ -69,7 +69,7 @@ export async function enhanceAgentPrompt(draft: string): Promise<string> {
   try {
     // Deliberate lazy boundary: the prompt enhancer must not load provider SDKs before first use.
     const { generateAgentText } = await import('./client');
-    const language = getLocale() === 'zh' ? 'Chinese' : 'English';
+    const language = localeLanguageName(getLocale());
     const output = (await generateAgentText({
       maxOutputTokens: 400,
       system: `You improve rough or conversational video-editing requests into one clear, specific, directly executable instruction. Write the instruction in ${language}, matching the selected interface language. Output only the rewritten instruction without explanation, quotation marks, or line breaks.`,

@@ -4,8 +4,7 @@ import type { MediaAsset } from '../../editor/types';
 import { kindOf } from '../../media/upload';
 import {
   projectDocumentKind,
-  projectDocumentPromptBlock,
-  readProjectDocument,
+  readProjectDocumentFiles,
 } from '../../media/projectFile';
 import {
   attachChatAttachmentPlaceholder,
@@ -45,17 +44,6 @@ interface AttachmentImportBinding {
 /** Text document attachments (issue #84): read straight into the composer as
  * editable text; no media-pool asset is created. */
 export const chatDocumentKind = projectDocumentKind;
-
-async function importDocument(binding: AttachmentImportBinding, file: File): Promise<void> {
-  try {
-    const block = projectDocumentPromptBlock(file.name, await readProjectDocument(file));
-    binding.updateInput((value) => (value.trim() ? `${value}\n${block}` : block));
-  } catch (error) {
-    binding.setError(error instanceof Error ? binding.t(error.message) : binding.t('文档解析失败'));
-  }
-}
-
-
 
 function assetReference(asset: MediaAsset): AgentReference {
   return { id: asset.id, name: asset.name, kind: asset.kind };
@@ -126,7 +114,12 @@ export function createChatAttachmentImporter(binding: AttachmentImportBinding): 
     binding.setError(unsupported > 0
       ? binding.t('已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG / md / txt / srt / csv / docx / pdf）')
       : null);
-    for (const file of documents) await importDocument(binding, file);
+    const parsed = await readProjectDocumentFiles(documents);
+    if (parsed.blocks.length) {
+      const text = parsed.blocks.join('\n');
+      binding.updateInput((value) => (value.trim() ? `${value}\n${text}` : text));
+    }
+    if (parsed.errors[0]) binding.setError(binding.t(parsed.errors[0]));
     await Promise.all(media.map((file) => importOne(binding, file)));
   };
 }

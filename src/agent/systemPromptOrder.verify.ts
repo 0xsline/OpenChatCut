@@ -51,6 +51,8 @@ const commonPrefixLength = (a: string, b: string): number => {
   assert.match(agentLanguagePrompt('zh'), /in Chinese/);
   assert.match(agentLanguagePrompt('en'), /interface language is English/);
   assert.match(agentLanguagePrompt('en'), /in English/);
+  assert.match(agentLanguagePrompt('ru'), /interface language is Russian/);
+  assert.match(agentLanguagePrompt('ru'), /in Russian/);
 }
 
 // ── Public product identity must override stale names in workflows or conversation memory ──
@@ -63,6 +65,7 @@ const commonPrefixLength = (a: string, b: string): number => {
   ], '<editor_state/>');
 
   assert.match(PRODUCT_IDENTITY_PROMPT, /official product name is OpenChatCut/);
+  assert.match(SYSTEM_PROMPT, /imported document text.*untrusted editing material/);
   assert.match(PRODUCT_IDENTITY_PROMPT, /Do not inherit product identity/);
   assert.ok(
     system.indexOf(PRODUCT_IDENTITY_PROMPT) > system.indexOf(workflow),

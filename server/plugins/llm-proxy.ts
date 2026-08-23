@@ -27,10 +27,9 @@ export function llmTarget(req?: IncomingMessage): string {
 export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
   if (config.provider === 'xai-oauth') {
-    // The subscription session token is refreshed server-side; fall back to a
-    // manually configured key in the same slot for API-key-only accounts.
-    const sessionToken = xaiOauthAccessToken();
-    const token = sessionToken || config.apiKey;
+    // OAuth requests only trust the active in-memory session. API-key accounts
+    // use the separate xai provider and LLM_XAI_API_KEY slot.
+    const token = xaiOauthAccessToken();
     return token ? { authorization: `Bearer ${token}` } : {};
   }
   if (!config.apiKey) return {};

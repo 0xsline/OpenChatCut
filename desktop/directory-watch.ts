@@ -368,7 +368,7 @@ export class DirectoryWatchSession {
           nextKnown.set(candidate.path, result.fingerprint);
         } else if (result.status === 'imported') {
           nextKnown.set(candidate.path, result.prepared.fingerprint);
-          nextHashes.add(result.prepared.file.contentHash);
+          if (result.prepared.file.contentHash) nextHashes.add(result.prepared.file.contentHash);
         }
       }
 
@@ -416,7 +416,7 @@ export class DirectoryWatchSession {
     const importId = this.dependencies.randomId();
     const file: DirectoryImportedFile = { importId, ...prepared.file };
     this.publications.set(importId, { paths: prepared.createdPaths, state: 'uncommitted' });
-    this.hashes.add(file.contentHash);
+    if (file.contentHash) this.hashes.add(file.contentHash);
     this.known.set(candidate.path, prepared.fingerprint);
     if (this.phase === 'starting') {
       this.initialFiles.push(file);

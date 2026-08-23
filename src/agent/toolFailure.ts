@@ -82,8 +82,13 @@ export class ToolFailureTracker {
     const details = [...this.#unresolved]
       .map(([name, reason]) => `${name}: ${reason}`)
       .join('; ');
-    return getLocale() === 'zh'
-      ? `有工具调用失败，未能完成请求（${details}）。本次没有成功执行的记录。`
-      : `I couldn't complete the requested operation because a tool failed (${details}). No success was recorded for the failed operation.`;
+    const locale = getLocale();
+    if (locale === 'zh') {
+      return `有工具调用失败，未能完成请求（${details}）。本次没有成功执行的记录。`;
+    }
+    if (locale === 'ru') {
+      return `Запрос не выполнен из-за сбоя инструмента (${details}). Успешное выполнение этой операции не зафиксировано.`;
+    }
+    return `I couldn't complete the requested operation because a tool failed (${details}). No success was recorded for the failed operation.`;
   }
 }

@@ -12,10 +12,11 @@ const snapshot: MobileUploadSessionSnapshot = {
 let creates = 0;
 let reads = 0;
 let deletes = 0;
+const createdLocales: string[] = [];
 const controls = {
-  async createSession(locale: 'zh' | 'en' = 'zh') {
+  async createSession(locale: 'zh' | 'en' | 'ru' = 'zh') {
     creates += 1;
-    assert.equal(locale, 'en');
+    createdLocales.push(locale);
     return snapshot;
   },
   getSession(id: string) {
@@ -97,6 +98,12 @@ try {
   });
   assert.equal(reboundDelete.status, 401);
   assert.equal(deletes, 1, 'matching attacker Host and Origin cannot delete a session');
+
+  const russian = await fetch(`${origin}/sessions?locale=ru`, {
+    method: 'POST', headers: { origin },
+  });
+  assert.equal(russian.status, 201);
+  assert.deepEqual(createdLocales, ['en', 'ru']);
 } finally {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }

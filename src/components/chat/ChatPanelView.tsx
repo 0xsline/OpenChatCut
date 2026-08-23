@@ -16,7 +16,8 @@ import { EMPTY_PROJECT_STARTERS, QUICK_ACTIONS } from './chatPanelPresets';
 import type { DisplayMessage } from '../../agent/agent-session';
 import { readStoredServerRun } from '../../agent/serverRunSessionStorage';
 import type { ChatPanelController } from './chatPanelController';
-import { CAPABILITY_LABELS, missingCreativeCaps } from './capabilityBanner';
+import { CAPABILITY_LABELS, formatCapabilityNames, missingCreativeCaps } from './capabilityBanner';
+import { getLocale } from '../../i18n/locale';
 
 const MESSAGE_WINDOW_SIZE = 40;
 
@@ -54,7 +55,10 @@ export function CapabilityBanner({ controller }: { controller: ChatPanelControll
   const [dismissed, setDismissed] = useState(false);
   const missing = missingCreativeCaps();
   if (dismissed || !props.onOpenSettings || missing.length === 0) return null;
-  const names = missing.map((key) => t(CAPABILITY_LABELS[key] ?? key)).join('、');
+  const names = formatCapabilityNames(
+    missing.map((key) => t(CAPABILITY_LABELS[key] ?? key)),
+    getLocale(),
+  );
   return <div className="cc-chat-capability-banner">
     <span>{t('以下能力未配置，相关功能暂不可用：')}{names}</span>
     <button type="button" onClick={props.onOpenSettings}>{t('去设置配置')}</button>

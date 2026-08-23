@@ -3,7 +3,7 @@
 // the composer uses); the active skill is highlighted. Custom skills get a
 // search box, per-card edit (name/summary/body via modal) and delete.
 import { useEffect, useMemo, useState } from 'react';
-import { getLocale, useT } from '../i18n/locale';
+import { localizedCatalogText, useT } from '../i18n/locale';
 import { allCreativeSkills, setCustomSkills, findSkill } from '../agent/skills/skills-catalog';
 import { loadCustomSkills, saveCustomSkill, deleteCustomSkill } from '../persist/skillStore';
 import type { CustomSkill } from '../persist/skillStore';
@@ -29,7 +29,7 @@ export function SkillsTabPanel({
   }, []);
   const skills = allCreativeSkills();
   const active = findSkill(creativeMode);
-  const skillName = (s: SkillDefinition) => (getLocale() === 'en' ? s.name : s.nameZh);
+  const skillName = (s: SkillDefinition) => localizedCatalogText(s.name, s.nameZh);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return skills;

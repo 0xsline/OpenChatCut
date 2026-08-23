@@ -39,6 +39,14 @@ const split = vadSpansFromProbabilities(prob(100, [[10, 20], [30, 40]]), 0.5, { 
 assert.equal(split.spans.length, 2);
 assert.equal(split.spans[0].endMs, 640);
 assert.equal(split.spans[1].startMs, 960);
+const unequal = prob(50, [[2, 4]], 0.9);
+unequal.fill(0.6, 20, 22);
+const unequalSpans = vadSpansFromProbabilities(unequal, 0.5, { windowMs: WINDOW_MS });
+assert.deepEqual(
+  unequalSpans.spans.map((span) => span.confidence),
+  [0.9, 0.6],
+  'each span confidence is independent of earlier spans',
+);
 // Everything below threshold → no spans, zero confidence.
 const quiet = vadSpansFromProbabilities(prob(50, []), 0.5, { windowMs: WINDOW_MS });
 assert.equal(quiet.spans.length, 0);

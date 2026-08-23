@@ -78,6 +78,8 @@ try {
 
   const englishSession = await service.createSession('en');
   assert.match(await (await fetch(englishSession.urls[0]!)).text(), /Send media to OpenChatCut/);
+  const russianSession = await service.createSession('ru');
+  assert.match(await (await fetch(russianSession.urls[0]!)).text(), /Отправить медиафайлы в OpenChatCut/);
 
   const tooLarge = await fetch(`${session.urls[0]}/upload?name=large.mp4`, {
     method: 'POST',
@@ -93,6 +95,7 @@ try {
 
   await new Promise((resolve) => setTimeout(resolve, 2_030));
   assert.equal(service.getSession(englishSession.id), null);
+  assert.equal(service.getSession(russianSession.id), null);
 } finally {
   await service.stop();
   await rm(tempDir, { recursive: true, force: true });

@@ -27,6 +27,8 @@ const REFRESH_SKEW_MS = 120_000;
 const TOKEN_TIMEOUT_MS = 15_000;
 const DEFAULT_EXPIRES_SECONDS = 3600;
 const MAX_FIELD_LENGTH = 4096;
+const RETRY_MIN_MS = 5_000;
+const RETRY_MAX_MS = 5 * 60_000;
 
 export interface XaiOauthStatus {
   readonly found: boolean;
@@ -126,6 +128,14 @@ let current: XaiSession | null = null;
 let statusError = '';
 let timer: NodeJS.Timeout | null = null;
 let initStarted = false;
+let retryDelayMs = RETRY_MIN_MS;
+let lifecycleQueue: Promise<void> = Promise.resolve();
+
+function serializeLifecycle<T>(work: () => Promise<T>): Promise<T> {
+  const result = lifecycleQueue.then(work, work);
+  lifecycleQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
 
 function clearTimer(): void {
   if (timer) {
@@ -134,14 +144,26 @@ function clearTimer(): void {
   }
 }
 
-function armTimer(): void {
+function armTimer(delayOverride?: number): void {
   clearTimer();
   if (!current || current.expiresAt <= 0) return;
-  const delay = Math.max(1_000, current.expiresAt - Date.now() - REFRESH_SKEW_MS);
+  const delay = delayOverride
+    ?? Math.max(1_000, current.expiresAt - Date.now() - REFRESH_SKEW_MS);
   timer = setTimeout(() => {
     void ensureFreshXaiOauth().catch(() => {});
   }, delay);
   timer.unref();
+}
+
+async function commitSession(next: XaiSession, previous: XaiSession | null): Promise<void> {
+  await setKeys({ [ACCESS_KEY]: next.access });
+  try {
+    persistSession(next);
+  } catch (error) {
+    await setKeys({ [ACCESS_KEY]: previous?.access ?? '' }).catch(() => undefined);
+    throw error;
+  }
+  current = next;
 }
 
 export async function refreshTokens(session: XaiSession): Promise<XaiSession> {
@@ -181,16 +203,16 @@ export async function refreshTokens(session: XaiSession): Promise<XaiSession> {
   };
 }
 
-function invalidateSession(): void {
+async function invalidateSession(): Promise<void> {
   clearTimer();
   current = null;
   statusError = '登录会话已失效，请重新导入。';
   dropSessionFile();
-  void setKeys({ [ACCESS_KEY]: '' });
+  retryDelayMs = RETRY_MIN_MS;
+  await setKeys({ [ACCESS_KEY]: '' });
 }
 
-/** Refresh before expiry; a revoked grant invalidates the local session. */
-export async function ensureFreshXaiOauth(): Promise<void> {
+async function ensureFreshNow(): Promise<void> {
   if (!current) return;
   clearTimer();
   if (current.expiresAt - Date.now() > REFRESH_SKEW_MS) {
@@ -198,34 +220,44 @@ export async function ensureFreshXaiOauth(): Promise<void> {
     return;
   }
   try {
-    const next = await refreshTokens(current);
-    current = next;
+    const previous = current;
+    const next = await refreshTokens(previous);
+    await commitSession(next, previous);
     statusError = '';
-    persistSession(next);
-    await setKeys({ [ACCESS_KEY]: next.access });
+    retryDelayMs = RETRY_MIN_MS;
+    armTimer();
   } catch (error) {
     const message = messageOf(error);
     if (message.includes('invalid_grant')) {
-      invalidateSession();
+      await invalidateSession();
       return;
     }
     statusError = message.slice(0, 160);
-    armTimer();
+    const delay = retryDelayMs;
+    retryDelayMs = Math.min(RETRY_MAX_MS, retryDelayMs * 2);
+    armTimer(delay);
   }
 }
 
+/** Refresh before expiry; a revoked grant invalidates the local session. */
+export function ensureFreshXaiOauth(): Promise<void> {
+  return serializeLifecycle(ensureFreshNow);
+}
+
 /** Load the persisted session and re-arm the refresh timer (server start). */
-export async function initXaiOauth(): Promise<void> {
-  if (initStarted) return;
-  initStarted = true;
-  const stored = readSessionFile();
-  if (stored) {
-    current = stored;
-    await setKeys({ [ACCESS_KEY]: stored.access });
-    await ensureFreshXaiOauth();
-  } else {
-    await setKeys({ [ACCESS_KEY]: '' });
-  }
+export function initXaiOauth(): Promise<void> {
+  return serializeLifecycle(async () => {
+    if (initStarted) return;
+    const stored = readSessionFile();
+    if (stored) {
+      current = stored;
+      await setKeys({ [ACCESS_KEY]: stored.access });
+      await ensureFreshNow();
+    } else {
+      await setKeys({ [ACCESS_KEY]: '' });
+    }
+    initStarted = true;
+  });
 }
 
 /** Sync accessor for the llm proxy: the freshest token or an empty string. */
@@ -240,36 +272,44 @@ export function xaiOauthStatus(): XaiOauthStatus {
 }
 
 /** Adopt the official CLI session on explicit user action. */
-export async function importXaiOauthFromCli(): Promise<XaiOauthStatus> {
-  let text: string;
-  try {
-    text = readFileSync(CLI_AUTH_JSON, 'utf8');
-  } catch {
-    throw new Error('未找到 ~/.grok/auth.json。请先在终端运行官方 Grok CLI 登录：grok login，完成后回来点击导入。');
-  }
-  const parsed = parseGrokAuthJson(text);
-  if (!parsed) {
-    throw new Error('无法解析 ~/.grok/auth.json 中的登录会话。请先在终端运行 grok login 完成登录。');
-  }
-  statusError = '';
-  try {
-    current = parsed.expiresAt - Date.now() > REFRESH_SKEW_MS
-      ? parsed
-      : await refreshTokens(parsed);
-    persistSession(current);
-    await setKeys({ [ACCESS_KEY]: current.access });
-    armTimer();
-  } catch (error) {
-    current = null;
-    throw new Error(`登录会话已读取但刷新失败：${messageOf(error)}`);
-  }
-  return xaiOauthStatus();
+export function importXaiOauthFromCli(): Promise<XaiOauthStatus> {
+  return serializeLifecycle(async () => {
+    let text: string;
+    try {
+      text = readFileSync(CLI_AUTH_JSON, 'utf8');
+    } catch {
+      throw new Error('未找到 ~/.grok/auth.json。请先在终端运行官方 Grok CLI 登录：grok login，完成后回来点击导入。');
+    }
+    const parsed = parseGrokAuthJson(text);
+    if (!parsed) {
+      throw new Error('无法解析 ~/.grok/auth.json 中的登录会话。请先在终端运行 grok login 完成登录。');
+    }
+    const previous = current;
+    try {
+      const next = parsed.expiresAt - Date.now() > REFRESH_SKEW_MS
+        ? parsed
+        : await refreshTokens(parsed);
+      await commitSession(next, previous);
+      statusError = '';
+      retryDelayMs = RETRY_MIN_MS;
+      armTimer();
+      return xaiOauthStatus();
+    } catch (error) {
+      current = previous;
+      statusError = messageOf(error).slice(0, 160);
+      armTimer();
+      throw new Error(`登录会话已读取但刷新失败：${messageOf(error)}`);
+    }
+  });
 }
 
-export async function logoutXaiOauth(): Promise<void> {
-  clearTimer();
-  current = null;
-  statusError = '';
-  dropSessionFile();
-  await setKeys({ [ACCESS_KEY]: '' });
+export function logoutXaiOauth(): Promise<void> {
+  return serializeLifecycle(async () => {
+    clearTimer();
+    current = null;
+    statusError = '';
+    retryDelayMs = RETRY_MIN_MS;
+    dropSessionFile();
+    await setKeys({ [ACCESS_KEY]: '' });
+  });
 }

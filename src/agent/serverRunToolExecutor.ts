@@ -16,7 +16,7 @@ import {
 import { permanentServerRunRecoveryError } from './serverRunRecovery';
 import { ServerRunToolRequestQueue } from './serverRunEvents';
 import { toolExecutionMode } from './tools/execution-modes';
-import { getLocale } from '../i18n/locale';
+import { environmentFailureHint } from './serverRunToolEnvironment';
 import {
   beginStoredToolAttempt,
   captureStoredToolResult,
@@ -487,18 +487,4 @@ export class ServerRunToolExecutor {
       ? this.requestQueue.enqueueParallel(runId, run)
       : this.requestQueue.enqueueExclusive(runId, run);
   }
-}
-
-/** Attach a checkable action list when a tool fails with an environment-class
- * error, so the model can tell the user the real next step instead of
- * guessing (e.g. "editing tool environment is unavailable"). */
-function environmentFailureHint(error: unknown): string {
-  const base = error instanceof Error ? error.message : String(error);
-  if (!/unavailable|not connected|app-server|cannot call|no editor|bridge|environment|execution/i.test(base)) {
-    return base;
-  }
-  const hint = getLocale() === 'zh'
-    ? ' 若为工具执行环境故障，请确认：工程已打开、Codex 已登录（设置 → Codex）、应用服务正常运行。'
-    : ' If this is an execution-environment failure, verify the project is open, Codex is signed in (Settings → Codex), and the app service is running.';
-  return `${base}${hint}`;
 }

@@ -2,7 +2,7 @@
 // and the persisted session file round trip. Runs against a throwaway HOME so
 // the real Grok CLI session and the real profile files are never touched.
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,7 +11,10 @@ process.env.HOME = throwawayHome;
 // Intentionally dynamic: the module resolves its profile paths (HOME-rooted)
 // at import time, so the throwaway HOME must exist before it loads.
 const mod = await import('./xai-oauth-session.ts');
-const { parseGrokAuthJson, refreshTokens, persistSession, readSessionFile, dropSessionFile } = mod;
+const {
+  parseGrokAuthJson, refreshTokens, persistSession, readSessionFile, dropSessionFile,
+  importXaiOauthFromCli, logoutXaiOauth, xaiOauthAccessToken, xaiOauthStatus,
+} = mod;
 
 const CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828';
 const OUTER_KEY = `https://auth.x.ai::${CLIENT_ID}`;
@@ -106,5 +109,54 @@ assert.equal(reloaded.clientId, CLIENT_ID);
 writeFileSync(join(throwawayHome, '.openchatcut', 'xai-oauth-session.json'), '{broken', 'utf8');
 assert.equal(readSessionFile(), null, 'corrupt file reads as no session');
 dropSessionFile();
+
+// ── Timer re-arm, failed re-import rollback, and logout serialization ───────
+
+const grokDir = join(throwawayHome, '.grok');
+mkdirSync(grokDir, { recursive: true });
+writeFileSync(join(grokDir, 'auth.json'), cliDoc({ expires_at: Date.now() + 121_000 }), 'utf8');
+let automaticRefreshes = 0;
+globalThis.fetch = (async () => {
+  automaticRefreshes += 1;
+  return new Response(JSON.stringify({ access_token: 'auto-refreshed', expires_in: 3000 }), {
+    status: 200, headers: { 'content-type': 'application/json' },
+  });
+}) as typeof fetch;
+await importXaiOauthFromCli();
+await new Promise((resolve) => setTimeout(resolve, 1_200));
+assert.equal(automaticRefreshes, 1, 'successful timer refresh rearms from the new expiry');
+assert.equal(xaiOauthAccessToken(), 'auto-refreshed');
+
+writeFileSync(join(grokDir, 'auth.json'), cliDoc({
+  key: 'bad-access', refresh_token: 'revoked', expires_at: Date.now() - 1,
+}), 'utf8');
+globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'invalid_grant' }), {
+  status: 400, headers: { 'content-type': 'application/json' },
+})) as typeof fetch;
+await assert.rejects(importXaiOauthFromCli(), /invalid_grant/);
+assert.equal(xaiOauthAccessToken(), 'auto-refreshed', 'failed re-import preserves the active session');
+assert.equal(xaiOauthStatus().found, true);
+assert.equal(readSessionFile()?.access, 'auto-refreshed');
+
+writeFileSync(join(grokDir, 'auth.json'), cliDoc({ expires_at: Date.now() - 1 }), 'utf8');
+const refreshStarted = Promise.withResolvers<void>();
+const releaseRefresh = Promise.withResolvers<void>();
+globalThis.fetch = (async () => {
+  refreshStarted.resolve();
+  await releaseRefresh.promise;
+  return new Response(JSON.stringify({ access_token: 'late-access', expires_in: 3000 }), {
+    status: 200, headers: { 'content-type': 'application/json' },
+  });
+}) as typeof fetch;
+const pendingImport = importXaiOauthFromCli();
+await refreshStarted.promise;
+const pendingLogout = logoutXaiOauth();
+releaseRefresh.resolve();
+await Promise.all([pendingImport, pendingLogout]);
+assert.equal(xaiOauthAccessToken(), '', 'queued logout wins over an in-flight refresh');
+assert.equal(xaiOauthStatus().found, false);
+assert.equal(readSessionFile(), null);
+
+globalThis.fetch = originalFetch;
 
 console.log('xai-oauth-session.verify: parsing + refresh shape + session file OK');

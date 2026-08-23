@@ -245,4 +245,15 @@ assert.equal(
   'same-batch dedupe must retain distinct content hashes',
 );
 
+const unhashedLargeFile = harness({
+  importLocalMedia: async () => ({
+    src: '/media/uploads/large.mov', storedName: 'large.mov', contentHash: '',
+  }),
+});
+const unhashedResult = await importDirectoryCandidate(request(hashes), unhashedLargeFile.dependencies);
+assert.equal(unhashedResult.status, 'imported', 'large files without an eager hash must still import');
+if (unhashedResult.status === 'imported') {
+  assert.equal(unhashedResult.prepared.file.contentHash, '');
+}
+
 process.stdout.write('directory-watch-import.verify: confinement, retries, dedupe, and cleanup passed\n');

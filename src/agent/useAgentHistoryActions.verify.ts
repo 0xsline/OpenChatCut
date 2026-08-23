@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { t } from '../i18n/locale';
 import type { LLMMessage } from './runtime';
 import { INITIAL } from '../editor/initial';
 import type { Proposal } from './proposal';
@@ -201,7 +202,7 @@ assert.equal(await loadChat(projectId), null, 'late old-generation chat cannot r
 assert.equal((await loadAgentRuntimeSidecar(projectId)).runs.length, 0, 'late old-generation runtime cannot resurrect');
 
 await seedChat(projectId, 'must survive active run');
-await seedRun(projectId, 'running', 'external active run');
+const activeRunId = await seedRun(projectId, 'running', 'external active run');
 await kvSet(`chat:${projectId}`, staleChat);
 await kvSet(`agent-runtime:${projectId}`, staleRuntime);
 assert.deepEqual(
@@ -219,7 +220,12 @@ await clearAgentHistory(blocked.state, projectId);
 assert.notEqual(await loadChat(projectId), null, 'active run blocks chat deletion');
 assert.equal((await loadAgentRuntimeSidecar(projectId)).runs.length, 1, 'active run ledger survives');
 assert.deepEqual(blocked.state.llmRef.current, [{ role: 'user', content: 'must survive active run' }]);
-assert.match(blocked.messages.at(-1)?.text ?? '', /仍在进行/);
+assert.ok(
+  blocked.messages.at(-1)?.text.includes(t('运行 {runId}（{status}）仍在进行。请先停止该运行，确认检查器中没有活动任务后再重试。', {
+    runId: activeRunId,
+    status: 'running',
+  })),
+);
 await purgeAgentRuntime(projectId);
 await clearChat(projectId);
 

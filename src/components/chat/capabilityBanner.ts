@@ -1,5 +1,6 @@
 import type { CapabilityKey } from '../../agent/capabilities';
 import { currentCaps } from '../../agent/capabilities';
+import type { Locale } from '../../i18n/locale';
 
 /**
  * Capabilities whose absence blocks common creative tasks (captions,
@@ -21,4 +22,10 @@ export const CAPABILITY_LABELS: Partial<Record<CapabilityKey, string>> = {
 export function missingCreativeCaps(): readonly CapabilityKey[] {
   const caps = currentCaps();
   return BANNER_CAPS.filter((key) => caps[key] !== true);
+}
+
+export function formatCapabilityNames(names: readonly string[], locale: Locale): string {
+  return locale === 'zh'
+    ? names.join('、')
+    : new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(names);
 }

@@ -45,13 +45,29 @@ export function getLocale(): Locale {
   return current;
 }
 
+export function localeLanguageName(locale: Locale): 'Chinese' | 'English' | 'Russian' {
+  if (locale === 'zh') return 'Chinese';
+  if (locale === 'ru') return 'Russian';
+  return 'English';
+}
+
+export function localizedCatalogText(
+  english: string,
+  chinese: string,
+  locale: Locale = current,
+): string {
+  return locale === 'zh' ? chinese : english;
+}
+
 export function setLocale(next: Locale): void {
   if (next === current) return;
   current = next;
   try {
     localStorage.setItem(STORAGE_KEY, next);
   } catch { /* If the private mode cannot be saved, it will only affect this session */ }
-  document.documentElement.lang = next === 'zh' ? 'zh-CN' : next === 'ru' ? 'ru' : 'en';
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = next === 'zh' ? 'zh-CN' : next === 'ru' ? 'ru' : 'en';
+  }
   subscribers.forEach((notify) => notify());
 }
 

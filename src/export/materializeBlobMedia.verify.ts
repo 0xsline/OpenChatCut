@@ -156,7 +156,7 @@ async function main(): Promise<void> {
       assert.equal(error.failure.code, 'export_media_not_ready');
       assert.equal(error.failure.stage, 'preflight');
       assert.equal(error.failure.retryable, false);
-      assert.match(error.message, /未就绪/);
+      assert.ok(error.message.trim(), 'preflight failure remains user-facing in every locale');
       return true;
     },
   );
