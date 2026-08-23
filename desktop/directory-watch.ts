@@ -21,8 +21,14 @@ import {
 } from './directory-watch-import.ts';
 export const DIRECTORY_SCAN_MAX_FILES = 400;
 export const DIRECTORY_SCAN_MAX_DEPTH = 12;
+const DIRECTORY_WATCH_POLLING_INTERVAL_MS = 2000;
 
 type WatchPhase = 'created' | 'starting' | 'inactive' | 'active' | 'stopping' | 'stopped';
+type NativeDirectoryWatchFactory = (
+  path: string,
+  options: { recursive: true },
+  listener: () => void,
+) => FSWatcher;
 
 export interface DirectoryEntry {
   readonly name: string;
@@ -80,9 +86,52 @@ export class DirectoryScanLimitError extends Error {
   }
 }
 
+export function createDirectoryWatchHandle(
+  path: string,
+  listener: () => void,
+  watch: NativeDirectoryWatchFactory = watchFileSystem as NativeDirectoryWatchFactory,
+  pollingIntervalMs = DIRECTORY_WATCH_POLLING_INTERVAL_MS,
+): DirectoryWatchHandle {
+  let native: FSWatcher | null = null;
+  let pollingTimer: NodeJS.Timeout | null = null;
+  let closed = false;
+
+  const closeNative = (): void => {
+    try {
+      native?.close();
+    } finally {
+      native = null;
+    }
+  };
+  const startPolling = (): void => {
+    if (closed || pollingTimer) return;
+    pollingTimer = setInterval(listener, pollingIntervalMs);
+    pollingTimer.unref?.();
+  };
+
+  try {
+    native = watch(path, { recursive: true }, listener);
+    native.on('error', () => {
+      closeNative();
+      startPolling();
+    });
+  } catch {
+    startPolling();
+  }
+
+  return {
+    close() {
+      closed = true;
+      closeNative();
+      if (pollingTimer) clearInterval(pollingTimer);
+      pollingTimer = null;
+    },
+  };
+}
+
 const DEFAULT_DEPENDENCIES: DirectoryWatchDependencies = {
   readdir: (path) => readdir(path, { withFileTypes: true }) as Promise<Dirent[]>,
-  watch: (path, listener) => watchFileSystem(path, { recursive: true }, listener) as FSWatcher,
+  watch: (path, listener) => createDirectoryWatchHandle(path, listener),
   realpath,
   canonicalUploadDirectory: canonicalCurrentUploadDirectory,
   settleWrites: () => {

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import type { FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 import type { DirectoryImportEvent } from '../shared/directory-import.ts';
 import {
+  createDirectoryWatchHandle,
   DirectoryScanLimitError,
   DirectoryWatchSession,
   scanImportDirectory,
@@ -31,6 +33,16 @@ function entry(name: string, kind: 'file' | 'directory' | 'symlink' = 'file'): D
 function hashFor(name: string): string {
   const code = name.charCodeAt(0).toString(16).padStart(2, '0');
   return code.repeat(32);
+}
+
+async function waitForCondition(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (condition()) return;
+    const turn = Promise.withResolvers<void>();
+    setTimeout(turn.resolve, 1);
+    await turn.promise;
+  }
+  assert.equal(condition(), true);
 }
 
 function imported(request: DirectoryCandidateRequest): DirectoryCandidateResult {
@@ -392,6 +404,34 @@ assert.equal(vanishedErrors.length, 1, 'a vanished candidate must be reported in
 await vanishedSession.acknowledge(vanishedStart.files[0].importId, 'reserved');
 await vanishedSession.acknowledge(vanishedStart.files[0].importId, 'accepted');
 await vanishedSession.stop();
+
+let syncFallbackPolls = 0;
+const syncFallbackHandle = createDirectoryWatchHandle(
+  ROOT,
+  () => { syncFallbackPolls += 1; },
+  () => { throw Object.assign(new Error('UNKNOWN: unknown error, watch'), { code: 'UNKNOWN' }); },
+  1,
+);
+await waitForCondition(() => syncFallbackPolls > 0);
+syncFallbackHandle.close();
+const closedSyncFallbackPolls = syncFallbackPolls;
+await new Promise((resolve) => { setTimeout(resolve, 5); });
+assert.equal(syncFallbackPolls, closedSyncFallbackPolls, 'closing a polling fallback must stop future scans');
+
+let asyncFallbackPolls = 0;
+let asyncNativeClosed = false;
+const asyncNativeWatcher = new EventEmitter() as EventEmitter & { close(): void };
+asyncNativeWatcher.close = () => { asyncNativeClosed = true; };
+const asyncFallbackHandle = createDirectoryWatchHandle(
+  ROOT,
+  () => { asyncFallbackPolls += 1; },
+  () => asyncNativeWatcher as FSWatcher,
+  1,
+);
+asyncNativeWatcher.emit('error', Object.assign(new Error('UNKNOWN: unknown error, watch'), { code: 'UNKNOWN' }));
+await waitForCondition(() => asyncFallbackPolls > 0);
+assert.equal(asyncNativeClosed, true, 'a native watcher error must close the failed watcher before polling');
+asyncFallbackHandle.close();
 
 const watcherFailures: unknown[] = [];
 const watcherErrorHandle = new EventEmitter() as EventEmitter & { close(): void };
