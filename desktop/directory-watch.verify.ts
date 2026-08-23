@@ -412,6 +412,9 @@ const syncFallbackHandle = createDirectoryWatchHandle(
   () => { throw Object.assign(new Error('UNKNOWN: unknown error, watch'), { code: 'UNKNOWN' }); },
   1,
 );
+await new Promise((resolve) => { setTimeout(resolve, 5); });
+assert.equal(syncFallbackPolls, 0, 'polling fallback must wait for the session to request the next scan');
+syncFallbackHandle.poll?.();
 await waitForCondition(() => syncFallbackPolls > 0);
 syncFallbackHandle.close();
 const closedSyncFallbackPolls = syncFallbackPolls;
@@ -429,9 +432,49 @@ const asyncFallbackHandle = createDirectoryWatchHandle(
   1,
 );
 asyncNativeWatcher.emit('error', Object.assign(new Error('UNKNOWN: unknown error, watch'), { code: 'UNKNOWN' }));
+await new Promise((resolve) => { setTimeout(resolve, 5); });
+assert.equal(asyncFallbackPolls, 0, 'asynchronous native watcher failure must not interrupt an active scan');
+asyncFallbackHandle.poll?.();
 await waitForCondition(() => asyncFallbackPolls > 0);
 assert.equal(asyncNativeClosed, true, 'a native watcher error must close the failed watcher before polling');
 asyncFallbackHandle.close();
+
+const cooperativePolling = createHarness();
+let cooperativeListener: (() => void) | null = null;
+let cooperativePolls = 0;
+const cooperativeSession = new DirectoryWatchSession({
+  watchId: 'cooperative-polling',
+  projectId: 'project-cooperative-polling',
+  root: ROOT,
+  pinnedUploadDirectory: UPLOADS,
+  existingContentHashes: [],
+  onImported: (event) => {
+    cooperativePolling.events.push(event);
+    return true;
+  },
+}, {
+  ...cooperativePolling.dependencies,
+  watch: (_path, listener) => {
+    cooperativeListener = listener;
+    return {
+      close: () => { cooperativeListener = null; },
+      poll: () => { cooperativePolls += 1; },
+    };
+  },
+});
+await cooperativeSession.start();
+assert.equal(cooperativePolls, 0, 'inactive fallback polling must not start before activation');
+await cooperativeSession.activate();
+assert.equal(cooperativePolls, 1, 'fallback polling must be requested after an active scan completes');
+cooperativePolling.tree.set(ROOT, [entry('poll-created.mp4')]);
+cooperativeListener?.();
+while (cooperativePolling.events.length === 0) {
+  const turn = Promise.withResolvers<void>();
+  setImmediate(turn.resolve);
+  await turn.promise;
+}
+assert.equal(cooperativePolls, 2, 'the next fallback poll must be scheduled only after the dirty scan finishes');
+await cooperativeSession.stop();
 
 const watcherFailures: unknown[] = [];
 const watcherErrorHandle = new EventEmitter() as EventEmitter & { close(): void };

@@ -40,6 +40,7 @@ export interface DirectoryEntry {
 export interface DirectoryWatchHandle {
   close(): void;
   on?(eventName: 'error', listener: (error: unknown) => void): DirectoryWatchHandle;
+  poll?(): void;
 }
 
 export interface DirectoryWatchDependencies {
@@ -95,6 +96,7 @@ export function createDirectoryWatchHandle(
   let native: FSWatcher | null = null;
   let pollingTimer: NodeJS.Timeout | null = null;
   let closed = false;
+  let polling = false;
 
   const closeNative = (): void => {
     try {
@@ -103,9 +105,15 @@ export function createDirectoryWatchHandle(
       native = null;
     }
   };
-  const startPolling = (): void => {
-    if (closed || pollingTimer) return;
-    pollingTimer = setInterval(listener, pollingIntervalMs);
+  const enablePolling = (): void => {
+    polling = true;
+  };
+  const schedulePolling = (): void => {
+    if (closed || !polling || pollingTimer) return;
+    pollingTimer = setTimeout(() => {
+      pollingTimer = null;
+      listener();
+    }, pollingIntervalMs);
     pollingTimer.unref?.();
   };
 
@@ -113,19 +121,20 @@ export function createDirectoryWatchHandle(
     native = watch(path, { recursive: true }, listener);
     native.on('error', () => {
       closeNative();
-      startPolling();
+      enablePolling();
     });
   } catch {
-    startPolling();
+    enablePolling();
   }
 
   return {
     close() {
       closed = true;
       closeNative();
-      if (pollingTimer) clearInterval(pollingTimer);
+      if (pollingTimer) clearTimeout(pollingTimer);
       pollingTimer = null;
     },
+    poll: schedulePolling,
   };
 }
 
@@ -358,6 +367,8 @@ export class DirectoryWatchSession {
       this.runner = null;
       if (this.dirty && this.phase === 'active') {
         void this.ensureRunner().catch((error) => this.handleBackgroundFailure(error));
+      } else if (this.phase === 'active') {
+        this.watcher?.poll?.();
       }
     }
   }
