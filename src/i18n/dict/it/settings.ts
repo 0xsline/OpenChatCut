@@ -90,6 +90,7 @@ const overrides: Record<string, string> = {
   '停用': 'Disattiva',
   '中文（zh）': 'Cinese (zh)',
   '英语（en）': 'Inglese (en)',
+  '意大利语（it）': 'Italiano (it)',
   '日语（ja）': 'Giapponese (ja)',
   '韩语（ko）': 'Coreano (ko)',
   '西班牙语（es）': 'Spagnolo (es)',

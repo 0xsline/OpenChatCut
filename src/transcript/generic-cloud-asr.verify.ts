@@ -54,6 +54,25 @@ try {
   assert.equal(result.words.length, 2);
   assert.deepEqual(checkpoints, ['processing', 'completed']);
 
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url === '/media/uploads/italian.wav') {
+      return new Response(new Blob(['italian-audio'], { type: 'audio/wav' }));
+    }
+    const query = new URL(url, 'http://localhost').searchParams;
+    assert.equal(query.get('provider'), 'openai');
+    assert.equal(query.get('language'), 'it');
+    assert.equal(await requestBody(init).text(), 'italian-audio');
+    return Response.json({ text: 'ciao', words: [], utterances: [] });
+  };
+  await genericCloudTranscribePath(
+    'openai',
+    '/media/uploads/italian.wav',
+    async () => undefined,
+    undefined,
+    { languageCode: 'it' },
+  );
+
   resetMediaBlobMemory();
   await putMediaBlob('/media/uploads/cached.wav', new Blob(['cached-audio'], { type: 'audio/wav' }));
   let postedCachedBody = '';

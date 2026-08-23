@@ -115,6 +115,7 @@ export default {
   'Cartesia（云端）': 'Cartesia (cloud)',
   '中文（zh）': 'Chinese (zh)',
   '英语（en）': 'English (en)',
+  '意大利语（it）': 'Italian (it)',
   '日语（ja）': 'Japanese (ja)',
   '韩语（ko）': 'Korean (ko)',
   '西班牙语（es）': 'Spanish (es)',

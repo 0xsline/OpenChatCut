@@ -20,6 +20,7 @@ const COMMON_TRANSCRIPTION_FIELDS: readonly SettingsField[] = [
     options: [
       { value: 'zh', label: '中文（zh）' },
       { value: 'en', label: '英语（en）' },
+      { value: 'it', label: '意大利语（it）' },
       { value: 'ja', label: '日语（ja）' },
       { value: 'ko', label: '韩语（ko）' },
       { value: 'es', label: '西班牙语（es）' },

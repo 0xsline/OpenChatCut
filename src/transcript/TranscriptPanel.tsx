@@ -261,8 +261,8 @@ export function TranscriptPanel({
             <div className="cc-tx-empty-title">{t('转写词级文字稿')}</div>
             <p className="cc-tx-muted">
               {localProvider
-                ? t('中文词级转写 · 本地模型 · 该轨共 {n} 段会逐段转写（免费、离线、素材不出本机）。转写后可点词删减（删词=剪音频）。', { n: clips.length })
-                : t('中文词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。', { n: clips.length })}
+                ? t('多语言词级转写 · 本地模型 · 该轨共 {n} 段会逐段转写（免费、离线、素材不出本机）。转写后可点词删减（删词=剪音频）。', { n: clips.length })
+                : t('多语言词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。', { n: clips.length })}
             </p>
             {skippedMusic > 0 && (
               <label className="cc-tx-check music">
