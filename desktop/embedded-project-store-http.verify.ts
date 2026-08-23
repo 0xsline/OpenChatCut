@@ -36,6 +36,20 @@ try {
     assert.match(contentType, /application\/json/i, 'embedded project-store migration status must be JSON');
     const body = await response.json() as { phase?: string };
     assert.ok(body.phase, 'migration status body must include a phase');
+
+    const migrate = await fetch(`${embedded.origin}/api/project-store/migrate`, {
+      method: 'POST',
+      headers: {
+        Origin: embedded.origin,
+        'Sec-Fetch-Site': 'same-origin',
+      },
+    });
+    const migrateContentType = migrate.headers.get('content-type') ?? '';
+    assert.equal(migrate.status, 200);
+    assert.match(migrateContentType, /application\/json/i, 'embedded project-store migrate must be JSON');
+    const migrateBody = await migrate.json() as { enabled?: boolean; status?: { phase?: string } };
+    assert.equal(migrateBody.enabled, true, 'migration response must report enabled storage');
+    assert.equal(migrateBody.status?.phase, 'complete', 'migration response must report complete phase');
   } finally {
     await new Promise<void>((resolve) => embedded.server.close(() => resolve()));
   }
