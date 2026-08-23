@@ -30,6 +30,10 @@ function mobileUploadControlAuthorized(req: IncomingMessage, res: ServerResponse
   return true;
 }
 
+function mobilePageLocale(value: string | null): 'zh' | 'en' | 'it' {
+  return value === 'en' || value === 'it' ? value : 'zh';
+}
+
 export async function handleMobileUploadControl(
   req: IncomingMessage,
   res: ServerResponse,
@@ -39,7 +43,7 @@ export async function handleMobileUploadControl(
   try {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (req.method === 'POST' && url.pathname === '/sessions') {
-      sendJson(res, 201, await service.createSession(url.searchParams.get('locale') === 'en' ? 'en' : 'zh'));
+      sendJson(res, 201, await service.createSession(mobilePageLocale(url.searchParams.get('locale'))));
       return;
     }
     const match = /^\/sessions\/([0-9a-f-]+)$/.exec(url.pathname);

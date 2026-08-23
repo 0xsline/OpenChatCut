@@ -51,6 +51,8 @@ const commonPrefixLength = (a: string, b: string): number => {
   assert.match(agentLanguagePrompt('zh'), /in Chinese/);
   assert.match(agentLanguagePrompt('en'), /interface language is English/);
   assert.match(agentLanguagePrompt('en'), /in English/);
+  assert.match(agentLanguagePrompt('it'), /interface language is Italian/);
+  assert.match(agentLanguagePrompt('it'), /in Italian/);
 }
 
 // ── Public product identity must override stale names in workflows or conversation memory ──

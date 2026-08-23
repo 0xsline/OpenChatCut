@@ -21,7 +21,7 @@ async function sessionRequest(path: string, init?: RequestInit): Promise<MobileU
   return body;
 }
 
-export function createMobileUploadSession(locale: 'zh' | 'en'): Promise<MobileUploadSession> {
+export function createMobileUploadSession(locale: 'zh' | 'en' | 'it'): Promise<MobileUploadSession> {
   return sessionRequest(`/sessions?locale=${locale}`, { method: 'POST' });
 }
 

@@ -12,10 +12,11 @@ const snapshot: MobileUploadSessionSnapshot = {
 let creates = 0;
 let reads = 0;
 let deletes = 0;
+const seenLocales: string[] = [];
 const controls = {
-  async createSession(locale: 'zh' | 'en' = 'zh') {
+  async createSession(locale: 'zh' | 'en' | 'it' = 'zh') {
     creates += 1;
-    assert.equal(locale, 'en');
+    seenLocales.push(locale);
     return snapshot;
   },
   getSession(id: string) {
@@ -45,24 +46,33 @@ try {
   });
   assert.equal(created.status, 201);
   assert.equal(creates, 1, 'same-origin editor requests can create a session');
+  assert.deepEqual(seenLocales, ['en']);
+
+  const italian = await fetch(`${origin}/sessions?locale=it`, {
+    method: 'POST',
+    headers: { origin },
+  });
+  assert.equal(italian.status, 201);
+  assert.equal(creates, 2, 'same-origin editor requests can create an Italian-locale session');
+  assert.deepEqual(seenLocales, ['en', 'it']);
 
   const missingOrigin = await fetch(`${origin}/sessions?locale=en`, { method: 'POST' });
   assert.equal(missingOrigin.status, 401);
-  assert.equal(creates, 1, 'mutations without Origin cannot create a session');
+  assert.equal(creates, 2, 'mutations without Origin cannot create a session');
 
   const crossSite = await fetch(`${origin}/sessions?locale=en`, {
     method: 'POST',
     headers: { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
   });
   assert.equal(crossSite.status, 401);
-  assert.equal(creates, 1, 'a cross-site simple POST cannot create a session');
+  assert.equal(creates, 2, 'a cross-site simple POST cannot create a session');
 
   const reboundCreate = await fetch(`${origin}/sessions?locale=en`, {
     method: 'POST',
     headers: { host: 'evil.example', origin: 'http://evil.example' },
   });
   assert.equal(reboundCreate.status, 401);
-  assert.equal(creates, 1, 'matching attacker Host and Origin cannot create a session');
+  assert.equal(creates, 2, 'matching attacker Host and Origin cannot create a session');
 
   const read = await fetch(`${origin}/sessions/${snapshot.id}`);
   assert.equal(read.status, 200);

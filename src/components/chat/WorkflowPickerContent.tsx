@@ -18,7 +18,7 @@ export function WorkflowPickerContent({
   const t = useT();
   const builtinIds = new Set(CREATIVE_SKILLS.map((skill) => skill.id));
   const skillName = (skill: { name: string; nameZh: string }) => (
-    getLocale() === 'en' ? skill.name : skill.nameZh
+    getLocale() === 'zh' ? skill.nameZh : skill.name
   );
 
   return (
