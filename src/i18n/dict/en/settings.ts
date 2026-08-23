@@ -152,6 +152,31 @@ export default {
   '云端隔离 Linux 沙箱，不触碰本机文件。Agent 用它跑 run_code：ffprobe 探测素材时长 / 尺寸编码、ffmpeg 转码 / 抽帧 / 加工音视频、执行 node / python 技能脚本，结果回传后由本地工具应用到时间线。未配置只影响这些工具，剪辑与预览不受影响。':
     'An isolated Linux sandbox in the cloud — never touches local files. The Agent uses it for run_code: ffprobe to probe media duration / dimensions / codecs, ffmpeg to transcode / extract frames / process AV, and node / python skill scripts; results come back and local tools apply them to the timeline. Leaving it unset only affects these tools — editing and preview are unaffected.',
   '默认模板不带 ffmpeg；转码 / 抽帧类任务需自建含 ffmpeg 的模板并填其 ID。': 'The default template has no ffmpeg; for transcode / frame-extraction tasks, build a template with ffmpeg and enter its ID.',
+  '素材进入媒体池后是否立即转写。本地 Whisper 免费且在本机运行；云端付费供应商建议保持关闭或手动转写。':
+    'Whether media should be transcribed as soon as it enters the media pool. Local Whisper is free and runs on this machine; paid cloud providers are best kept off or used manually.',
+  '导入后自动转写': 'Auto-transcribe after import',
+  '关闭（手动转写）': 'Off (manual transcription)',
+  '仅本地引擎（免费）': 'Local engine only (free)',
+  '全部引擎（含云端付费）': 'All engines (including paid cloud)',
+  'BytePlus ModelArk 同一个 Key，图生 / 视频生成通用；与「Agent 大脑」的 BytePlus 配置各自独立。':
+    'One BytePlus ModelArk key covers image and video generation; it is separate from the BytePlus configuration under Agent Brain.',
+  '国内网络访问海外模型（Gemini / OpenAI / Anthropic / Mistral 等）失败时，可在此填写本地代理地址（如 http://127.0.0.1:7890）。留空则使用系统环境变量（HTTPS_PROXY / HTTP_PROXY）。生效范围：Agent 模型、AI 生成、模型下载、R2 云同步。':
+    'If your network cannot reach overseas model APIs (Gemini / OpenAI / Anthropic / Mistral, etc.), enter a local proxy URL here, such as http://127.0.0.1:7890. Leave empty to use system environment variables (HTTPS_PROXY / HTTP_PROXY). Applies to Agent models, AI generation, model downloads, and R2 cloud sync.',
+  '统一配置服务端访问海外 API 使用的代理地址。': 'Configure the proxy URL used by the server to access overseas APIs.',
+  '网络代理': 'Network proxy',
+  '界面': 'Interface',
+  '界面缩放与显示相关设置。': 'Interface scale and display settings.',
+  '界面缩放': 'Interface scale',
+  '调整整个编辑器的缩放比例（80%–150%）。桌面版保存后立即生效，也可用 Ctrl/Cmd + +/- 快速调整、Ctrl/Cmd + 0 复位。浏览器版请使用浏览器自带缩放。':
+    'Adjust the entire editor scale (80%–150%). Desktop changes apply immediately after saving; Ctrl/Cmd + +/- adjusts quickly, and Ctrl/Cmd + 0 resets. In the browser, use the browser zoom controls.',
+  '本地模型': 'Local models',
+  '本地转写、节拍与音乐分析、画面语义搜索。模型按需安装，数据不出本机。':
+    'Local transcription, beat/music analysis, and visual semantic search. Models are installed on demand and data stays on this machine.',
+  '默认 https://api.fish.audio': 'Default https://api.fish.audio',
+  '默认 https://api.inworld.ai': 'Default https://api.inworld.ai',
+  '默认 https://api.sws.speechify.com': 'Default https://api.sws.speechify.com',
+  '默认 https://api.wavespeed.ai': 'Default https://api.wavespeed.ai',
+  '默认 https://ark.ap-southeast.bytepluses.com/api/v3': 'Default https://ark.ap-southeast.bytepluses.com/api/v3',
 
 
   // ── OpenAI Codex account ──
@@ -228,6 +253,7 @@ export default {
   '验证地址与密钥，并读取该接口可用的模型': 'Verifies the endpoint and key, then loads the models available from that API',
   '选择模型': 'Choose model',
   '测试请求失败 ({n})': 'Test request failed ({n})',
+  '该厂商暂不支持连接测试': 'This provider does not support connection testing yet',
   '（按当前输入测试，记得保存）': ' (tested with current input — remember to save)',
   '发一条最小请求验证 Key 与地址可用': 'Sends one minimal request to verify the key and endpoint',
   '使用当前代理地址访问外网探测端点': 'Uses the current proxy address to reach an external connectivity endpoint',
@@ -245,6 +271,9 @@ export default {
   '已自定义 · 留空保持不变': 'Customized · Leave empty to keep',
   '已配置 · 留空保持不变': 'Configured · Leave empty to keep',
   '未配置 · 粘贴以启用': 'Not configured · Paste to enable',
+  'API Key（可选）': 'API Key (optional)',
+  '代理地址': 'Proxy URL',
+  '例如 http://127.0.0.1:7890': 'Example: http://127.0.0.1:7890',
   '系统默认素材目录': 'system default media directory',
   '选择目录': 'Choose Folder',
   '选择中…': 'Choosing…',
