@@ -33,6 +33,7 @@ export interface DirectoryEntry {
 
 export interface DirectoryWatchHandle {
   close(): void;
+  on?(eventName: 'error', listener: (error: unknown) => void): DirectoryWatchHandle;
 }
 
 export interface DirectoryWatchDependencies {
@@ -171,6 +172,7 @@ export class DirectoryWatchSession {
     this.phase = 'starting';
     try {
       this.watcher = this.dependencies.watch(this.options.root, () => this.markDirty());
+      this.attachWatcherErrorHandler(this.watcher);
       await this.requestScan();
       this.assertReady();
       this.phase = 'inactive';
@@ -242,6 +244,19 @@ export class DirectoryWatchSession {
     if (this.phase === 'active') {
       void this.ensureRunner().catch((error) => this.handleBackgroundFailure(error));
     }
+  }
+
+  private attachWatcherErrorHandler(watcher: DirectoryWatchHandle): void {
+    watcher.on?.('error', (error) => this.handleWatcherFailure(error));
+  }
+
+  private handleWatcherFailure(error: unknown): void {
+    if (this.cancelled()) return;
+    if (this.phase === 'starting') {
+      this.beginStop(error);
+      return;
+    }
+    this.handleBackgroundFailure(error);
   }
 
   private async requestScan(): Promise<void> {
@@ -493,7 +508,15 @@ export class DirectoryWatchSession {
 
   private handleBackgroundFailure(error: unknown): void {
     this.beginStop(error);
-    void this.finishStop().catch((stopError) => this.options.onFatalError?.(stopError));
-    this.options.onFatalError?.(error);
+    void this.finishStop().catch((stopError) => this.reportFatalError(stopError));
+    this.reportFatalError(error);
+  }
+
+  private reportFatalError(error: unknown): void {
+    try {
+      this.options.onFatalError?.(error);
+    } catch {
+      // Fatal reporting must not rethrow into native watcher event dispatch.
+    }
   }
 }

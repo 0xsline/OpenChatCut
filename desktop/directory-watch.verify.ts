@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { join } from 'node:path';
 import type { DirectoryImportEvent } from '../shared/directory-import.ts';
 import {
   DirectoryScanLimitError,
@@ -391,6 +393,38 @@ await vanishedSession.acknowledge(vanishedStart.files[0].importId, 'reserved');
 await vanishedSession.acknowledge(vanishedStart.files[0].importId, 'accepted');
 await vanishedSession.stop();
 
+const watcherFailures: unknown[] = [];
+const watcherErrorHandle = new EventEmitter() as EventEmitter & { close(): void };
+watcherErrorHandle.close = () => undefined;
+const watcherError = createHarness();
+const watcherErrorSession = new DirectoryWatchSession({
+  watchId: 'watcher-error',
+  projectId: 'project-watcher-error',
+  root: ROOT,
+  pinnedUploadDirectory: UPLOADS,
+  existingContentHashes: [],
+  onImported: (event) => {
+    watcherError.events.push(event);
+    return true;
+  },
+  onFatalError: (error) => { watcherFailures.push(error); },
+}, {
+  ...watcherError.dependencies,
+  watch: () => watcherErrorHandle,
+});
+await watcherErrorSession.start();
+watcherErrorHandle.emit('error', Object.assign(new Error('UNKNOWN: unknown error, watch'), { code: 'UNKNOWN' }));
+const watcherErrorTurn = Promise.withResolvers<void>();
+setImmediate(watcherErrorTurn.resolve);
+await watcherErrorTurn.promise;
+assert.equal(watcherFailures.length, 1, 'native watcher errors must be reported instead of escaping the main process');
+assert.equal(watcherError.events.length, 0, 'a failed native watcher must not continue publishing files');
+await assert.rejects(
+  watcherErrorSession.activate(),
+  /directory watch is not ready|unknown error, watch/i,
+  'a native watcher failure must retire the session',
+);
+
 const firstReadyImport = Promise.withResolvers<void>();
 const releaseFirstReadyImport = Promise.withResolvers<void>();
 const secondReadyImport = Promise.withResolvers<void>();
@@ -467,7 +501,7 @@ assert.deepEqual(
       throw Object.assign(new Error('directory is inaccessible'), { code: 'EACCES' });
     },
   }, () => false, (error) => { scanErrors.push(error); }),
-  [{ path: `${ROOT}/survivor.mp4`, name: 'survivor.mp4' }],
+  [{ path: join(ROOT, 'survivor.mp4'), name: 'survivor.mp4' }],
   'an inaccessible nested directory must not discard readable sibling files',
 );
 assert.equal(scanErrors.length, 1, 'nested scan failures must be reported individually');
