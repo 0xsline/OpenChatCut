@@ -292,7 +292,6 @@ async function verifyDesktopRestoreAndStreaming(): Promise<void> {
   globalThis.fetch = (async (input, init) => {
     const url = String(input);
     requests.push(url);
-    if (!init) return new Response('streamed-video');
     if (failDestination) {
       return Response.json({
         error: 'export target is already being written',
@@ -306,16 +305,17 @@ async function verifyDesktopRestoreAndStreaming(): Promise<void> {
         },
       }, { status: 409 });
     }
-    uploaded = await new Response(init.body).text();
+    uploaded = init?.headers
+      ? String(new Headers(init.headers).get('X-OpenChatCut-Export-Source'))
+      : await new Response(init?.body).text();
     return new Response(null, { status: 204 });
   }) as typeof fetch;
   const destination: ExportDestination = { type: 'desktop-directory', ...grant };
   await writeUrlToDestination(destination, 'clip.mp4', '/media/uploads/source.mp4');
   assert.deepEqual(requests, [
-    'http://localhost:5199/media/uploads/source.mp4',
     `/api/export-destinations/${grant.grantId}/clip.mp4`,
   ]);
-  assert.equal(uploaded, 'streamed-video');
+  assert.equal(uploaded, '/media/uploads/source.mp4');
   requests.length = 0;
   const fileDestination: ExportDestination = { type: 'desktop-file', ...fileGrant };
   await writeBlobToDestination(fileDestination, 'project.fcpxml', new Blob(['xml']));

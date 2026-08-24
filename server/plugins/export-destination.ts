@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { open, rename, stat, unlink } from 'node:fs/promises';
+import { copyFile, open, rename, stat, unlink } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { Readable, Transform } from 'node:stream';
@@ -7,11 +7,13 @@ import { pipeline } from 'node:stream/promises';
 import type { Plugin } from 'vite';
 import { resolveExportDirectoryGrant } from '../export-destinations.ts';
 import { sanitizeFileName } from '../file-name.ts';
+import { resolveUploadFile } from '../media-dir.ts';
 import { createExportFailure, type ExportCleanupStatus } from '../../src/export/exportFailure.ts';
 
 const MAX_EXPORT_BYTES = 100 * 1024 * 1024 * 1024;
 const GRANT_ID = /^[A-Za-z0-9_-]{32,128}$/;
 const RESERVED_WINDOWS_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+const SOURCE_HEADER = 'x-openchatcut-export-source';
 const leasedTargets = new Set<string>();
 
 class ExportDestinationError extends Error {
@@ -115,7 +117,29 @@ async function streamRequest(req: IncomingMessage, path: string): Promise<void> 
   await pipeline(req as Readable, limiter, file.createWriteStream());
 }
 
-export async function handleExportDestinationPut(req: IncomingMessage, res: ServerResponse): Promise<void> {
+function exportSource(
+  req: IncomingMessage,
+  target: string,
+  resolveSource: (name: string) => string | null,
+): string | null {
+  const raw = req.headers[SOURCE_HEADER];
+  if (raw === undefined) return null;
+  const prefix = '/media/uploads/';
+  if (Array.isArray(raw) || !raw.startsWith(prefix)) {
+    throw new ExportDestinationError(400, 'invalid export source', { targetPath: target });
+  }
+  const source = resolveSource(decodeSegment(raw.slice(prefix.length)));
+  if (source) return source;
+  throw new ExportDestinationError(404, 'export source is unavailable', {
+    code: 'export_source_read_failed', retryable: true, targetPath: target,
+  });
+}
+
+export async function handleExportDestinationPut(
+  req: IncomingMessage,
+  res: ServerResponse,
+  resolveSource: (name: string) => string | null = resolveUploadFile,
+): Promise<void> {
   if (req.method !== 'PUT') throw new ExportDestinationError(405, 'method not allowed — use PUT');
   const { grantId, filename } = parseRoute(req.url ?? '/');
   const grant = resolveExportDirectoryGrant(grantId);
@@ -123,6 +147,7 @@ export async function handleExportDestinationPut(req: IncomingMessage, res: Serv
   const directory = resolve(grant.directory);
   const target = resolve(directory, filename);
   if (dirname(target) !== directory) throw new ExportDestinationError(400, 'invalid export filename');
+  const source = exportSource(req, target, resolveSource);
   const releaseLease = acquireTargetLease(target);
   try {
     const info = await stat(directory).catch(() => null);
@@ -135,7 +160,14 @@ export async function handleExportDestinationPut(req: IncomingMessage, res: Serv
     }
     const temporary = resolve(directory, `.openchatcut-${randomUUID()}.part`);
     try {
-      await streamRequest(req, temporary);
+      if (source) {
+        const sourceInfo = await stat(source);
+        if (!sourceInfo.isFile()) throw new ExportDestinationError(404, 'export source is unavailable');
+        if (sourceInfo.size > MAX_EXPORT_BYTES) throw new ExportDestinationError(413, 'export file is too large');
+        await copyFile(source, temporary);
+      } else {
+        await streamRequest(req, temporary);
+      }
       await rename(temporary, target);
     } catch (error) {
       let cleanupStatus: ExportCleanupStatus = 'succeeded';

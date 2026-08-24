@@ -422,11 +422,15 @@ function desktopWriteError(status: number): ExportDestinationError {
 async function putDesktopBody(
   destination: Extract<ExportDestination, { type: 'desktop-directory' | 'desktop-file' }>,
   filename: string,
-  body: Blob | ReadableStream<Uint8Array>,
+  body: Blob | ReadableStream<Uint8Array> | undefined,
   signal?: AbortSignal,
+  sourcePath?: string,
 ): Promise<void> {
   signal?.throwIfAborted();
-  const init: RequestInit & { duplex?: 'half' } = { method: 'PUT', body, signal };
+  const init: RequestInit & { duplex?: 'half' } = {
+    method: 'PUT', body, signal,
+    ...(sourcePath ? { headers: { 'X-OpenChatCut-Export-Source': sourcePath } } : {}),
+  };
   if (body instanceof ReadableStream) init.duplex = 'half';
   const endpoint = `/api/export-destinations/${encodeURIComponent(destination.grantId)}/${encodeURIComponent(filename)}`;
   const response = await fetch(endpoint, init);
@@ -567,10 +571,28 @@ export async function writeUrlToDestination(
   const safeName = checkedFilename(filename);
   const outputFilename = exportDestinationFilename(target, safeName);
   const targetPath = exportDestinationTargetPath(target, outputFilename);
+  let safeSource: string;
+  try {
+    safeSource = safeSourceUrl(sourceUrl);
+  } catch (error) {
+    throw destinationWriteFailure(error, targetPath);
+  }
+  const localSource = new URL(safeSource);
+  if ((target.type === 'desktop-directory' || target.type === 'desktop-file')
+    && localSource.origin === new URL(window.location.href).origin
+    && localSource.pathname.startsWith('/media/uploads/')) {
+    try {
+      await putDesktopBody(target, outputFilename, undefined, signal, localSource.pathname);
+      return;
+    } catch (error) {
+      signal?.throwIfAborted();
+      throw destinationWriteFailure(error, targetPath);
+    }
+  }
   let response: Response;
   try {
     signal?.throwIfAborted();
-    response = await fetch(safeSourceUrl(sourceUrl), signal ? { signal } : undefined);
+    response = await fetch(safeSource, signal ? { signal } : undefined);
     signal?.throwIfAborted();
   } catch (error) {
     signal?.throwIfAborted();

@@ -39,6 +39,14 @@ function failedRequest(url: string): IncomingMessage {
   return stream;
 }
 
+function sourceRequest(url: string, source: string): IncomingMessage {
+  const stream = Readable.from([]) as IncomingMessage;
+  stream.method = 'PUT';
+  stream.url = url;
+  stream.headers = { 'x-openchatcut-export-source': source };
+  return stream;
+}
+
 function response(): ServerResponse {
   return {
     statusCode: 0,
@@ -86,6 +94,23 @@ try {
     await readFile(join(directory, 'clip.mp4'), 'utf8'),
     'after failure',
     'failure must release the target lease',
+  );
+  const source = join(directory, 'source.mp4');
+  const localizedName = '狗零食嘎嘎棒mini.mp4';
+  await writeFile(source, 'server-side export copy');
+  await handleExportDestinationPut(
+    sourceRequest(`/${grant.grantId}/${encodeURIComponent(localizedName)}`, '/media/uploads/source.mp4'),
+    response(),
+    (name) => name === 'source.mp4' ? source : null,
+  );
+  assert.equal(await readFile(join(directory, localizedName), 'utf8'), 'server-side export copy');
+  await assert.rejects(
+    () => handleExportDestinationPut(
+      sourceRequest(`/${grant.grantId}/missing.mp4`, '/media/uploads/missing.mp4'),
+      response(),
+      () => null,
+    ),
+    /export source is unavailable/,
   );
   console.log('export destination server verification passed');
 } finally {
