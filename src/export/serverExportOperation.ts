@@ -11,6 +11,7 @@ import {
   type ExportDestination,
 } from './exportDestination';
 import { recordExportPerformance } from './exportRoutePlanner';
+import { exportMediaExtension } from './exportMediaExtension';
 import {
   createExportFailure,
   exportFailureFrom,
@@ -104,7 +105,7 @@ async function saveCompleted(
     throw new ExportDestinationError('导出恢复所有权已失效，请重试');
   }
   signal?.throwIfAborted();
-  const ext = format === 'audio' ? 'mp3' : codec === 'vp8' ? 'webm' : 'mp4';
+  const ext = exportMediaExtension(format, codec);
   const filename = completed.name ?? `${context.options.base}.${ext}`;
   const ambiguousDownload = context.destination.type === 'downloads';
   context.beginTargetCommit();
@@ -212,7 +213,7 @@ function recoveredContext(
     projectId: record.projectId,
     base: record.base,
     tab: record.format,
-    codec: record.codec === 'vp8' ? 'vp8' : 'h264',
+    codec: record.codec === 'vp8' || record.codec === 'prores' ? record.codec : 'h264',
     resolution: '1080p',
     fps: record.fps,
     subtitleFormat: 'srt',

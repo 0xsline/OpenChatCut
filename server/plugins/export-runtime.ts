@@ -53,6 +53,10 @@ export function exportJobFilename(id: string, extension: string): string {
   return `${EXPORT_JOB_FILE_PREFIX}${id}.${extension}`;
 }
 
+export function assertNonEmptyExportBytes(size: number): void {
+  if (size <= 0) throw new Error('export renderer produced an empty file');
+}
+
 export function exportJobResultName(path: string, assetId: string): string | null {
   const prefix = '/media/uploads/';
   if (!path.startsWith(prefix)) return null;

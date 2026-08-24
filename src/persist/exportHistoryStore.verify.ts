@@ -54,6 +54,17 @@ assert.strictEqual(afterCorrupt[0].id, 'ok');
 await clearExportHistory();
 assert.deepStrictEqual(await listExportHistory(), [], 'clear empties the history');
 
+await Promise.all([
+  recordExport({ name: 'parallel-a.mp4', format: 'video', createdAt: 11 }),
+  recordExport({ name: 'parallel-b.mp4', format: 'video', createdAt: 12 }),
+]);
+assert.deepStrictEqual(
+  (await listExportHistory()).map((record) => record.name),
+  ['parallel-b.mp4', 'parallel-a.mp4'],
+  'concurrent export completions must preserve both history records',
+);
+await clearExportHistory();
+
 // ── (2) watermark reduce (immutable, clamps opacity, fills defaults) ──
 const base: TimelineState = { fps: 30, width: 1920, height: 1080, items: [], selectedId: null };
 

@@ -484,6 +484,7 @@ async function writeBrowserResponse(
   signal?.throwIfAborted();
   const writable = await browserWritable(handle, filename, signal);
   const reader = response.body?.getReader();
+  let bytesWritten = 0;
   let abortPromise: Promise<void> | null = null;
   const abortWrite = (reason: unknown): Promise<void> => {
     abortPromise ??= Promise.all([
@@ -502,11 +503,13 @@ async function writeBrowserResponse(
         const chunk = await reader.read();
         signal?.throwIfAborted();
         if (chunk.done) break;
+        bytesWritten += chunk.value.byteLength;
         await writable.write(chunk.value);
         signal?.throwIfAborted();
       }
     }
     signal?.throwIfAborted();
+    if (bytesWritten === 0) throw new ExportDestinationError('导出文件为空');
     await writable.close();
   } catch (error) {
     await abortWrite(error);
@@ -521,9 +524,10 @@ async function writeBrowserResponse(
 function destinationWriteFailure(error: unknown, targetPath: string): ExportFailureError {
   const existing = exportFailureFrom(error);
   if (existing) return new ExportFailureError(existing);
+  const empty = error instanceof ExportDestinationError && error.key === '导出文件为空';
   return new ExportFailureError(createExportFailure({
     stage: 'destination',
-    code: 'export_destination_write_failed',
+    code: empty ? 'export_output_empty' : 'export_destination_write_failed',
     retryable: true,
     targetPath,
     message: error instanceof Error ? error.message : String(error),
@@ -544,6 +548,7 @@ export async function writeBlobToDestination(
   try {
     signal?.throwIfAborted();
     if (!(blob instanceof Blob)) throw new ExportDestinationError('导出文件内容无效');
+    if (blob.size === 0) throw new ExportDestinationError('导出文件为空');
     if (target.type === 'downloads') {
       signal?.throwIfAborted();
       downloadBlob(blob, outputFilename);
@@ -621,6 +626,7 @@ export async function writeUrlToDestination(
     }
     const blob = await response.blob();
     signal?.throwIfAborted();
+    if (blob.size === 0) throw new ExportDestinationError('导出文件为空');
     downloadBlob(blob, outputFilename);
   } catch (error) {
     await response.body?.cancel().catch(() => undefined);

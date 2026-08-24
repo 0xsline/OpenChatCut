@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { exportScale } from './export-plan.ts';
 import {
+  assertNonEmptyExportBytes,
   cancelActiveExportJob,
   cleanupStaleExportFiles,
   exportJobFilename,
@@ -19,6 +20,9 @@ import {
 } from './export-runtime.ts';
 import { createGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
 import { ffmpegThreadArgs } from '../media-process.ts';
+
+assert.doesNotThrow(() => assertNonEmptyExportBytes(1));
+assert.throws(() => assertNonEmptyExportBytes(0), /empty file/);
 
 assert.equal(resolveMaxActiveExports(undefined), 1);
 assert.equal(resolveMaxActiveExports('invalid'), 1);

@@ -18,6 +18,7 @@ import {
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
 import { isServerRenderError } from './serverExportOperation';
 import { createSequenceGraphExportFailure, ExportFailureError } from './exportFailure';
+import { exportMediaExtension } from './exportMediaExtension';
 import type {
   BrowserAbortRef,
   ExportEngineInfo,
@@ -186,7 +187,7 @@ export async function saveBrowserResult(
 ): Promise<void> {
   signal?.throwIfAborted();
   const { base, codec, state, resolution } = context.options;
-  const filename = `${base}.${codec === 'vp8' ? 'webm' : 'mp4'}`;
+  const filename = `${base}.${exportMediaExtension('video', codec)}`;
   await verifyBrowserResult(context, attempt.blob, filename, engine, signal);
   signal?.throwIfAborted();
   context.setBusy(context.t('正在保存…'));

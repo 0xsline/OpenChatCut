@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-08-24
+
 ### Added / 新增
 
 - Added xAI Grok as a built-in Agent provider (grok-4.6 default, OpenAI-compatible API at api.x.ai), with the standard settings page, API key configuration, connection testing, model discovery, and model-capability catalog entries.
@@ -19,6 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added local Silero VAD (onnx-community silero-vad ONNX via onnxruntime-web) as the silence-removal evidence runner: with `VITE_ENABLE_VAD_SILENCE_REMOVAL` enabled, silence trimming only removes spans the model confirms are non-speech. The flag stays off by default; the model loads lazily on first use.
   新增本地 Silero VAD（onnx-community silero-vad ONNX，经 onnxruntime-web 推理）作为静音删除的证据来源：开启 `VITE_ENABLE_VAD_SILENCE_REMOVAL` 后，仅删除模型确认不含语音的静音段。开关默认关闭，模型首次使用时才加载。
 
+### Fixed / 修复
+
+- Export delivery now uses canonical extensions for H.264, VP8, and ProRes, rejects empty artifacts before commit, serializes export-history writes, and coalesces rapid duplicate starts for the same destination.
+  导出现统一使用 H.264、VP8 与 ProRes 的标准扩展名，在写入目标前拦截空制品，串行化导出历史写入，并合并短时间内指向同一目标的重复导出。
 
 ## [0.2.9] - 2026-08-20
 

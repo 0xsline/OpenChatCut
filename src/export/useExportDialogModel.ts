@@ -33,6 +33,7 @@ import {
   type QualityMode,
 } from '../media/qualityPolicy';
 import type { ExportDestination } from './exportDestination';
+import { exportMediaExtension } from './exportMediaExtension';
 import type { ExportEngineInfo, ExportEngineReason } from './exportWorkflowTypes';
 import {
   effectiveIncludeMg,
@@ -181,9 +182,7 @@ function useSubtitleSettings(state: TimelineState): ExportSubtitleSettings {
 
 function outputName(base: string, tab: ExportTab, video: ExportVideoSettings, subtitles: ExportSubtitleSettings, nleFormat: 'fcp_xml' | 'fcp_xml_resolve', mgOutput: string): string {
   if (tab === 'video') {
-    if (video.codec === 'vp8') return `${base}.webm`;
-    if (video.codec === 'prores') return `${base}.mov`;
-    return `${base}.mp4`;
+    return `${base}.${exportMediaExtension('video', video.codec)}`;
   }
   if (tab === 'audio') return `${base}.mp3`;
   if (tab === 'subtitles') return `${base}.${subtitles.format}`;

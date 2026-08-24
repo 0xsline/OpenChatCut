@@ -1,4 +1,5 @@
 import type { ExportDestination } from './exportDestination';
+import { exportMediaExtension } from './exportMediaExtension';
 import {
   exportFailureFrom,
   ExportFailureError,
@@ -51,7 +52,7 @@ function recoveryRecord(
   codec: ExportCodec,
 ): PersistedServerExportJob {
   const projectId = context.options.projectId;
-  const ext = format === 'audio' ? 'mp3' : codec === 'vp8' ? 'webm' : codec === 'prores' ? 'mov' : 'mp4';
+  const ext = exportMediaExtension(format, codec);
   const now = Date.now();
   return {
     version: 1,

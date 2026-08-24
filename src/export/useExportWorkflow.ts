@@ -15,6 +15,7 @@ import {
 } from './exportDestination';
 import type { ExportDestination } from './exportDestination';
 import { immutableExportSnapshot } from './exportMediaPlan';
+import { exportMediaExtension } from './exportMediaExtension';
 import { materializeBlobMedia } from './materializeBlobMedia';
 import {
   createServerExporter,
@@ -93,7 +94,7 @@ function createWorkflowOperations(
 }
 
 export function suggestedExportFilename(options: UseExportWorkflowOptions): string | undefined {
-  if (options.tab === 'video') return `${options.base}.${options.codec === 'vp8' ? 'webm' : 'mp4'}`;
+  if (options.tab === 'video') return `${options.base}.${exportMediaExtension('video', options.codec)}`;
   if (options.tab === 'audio') return `${options.base}.mp3`;
   if (options.tab === 'subtitles') return `${options.base}.${options.subtitleFormat}`;
   if (options.tab === 'xml' && !effectiveIncludeMg(options.includeMg, options.mgItems)) {

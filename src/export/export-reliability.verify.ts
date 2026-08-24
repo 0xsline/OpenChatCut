@@ -4,6 +4,7 @@ import {
   effectiveIncludeMg,
   suggestedExportFilename,
 } from './useExportWorkflow';
+import { exportMediaExtension } from './exportMediaExtension';
 import type { UseExportWorkflowOptions } from './exportWorkflowTypes';
 
 const model = readFileSync(new URL('./useExportDialogModel.ts', import.meta.url), 'utf8');
@@ -13,6 +14,11 @@ assert.match(
   /export const DEFAULT_INCLUDE_MG = true;/,
   'editable-project exports should include rendered motion graphics by default',
 );
+
+assert.equal(exportMediaExtension('video', 'h264'), 'mp4');
+assert.equal(exportMediaExtension('video', 'vp8'), 'webm');
+assert.equal(exportMediaExtension('video', 'prores'), 'mov');
+assert.equal(exportMediaExtension('audio', 'mp3'), 'mp3');
 assert.match(
   model,
   /useState\(DEFAULT_INCLUDE_MG\)/,
@@ -33,6 +39,11 @@ assert.equal(
   suggestedExportFilename(zeroMgXml),
   'project-premiere.fcpxml',
   'zero-MG XML exports must request a single-file picker even when the checkbox defaults on',
+);
+assert.equal(
+  suggestedExportFilename({ ...zeroMgXml, tab: 'video', codec: 'prores' }),
+  'project.mov',
+  'ProRes must use a QuickTime filename at the picker boundary',
 );
 assert.match(
   model,

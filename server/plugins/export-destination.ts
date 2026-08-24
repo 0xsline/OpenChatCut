@@ -168,6 +168,11 @@ export async function handleExportDestinationPut(
       } else {
         await streamRequest(req, temporary);
       }
+      if ((await stat(temporary)).size === 0) {
+        throw new ExportDestinationError(422, 'export file is empty', {
+          code: 'export_output_empty', retryable: true,
+        });
+      }
       await rename(temporary, target);
     } catch (error) {
       let cleanupStatus: ExportCleanupStatus = 'succeeded';

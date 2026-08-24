@@ -9,6 +9,7 @@ const KEY = 'export:history';
 // single-user clone won't realistically exceed this. Raise if it ever matters.
 const MAX_RECORDS = 200;
 const DESKTOP_DESTINATION_ID = /^[A-Za-z0-9_-]{32,128}$/;
+let mutationQueue: Promise<void> = Promise.resolve();
 
 export interface ExportRecord {
   id: string;
@@ -55,13 +56,21 @@ const newId = () =>
     ? crypto.randomUUID()
     : `exp_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
 
+function enqueueMutation(action: () => Promise<void>): Promise<void> {
+  const result = mutationQueue.then(action);
+  mutationQueue = result.catch(() => undefined);
+  return result;
+}
+
 /** Append one finished export (id generated here; caller passes createdAt).
  * Stored newest-first and capped; persist failures are swallowed (in-session UX unaffected). */
 export async function recordExport(rec: Omit<ExportRecord, 'id'>): Promise<void> {
   try {
     const entry: ExportRecord = { ...rec, id: newId() };
-    const next = [entry, ...await readAll()].slice(0, MAX_RECORDS);
-    await idbSet(KEY, next);
+    await enqueueMutation(async () => {
+      const next = [entry, ...await readAll()].slice(0, MAX_RECORDS);
+      await idbSet(KEY, next);
+    });
   } catch {
     /* ignore persist failures */
   }
@@ -70,6 +79,7 @@ export async function recordExport(rec: Omit<ExportRecord, 'id'>): Promise<void>
 /** Recent exports, newest-first, capped to `limit` (default 50). */
 export async function listExportHistory(limit = 50): Promise<ExportRecord[]> {
   try {
+    await mutationQueue;
     const all = await readAll();
     return limit > 0 ? all.slice(0, limit) : all;
   } catch {
@@ -79,7 +89,7 @@ export async function listExportHistory(limit = 50): Promise<ExportRecord[]> {
 
 export async function clearExportHistory(): Promise<void> {
   try {
-    await idbSet(KEY, []);
+    await enqueueMutation(() => idbSet(KEY, []));
   } catch {
     /* ignore */
   }

@@ -95,6 +95,18 @@ try {
     'after failure',
     'failure must release the target lease',
   );
+  await assert.rejects(
+    () => handleExportDestinationPut(request(route, ''), response()),
+    (error) => error instanceof Error
+      && 'code' in error
+      && error.code === 'export_output_empty'
+      && error.message === 'export file is empty',
+  );
+  assert.equal(
+    await readFile(join(directory, 'clip.mp4'), 'utf8'),
+    'after failure',
+    'an empty request must not replace the previous target',
+  );
   const source = join(directory, 'source.mp4');
   const localizedName = '狗零食嘎嘎棒mini.mp4';
   await writeFile(source, 'server-side export copy');
@@ -104,6 +116,16 @@ try {
     (name) => name === 'source.mp4' ? source : null,
   );
   assert.equal(await readFile(join(directory, localizedName), 'utf8'), 'server-side export copy');
+  const emptySource = join(directory, 'empty-source.mp4');
+  await writeFile(emptySource, '');
+  await assert.rejects(
+    () => handleExportDestinationPut(
+      sourceRequest(`/${grant.grantId}/empty.mp4`, '/media/uploads/empty-source.mp4'),
+      response(),
+      (name) => name === 'empty-source.mp4' ? emptySource : null,
+    ),
+    /export file is empty/,
+  );
   await assert.rejects(
     () => handleExportDestinationPut(
       sourceRequest(`/${grant.grantId}/missing.mp4`, '/media/uploads/missing.mp4'),

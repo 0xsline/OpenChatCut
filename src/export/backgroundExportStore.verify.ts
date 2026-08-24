@@ -48,6 +48,16 @@ const jobId = store.start({
   },
 });
 
+let duplicateRuns = 0;
+const duplicateId = store.start({
+  label: 'project.mp4',
+  targetPath: 'Exports/project.mp4',
+  async execute() { duplicateRuns += 1; },
+});
+await Promise.resolve();
+assert.equal(duplicateId, jobId, 'an active target reuses its existing export job');
+assert.equal(duplicateRuns, 0, 'rapid duplicate starts do not launch a second render');
+
 assert.equal(store.getSnapshot().jobs[0]?.id, jobId);
 unmountModal();
 const notificationsAtUnmount = modalNotifications;

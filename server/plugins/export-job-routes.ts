@@ -15,6 +15,7 @@ import type { ExportPlan, ExportRequest } from './export-plan.ts';
 import { acceptExportSubmission, type AcceptedExportSubmission } from './export-submission.ts';
 import {
   acquireExportPermit,
+  assertNonEmptyExportBytes,
   cancelActiveExportJob,
   exportJobFilename,
   exportOutputSize,
@@ -115,6 +116,7 @@ export function registerExportJobRoute(server: ViteDevServer): void {
           try {
             const encoding = await renderExportPlan(plan, filepath, update, controller.signal);
             const { size } = await stat(filepath);
+            assertNonEmptyExportBytes(size);
             controller.signal.throwIfAborted();
             const sourceFps = plan.state.fps;
             const outputSize = plan.format === 'video' ? exportOutputSize(plan.state, plan.scale) : undefined;
@@ -126,7 +128,7 @@ export function registerExportJobRoute(server: ViteDevServer): void {
               durationSeconds: plan.durationSeconds,
               sizeBytes: size,
               codec: plan.media.codec,
-              ...(encoding ?? {}),
+              ...encoding,
               ...(outputSize ? { ...outputSize, fps: plan.retimeFps ?? sourceFps } : {}),
               sourceStartSeconds: (plan.frameRange?.[0] ?? 0) / sourceFps,
             };

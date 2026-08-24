@@ -230,6 +230,10 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
       return () => activeListeners.delete(listener);
     },
     start(input) {
+      const existing = input.targetPath
+        ? snapshot.jobs.find((job) => job.targetPath === input.targetPath && !TERMINAL_PHASE[job.progress.phase])
+        : undefined;
+      if (existing) return existing.id;
       const id = globalThis.crypto?.randomUUID?.() ?? `export-${now()}-${Math.random().toString(36).slice(2)}`;
       launch(id, input, now());
       return id;
