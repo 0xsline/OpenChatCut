@@ -12,7 +12,8 @@ import { planSlip } from '../../editor/slip';
 import { rejectUnknownFields } from './edit-item-fields';
 import { clampNum, parseFiltersArg, parseTransformArg } from './edit-item-visual';
 import { validateMediaSourceUpdate } from './edit-item-media-ops';
-import { validateSourceWindow } from './edit-item-source-window';
+import { validateSourceFrameUpdate, validateSourceWindow } from './edit-item-source-window';
+import { validatePoolAssetReplacement } from './edit-item-pool-replacement';
 import { slipFailureToOpResult, type OpResult } from './edit-item-generic-result';
 export { didYouMean, rejectUnknownFields } from './edit-item-fields';
 export { validateMediaSourceUpdate } from './edit-item-media-ops';
@@ -61,6 +62,9 @@ const GENERIC_UPDATE_KEYS: Record<string, true> = {
   fromFrame: true,
   durationInFrames: true,
   srcInFrame: true,
+  sourceStartFrame: true,
+  sourceDurationInFrames: true,
+  assetId: true,
   props: true,
   volume: true,
   fadeInSeconds: true,
@@ -83,6 +87,8 @@ const GENERIC_ADD_KEYS: Record<string, true> = {
   startFrame: true,
   fromFrame: true,
   durationInFrames: true,
+  sourceStartFrame: true,
+  sourceDurationInFrames: true,
   sourceStartSeconds: true,
   sourceEndSeconds: true,
   sourceStartMs: true,
@@ -150,9 +156,14 @@ function parseKeyframesArg(raw: unknown): { keyframes?: ItemKeyframes; error?: s
 }
 
 // Move (track/startFrame|fromFrame), trim (duration/srcIn), props, volume, fades (seconds→frames).
-// assetId is immutable on update; media replacement uses delete + add in one batch.
-export function validateGenericUpdate(state: TimelineState, entry: Record<string, unknown>): OpResult {
-  const unknown = rejectUnknownFields(entry, GENERIC_UPDATE_KEYS, { banAssetId: true });
+// A pool assetId update is an atomic replacement; other fields update the live clip.
+export function validateGenericUpdate(
+  state: TimelineState,
+  entry: Record<string, unknown>,
+  assets: readonly MediaAsset[] = state.assets ?? [],
+): OpResult {
+  if (entry.assetId !== undefined) return validatePoolAssetReplacement(state, assets, entry);
+  const unknown = rejectUnknownFields(entry, GENERIC_UPDATE_KEYS);
   if (unknown) return { error: unknown };
 
   const itemRef = entry.itemId ?? entry.id;
@@ -170,8 +181,9 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
   // fromFrame is canonical; startFrame remains an alias for local and legacy tools.
   const start = finiteNum(entry.startFrame) ?? finiteNum(entry.fromFrame);
   if (start !== undefined) plan.startFrame = Math.max(0, Math.round(start));
-  if (finiteNum(entry.durationInFrames) !== undefined) plan.durationInFrames = Math.max(1, Math.round(finiteNum(entry.durationInFrames)!));
-  if (finiteNum(entry.srcInFrame) !== undefined) plan.srcInFrame = Math.max(0, Math.round(finiteNum(entry.srcInFrame)!));
+  const sourceTiming = validateSourceFrameUpdate(it, entry);
+  if (sourceTiming.error) return sourceTiming;
+  Object.assign(plan, sourceTiming);
   if (entry.props && typeof entry.props === 'object') plan.props = entry.props;
   if (finiteNum(entry.volume) !== undefined) plan.volume = Math.max(0, Math.min(2, finiteNum(entry.volume)!));
   const fps = state.fps || 30;
@@ -244,7 +256,7 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
   ];
   if (!FIELDS.some((k) => k in plan)) {
     return {
-      error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes, clearKeyframes, filters, transform, backgroundFill, backgroundFillStrength, speed',
+      error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames/sourceDurationInFrames, srcInFrame/sourceStartFrame, assetId, props, volume, fadeInSeconds, fadeOutSeconds, keyframes, clearKeyframes, filters, transform, backgroundFill, backgroundFillStrength, speed',
     };
   }
   return plan;

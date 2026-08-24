@@ -112,11 +112,34 @@ assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'nope' }).error,
 // ── invalid track → error ──
 assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', track: 'A9' }).error, 'bad track errors');
 
-// ── source live: assetId on update is hard-rejected (replace via deletes+adds) ──
+// ── atomic pool-asset replacement preserves the existing slot ──
 {
-  const err = String(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', assetId: 'vid_new' }).error ?? '');
-  assert.ok(err.includes('assetId cannot be updated'), `assetId ban: ${err}`);
-  assert.ok(err.includes('deletes') && err.includes('adds'), 'points to deletes+adds replace path');
+  const replacementAssets = [{
+    id: 'vid_new', kind: 'video', name: 'new', src: '/media/new.mp4', durationInFrames: 180,
+  }] as unknown as MediaAsset[];
+  const plan = validateGenericUpdate(state, {
+    type: 'video', itemId: 'v1_abc', assetId: 'vid_new',
+    sourceStartFrame: 15, sourceDurationInFrames: 60,
+  }, replacementAssets);
+  assert.equal(plan.error, undefined, 'pool replacement validates');
+  assert.equal(plan.plan, 'replacePoolAsset');
+  assert.equal(plan.itemId, 'v1_abc');
+  assert.equal(plan.assetId, 'vid_new');
+  assert.equal(plan.srcInFrame, 15);
+  assert.equal(plan.durationInFrames, 60);
+}
+// source-frame aliases are exact; source duration respects playback rate.
+{
+  const speedState = {
+    ...state,
+    items: [{ ...state.items[0]!, playbackRate: 2 }],
+  } as TimelineState;
+  const plan = validateGenericUpdate(speedState, {
+    type: 'video', itemId: 'v1_abc', sourceStartFrame: 12, sourceDurationInFrames: 80,
+  });
+  assert.equal(plan.error, undefined);
+  assert.equal(plan.srcInFrame, 12);
+  assert.equal(plan.durationInFrames, 40, '80 source frames at 2x occupy 40 timeline frames');
 }
 // ── fromFrame alias + id alias ──
 {

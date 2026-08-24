@@ -63,6 +63,10 @@ import {
   AGENT_PATH_IMPORT_TOOL_NAMES,
   AGENT_PATH_IMPORT_SCHEMAS,
 } from './tools/agent-path-import-tools';
+import {
+  TIMELINE_IMPORT_TOOL_NAMES,
+  TIMELINE_IMPORT_TOOL_SCHEMAS,
+} from './tools/timeline-import-tools';
 import { withProgressTargets } from './tools/schemas/progress';
 import {
   AGENT_RUNTIME_TOOL_NAMES,
@@ -180,6 +184,7 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   // Cached Beat This + CLAP inspection, deterministic rhythm edit planning, and one-batch video splitting.
   ...MUSIC_INTELLIGENCE_TOOL_SCHEMAS,
   ...AGENT_PATH_IMPORT_SCHEMAS,
+  ...TIMELINE_IMPORT_TOOL_SCHEMAS,
   // Optional advisory review of multi-scene plans; it has no runtime enforcement role.
   ...SCENE_QUALITY_TOOL_SCHEMAS,
   // ToolSearch — keyword discovery over this catalog
@@ -274,6 +279,9 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
   [AGENT_PATH_IMPORT_TOOL_NAMES, async () => (
     await import('./tools/agent-path-import-tools')
   ).execAgentPathImportTool],
+  [TIMELINE_IMPORT_TOOL_NAMES, async () => (
+    await import('./tools/timeline-import-tools')
+  ).execTimelineImportTool],
   [AUDIO_ASSET_TOOL_NAMES, async () => (await import('./tools/audio-asset-tools')).execAudioAssetTool],
   [SCENE_QUALITY_TOOL_NAMES, async () => (await import('./tools/scene-quality-tools')).execSceneQualityTool],
   [AGENT_RUNTIME_TOOL_NAMES, async () => (

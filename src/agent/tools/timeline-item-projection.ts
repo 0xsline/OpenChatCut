@@ -1,4 +1,5 @@
 import { timelineItemAssetId } from '../../editor/mediaAssetUsage';
+import { timelineFramesToSourceFrames } from '../../editor/sourceLimit';
 import type { MediaAsset, TimelineItem, TimelineState } from '../../editor/types';
 import { trackAlias } from '../../editor/types';
 
@@ -25,6 +26,11 @@ export function projectTimelineItem(
   state: TimelineState,
   assets: readonly MediaAsset[],
 ) {
+  const hasSourceWindow = item.kind === 'video' || item.kind === 'audio';
+  const sourceStartFrame = hasSourceWindow ? item.srcInFrame ?? 0 : null;
+  const sourceDurationInFrames = hasSourceWindow
+    ? Math.round(timelineFramesToSourceFrames(item, item.durationInFrames))
+    : null;
   return {
     id: item.id,
     trackId: item.track,
@@ -33,6 +39,12 @@ export function projectTimelineItem(
     kind: item.kind,
     startFrame: item.startFrame,
     durationInFrames: item.durationInFrames,
+    srcInFrame: item.srcInFrame ?? null,
+    sourceStartFrame,
+    sourceDurationInFrames,
+    sourceEndFrameExclusive: sourceStartFrame === null || sourceDurationInFrames === null
+      ? null
+      : sourceStartFrame + sourceDurationInFrames,
     src: item.src ?? null,
     ...mediaLink(item, assets),
     keyframes: item.keyframes ?? null,

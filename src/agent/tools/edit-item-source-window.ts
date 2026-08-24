@@ -1,4 +1,5 @@
-import type { MediaAsset } from '../../editor/types';
+import type { MediaAsset, TimelineItem } from '../../editor/types';
+import { sourceFramesToTimelineFrames } from '../../editor/sourceLimit';
 import { hasOperationalTranscript } from '../../transcript/types';
 
 type OpResult = Record<string, unknown>;
@@ -29,6 +30,50 @@ function sourceBound(
     : { error: `${secondsRaw !== undefined ? secondsKey : millisecondsKey} must be non-negative` };
 }
 
+export function validateSourceFrameUpdate(
+  item: TimelineItem,
+  entry: Record<string, unknown>,
+): OpResult {
+  const sourceStart = finiteNum(entry.sourceStartFrame);
+  const srcInFrame = finiteNum(entry.srcInFrame);
+  const sourceDuration = finiteNum(entry.sourceDurationInFrames);
+  const duration = finiteNum(entry.durationInFrames);
+  if (entry.sourceStartFrame !== undefined && (sourceStart === undefined || sourceStart < 0)) {
+    return { error: 'sourceStartFrame must be a finite non-negative frame count' };
+  }
+  if (entry.srcInFrame !== undefined && srcInFrame === undefined) {
+    return { error: 'srcInFrame must be a finite number' };
+  }
+  if (sourceStart !== undefined && srcInFrame !== undefined
+    && Math.round(sourceStart) !== Math.round(srcInFrame)) {
+    return { error: 'srcInFrame and sourceStartFrame must match when both are provided' };
+  }
+  if (entry.sourceDurationInFrames !== undefined && (sourceDuration === undefined || sourceDuration <= 0)) {
+    return { error: 'sourceDurationInFrames must be a finite positive frame count' };
+  }
+  if (entry.durationInFrames !== undefined && duration === undefined) {
+    return { error: 'durationInFrames must be a finite number' };
+  }
+  if (sourceDuration !== undefined && duration !== undefined) {
+    return { error: 'use sourceDurationInFrames or durationInFrames, not both' };
+  }
+  if ((sourceStart !== undefined || sourceDuration !== undefined)
+    && item.kind !== 'video' && item.kind !== 'audio') {
+    return { error: `source frame windows only apply to video/audio clips (got ${item.kind})` };
+  }
+  if ((sourceStart !== undefined || sourceDuration !== undefined)
+    && item.kind === 'audio' && hasOperationalTranscript(item)) {
+    return { error: 'raw source-frame windows are unsupported for audio with an operational transcript' };
+  }
+  const requestedStart = sourceStart ?? srcInFrame;
+  return {
+    ...(requestedStart !== undefined ? { srcInFrame: Math.max(0, Math.round(requestedStart)) } : {}),
+    ...(sourceDuration !== undefined
+      ? { durationInFrames: Math.max(1, Math.round(sourceFramesToTimelineFrames(item, sourceDuration))) }
+      : duration !== undefined ? { durationInFrames: Math.max(1, Math.round(duration)) } : {}),
+  };
+}
+
 export function validateSourceWindow(
   type: string,
   asset: MediaAsset,
@@ -36,6 +81,54 @@ export function validateSourceWindow(
   entry: Record<string, unknown>,
   durationInFrames: number | undefined,
 ): OpResult | null {
+  const frameStartRaw = entry.sourceStartFrame;
+  const frameDurationRaw = entry.sourceDurationInFrames;
+  const usesFrameWindow = frameStartRaw !== undefined || frameDurationRaw !== undefined;
+  const usesTimeWindow = entry.sourceStartSeconds !== undefined || entry.sourceEndSeconds !== undefined
+    || entry.sourceStartMs !== undefined || entry.sourceEndMs !== undefined;
+  if (usesFrameWindow && usesTimeWindow) {
+    return { error: 'use frame source windows or seconds/milliseconds source windows, not both' };
+  }
+  if (usesFrameWindow) {
+    const sourceStartFrame = frameStartRaw === undefined ? 0 : finiteNum(frameStartRaw);
+    const sourceDurationInFrames = frameDurationRaw === undefined ? undefined : finiteNum(frameDurationRaw);
+    if (sourceStartFrame === undefined || sourceStartFrame < 0) {
+      return { error: 'sourceStartFrame must be a finite non-negative frame count' };
+    }
+    if (sourceDurationInFrames !== undefined && sourceDurationInFrames <= 0) {
+      return { error: 'sourceDurationInFrames must be a finite positive frame count' };
+    }
+    if (durationInFrames !== undefined || entry.srcInFrame !== undefined) {
+      return { error: 'do not combine source frame windows with durationInFrames/srcInFrame' };
+    }
+    if (type !== 'video' && type !== 'audio') {
+      return { error: `source frame windows only apply to video/audio adds (got ${type})` };
+    }
+    if (type === 'audio' && hasOperationalTranscript(asset)) {
+      return { error: 'raw source-frame windows are unsupported for audio with an operational transcript' };
+    }
+    const startFrameIn = Math.round(sourceStartFrame);
+    const available = asset.durationInFrames > 0 ? asset.durationInFrames - startFrameIn : null;
+    if (available !== null && available <= 0) {
+      return { error: `sourceStartFrame ${startFrameIn} is past the end of asset ${asset.id}` };
+    }
+    const sourceFrames = sourceDurationInFrames === undefined
+      ? available
+      : Math.round(sourceDurationInFrames);
+    if (sourceFrames === null) return { error: 'sourceDurationInFrames is required when the asset duration is unknown' };
+    if (available !== null && sourceFrames > available) {
+      return { error: `source frame window exceeds asset ${asset.id} length ${asset.durationInFrames}` };
+    }
+    return {
+      srcInFrame: startFrameIn,
+      durationInFrames: Math.max(1, sourceFrames),
+      sourceRange: {
+        startFrame: startFrameIn,
+        durationInFrames: Math.max(1, sourceFrames),
+        endFrameExclusive: startFrameIn + Math.max(1, sourceFrames),
+      },
+    };
+  }
   const start = sourceBound(entry, 'sourceStartSeconds', 'sourceStartMs');
   const end = sourceBound(entry, 'sourceEndSeconds', 'sourceEndMs');
   if (start.error || end.error) return { error: start.error ?? end.error };

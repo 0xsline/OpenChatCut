@@ -50,13 +50,13 @@ export function validateAdd(ctx: AgentContext, entry: Entry): OpResult {
     return type === 'effect' ? validateEffectAdd(ctx, entry) : validateTransitionAdd(ctx, entry);
   }
   if (type === 'motion-graphic') {
-    if (/^library:motion-graphic:/.test(String(entry.assetId ?? ''))) {
+    if (String(entry.assetId ?? '').startsWith('library:motion-graphic:')) {
       const unknown = rejectSpecializedUnknownFields('adds', type, entry);
       return unknown ? { error: unknown } : validateMgAdd(ctx, entry);
     }
     return validateGenericAdd(ctx.getState(), ctx.getDoc().assets ?? [], entry);
   }
-  if (type === 'audio' && /^library:sound:/.test(String(entry.assetId ?? ''))) {
+  if (type === 'audio' && String(entry.assetId ?? '').startsWith('library:sound:')) {
     const unknown = rejectSpecializedUnknownFields('adds', type, entry);
     return unknown ? { error: unknown } : validateAudioAdd(ctx, entry);
   }
@@ -74,7 +74,11 @@ export function validateUpdate(ctx: AgentContext, entry: Entry): OpResult {
   const type = resolveUpdateType(entry, item?.kind, GENERIC_ITEM_KINDS);
   // Common LLM mistake: type:"effect" (or default effect) + volume/timing on a real clip.
   if (shouldCoerceEffectUpdateToClip(entry, type, item?.kind, GENERIC_ITEM_KINDS) && item) {
-    return validateGenericUpdate(ctx.getState(), stripEffectLocators(entry, item.kind, item.id));
+    return validateGenericUpdate(
+      ctx.getState(),
+      stripEffectLocators(entry, item.kind, item.id),
+      ctx.getDoc().assets,
+    );
   }
   if (type === 'transition' || type === 'effect') {
     const unknown = rejectSpecializedUnknownFields('updates', type, entry);
@@ -84,7 +88,11 @@ export function validateUpdate(ctx: AgentContext, entry: Entry): OpResult {
   if (GENERIC_ITEM_KINDS.has(type)) {
     // Effect-style locators (targetItemId) are not generic update fields: normalize
     // when the live item resolved, so {volume, targetItemId} rows survive validation.
-    return validateGenericUpdate(ctx.getState(), item ? stripEffectLocators(entry, type, item.id) : entry);
+    return validateGenericUpdate(
+      ctx.getState(),
+      item ? stripEffectLocators(entry, type, item.id) : entry,
+      ctx.getDoc().assets,
+    );
   }
   return {
     error: `update type not supported: ${type}`,

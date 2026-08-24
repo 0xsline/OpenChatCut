@@ -16,7 +16,7 @@ import { verifyOfflineCommitAndProjectionScenarios } from './offline-runtime-saf
 
 const toolNames = new Set(offlineExternalToolSchemas().map((schema) => schema.name));
 
-for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark']) {
+for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline']) {
   assert.equal(toolNames.has(allowed), true, `${allowed} is server-direct`);
 }
 for (const excluded of ['edit_item', 'manage_effects', 'view_timeline_frames', 'submit_image', 'import_media', 'download_media', 'manage_versions', 'submit_render_job']) {
@@ -98,6 +98,37 @@ assert.equal(persistence.current.timelines[0].height, 1920);
 assert.equal(persistence.versions.length, 1);
 assert.deepEqual(persistence.versions[0], projectDoc());
 assert.equal(persistence.checkpoint, null, 'applied sessions remove their draft checkpoint');
+
+const importDoc = projectDoc();
+importDoc.assets.push({
+  id: 'clip-asset',
+  name: 'clip.mp4',
+  kind: 'video',
+  src: '/media/uploads/clip.mp4',
+  durationInFrames: 900,
+});
+const importStore = new MemoryPersistence(importDoc);
+const importRuntime = await OfflineExternalEditRuntime.create(projectId, editorUrl, {
+  persistence: importStore,
+  isBrowserConnected: () => false,
+});
+const importSessionId = editSessionId(
+  await importRuntime.execute('begin_edit_session', { approvalMode: 'auto' }),
+);
+const imported = await importRuntime.execute('import_timeline', {
+  editSessionId: importSessionId,
+  format: 'edl',
+  content: [
+    'TITLE: MCP Import',
+    'FCM: NON-DROP FRAME',
+    '001 CLIP V C 00:00:01:00 00:00:03:00 00:00:10:00 00:00:12:00',
+    '* FROM CLIP NAME: clip.mp4',
+  ].join('\n'),
+});
+assert(imported && typeof imported === 'object' && 'timelineId' in imported);
+await importRuntime.execute('review_edit_session', { editSessionId: importSessionId });
+assert.equal(importStore.current.timelines.length, 2, 'offline MCP commits the imported editable timeline');
+assert.equal(importStore.current.timelines[1]!.items[0]!.sourceAssetId, 'clip-asset');
 
 const resumeStore = new MemoryPersistence(projectDoc());
 const interruptedRuntime = await OfflineExternalEditRuntime.create(projectId, editorUrl, {

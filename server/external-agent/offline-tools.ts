@@ -14,6 +14,7 @@ import { TIMELINE_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/timeline-to
 import { TRACK_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/track-tools.js';
 import { TRANSCRIPT_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/transcript-tools.js';
 import { WATERMARK_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/watermark-tools.js';
+import { TIMELINE_IMPORT_TOOL_SCHEMAS } from '../../src/agent/tools/timeline-import-tools.js';
 
 const OFFLINE_TOOL_DESCRIPTIONS: Record<string, string> = {
   begin_edit_session: 'Start an offline server draft. approvalMode must be auto; open the editor URL for manual approval.',
@@ -32,6 +33,7 @@ const OFFLINE_SCHEMA_GROUPS = [
   MARKERS_TOOL_SCHEMAS,
   READ_PROJECT_TOOL_SCHEMAS,
   TRANSCRIPT_TOOL_SCHEMAS,
+  TIMELINE_IMPORT_TOOL_SCHEMAS,
 ] as const;
 
 function serverDirectSchemas(): ExternalRegisteredTool[] {

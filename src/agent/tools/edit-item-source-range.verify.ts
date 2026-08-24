@@ -52,6 +52,19 @@ async function main(): Promise<void> {
   assert.equal(seconds.srcInFrame, hit.srcInFrame, 'explicit seconds remain supported');
   assert.equal(seconds.durationInFrames, hit.durationInFrames);
 
+  const exactFrames = validateGenericAdd(state, assets, {
+    type: 'video',
+    assetId: 'asset-v',
+    sourceStartFrame: 123,
+    sourceDurationInFrames: 77,
+  });
+  assert.equal(exactFrames.ok, true);
+  assert.equal(exactFrames.srcInFrame, 123);
+  assert.equal(exactFrames.durationInFrames, 77);
+  assert.deepEqual(exactFrames.sourceRange, {
+    startFrame: 123, durationInFrames: 77, endFrameExclusive: 200,
+  });
+
   const openEnd = validateGenericAdd(state, assets, {
     type: 'video',
     assetId: 'asset-v',
@@ -75,6 +88,9 @@ async function main(): Promise<void> {
     { sourceStartSeconds: 5, sourceEndSeconds: 5 },
     { sourceStartSeconds: 5, sourceEndSeconds: 4 },
     { sourceStartMs: 1_000, sourceStartSeconds: 1, sourceEndMs: 2_000 },
+    { sourceStartFrame: 10, sourceDurationInFrames: 0 },
+    { sourceStartFrame: 895, sourceDurationInFrames: 10 },
+    { sourceStartFrame: 10, sourceDurationInFrames: 5, sourceStartSeconds: 1 },
   ]) {
     const result = validateGenericAdd(state, assets, { type: 'video', assetId: 'asset-v', ...invalid });
     assert.ok('error' in result, `invalid source window must fail: ${JSON.stringify(invalid)}`);

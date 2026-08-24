@@ -3,6 +3,7 @@ import type { ClipEffect, TimelineItem, TransitionType, ZoomEffect } from '../..
 import { applyGeneric } from './edit-item-generic';
 import { transitionAssetId } from './library-catalog';
 import { describeClip, findItem, type OpResult } from './edit-item-shared';
+import { replaceTimelineItemAsset } from './edit-item-pool-replacement';
 
 export function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): OpResult {
   if (!plan.ok || plan.error) return plan;
@@ -16,6 +17,7 @@ export function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): O
   if (name === 'addAudio') return commitAudioPlan(ctx, plan, ripple);
   if (name === 'addMg') return commitMotionGraphicPlan(ctx, plan, ripple);
   if (name === 'addMedia') return commitMediaPlan(ctx, plan);
+  if (name === 'replacePoolAsset') return commitPoolAssetReplacement(ctx, plan);
   if (name === 'addText') return commitTextPlan(ctx, plan, ripple);
   if (name === 'addSolid') return commitSolidPlan(ctx, plan, ripple);
   if (name === 'genericUpdate' || name === 'genericDelete' || name === 'slip'
@@ -23,6 +25,31 @@ export function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): O
     return applyGeneric(plan, ctx.commands) ?? { error: `unknown plan ${name}` };
   }
   return { error: `unknown plan ${name}` };
+}
+
+function commitPoolAssetReplacement(ctx: AgentContext, plan: OpResult): OpResult {
+  const doc = ctx.getDoc();
+  const asset = doc.assets.find((candidate) => candidate.id === plan.assetId);
+  if (!asset) return { error: `pool asset vanished: ${String(plan.assetId)}` };
+  const next = replaceTimelineItemAsset(doc, doc.activeTimelineId, String(plan.itemId), asset, {
+    durationInFrames: Number(plan.durationInFrames),
+    srcInFrame: typeof plan.srcInFrame === 'number' ? plan.srcInFrame : undefined,
+  });
+  ctx.commands.applyDoc(next);
+  return {
+    ok: true,
+    plan: 'replacePoolAsset',
+    itemId: plan.itemId,
+    assetId: asset.id,
+    kind: asset.kind,
+    track: next.timelines.find((timeline) => timeline.id === next.activeTimelineId)
+      ?.items.find((item) => item.id === plan.itemId)?.track,
+    startFrame: next.timelines.find((timeline) => timeline.id === next.activeTimelineId)
+      ?.items.find((item) => item.id === plan.itemId)?.startFrame,
+    durationInFrames: plan.durationInFrames,
+    sourceStartFrame: plan.sourceStartFrame,
+    sourceDurationInFrames: plan.sourceDurationInFrames,
+  };
 }
 
 function commitVisualPlan(ctx: AgentContext, plan: OpResult): OpResult {

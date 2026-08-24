@@ -80,7 +80,8 @@ export function didYouMean(got: string, allowed: readonly string[]): string | nu
 /** Clip-level fields that belong on generic audio/video updates — not effect rows. */
 export const CLIP_LEVEL_UPDATE_KEYS = [
   'volume', 'fadeInSeconds', 'fadeOutSeconds', 'keyframes', 'clearKeyframes',
-  'srcInFrame', 'fromFrame', 'startFrame', 'durationInFrames', 'props', 'track', 'trackId',
+  'srcInFrame', 'sourceStartFrame', 'sourceDurationInFrames', 'assetId',
+  'fromFrame', 'startFrame', 'durationInFrames', 'props', 'track', 'trackId',
   'filters', 'transform', 'backgroundFill', 'backgroundFillStrength', 'speed', 'playbackRate',
 ] as const;
 
@@ -164,18 +165,8 @@ export function shouldCoerceEffectUpdateToClip(
 export function rejectUnknownFields(
   entry: Record<string, unknown>,
   allowed: AllowedFields,
-  options?: { banAssetId?: boolean; specializedType?: string },
+  options?: { specializedType?: string },
 ): string | null {
-  if (options?.banAssetId && entry.assetId !== undefined) {
-    return (
-      'assetId cannot be updated on an existing timeline item.\n\n'
-      + 'To replace media, use one edit_item batch with deletes:[{id:"old item id"}] and '
-      + 'adds:[{type:"video|audio|image|gif|svg|motion-graphic", assetId:"new asset id", trackId, '
-      + 'fromFrame, durationInFrames}] (read the old item first and reuse its timing). '
-      + 'srcInFrame / fades / props are not add fields — set them with a follow-up edit_item '
-      + 'update on the new item id after this batch applies.'
-    );
-  }
   const allowedList = Object.keys(allowed);
   for (const key of Object.keys(entry)) {
     if (allowed[key]) continue;

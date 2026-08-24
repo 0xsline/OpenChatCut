@@ -18,6 +18,7 @@ const DRAFT_EDIT_TOOL_NAMES = new Set([
   'edit_item', 'manage_effects', 'edit_captions', 'update_watermark',
   'manage_markers', 'apply_caption_avoidance', 'place_graphics_in_safe_zone', 'auto_reframe',
   'manage_design_style',
+  'import_timeline',
   'export_jianying_draft',
 ]);
 
@@ -46,6 +47,7 @@ const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
   edit_captions: true,
   update_watermark: true,
   manage_markers: true,
+  import_timeline: true,
 };
 
 const SERVER_DIRECT_BROWSER_ACTIONS: Record<string, true> = {

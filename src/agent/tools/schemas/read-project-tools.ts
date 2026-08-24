@@ -8,7 +8,7 @@ export const READ_PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
       'Default = full overview. Narrow with view:"timeline"|"assets", timelineId, track, fromFrame/toFrame, itemId, or assetId; projectId cannot retarget this call.',
       'Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error.',
       'Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread.',
-      'Timeline items include canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus) and editable state (keyframes, transform, filters, volume, fadeInFrames, fadeOutFrames).',
+      'Timeline items include canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus), exact source window (srcInFrame, sourceStartFrame, sourceDurationInFrames, sourceEndFrameExclusive), and editable state (keyframes, transform, filters, volume, fadeInFrames, fadeOutFrames).',
     ].join(' '),
     input_schema: {
       type: 'object',

@@ -10,6 +10,7 @@ import { execReadTranscript } from '../../src/agent/tools/transcript-read.js';
 import { execTimelineTool } from '../../src/agent/tools/timeline-tools.js';
 import { execTrackTool } from '../../src/agent/tools/track-tools.js';
 import { execWatermarkTool } from '../../src/agent/tools/watermark-tools.js';
+import { execTimelineImportTool } from '../../src/agent/tools/timeline-import-tools.js';
 
 type Args = Record<string, unknown>;
 
@@ -34,5 +35,6 @@ export async function executeOfflineTool(
   if (name === 'read_project') return execReadProjectTool(name, args, ctx);
   if (name === 'read_transcript') return execReadTranscript(args, ctx);
   if (name === 'find_transcript') return execFindTranscript(args, ctx);
+  if (name === 'import_timeline') return execTimelineImportTool(name, args, ctx);
   return { error: `offline tool ${name} is not implemented` };
 }
