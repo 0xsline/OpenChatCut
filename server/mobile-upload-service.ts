@@ -51,7 +51,7 @@ interface MobileUploadSession extends MobileUploadSessionSnapshot {
   activeUploads: Set<Promise<void>>;
 }
 
-export type MobilePageLocale = 'zh' | 'en' | 'ru';
+export type MobilePageLocale = 'zh' | 'en' | 'it' | 'ru';
 
 interface MobileUploadServiceOptions {
   bindHost?: string;
@@ -152,6 +152,7 @@ async function validateMediaSignature(path: string, mime: string): Promise<boole
 }
 
 function mobilePage(locale: MobilePageLocale): string {
+  const copyLocale = locale === 'it' ? 'en' : locale;
   const copy = {
     en: {
       pageTitle: 'Upload from phone', title: 'Send media to OpenChatCut',
@@ -171,7 +172,7 @@ function mobilePage(locale: MobilePageLocale): string {
       choose: '选择素材', multiple: '支持多选，页面保持打开直到全部完成',
       waiting: '等待上传', sent: '已发送', failed: '上传失败', interrupted: '网络中断',
     },
-  }[locale];
+  }[copyLocale];
   const scriptCopy = JSON.stringify({ waiting: copy.waiting, sent: copy.sent, failed: copy.failed, interrupted: copy.interrupted });
   return `<!doctype html>
 <html lang="${locale === 'zh' ? 'zh-CN' : locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

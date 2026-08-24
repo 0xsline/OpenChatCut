@@ -1,13 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { watch as watchFileSystem, type Dirent, type FSWatcher } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { readdir, realpath } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type {
-  DirectoryImportDisposition,
-  DirectoryImportedFile,
-  DirectoryImportEvent,
-  DirectoryWatchStartResult,
-} from '../shared/directory-import.ts';
+import type { DirectoryImportDisposition, DirectoryImportedFile, DirectoryImportEvent, DirectoryWatchStartResult } from '../shared/directory-import.ts';
 import {
   canonicalCurrentUploadDirectory,
   DirectoryDestinationChangedError,
@@ -19,21 +14,13 @@ import {
   type DirectoryFileFingerprint,
   type PreparedDirectoryImport,
 } from './directory-watch-import.ts';
+import { createDirectoryWatchHandle, DirectoryScanLimitError, type DirectoryEntry, type DirectoryWatchHandle } from './directory-watch-handle.ts';
+export { createDirectoryWatchHandle, DirectoryScanLimitError } from './directory-watch-handle.ts';
+export type { DirectoryEntry, DirectoryWatchHandle } from './directory-watch-handle.ts';
 export const DIRECTORY_SCAN_MAX_FILES = 400;
 export const DIRECTORY_SCAN_MAX_DEPTH = 12;
 
 type WatchPhase = 'created' | 'starting' | 'inactive' | 'active' | 'stopping' | 'stopped';
-
-export interface DirectoryEntry {
-  readonly name: string;
-  isFile(): boolean;
-  isDirectory(): boolean;
-  isSymbolicLink(): boolean;
-}
-
-export interface DirectoryWatchHandle {
-  close(): void;
-}
 
 export interface DirectoryWatchDependencies {
   readonly readdir: (path: string) => Promise<readonly DirectoryEntry[]>;
@@ -67,21 +54,9 @@ interface ScanCandidate {
   readonly name: string;
 }
 
-export class DirectoryScanLimitError extends Error {
-  readonly kind: 'files' | 'depth';
-  readonly limit: number;
-
-  constructor(kind: 'files' | 'depth', limit: number) {
-    super(`directory scan exceeded the ${kind} limit (${limit})`);
-    this.name = 'DirectoryScanLimitError';
-    this.kind = kind;
-    this.limit = limit;
-  }
-}
-
 const DEFAULT_DEPENDENCIES: DirectoryWatchDependencies = {
   readdir: (path) => readdir(path, { withFileTypes: true }) as Promise<Dirent[]>,
-  watch: (path, listener) => watchFileSystem(path, { recursive: true }, listener) as FSWatcher,
+  watch: (path, listener) => createDirectoryWatchHandle(path, listener),
   realpath,
   canonicalUploadDirectory: canonicalCurrentUploadDirectory,
   settleWrites: () => {
@@ -171,6 +146,7 @@ export class DirectoryWatchSession {
     this.phase = 'starting';
     try {
       this.watcher = this.dependencies.watch(this.options.root, () => this.markDirty());
+      this.attachWatcherErrorHandler(this.watcher);
       await this.requestScan();
       this.assertReady();
       this.phase = 'inactive';
@@ -244,6 +220,19 @@ export class DirectoryWatchSession {
     }
   }
 
+  private attachWatcherErrorHandler(watcher: DirectoryWatchHandle): void {
+    watcher.on?.('error', (error) => this.handleWatcherFailure(error));
+  }
+
+  private handleWatcherFailure(error: unknown): void {
+    if (this.cancelled()) return;
+    if (this.phase === 'starting') {
+      this.beginStop(error);
+      return;
+    }
+    this.handleBackgroundFailure(error);
+  }
+
   private async requestScan(): Promise<void> {
     const requestedGeneration = this.scheduleReconcile();
     while (!this.cancelled()) {
@@ -294,6 +283,8 @@ export class DirectoryWatchSession {
       this.runner = null;
       if (this.dirty && this.phase === 'active') {
         void this.ensureRunner().catch((error) => this.handleBackgroundFailure(error));
+      } else if (this.phase === 'active') {
+        this.watcher?.poll?.();
       }
     }
   }
@@ -493,7 +484,15 @@ export class DirectoryWatchSession {
 
   private handleBackgroundFailure(error: unknown): void {
     this.beginStop(error);
-    void this.finishStop().catch((stopError) => this.options.onFatalError?.(stopError));
-    this.options.onFatalError?.(error);
+    void this.finishStop().catch((stopError) => this.reportFatalError(stopError));
+    this.reportFatalError(error);
+  }
+
+  private reportFatalError(error: unknown): void {
+    try {
+      this.options.onFatalError?.(error);
+    } catch {
+      // Fatal reporting must not rethrow into native watcher event dispatch.
+    }
   }
 }

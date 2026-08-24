@@ -5,14 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../../i18n/locale';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
-import { fetchWithEditorSession } from '../../persist/projectStoreTransport';
-import { cleanupLegacyJson, loadMigrationStatus, STORAGE_MIGRATED_EVENT, type MigrationStatus } from './storageMigration';
-
-interface MigrateResponse {
-  summary?: { imported: number; skipped: number; quarantined: number };
-  status?: MigrationStatus;
-  error?: string;
-}
+import { cleanupLegacyJson, loadMigrationStatus, runStorageMigrationRequest, STORAGE_MIGRATED_EVENT, type MigrationStatus } from './storageMigration';
 
 const overlay: React.CSSProperties = {
   position: 'fixed', inset: 0, zIndex: 120, background: themeAlpha.shadow(0.55),
@@ -87,12 +80,7 @@ export function StorageMigrationDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     setResult(null);
     try {
-      const response = await fetchWithEditorSession('/api/project-store/migrate', { method: 'POST' });
-      const body = await response.json() as MigrateResponse;
-      if (!response.ok) {
-        setError(body.error ?? t('迁移失败'));
-        return;
-      }
+      const body = await runStorageMigrationRequest();
       if (body.status?.phase !== 'complete' || !body.status.receipt || body.status.enabled !== true) {
         setError(body.status?.error ?? t('迁移尚未完成，仍在使用 JSON 文件目录'));
         setStatus(body.status ?? await loadMigrationStatus());

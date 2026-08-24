@@ -30,4 +30,24 @@ await assert.rejects(
 assert.equal(reported.includes(secretPath), true, 'internal reporting may receive the original error');
 assert.equal(warnings.join('\n').includes(secretPath), false, 'warning output must remain sanitized');
 
+await assert.rejects(
+  invokeDirectoryWatch(
+    'start',
+    async () => { throw new Error('the media destination cannot overlap the import directory'); },
+    () => undefined,
+  ),
+  /selected folder overlaps the media storage directory/,
+);
+
+await assert.rejects(
+  invokeDirectoryWatch(
+    'start',
+    async () => { throw Object.assign(new Error(`EACCES: permission denied, scandir '${secretPath}'`), { code: 'EACCES' }); },
+    () => undefined,
+  ),
+  (error: unknown) => error instanceof Error
+    && error.message === 'selected folder is not readable'
+    && !error.message.includes(secretPath),
+);
+
 process.stdout.write('directory-watch-errors.verify: warning and public error redaction passed\n');

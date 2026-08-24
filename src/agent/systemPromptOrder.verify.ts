@@ -51,6 +51,8 @@ const commonPrefixLength = (a: string, b: string): number => {
   assert.match(agentLanguagePrompt('zh'), /in Chinese/);
   assert.match(agentLanguagePrompt('en'), /interface language is English/);
   assert.match(agentLanguagePrompt('en'), /in English/);
+  assert.match(agentLanguagePrompt('it'), /interface language is Italian/);
+  assert.match(agentLanguagePrompt('it'), /in Italian/);
   assert.match(agentLanguagePrompt('ru'), /interface language is Russian/);
   assert.match(agentLanguagePrompt('ru'), /in Russian/);
 }

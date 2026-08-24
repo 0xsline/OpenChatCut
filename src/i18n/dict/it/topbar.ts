@@ -1,0 +1,22 @@
+// IT dictionary (field fragmentation, key = Chinese original text).
+export default {
+  '切换界面语言': 'Cambia lingua interfaccia',
+  '返回工程列表': 'Torna ai progetti',
+  '双击重命名': 'Doppio clic per rinominare',
+  '编辑快捷键': 'Modifica scorciatoie da tastiera',
+  '撤销': 'Annulla',
+  '重做': 'Ripeti',
+  '外部 Agent 接入 (MCP)': 'Accesso Agent esterno (MCP)',
+  '设计风格(品牌)': 'Stile design (brand)',
+  '历史版本': 'Cronologia versioni',
+  '切换面板布局': 'Cambia layout pannelli',
+  '查看后台导出任务': 'Mostra esportazioni in background',
+  '导出 MP4': 'Esporta MP4',
+  '{n} 个导出': '{n} esportazioni',
+  '导出': 'Esporta',
+  '账户': 'Account',
+  '窗口控制': 'Controlli finestra',
+  '关闭窗口': 'Chiudi finestra',
+  '最小化窗口': 'Riduci a icona',
+  '缩放窗口': 'Ingrandisci finestra',
+} as Record<string, string>;

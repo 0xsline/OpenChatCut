@@ -209,7 +209,7 @@ export function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx
     try {
       const { body, staged } = await requestProbe(page, ctx, t);
       const suffix = staged && body.ok ? t('（按当前输入测试，记得保存）') : '';
-      setResult({ page: page.key, ok: body.ok, message: body.message + suffix });
+      setResult({ page: page.key, ok: body.ok, message: t(body.message) + suffix });
       const modelField = page.fields.find((field) => field.discoverableModel);
       if (body.ok && modelField && Array.isArray(body.models)) {
         ctx.onModelsDiscovered(modelField.name, body.models);

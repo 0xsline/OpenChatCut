@@ -5,18 +5,18 @@ import { ExportHistory } from './ExportHistory';
 import { GenerationActivity } from './GenerationActivity';
 import { SkinPicker } from './settings/SkinPicker';
 import { McpGuideDialog } from './settings/McpGuide';
-import { getLocale, setLocale, useT } from '../i18n/locale';
+import { ALL_LOCALES, getLocale, setLocale, useT } from '../i18n/locale';
 import { invokeAction, bindAction } from '../shortcuts/actionRegistry';
 import { DesktopWindowControls } from './DesktopWindowControls';
 import { TopBarIconButton } from './TopBarIconButton';
 
 // Language switching: The text pill displays the current language; clicking
-// cycles Chinese → English → Russian → Chinese. First run defaults to the
+// cycles through the supported locales. First run defaults to the
 // system language (or English) — see i18n/locale.ts.
 export function LocaleToggle() {
   const t = useT();
   const locale = getLocale();
-  const next = locale === 'zh' ? 'en' : locale === 'en' ? 'ru' : 'zh';
+  const next = ALL_LOCALES[(ALL_LOCALES.indexOf(locale) + 1) % ALL_LOCALES.length]!;
   return (
     <button
       className="cc-tip cc-tip-r"
@@ -26,7 +26,7 @@ export function LocaleToggle() {
       style={{ minWidth: 30, height: 22, background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 4, cursor: 'pointer', padding: '0 5px', fontSize: 11, fontWeight: 600, letterSpacing: 0.3, color: theme.textDim, display: 'grid', placeItems: 'center' }}
       onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; e.currentTarget.style.background = theme.panelAlt; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
-      {locale === 'zh' ? '中' : locale === 'en' ? 'EN' : 'RU'}
+      {locale === 'zh' ? '中' : locale.toUpperCase()}
     </button>
   );
 }

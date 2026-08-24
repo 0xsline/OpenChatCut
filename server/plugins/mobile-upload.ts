@@ -14,6 +14,10 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 
 type MobileUploadControls = Pick<MobileUploadService, 'createSession' | 'getSession' | 'closeSession'>;
 
+function mobilePageLocale(value: string | null): 'zh' | 'en' | 'it' | 'ru' {
+  return value === 'en' || value === 'it' || value === 'ru' ? value : 'zh';
+}
+
 function mobileUploadControlAuthorized(req: IncomingMessage, res: ServerResponse): boolean {
   if (req.method === 'GET') {
     if (trustedEditorRequest(req, false)) return true;
@@ -39,9 +43,7 @@ export async function handleMobileUploadControl(
   try {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (req.method === 'POST' && url.pathname === '/sessions') {
-      const requestedLocale = url.searchParams.get('locale');
-      const locale = requestedLocale === 'en' || requestedLocale === 'ru' ? requestedLocale : 'zh';
-      sendJson(res, 201, await service.createSession(locale));
+      sendJson(res, 201, await service.createSession(mobilePageLocale(url.searchParams.get('locale'))));
       return;
     }
     const match = /^\/sessions\/([0-9a-f-]+)$/.exec(url.pathname);

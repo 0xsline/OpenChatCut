@@ -14,7 +14,7 @@ let reads = 0;
 let deletes = 0;
 const createdLocales: string[] = [];
 const controls = {
-  async createSession(locale: 'zh' | 'en' | 'ru' = 'zh') {
+  async createSession(locale: 'zh' | 'en' | 'it' | 'ru' = 'zh') {
     creates += 1;
     createdLocales.push(locale);
     return snapshot;
@@ -103,7 +103,11 @@ try {
     method: 'POST', headers: { origin },
   });
   assert.equal(russian.status, 201);
-  assert.deepEqual(createdLocales, ['en', 'ru']);
+  const italian = await fetch(`${origin}/sessions?locale=it`, {
+    method: 'POST', headers: { origin },
+  });
+  assert.equal(italian.status, 201);
+  assert.deepEqual(createdLocales, ['en', 'ru', 'it']);
 } finally {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
