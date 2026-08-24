@@ -2,129 +2,17 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import type { FSWatcher } from 'node:fs';
 import { join } from 'node:path';
-import type { DirectoryImportEvent } from '../shared/directory-import.ts';
 import {
   createDirectoryWatchHandle,
   DirectoryScanLimitError,
   DirectoryWatchSession,
   scanImportDirectory,
-  type DirectoryEntry,
   type DirectoryWatchDependencies,
 } from './directory-watch.ts';
 import type {
-  DirectoryCandidateRequest,
   DirectoryCandidateResult,
-  DirectoryFileFingerprint,
 } from './directory-watch-import.ts';
-
-const ROOT = '/watch-root';
-const UPLOADS = '/media/uploads';
-const FINGERPRINT: DirectoryFileFingerprint = { size: 10, mtimeMs: 20, ino: 30 };
-
-function entry(name: string, kind: 'file' | 'directory' | 'symlink' = 'file'): DirectoryEntry {
-  return {
-    name,
-    isFile: () => kind === 'file',
-    isDirectory: () => kind === 'directory',
-    isSymbolicLink: () => kind === 'symlink',
-  };
-}
-
-function hashFor(name: string): string {
-  const code = name.charCodeAt(0).toString(16).padStart(2, '0');
-  return code.repeat(32);
-}
-
-async function waitForCondition(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (condition()) return;
-    const turn = Promise.withResolvers<void>();
-    setTimeout(turn.resolve, 1);
-    await turn.promise;
-  }
-  assert.equal(condition(), true);
-}
-
-function imported(request: DirectoryCandidateRequest): DirectoryCandidateResult {
-  if (request.knownFingerprint) {
-    return { status: 'unchanged', fingerprint: request.knownFingerprint };
-  }
-  const storedName = `${request.name.replace(/\W/g, '-')}.mp4`;
-  return {
-    status: 'imported',
-    prepared: {
-      file: {
-        name: request.name,
-        src: `/media/uploads/${storedName}`,
-        storedName,
-        compatibilityNormalized: true,
-        contentHash: hashFor(request.name),
-        kind: 'video',
-        size: FINGERPRINT.size,
-        sourceModifiedAt: FINGERPRINT.mtimeMs,
-      },
-      fingerprint: FINGERPRINT,
-      createdPaths: [`${UPLOADS}/${storedName}`],
-    },
-  };
-}
-
-interface Harness {
-  readonly tree: Map<string, DirectoryEntry[]>;
-  readonly events: DirectoryImportEvent[];
-  readonly removed: string[][];
-  readonly dependencies: DirectoryWatchDependencies;
-  fireWatch(): void;
-  setDestination(path: string): void;
-}
-
-function createHarness(
-  importCandidate: (request: DirectoryCandidateRequest) => Promise<DirectoryCandidateResult>
-    = async (request) => imported(request),
-): Harness {
-  const tree = new Map<string, DirectoryEntry[]>([[ROOT, []]]);
-  const events: DirectoryImportEvent[] = [];
-  const removed: string[][] = [];
-  let listener: () => void = () => undefined;
-  let destination = UPLOADS;
-  return {
-    tree,
-    events,
-    removed,
-    dependencies: {
-      readdir: async (path) => tree.get(path) ?? [],
-      watch: (_path, nextListener) => {
-        listener = nextListener;
-        return { close: () => { listener = () => undefined; } };
-      },
-      realpath: async (path) => path,
-      canonicalUploadDirectory: async () => destination,
-      settleWrites: async () => undefined,
-      importCandidate,
-      removeFiles: async (paths) => { removed.push([...paths]); },
-      randomId: (() => {
-        let value = 0;
-        return () => `import-${++value}`;
-      })(),
-    },
-    fireWatch: () => listener(),
-    setDestination: (path) => { destination = path; },
-  };
-}
-
-function sessionFor(harness: Harness, watchId: string): DirectoryWatchSession {
-  return new DirectoryWatchSession({
-    watchId,
-    projectId: `project-${watchId}`,
-    root: ROOT,
-    pinnedUploadDirectory: UPLOADS,
-    existingContentHashes: [],
-    onImported: (event) => {
-      harness.events.push(event);
-      return true;
-    },
-  }, harness.dependencies);
-}
+import { ROOT, UPLOADS, createHarness, entry, imported, sessionFor, waitForCondition } from './directory-watch.verify-fixtures.ts';
 
 const lifecycle = createHarness();
 lifecycle.tree.set(ROOT, [entry('a.mp4')]);
@@ -432,15 +320,13 @@ const asyncFallbackHandle = createDirectoryWatchHandle(
   1,
 );
 asyncNativeWatcher.emit('error', Object.assign(new Error('UNKNOWN: unknown error, watch'), { code: 'UNKNOWN' }));
-await new Promise((resolve) => { setTimeout(resolve, 5); });
-assert.equal(asyncFallbackPolls, 0, 'asynchronous native watcher failure must not interrupt an active scan');
-asyncFallbackHandle.poll?.();
 await waitForCondition(() => asyncFallbackPolls > 0);
+assert.equal(asyncFallbackPolls, 1, 'asynchronous native watcher failure must start polling without another scan');
 assert.equal(asyncNativeClosed, true, 'a native watcher error must close the failed watcher before polling');
 asyncFallbackHandle.close();
 
 const cooperativePolling = createHarness();
-let cooperativeListener: (() => void) | null = null;
+let cooperativeListener = (): void => undefined;
 let cooperativePolls = 0;
 const cooperativeSession = new DirectoryWatchSession({
   watchId: 'cooperative-polling',
@@ -457,7 +343,7 @@ const cooperativeSession = new DirectoryWatchSession({
   watch: (_path, listener) => {
     cooperativeListener = listener;
     return {
-      close: () => { cooperativeListener = null; },
+      close: () => { cooperativeListener = () => undefined; },
       poll: () => { cooperativePolls += 1; },
     };
   },
@@ -467,7 +353,7 @@ assert.equal(cooperativePolls, 0, 'inactive fallback polling must not start befo
 await cooperativeSession.activate();
 assert.equal(cooperativePolls, 1, 'fallback polling must be requested after an active scan completes');
 cooperativePolling.tree.set(ROOT, [entry('poll-created.mp4')]);
-cooperativeListener?.();
+cooperativeListener();
 while (cooperativePolling.events.length === 0) {
   const turn = Promise.withResolvers<void>();
   setImmediate(turn.resolve);

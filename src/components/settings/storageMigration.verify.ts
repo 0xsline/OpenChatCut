@@ -17,6 +17,12 @@ try {
     /Storage migration endpoint returned HTML instead of JSON \(HTTP 200\)/,
   );
 
+  mockResponse(JSON.stringify({ error: 'database unavailable' }), {
+    status: 500,
+    headers: { 'content-type': 'application/json' },
+  });
+  await assert.rejects(() => loadMigrationStatus(), /database unavailable/);
+
   mockResponse('not found', {
     status: 404,
     headers: { 'content-type': 'text/plain' },

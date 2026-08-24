@@ -1,5 +1,3 @@
-import enSettings from '../en/settings';
-
 const overrides: Record<string, string> = {
   '当前版本号：{version}': 'Versione corrente: {version}',
   '检查更新': 'Controlla aggiornamenti',
@@ -379,9 +377,24 @@ const overrides: Record<string, string> = {
   '图片与时间线帧由所选视觉模型理解后以文本注入。': 'Immagini e frame timeline sono interpretati dal modello visivo scelto e inseriti come testo.',
   '主模型不支持图片时维持现状（图片剥离为文本）。': 'Mantieni il comportamento attuale quando il modello principale non supporta immagini (immagini convertite in testo).',
   '不描述图片，一律剥离。': 'Non descrivere immagini; estrai sempre solo testo.',
+  '内置 Agent 需要 Anthropic API Key。Claude Code 订阅用户请通过「外部 Agent 接入 (MCP)」连接；OpenChatCut 不接收 Claude OAuth。': 'L’Agent integrato richiede una chiave API Anthropic. Gli utenti Claude Code possono collegarsi tramite “Agent esterno (MCP)”; OpenChatCut non accetta OAuth di Claude.',
+  '该模型不在内置目录，以上数值为估算（上下文 {context} / 输出 {output}）。若与实际不符，点「展开」手动修改。': 'Questo modello non è nel catalogo integrato: i valori sono stimati (contesto {context} / output {output}). Se non corrispondono, apri “Espandi” e modificali manualmente.',
+  '默认 https://api-singapore.klingai.com': 'Predefinito: https://api-singapore.klingai.com',
+  '默认 https://api.atlascloud.ai/api/v1': 'Predefinito: https://api.atlascloud.ai/api/v1',
+  '默认 https://api.elevenlabs.io': 'Predefinito: https://api.elevenlabs.io',
+  '默认 https://api.groq.com/openai/v1': 'Predefinito: https://api.groq.com/openai/v1',
+  '默认 https://api.minimaxi.com': 'Predefinito: https://api.minimaxi.com',
+  '默认 https://api.mistral.ai/v1': 'Predefinito: https://api.mistral.ai/v1',
+  '默认 https://api.mureka.ai': 'Predefinito: https://api.mureka.ai',
+  '默认 https://api.openai.com': 'Predefinito: https://api.openai.com',
+  '默认 https://api.sonilo.com': 'Predefinito: https://api.sonilo.com',
+  '默认 https://ark.cn-beijing.volces.com/api/v3': 'Predefinito: https://ark.cn-beijing.volces.com/api/v3',
+  '默认 https://generativelanguage.googleapis.com': 'Predefinito: https://generativelanguage.googleapis.com',
+  '默认 https://openspeech.bytedance.com': 'Predefinito: https://openspeech.bytedance.com',
+  '云端隔离 Linux 沙箱，不触碰本机文件。Agent 用它跑 run_code：ffprobe 探测素材时长 / 尺寸编码、ffmpeg 转码 / 抽帧 / 加工音视频、执行 node / python 技能脚本，结果回传后由本地工具应用到时间线。未配置只影响这些工具，剪辑与预览不受影响。': 'Sandbox Linux isolata nel cloud, senza accesso ai file locali. L’Agent la usa per run_code: ffprobe rileva durata, dimensioni e codec; ffmpeg transcodifica, estrae fotogrammi ed elabora audio e video; inoltre esegue script Node e Python. Gli strumenti locali applicano poi i risultati alla timeline. Se non configurata, sono interessati solo questi strumenti; montaggio e anteprima restano disponibili.',
+  '工程、历史版本与素材的存放位置。默认放在应用数据目录里；改到你自己的目录（外置硬盘、同步盘）后，卸载或重装应用都不会动到作品。保存时会把现有数据复制到新目录（原目录保留不删），重启应用后生效。': 'Posizione di progetti, cronologia versioni e media. Per impostazione predefinita usa la cartella dati dell’app; scegliendo una cartella personale, un disco esterno o una cartella sincronizzata, disinstallazione e reinstallazione non toccheranno i lavori. Al salvataggio i dati esistenti vengono copiati nella nuova posizione senza eliminare l’originale; la modifica si applica al riavvio.',
+  '按成片生成：把渲染好的视频交给 Sonilo，配乐跟着画面节奏走（可选一句风格提示，不填也行）。配乐自带授权、可商用（以条款为准）；每条音轨附 license_id 留档。同一个 Key 也用于按成片生成音效（submit_sound，免版税）。': 'Generazione dal video finale: invia il filmato renderizzato a Sonilo per creare musica sincronizzata al ritmo delle immagini, con un suggerimento di stile facoltativo. La musica include una licenza commerciale secondo i relativi termini e ogni traccia conserva il proprio license_id. La stessa chiave serve anche a generare effetti sonori dal video finale tramite submit_sound.',
+  '未配置时素材只存本机（「本地磁盘」页的目录）。配置后：每次上传同步写入 R2（桶保持私有，读取经本地服务回源，src 路径不变）；本机缺文件时自动从云端取回。改动即时生效。R2 控制台建桶 → R2 API Token（Object Read & Write）即可拿到下面四个值。': 'Senza configurazione i media restano solo sul computer, nella cartella indicata in “Disco locale”. Dopo la configurazione ogni caricamento viene scritto anche su R2; il bucket resta privato, la lettura passa dal servizio locale e il percorso src non cambia. Se manca un file locale, viene recuperato automaticamente dal cloud. Le modifiche hanno effetto immediato. Crea un bucket nella console R2 e un token API R2 con Object Read & Write per ottenere i quattro valori seguenti.',
 };
 
-export default {
-  ...enSettings,
-  ...overrides,
-} as Record<string, string>;
+export default overrides;

@@ -25,11 +25,12 @@ try {
   const { startEmbeddedServer } = await import('./embedded-server.ts');
   const embedded = await startEmbeddedServer(join(root, 'dist'));
   try {
+    const editorHeaders = {
+      Origin: embedded.origin,
+      'Sec-Fetch-Site': 'same-origin',
+    };
     const response = await fetch(`${embedded.origin}/api/project-store/migrate-status`, {
-      headers: {
-        Origin: embedded.origin,
-        'Sec-Fetch-Site': 'same-origin',
-      },
+      headers: editorHeaders,
     });
     const contentType = response.headers.get('content-type') ?? '';
     assert.equal(response.status, 200);
@@ -39,10 +40,7 @@ try {
 
     const migrate = await fetch(`${embedded.origin}/api/project-store/migrate`, {
       method: 'POST',
-      headers: {
-        Origin: embedded.origin,
-        'Sec-Fetch-Site': 'same-origin',
-      },
+      headers: editorHeaders,
     });
     const migrateContentType = migrate.headers.get('content-type') ?? '';
     assert.equal(migrate.status, 200);
@@ -50,6 +48,26 @@ try {
     const migrateBody = await migrate.json() as { enabled?: boolean; status?: { phase?: string } };
     assert.equal(migrateBody.enabled, true, 'migration response must report enabled storage');
     assert.equal(migrateBody.status?.phase, 'complete', 'migration response must report complete phase');
+
+    const unauthorizedWrite = await fetch(`${embedded.origin}/api/project-store/entry`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+      body: JSON.stringify({ key: 'embedded-http-smoke', value: { ready: true } }),
+    });
+    assert.equal(unauthorizedWrite.status, 403, 'embedded project-store writes must require same-origin requests');
+
+    const write = await fetch(`${embedded.origin}/api/project-store/entry`, {
+      method: 'PUT',
+      headers: { ...editorHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'embedded-http-smoke', value: { ready: true } }),
+    });
+    assert.equal(write.status, 200, 'embedded project-store must accept same-origin writes');
+    const read = await fetch(`${embedded.origin}/api/project-store/entry?key=embedded-http-smoke`, {
+      headers: editorHeaders,
+    });
+    assert.equal(read.status, 200, 'embedded project-store must expose persisted entries');
+    const readBody = await read.json() as { found?: boolean; value?: { ready?: boolean } };
+    assert.deepEqual(readBody, { found: true, value: { ready: true } });
   } finally {
     await new Promise<void>((resolve) => embedded.server.close(() => resolve()));
   }
@@ -63,4 +81,4 @@ try {
   rmSync(root, { recursive: true, force: true });
 }
 
-console.log('embedded-project-store-http.verify: migration HTTP endpoint is mounted in desktop embedded server');
+console.log('embedded-project-store-http.verify: migration, auth, write, and read paths are mounted in desktop');

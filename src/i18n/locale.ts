@@ -42,6 +42,7 @@ function readInitial(): Locale {
 }
 
 let current: Locale = readInitial();
+if (typeof document !== 'undefined') document.documentElement.lang = DOCUMENT_LANG[current];
 const subscribers = new Set<() => void>();
 
 export function getLocale(): Locale {

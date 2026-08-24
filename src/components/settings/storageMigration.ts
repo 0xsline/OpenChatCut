@@ -53,7 +53,9 @@ export async function cleanupLegacyJson(): Promise<{ removed: number; jsonKeyCou
 
 export async function loadMigrationStatus(): Promise<MigrationStatus> {
   const response = await fetchWithEditorSession('/api/project-store/migrate-status', { method: 'GET' });
-  return await readStorageMigrationJson<MigrationStatus>(response);
+  const body = await readStorageMigrationJson<MigrationStatus>(response);
+  if (!response.ok) throw new Error(body.error ?? `migration status failed (HTTP ${response.status})`);
+  return body;
 }
 
 export async function runStorageMigrationRequest(): Promise<MigrateResponse> {

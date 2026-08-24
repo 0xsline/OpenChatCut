@@ -1,2 +1,27 @@
-// Italian data-name translations. Empty for now; locale.ts falls back to English.
-export default {} as Record<string, string>;
+// Italian display names for built-in motion-graphic templates.
+export default {
+  '竖屏·重点词弹出': 'Verticale · Parola chiave pop',
+  '竖屏·大字幕条': 'Verticale · Barra sottotitoli grande',
+  '竖屏·金句卡片': 'Verticale · Scheda citazione',
+  '竖屏·姓名条': 'Verticale · Titolo nome',
+  '竖屏·关注引导': 'Verticale · Invito a seguire',
+  '竖屏·步骤条': 'Verticale · Elenco passaggi',
+  '竖屏·数字大字报': 'Verticale · Numero grande',
+  '竖屏·章节进度': 'Verticale · Avanzamento capitolo',
+  '竖屏·价格标签': 'Verticale · Etichetta prezzo',
+  '竖屏·封面大字': 'Verticale · Titolo copertina',
+  '竖屏·清单勾选': 'Verticale · Lista di controllo',
+  '竖屏·前后对比条': 'Verticale · Prima / Dopo',
+  '竖屏·便签贴纸': 'Verticale · Nota adesiva',
+  '竖屏·互动提示': 'Verticale · Invito all’interazione',
+  '竖屏·期数角标': 'Verticale · Badge episodio',
+  '口播·米色格纹（横）': 'Parlato · Carta a griglia beige (16:9)',
+  '口播·奶咖横线（横）': 'Parlato · Carta a righe caffellatte (16:9)',
+  '口播·黑板报（横）': 'Parlato · Lavagna (16:9)',
+  '口播·侧栏拼贴（横）': 'Parlato · Collage con barra laterale (16:9)',
+  '口播·便签五五分（竖）': 'Parlato · Nota adesiva divisa a metà (9:16)',
+  '口播·点阵五五分（竖）': 'Parlato · Griglia puntinata divisa a metà (9:16)',
+  '口播·牛皮纸圆窗（竖）': 'Parlato · Finestra rotonda su carta kraft (9:16)',
+  '口播·羊皮纸（横）': 'Parlato · Pergamena (16:9)',
+  '口播·奶油拍立得（竖）': 'Parlato · Polaroid crema (9:16)',
+} as Record<string, string>;

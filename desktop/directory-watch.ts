@@ -1,13 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { watch as watchFileSystem, type Dirent, type FSWatcher } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { readdir, realpath } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type {
-  DirectoryImportDisposition,
-  DirectoryImportedFile,
-  DirectoryImportEvent,
-  DirectoryWatchStartResult,
-} from '../shared/directory-import.ts';
+import type { DirectoryImportDisposition, DirectoryImportedFile, DirectoryImportEvent, DirectoryWatchStartResult } from '../shared/directory-import.ts';
 import {
   canonicalCurrentUploadDirectory,
   DirectoryDestinationChangedError,
@@ -19,29 +14,13 @@ import {
   type DirectoryFileFingerprint,
   type PreparedDirectoryImport,
 } from './directory-watch-import.ts';
+import { createDirectoryWatchHandle, DirectoryScanLimitError, type DirectoryEntry, type DirectoryWatchHandle } from './directory-watch-handle.ts';
+export { createDirectoryWatchHandle, DirectoryScanLimitError } from './directory-watch-handle.ts';
+export type { DirectoryEntry, DirectoryWatchHandle } from './directory-watch-handle.ts';
 export const DIRECTORY_SCAN_MAX_FILES = 400;
 export const DIRECTORY_SCAN_MAX_DEPTH = 12;
-const DIRECTORY_WATCH_POLLING_INTERVAL_MS = 2000;
 
 type WatchPhase = 'created' | 'starting' | 'inactive' | 'active' | 'stopping' | 'stopped';
-type NativeDirectoryWatchFactory = (
-  path: string,
-  options: { recursive: true },
-  listener: () => void,
-) => FSWatcher;
-
-export interface DirectoryEntry {
-  readonly name: string;
-  isFile(): boolean;
-  isDirectory(): boolean;
-  isSymbolicLink(): boolean;
-}
-
-export interface DirectoryWatchHandle {
-  close(): void;
-  on?(eventName: 'error', listener: (error: unknown) => void): DirectoryWatchHandle;
-  poll?(): void;
-}
 
 export interface DirectoryWatchDependencies {
   readonly readdir: (path: string) => Promise<readonly DirectoryEntry[]>;
@@ -73,69 +52,6 @@ interface Publication {
 interface ScanCandidate {
   readonly path: string;
   readonly name: string;
-}
-
-export class DirectoryScanLimitError extends Error {
-  readonly kind: 'files' | 'depth';
-  readonly limit: number;
-
-  constructor(kind: 'files' | 'depth', limit: number) {
-    super(`directory scan exceeded the ${kind} limit (${limit})`);
-    this.name = 'DirectoryScanLimitError';
-    this.kind = kind;
-    this.limit = limit;
-  }
-}
-
-export function createDirectoryWatchHandle(
-  path: string,
-  listener: () => void,
-  watch: NativeDirectoryWatchFactory = watchFileSystem as NativeDirectoryWatchFactory,
-  pollingIntervalMs = DIRECTORY_WATCH_POLLING_INTERVAL_MS,
-): DirectoryWatchHandle {
-  let native: FSWatcher | null = null;
-  let pollingTimer: NodeJS.Timeout | null = null;
-  let closed = false;
-  let polling = false;
-
-  const closeNative = (): void => {
-    try {
-      native?.close();
-    } finally {
-      native = null;
-    }
-  };
-  const enablePolling = (): void => {
-    polling = true;
-  };
-  const schedulePolling = (): void => {
-    if (closed || !polling || pollingTimer) return;
-    pollingTimer = setTimeout(() => {
-      pollingTimer = null;
-      listener();
-    }, pollingIntervalMs);
-    pollingTimer.unref?.();
-  };
-
-  try {
-    native = watch(path, { recursive: true }, listener);
-    native.on('error', () => {
-      closeNative();
-      enablePolling();
-    });
-  } catch {
-    enablePolling();
-  }
-
-  return {
-    close() {
-      closed = true;
-      closeNative();
-      if (pollingTimer) clearTimeout(pollingTimer);
-      pollingTimer = null;
-    },
-    poll: schedulePolling,
-  };
 }
 
 const DEFAULT_DEPENDENCIES: DirectoryWatchDependencies = {

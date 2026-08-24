@@ -22,8 +22,8 @@ interface Pending { id: string; keys: string; conflicts: ShortcutAction[] }
 export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
   const t = useT();
   // The shortcut key directory comes with the official English label. Use it directly in English mode without entering the dictionary and repeating it.
-  const en = getLocale() === 'en';
-  const actionLabel = (a: Pick<ShortcutAction, 'label' | 'labelZh'>): string => (en ? a.label : a.labelZh);
+  const zh = getLocale() === 'zh';
+  const actionLabel = (a: Pick<ShortcutAction, 'label' | 'labelZh'>): string => (zh ? a.labelZh : a.label);
   const [, bump] = useState(0);
   const [capturingId, setCapturingId] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -92,7 +92,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
             if (!rows.length) return null;
             return (
               <div key={g.id} style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 11, color: theme.textDim, letterSpacing: 0.4, margin: '0 4px 6px' }}>{en ? g.label : `${g.labelZh} · ${g.label}`}</div>
+                <div style={{ fontSize: 11, color: theme.textDim, letterSpacing: 0.4, margin: '0 4px 6px' }}>{zh ? `${g.labelZh} · ${g.label}` : g.label}</div>
                 <div style={{ display: 'grid', gap: 2 }}>
                   {rows.map((a) => {
                     const capturing = capturingId === a.id;
@@ -122,7 +122,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
                         {conflicting && pending && (
       <div style={{ position: 'absolute', right: 24, marginTop: 40, zIndex: 1, background: theme.panel, border: `0.5px solid ${theme.accent}`, borderRadius: 4, padding: 10, boxShadow: `0 8px 24px ${themeAlpha.shadow(0.67)}`, maxWidth: 300 }}>
                             <div style={{ fontSize: 11.5, marginBottom: 6 }}>
-                              <b>{showKeys(pending.keys)}</b> {t('已被占用：')}{pending.conflicts.map(actionLabel).join(en ? ', ' : '、')}
+                              <b>{showKeys(pending.keys)}</b> {t('已被占用：')}{pending.conflicts.map(actionLabel).join(zh ? '、' : ', ')}
                             </div>
                             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                               <button type="button" onClick={() => setPending(null)} style={{ fontSize: 11, background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '3px 8px', color: theme.text, cursor: 'pointer' }}>{t('取消')}</button>
