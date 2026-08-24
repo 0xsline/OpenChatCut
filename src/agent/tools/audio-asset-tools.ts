@@ -54,7 +54,7 @@ export function execAudioAssetTool(name: string, args: Args, ctx: AgentContext):
   }
   const track = resolvedTrack ?? defaultTrackId(state, 'audio');
   if (!track) return { error: 'no audio track exists; create one with edit_track action=create json={"trackType":"audio"}' };
-  ctx.commands.addAudio(commandAudio(asset), {
+  const placed = ctx.commands.addAudio(commandAudio(asset), {
     track,
     startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,
     ripple: args.ripple === true,
@@ -63,6 +63,8 @@ export function execAudioAssetTool(name: string, args: Args, ctx: AgentContext):
     ok: true,
     added: asset.name,
     assetId: asset.id,
+    itemId: placed.itemId,
+    sourceAssetId: placed.sourceAssetId,
     source: asset.source,
     trackId: track,
     track: trackAlias(ctx.getState(), track),

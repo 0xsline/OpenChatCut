@@ -17,6 +17,7 @@ import { permanentServerRunRecoveryError } from './serverRunRecovery';
 import { ServerRunToolRequestQueue } from './serverRunEvents';
 import { toolExecutionMode } from './tools/execution-modes';
 import { environmentFailureHint } from './serverRunToolEnvironment';
+import { isFailedToolResult, toolFailureReason } from './toolFailure';
 import {
   beginStoredToolAttempt,
   captureStoredToolResult,
@@ -47,7 +48,6 @@ import {
 } from './serverRunToolRecovery';
 export type { RecoveredServerTool } from './serverRunToolRecovery';
 
-
 export interface ServerToolExecutorCallbacks {
   readonly ctx: () => AgentContext;
   readonly settings: () => AgentSettings;
@@ -69,8 +69,6 @@ export interface ServerToolExecutorStart {
   readonly abort: AbortController;
   readonly recovered: ReadonlyMap<string, RecoveredServerTool>;
 }
-
-
 
 export class ServerRunToolExecutor {
   private readonly projectId: string;
@@ -377,6 +375,15 @@ export class ServerRunToolExecutor {
         return this.reportFailure(runId, toolCallId, request, error, true);
       }
       this.activation = update.activation;
+      if (isFailedToolResult(update.execution.result)) {
+        return this.reportFailure(
+          runId,
+          toolCallId,
+          request,
+          toolFailureReason(update.execution.result),
+          true,
+        );
+      }
       const outcome: ServerRunToolAction = {
         runId: this.runId ?? runId,
         toolCallId,

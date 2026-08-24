@@ -430,6 +430,11 @@ try {
   assert.equal(sameNameItems[2]?.transcript?.[0]?.text, 'camera a', 'current-revision ASR replaces retained stale transcript');
   assert.equal(sameNameItems[2]?.transcriptStale, false);
   assert.equal(sameNameItems[3]?.transcript?.[0]?.text, 'keep fresh', 'fresh current transcript is not redundantly overwritten');
+  assert.deepEqual(
+    untranscribedTimelineItemIdsForRevision(sameNameItems, 'rev-camera-a', true),
+    ['clip-camera-a', 'clip-camera-a-stale', 'clip-camera-a-fresh'],
+    'an explicit retry replaces every timeline copy for the current source revision',
+  );
 } finally {
   globalThis.fetch = originalFetch;
   __resetTranscribeJobs();

@@ -36,7 +36,7 @@ interface PackInspection {
 }
 
 const tasks = new Map<ModelPackId, MutableTask>();
-const inspections = new Map<ModelPackId, { fingerprint: string; result: PackInspection }>();
+const inspections = new Map<string, { fingerprint: string; result: PackInspection }>();
 const controllers = new Map<ModelPackId, AbortController>();
 const downloadFlights = new Map<ModelPackId, Promise<void>>();
 
@@ -106,8 +106,8 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   return promise;
 }
 
-function packRoot(pack: ModelPackDefinition): string {
-  return join(modelCacheDir(), pack.modelId);
+function packRoot(pack: ModelPackDefinition, cacheDir = modelCacheDir()): string {
+  return join(cacheDir, pack.modelId);
 }
 
 function stagingRoot(pack: ModelPackDefinition): string {
@@ -124,11 +124,14 @@ async function sha256(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
-async function inspectPack(pack: ModelPackDefinition): Promise<PackInspection> {
+async function inspectPack(
+  pack: ModelPackDefinition,
+  cacheDir = modelCacheDir(),
+): Promise<PackInspection> {
   const stats: Array<{ size: number; mtimeMs: number; ctimeMs: number }> = [];
   for (const file of pack.files) {
     try {
-      const info = await stat(join(packRoot(pack), file.path));
+      const info = await stat(join(packRoot(pack, cacheDir), file.path));
       if (!info.isFile()) return { installed: false, bytes: 0, error: `${file.path} is not a file` };
       if (info.size !== file.sizeBytes) {
         return { installed: false, bytes: 0, error: `${file.path} has an unexpected size` };
@@ -140,19 +143,27 @@ async function inspectPack(pack: ModelPackDefinition): Promise<PackInspection> {
     }
   }
   const fingerprint = stats.map((item) => `${item.size}:${item.mtimeMs}:${item.ctimeMs}`).join('|');
-  const cached = inspections.get(pack.id);
+  const key = `${cacheDir}\0${pack.id}`;
+  const cached = inspections.get(key);
   if (cached?.fingerprint === fingerprint) return cached.result;
   for (const file of pack.files) {
-    const actual = await sha256(join(packRoot(pack), file.path));
+    const actual = await sha256(join(packRoot(pack, cacheDir), file.path));
     if (actual !== file.sha256) {
       const result = { installed: false, bytes: 0, error: `${file.path} failed SHA-256 verification` };
-      inspections.set(pack.id, { fingerprint, result });
+      inspections.set(key, { fingerprint, result });
       return result;
     }
   }
   const result = { installed: true, bytes: stats.reduce((sum, item) => sum + item.size, 0) };
-  inspections.set(pack.id, { fingerprint, result });
+  inspections.set(key, { fingerprint, result });
   return result;
+}
+
+export function __inspectModelPackForVerify(
+  pack: ModelPackDefinition,
+  cacheDir: string,
+): Promise<PackInspection> {
+  return inspectPack(pack, cacheDir);
 }
 
 function taskSnapshot(task: MutableTask): ModelPackTask {

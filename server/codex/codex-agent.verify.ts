@@ -44,6 +44,7 @@ import { createInterface } from 'node:readline';
 
 const requiredFeatureArgs = ${JSON.stringify(CODEX_DISABLED_FEATURES.map((feature) => `features.${feature}=false`))};
 if (requiredFeatureArgs.some((arg) => !process.argv.includes(arg))) process.exit(71);
+if (!process.argv.includes('features.code_mode_host=true')) process.exit(71);
 if (!process.argv.includes('tools.view_image=false') || !process.argv.includes('web_search=disabled')) process.exit(71);
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const send = (message) => process.stdout.write(JSON.stringify(message) + '\n');
@@ -112,6 +113,11 @@ lines.on('line', (line) => {
     if (message.params.model !== 'gpt-5.4') process.exit(77);
     if (!message.params.dynamicTools?.some((tool) => tool.name === 'read_project')) process.exit(79);
     if (!message.params.baseInstructions?.includes('without changing the project')) process.exit(80);
+    if (message.params.config?.features?.code_mode !== false
+      || message.params.config?.features?.code_mode_host !== true
+      || message.params.config?.features?.computer_use !== false
+      || message.params.config?.features?.unified_exec !== false
+      || message.params.config?.web_search !== 'disabled') process.exit(81);
     activeThread = 'thread-1';
     send({ id: message.id, result: { thread: { id: activeThread } } });
     return;
@@ -214,7 +220,7 @@ try {
   assert.deepEqual(login, {
     type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/test',
   });
-  await delay(0);
+  for (let attempt = 0; client.loginPending && attempt < 20; attempt += 1) await delay(5);
   assert.equal(client.loginPending, false, 'a fast completion must not leave stale pending login state');
 
   await client.startLogin('chatgptDeviceCode');

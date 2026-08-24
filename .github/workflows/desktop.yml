@@ -114,6 +114,10 @@ jobs:
             }
           }
 
+      - name: Verify Windows model persistence across restart
+        if: runner.os == 'Windows'
+        run: npm run verify:model-persistence-restart
+
       - name: Package
         run: npm run ${{ matrix.script }}
 

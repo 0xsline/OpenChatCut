@@ -49,15 +49,17 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
   const placeItem = (
     item: Omit<TimelineItem, 'startFrame'>,
     at: { startFrame?: number; ripple?: boolean; overwrite?: boolean } | undefined,
+    before: AtomicAction[] = [],
   ) => {
     if (!at?.overwrite) {
-      dispatch({ type: 'add', item, startFrame: at?.startFrame, ripple: at?.ripple });
+      const add: AtomicAction = { type: 'add', item, startFrame: at?.startFrame, ripple: at?.ripple };
+      dispatch(before.length ? { type: 'batch', label: 'Add media', actions: [...before, add] } : add);
       return;
     }
     const doc = getDoc();
     const state = { ...activeTimeline(doc), assets: doc.assets };
     const plan = planOverwrite(state, item, at.startFrame ?? 0, () => uid('item'));
-    if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: plan.actions });
+    if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: [...before, ...plan.actions] });
   };
   const commitRelink = (
     action: Extract<AtomicAction, { type: 'pool.relinkAsset' | 'relinkTimelineItem' }>,
@@ -174,6 +176,18 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
         placeItem(item, at);
       },
       addAudio: (asset, at) => {
+        const assets = getDoc().assets;
+        const exact = assets.find((candidate) => candidate.kind === 'audio' && candidate.id === asset.id && candidate.src === asset.src);
+        const sameSource = assets.filter((candidate) => candidate.kind === 'audio' && candidate.src === asset.src);
+        const existing = exact ?? (sameSource.length === 1 ? sameSource[0] : undefined);
+        const canonical: MediaAsset = existing ?? {
+          id: assets.some((candidate) => candidate.id === asset.id) ? uid('asset') : asset.id,
+          kind: 'audio',
+          name: asset.name,
+          sourceFilename: asset.src.split(/[?#]/, 1)[0]?.split('/').at(-1) || undefined,
+          src: asset.src,
+          durationInFrames: asset.durationInFrames,
+        };
         const item = {
           id: uid('item'),
           track: pickTrack(at?.track, 'audio'),
@@ -181,9 +195,15 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
           kind: 'audio' as const,
           name: asset.name,
           src: asset.src,
+          sourceAssetId: canonical.id,
+          sourceRevision: sourceRevisionOf(canonical),
+          sourceContentHash: canonical.sourceContentHash,
+          sourceFilename: canonical.sourceFilename,
+          originalFilePath: canonical.originalFilePath,
           volume: 1,
         };
-        placeItem(item, at);
+        placeItem(item, at, existing ? [] : [{ type: 'addAsset', asset: canonical }]);
+        return { itemId: item.id, sourceAssetId: canonical.id };
       },
       addTextClip: (at) => {
         const id = uid('item');

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { loadInitialProjects, type ProjectStartupSource } from './appShell';
 import type { ProjectMeta } from '../persist/projectStoreCoordinators';
+import { syncDesktopNativeInferenceEnabled } from '../transcript/desktop-inference-preference';
 
 const demo = { id: 'demo', name: '示例工程', updatedAt: 1 };
 
@@ -57,5 +59,32 @@ assert.deepEqual(
   existing,
   'existing projects remain readable without write authority',
 );
+
+const appSource = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
+assert.match(appSource, /useInferenceWarmup\(route\.name === 'editor'\)/, 'App wires unified inference warmup only while editing');
+assert.doesNotMatch(appSource, /useLocalAsrWarmup/, 'App no longer wires the ASR-only warmup path');
+
+const descriptors = {
+  window: Object.getOwnPropertyDescriptor(globalThis, 'window'),
+  localStorage: Object.getOwnPropertyDescriptor(globalThis, 'localStorage'),
+};
+const applied: boolean[] = [];
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: { getItem: () => '1', setItem: () => undefined },
+});
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: { openChatCutDesktop: { inference: { setEnabled: async (enabled: boolean) => { applied.push(enabled); } } } },
+});
+try {
+  assert.equal(await syncDesktopNativeInferenceEnabled(), true, 'restart reads the persisted native inference preference');
+  assert.deepEqual(applied, [true], 'restart sync applies the preference to the desktop bridge');
+} finally {
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+    else Reflect.deleteProperty(globalThis, key);
+  }
+}
 
 console.log('appShell.verify: project startup authority semantics passed');

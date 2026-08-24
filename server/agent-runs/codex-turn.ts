@@ -10,6 +10,7 @@ import {
 import { summarizeConversation } from '../../src/agent/context-summary';
 import type { AgentToolSchema } from '../../src/agent/tool-schema';
 import { codexToolHistoryEntry } from '../../src/agent/codex/tool-history';
+import { isFailedToolResult, toolFailureReason } from '../../src/agent/toolFailure';
 import type { AgentContextUsage } from '../../src/agent/context-compaction';
 import {
   persistServerCheckpoint,
@@ -133,9 +134,9 @@ export interface ServerCodexTurnDeps {
  * Run one Agent turn through the server-side Codex executor. The Codex turn
  * manager streams events; text is flushed into run events, tool-start events
  * are bridged into the browser tool claim/result path (same as the AI SDK
- * path), and tool results are settled back into the Codex turn. Messages are
- * rebuilt as assistant text + merged tool history so the next turn can be
- * replayed to Codex as a prompt.
+ * path), and tool results are settled back into the same Codex turn. Codex
+ * owns its tool loop until `done`, so the outer API-style turn loop must not
+ * replay a completed Codex turn.
  */
 export async function executeServerCodexTurn(
   input: ServerCodexTurnInput,
@@ -148,7 +149,8 @@ export async function executeServerCodexTurn(
   hitMaxTokens: boolean;
 }> {
   const prepared = await prepareCodexContext(input);
-  const schemas = input.activation.current.schemas();
+  const activeSchemas = input.activation.current.schemas();
+  const schemas = input.activation.current.allSchemas();
   const requestId = `run-${input.run.id}-${input.requestIndex}`;
   pushRunEvent(input.run, 'text-start', {});
   let text = '';
@@ -176,11 +178,13 @@ export async function executeServerCodexTurn(
       try {
         const schema = schemas.find((candidate) => candidate.name === event.name);
         if (!schema) {
+          const failure = { error: `Unknown tool: ${event.name}` };
+          input.activation.toolFailures.record(event.name, { success: false, result: failure });
           toolHistory.push(codexToolHistoryEntry(
             { name: event.name, args: event.args },
-            { success: false, result: { error: `Unknown tool: ${event.name}` } },
+            { success: false, result: failure },
           ));
-          settle(event.callId, false, { error: `Unknown tool: ${event.name}` });
+          settle(event.callId, false, failure);
           return;
         }
         const delivered = await executeBrowserTool(
@@ -190,13 +194,14 @@ export async function executeServerCodexTurn(
           event.callId,
           input.activation,
         );
+        const success = !isFailedToolResult(delivered);
         toolHistory.push(codexToolHistoryEntry(
           { name: event.name, args: event.args },
-          { success: true, result: delivered },
+          { success, result: delivered },
         ));
-        settle(event.callId, true, delivered ?? null);
+        settle(event.callId, success, delivered ?? null);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toolFailureReason(error);
         toolHistory.push(codexToolHistoryEntry(
           { name: event.name, args: event.args },
           { success: false, result: { error: message } },
@@ -222,8 +227,8 @@ export async function executeServerCodexTurn(
         recordServerContextUsage(
           input.run,
           usageFromCodexEvent(event, prepared, input.requestIndex),
-          schemas.length,
-          JSON.stringify(schemas).length,
+          activeSchemas.length,
+          JSON.stringify(activeSchemas).length,
         );
         break;
       case 'error':
@@ -274,7 +279,7 @@ export async function executeServerCodexTurn(
   return {
     messages,
     text,
-    continued: toolHistory.length > 0,
+    continued: false,
     followupText: input.activation.followupText,
     hitMaxTokens: false,
   };

@@ -30,6 +30,7 @@ import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
 import { importAgentPaths } from './agent-path-import.ts';
 import { getKey, setKeys } from '../server/keystore.ts';
 import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
+import { modelCachePath } from '../shared/model-cache-path.ts';
 import { isTranscriptWindowPayload, TRANSCRIPT_WINDOW_CHANNELS, type TranscriptWindowPayload } from '../shared/transcript-window.ts';
 import {
   assertTrustedDesktopSenderUrl,
@@ -329,7 +330,7 @@ async function boot(): Promise<void> {
   const hardware = await detectDesktopHardwareProfile(app);
   const desktopInference = installDesktopInferenceIpc(
     origin,
-    join(app.getPath('home'), '.openchatcut', 'asr-models'),
+    modelCachePath(app.getPath('home')),
     hardware,
   );
   app.once('before-quit', () => desktopInference.dispose());

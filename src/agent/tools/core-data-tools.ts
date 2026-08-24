@@ -7,6 +7,7 @@ import {
   trackKind,
   type AspectFit,
 } from '../../editor/types';
+import { projectTimelineItem } from './timeline-item-projection';
 
 type Args = Record<string, unknown>;
 
@@ -38,12 +39,7 @@ function readTimeline(ctx: AgentContext): unknown {
       trackType: trackKind(state, id),
     })),
     items: state.items.map((item) => ({
-      id: item.id,
-      trackId: item.track,
-      track: trackAlias(state, item.track),
-      name: item.name,
-      startFrame: item.startFrame,
-      durationInFrames: item.durationInFrames,
+      ...projectTimelineItem(item, state, ctx.getDoc().assets),
       props: item.props,
       zoom: item.zoom ?? null,
       effects: (item.effects ?? []).map((effect) => ({

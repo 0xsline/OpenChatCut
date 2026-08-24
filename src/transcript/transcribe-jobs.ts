@@ -339,9 +339,13 @@ export function untranscribedTimelineItemIdsForRevision(
     transcriptStale?: boolean;
   }[],
   sourceRevision: string,
+  replaceExisting = false,
 ): string[] {
   return items
-    .filter((item) => item.sourceRevision === sourceRevision && !hasOperationalTranscript(item))
+    .filter((item) => (
+      item.sourceRevision === sourceRevision
+      && (replaceExisting || !hasOperationalTranscript(item))
+    ))
     .map((item) => item.id);
 }
 

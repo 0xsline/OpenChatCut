@@ -6,7 +6,7 @@ export const CORE_TOOL_SCHEMAS: AgentToolSchema[] = [
   jianyingExportToolSchema,
   {
     name: 'read_timeline',
-    description: 'Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.',
+    description: 'Read the current timeline: fps and every clip, including canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus) and editable state (keyframes, transform, filters, volume, fades). Call this first to see current state before editing.',
     input_schema: { type: 'object', properties: {} },
   },
   {

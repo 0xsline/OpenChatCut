@@ -1,0 +1,56 @@
+name: Windows model persistence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/windows-model-persistence.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'desktop/main.ts'
+      - 'server/plugins/asr-models.ts'
+      - 'server/plugins/hf-proxy.ts'
+      - 'server/plugins/model-packs.ts'
+      - 'server/plugins/model-persistence-restart.verify.ts'
+      - 'shared/asr-models.ts'
+      - 'shared/model-cache-path.ts'
+      - 'shared/model-packs/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/windows-model-persistence.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'desktop/main.ts'
+      - 'server/plugins/asr-models.ts'
+      - 'server/plugins/hf-proxy.ts'
+      - 'server/plugins/model-packs.ts'
+      - 'server/plugins/model-persistence-restart.verify.ts'
+      - 'shared/asr-models.ts'
+      - 'shared/model-cache-path.ts'
+      - 'shared/model-packs/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-model-persistence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  restart:
+    name: Fresh-process model rediscovery
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --loglevel=error
+        env:
+          ONNXRUNTIME_NODE_INSTALL: 'skip'
+      - run: npm run verify:model-persistence-restart

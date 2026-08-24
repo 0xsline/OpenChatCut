@@ -50,6 +50,11 @@ import {
 import { classifyLlmFailure, runServerTurnWithRetry } from './llm-retry';
 import { toolExecutionMode } from '../../src/agent/tools/execution-modes';
 import {
+  isFailedToolResult,
+  toolFailureReason,
+  ToolFailureTracker,
+} from '../../src/agent/toolFailure';
+import {
   collectServerText,
   resolveServerRunMaxOutputTokens,
   serverRunTextMetadata,
@@ -66,13 +71,21 @@ function safeError(error: unknown): string {
   return redactTextForAgentRuntime(raw).trim().slice(0, 1_200)
     || 'Agent provider request failed.';
 }
-
-
-
 export interface ActivationState {
   current: ToolActivation;
   tail: Promise<void>;
   followupText: string | null;
+  toolFailures: ToolFailureTracker;
+  repeatGuardNote?: string;
+  lastSuccessfulPureTool?: {
+    name: string;
+    argsDigest: string;
+    result: unknown;
+  };
+}
+
+function cacheablePureTool(name: string): boolean {
+  return name === 'analyze_music';
 }
 
 export interface ServerRunInput {
@@ -117,6 +130,17 @@ export async function executeBrowserTool(
     activation.current = activation.current.admit(schema.name);
     assertCanonicalToolInvocation(schema, args, activation.current.schemas());
     const argsDigest = digestToolArgs(args);
+    const cached = activation.lastSuccessfulPureTool;
+    if (cacheablePureTool(schema.name)
+      && cached?.name === schema.name
+      && cached.argsDigest === argsDigest) {
+      activation.repeatGuardNote = `Reused the adjacent successful ${schema.name} result; skipped duplicate browser execution.`;
+      const shaped = activation.current.withToolResult(schema.name, cached.result);
+      activation.current = shaped.activation;
+      return shaped.result;
+    }
+    activation.repeatGuardNote = undefined;
+    activation.lastSuccessfulPureTool = undefined;
     pushRunEvent(run, 'tool-request', {
       toolCallId,
       name: schema.name,
@@ -137,7 +161,17 @@ export async function executeBrowserTool(
     if (followup) activation.followupText = followup;
     const shaped = activation.current.withToolResult(schema.name, delivered);
     activation.current = shaped.activation;
+    if (isFailedToolResult(shaped.result)) {
+      throw new Error(toolFailureReason(shaped.result));
+    }
+    activation.toolFailures.record(schema.name, { success: true, result: shaped.result });
+    if (cacheablePureTool(schema.name)) {
+      activation.lastSuccessfulPureTool = { name: schema.name, argsDigest, result: shaped.result };
+    }
     return shaped.result;
+  } catch (error) {
+    activation.toolFailures.record(schema.name, { success: false, result: error });
+    throw error;
   } finally {
     release?.();
   }
@@ -255,8 +289,9 @@ async function runServerTurnOnce(
     schemas.length,
     JSON.stringify(schemas).length,
   );
-  const continued = toolCalls.length > 0
-    || responseMessages.some((message) => message.role === 'tool');
+  const continued = !input.activation.repeatGuardNote && (
+    toolCalls.length > 0 || responseMessages.some((message) => message.role === 'tool')
+  );
   return {
     messages: continued
       ? [...prepared.messages, ...responseMessages]
@@ -300,7 +335,7 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   const maxInputTokens = capabilities.maxInputTokens.estimated
     ? Math.max(1, capabilities.contextWindowTokens.value - maxOutputTokens)
     : capabilities.maxInputTokens.value;
-  const activation = {
+  const activation: ActivationState = {
     current: new ToolActivation(
       canonicalServerRunToolCatalog(run.askOnly),
       input.messages,
@@ -308,6 +343,7 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
     ),
     tail: Promise.resolve(),
     followupText: null,
+    toolFailures: new ToolFailureTracker(),
   };
   const prompt = buildServerRunPrompt({
     ...input,
@@ -336,10 +372,15 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
 }
 
 /** What the loop does after one turn, extracted for deterministic checks. */
-export type TurnDisposition = 'continue' | 'completed' | 'max-tokens';
-export function turnDisposition(hitMaxTokens: boolean, continued: boolean): TurnDisposition {
-  if (hitMaxTokens) return 'max-tokens';
-  return continued ? 'continue' : 'completed';
+export type TurnDisposition = 'continue' | 'completed' | 'failed' | 'max-tokens';
+export function turnDisposition(
+  hitMaxTokens: boolean,
+  continued: boolean,
+  hasUnresolvedFailure = false,
+): TurnDisposition {
+  if (hitMaxTokens) return hasUnresolvedFailure ? 'failed' : 'max-tokens';
+  if (continued) return 'continue';
+  return hasUnresolvedFailure ? 'failed' : 'completed';
 }
 
 async function executeRunTurns(
@@ -396,12 +437,24 @@ async function executeRunTurns(
       return;
     }
     messages = outcome.messages;
-    const disposition = turnDisposition(outcome.hitMaxTokens, outcome.continued);
+    const disposition = turnDisposition(
+      outcome.hitMaxTokens,
+      outcome.continued,
+      plan.activation.toolFailures.hasUnresolved,
+    );
     if (disposition === 'continue') continue;
     if (disposition === 'max-tokens') {
       pushRunEvent(run, 'max-tokens', { turn: turn + 1 });
     }
-    pushRunEvent(run, 'finish', serverRunTextMetadata(outcome.text));
+    if (disposition === 'failed') {
+      throw new Error(plan.activation.toolFailures.report());
+    }
+    pushRunEvent(run, 'finish', {
+      ...serverRunTextMetadata(outcome.text),
+      ...(plan.activation.repeatGuardNote
+        ? { guard: plan.activation.repeatGuardNote }
+        : {}),
+    });
     await setRunStatus(run, 'completed');
     return;
   }

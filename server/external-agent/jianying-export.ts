@@ -187,7 +187,8 @@ export async function exportJianyingDraft(raw: Partial<JianyingExportRequest>): 
     return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: `media files not found locally: ${missing.slice(0, 3).join(', ')}` };
   }
   const draftName = String(request.draftName || `OpenChatCut-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`)
-    .replace(/[\\/\0]/g, '')
+    .replace(/[\\/]/g, '')
+    .replaceAll('\0', '')
     .slice(0, 60);
   if (!draftName) {
     return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: 'invalid draft name' };

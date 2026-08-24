@@ -182,9 +182,10 @@ function threadStartParams(request: CodexTurnRequest): Record<string, unknown> {
     baseInstructions: baseInstructions(request),
     dynamicTools: dynamicTools(request.tools),
     config: {
-      features: Object.fromEntries(
-        CODEX_DISABLED_FEATURES.map((feature) => [feature, false]),
-      ),
+      features: {
+        ...Object.fromEntries(CODEX_DISABLED_FEATURES.map((feature) => [feature, false])),
+        code_mode_host: true,
+      },
       tools: { view_image: false },
       web_search: 'disabled',
     },

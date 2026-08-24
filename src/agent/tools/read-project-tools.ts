@@ -15,6 +15,7 @@ import {
 import { backgroundFillStrengthOf } from '../../editor/backgroundFill';
 import { hasOperationalTranscript } from '../../transcript/types';
 import { resolveTimeline } from './timeline-target';
+import { projectTimelineItem } from './timeline-item-projection';
 
 // read_project returns one overview of project state, including timeline and assets.
 // Aggregates existing store/doc fields; no separate backend.
@@ -32,22 +33,13 @@ function slimItem(
   assets: readonly MediaAsset[],
   offlineSrcs: ReadonlySet<string>,
 ) {
-  const sourceAssetId = it.src ? assets.find((asset) => asset.src === it.src)?.id ?? null : null;
   const denoisedAssetId = it.denoisedSrc
     ? assets.find((asset) => asset.src === it.denoisedSrc && asset.kind === 'audio')?.id ?? null
     : null;
   return {
-    id: it.id,
-    trackId: it.track,
-    track: trackAlias(state, it.track),
-    name: it.name,
-    kind: it.kind,
-    startFrame: it.startFrame,
-    durationInFrames: it.durationInFrames,
-    src: it.src ?? null,
+    ...projectTimelineItem(it, state, assets),
     offline: !!it.src && offlineSrcs.has(it.src),
     templateId: it.templateId ?? null,
-    volume: it.volume ?? null,
     zoom: it.zoom ?? null,
     backgroundFill: it.backgroundFill === true,
     backgroundFillStrength: it.backgroundFill === true ? backgroundFillStrengthOf(it) : null,
@@ -59,7 +51,6 @@ function slimItem(
     props: it.props ?? null,
     hasTranscript: hasOperationalTranscript(it),
     transcriptStale: it.transcriptStale === true,
-    sourceAssetId,
     voiceIsolation: it.denoisedSrc
       ? { denoisedAssetId, strength: it.denoiseStrength ?? null }
       : null,

@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { CAPABILITY_LABELS, formatCapabilityNames, missingCreativeCaps } from './capabilityBanner.ts';
 import { applyLiveCaps } from '../../agent/capabilities';
 import type { ChatPanelController } from './chatPanelController.ts';
-import { CapabilityBanner } from './ChatPanelView.tsx';
+import { CapabilityBanner } from './CapabilityGapBanner.tsx';
 
 // No capability enabled → every creative capability is missing.
 applyLiveCaps({});

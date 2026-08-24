@@ -7,6 +7,7 @@ import type {
   AsrChunk, AsrResult, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
 } from './local-asr-types';
 import { localAsrLoadError, localAsrModelHosts } from './local-asr-model-source';
+import { patchWhisperWordTimestampModel, type WhisperTimestampModel } from './whisper-word-timestamps';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
 
 const MAX_AUDIO_SAMPLES = ASR_INFERENCE_CONTRACT.maxAudioSeconds
@@ -71,7 +72,9 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
           )), LOAD_ATTEMPT_TIMEOUT_MS);
         }),
       ]);
-      asr = next as AutomaticSpeechRecognitionPipeline;
+      const pipelineInstance = next as AutomaticSpeechRecognitionPipeline;
+      patchWhisperWordTimestampModel(pipelineInstance.model as unknown as WhisperTimestampModel);
+      asr = pipelineInstance;
     } catch (error) {
       throw localAsrLoadError(error);
     }

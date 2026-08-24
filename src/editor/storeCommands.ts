@@ -33,9 +33,14 @@ export type AddSequenceResult =
   | { ok: true; itemId: string }
   | { ok: false; error: string; sequenceError?: SequenceGraphErrorDetails };
 
+export interface AddAudioResult {
+  itemId: string;
+  sourceAssetId: string;
+}
+
 export interface EditorCommands {
   addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => void;
-  addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => void;
+  addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => AddAudioResult;
   addAsset: (asset: MediaAsset) => void;
   addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number; srcInFrame?: number; ripple?: boolean; overwrite?: boolean }) => string;
   /** Add an instance of another timeline without copying its contents. */

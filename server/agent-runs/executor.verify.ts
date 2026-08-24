@@ -8,22 +8,30 @@ import { serverProviderOptions } from './model.ts';
 import { validateCreateInput } from './request.ts';
 import {
   collectServerText,
+  executeBrowserTool,
+  type ActivationState,
   resolveServerRunCapabilities,
   resolveServerRunMaxOutputTokens,
   serverRunTextMetadata,
   turnDisposition,
 } from './executor.ts';
+import { ToolActivation } from '../../src/agent/tool-activation.ts';
+import { ToolFailureTracker } from '../../src/agent/toolFailure.ts';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../shared/model-capabilities';
 import { seedKeystore } from '../keystore';
 import {
   createRun,
+  claimToolRequest,
+  digestToolArgs,
   flushRunPersistence,
   MAX_SERVER_EVENT_BYTES,
   MAX_SERVER_RUN_BYTES,
   MAX_SERVER_RUN_EVENTS,
   pushRunEvent,
   resetServerRunStoreForTest,
+  settleToolResult,
 } from './store.ts';
+import { canonicalServerRunToolCatalog } from './tool-policy.ts';
 function record(value: unknown): Record<string, unknown> {
   assert(value && typeof value === 'object' && !Array.isArray(value));
   return value as Record<string, unknown>;
@@ -256,10 +264,110 @@ console.log('server agent executor message verification passed');
 // instead of feeding truncated text back into the next turn.
 assert.equal(turnDisposition(false, true), 'continue');
 assert.equal(turnDisposition(false, false), 'completed');
+assert.equal(turnDisposition(false, true, true), 'continue',
+  'an unresolved tool failure may continue only while the model is retrying');
+assert.equal(turnDisposition(false, false, true), 'failed',
+  'completion is rejected while a tool failure remains unresolved');
+assert.equal(turnDisposition(true, true, true), 'failed',
+  'a token cutoff cannot turn an unresolved tool failure into completion');
 assert.equal(turnDisposition(true, true), 'max-tokens', 'output cutoff wins over pending tool calls');
 assert.equal(turnDisposition(true, false), 'max-tokens');
 
 console.log('server executor turn-disposition checks passed');
+
+resetServerRunStoreForTest();
+const cacheCatalog = canonicalServerRunToolCatalog(false);
+const analyzeMusicSchema = cacheCatalog.find((schema) => schema.name === 'analyze_music');
+assert(analyzeMusicSchema, 'analyze_music is in the canonical edit catalog');
+const cacheRun = createRun({
+  projectId: 'server-run-pure-tool-cache',
+  sessionGeneration: 'legacy',
+  provider: 'deepseek',
+  model: 'test-model',
+});
+const cacheActivation: ActivationState = {
+  current: new ToolActivation(cacheCatalog, [], ['analyze_music']),
+  tail: Promise.resolve(),
+  followupText: null,
+  toolFailures: new ToolFailureTracker(),
+};
+async function settledTool(
+  schema: NonNullable<typeof analyzeMusicSchema>,
+  args: Record<string, unknown>,
+  callId: string,
+  result: unknown,
+): Promise<unknown> {
+  const pending = executeBrowserTool(cacheRun, schema, args, callId, cacheActivation);
+  await Promise.resolve();
+  const argsDigest = digestToolArgs(args);
+  assert.equal(claimToolRequest(cacheRun, {
+    toolCallId: callId, argsDigest, claimId: `browser-${callId}`,
+  }), 'claimed');
+  assert.equal(settleToolResult(cacheRun, {
+    toolCallId: callId, argsDigest, claimId: `browser-${callId}`, result,
+  }), 'accepted');
+  try {
+    return await pending;
+  } finally {
+    await flushRunPersistence(cacheRun);
+  }
+}
+const musicArgs = { assetId: 'music-1' };
+assert.deepEqual(
+  await settledTool(analyzeMusicSchema, musicArgs, 'call-music-1', {
+    ok: true, bpm: 81, meter: '4/4',
+  }),
+  { ok: true, bpm: 81, meter: '4/4', activatedTools: [] },
+);
+const beforeCachedReplay = cacheRun.toolRequests.size;
+assert.deepEqual(
+  await executeBrowserTool(
+    cacheRun,
+    analyzeMusicSchema,
+    musicArgs,
+    'call-music-2',
+    cacheActivation,
+  ),
+  { ok: true, bpm: 81, meter: '4/4', activatedTools: [] },
+);
+assert.equal(
+  cacheRun.toolRequests.size,
+  beforeCachedReplay,
+  'an adjacent identical analyze_music success is replayed without a browser request',
+);
+assert.match(cacheActivation.repeatGuardNote ?? '', /skipped duplicate browser execution/,
+  'the guarded repeat leaves a concise completion note');
+const differentArgs = { assetId: 'music-2' };
+await settledTool(analyzeMusicSchema, differentArgs, 'call-music-3', { ok: true, bpm: 120 });
+assert.equal(cacheActivation.repeatGuardNote, undefined,
+  'different analyze_music arguments clear the adjacent-repeat guard');
+const readProjectSchema = cacheCatalog.find((schema) => schema.name === 'read_project');
+assert(readProjectSchema, 'read_project is in the canonical edit catalog');
+await settledTool(readProjectSchema, {}, 'call-read-project', { projectId: cacheRun.projectId });
+const beforeReadReplay = cacheRun.toolRequests.size;
+await settledTool(readProjectSchema, {}, 'call-read-project-2', { projectId: cacheRun.projectId });
+assert.equal(cacheRun.toolRequests.size, beforeReadReplay + 1,
+  'read_project is never cached because the editor state may change between reads');
+const beforeCrossToolReplay = cacheRun.toolRequests.size;
+await settledTool(analyzeMusicSchema, differentArgs, 'call-music-4', { ok: true, bpm: 120 });
+assert.equal(
+  cacheRun.toolRequests.size,
+  beforeCrossToolReplay + 1,
+  'an intervening tool clears the analyze_music result guard',
+);
+const failedArgs = { assetId: 'missing-music' };
+await assert.rejects(
+  settledTool(analyzeMusicSchema, failedArgs, 'call-music-failed', {
+    ok: false, error: 'music is missing',
+  }),
+  /music is missing/,
+);
+assert.equal(cacheActivation.toolFailures.hasUnresolved, true,
+  'a tool business failure remains unresolved in the server run');
+await settledTool(analyzeMusicSchema, failedArgs, 'call-music-retry', { ok: true, bpm: 90 });
+assert.equal(cacheActivation.toolFailures.hasUnresolved, false,
+  'only a successful retry of the same tool clears its failure');
+resetServerRunStoreForTest();
 
 // issue #81: server-side capability resolution must honor the keystore-backed
 // AGENT_MODEL_CAPABILITY_OVERRIDES exactly like the browser model-selection
@@ -290,4 +398,3 @@ assert.equal(
   'local providers without an override still resolve to the unknown-model fallback',
 );
 console.log('server executor capability-override checks passed');
-

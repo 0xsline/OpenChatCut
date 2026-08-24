@@ -18,7 +18,7 @@ export const CODEX_DISABLED_FEATURES = [
   'browser_use',
   'browser_use_external',
   'browser_use_full_cdp_access',
-  'code_mode_host',
+  'code_mode',
   'computer_use',
   'enable_mcp_apps',
   'hooks',
@@ -39,6 +39,7 @@ export const CODEX_DISABLED_FEATURES = [
 ] as const;
 const APP_SERVER_ARGS: readonly string[] = [
   ...CODEX_DISABLED_FEATURES.flatMap((feature) => ['-c', `features.${feature}=false`]),
+  '-c', 'features.code_mode_host=true',
   '-c', 'tools.view_image=false',
   '-c', 'web_search=disabled',
   'app-server', '--listen', 'stdio://',

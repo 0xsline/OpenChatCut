@@ -21,7 +21,7 @@
     },
     {
       "name": "read_timeline",
-      "description": "Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.",
+      "description": "Read the current timeline: fps and every clip, including canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus) and editable state (keyframes, transform, filters, volume, fades). Call this first to see current state before editing.",
       "input_schema": {
         "type": "object",
         "properties": {}
@@ -2288,7 +2288,7 @@
           },
           "updates": {
             "type": "array",
-            "description": "Generic clip update — type MUST be the item's actual kind, one of: video, audio, image, gif, svg, text, solid, motion-graphic. NEVER write the literal \"generic\" or \"clip\" as type — they are rejected (\"update type not supported\"). Shape: {type,itemId|id,track|trackId?,fromFrame|startFrame?,durationInFrames?,srcInFrame?,props?,volume?,fadeInSeconds?,fadeOutSeconds?,keyframes?,clearKeyframes?,filters?,transform?,backgroundFill?,backgroundFillStrength?,speed|playbackRate?}. Explicit slip: {operation:\"slip\",itemId|id,deltaInFrames}; positive moves the source window later, negative earlier, while timeline placement/duration stay fixed. The result reports appliedDeltaInFrames, srcInFrame, sourceWindow, clamped/status, or a structured code for unknown/invalid inputs. Media source ops: {operation:\"replace_media\",itemId,src} bakes/swaps the clip to a video shell at the same slot; {operation:\"relink_media\",itemId,src,name?,durationInFrames?,width?,height?} clip-only relink (detaches pool master — use manage_media_pool relink_asset to update pool + all clips). Do NOT set assetId (use deletes+adds to place a different pool asset). keyframes: {x|y|scale|rotation|opacity|volume:[{frame,value,easing?}]} item-local frames; clearKeyframes:true clears all, or clearKeyframes:\"opacity\" for one prop. filters: {brightness?,contrast?,saturate? 0..2 (1=normal), blur? 0..30 px} on visual clips. transform: {scale? 0.05..16, x?/y? % of canvas, rotation? deg, opacity? 0..1, borderRadius?}. backgroundFill:true fills unused canvas with a blurred copy; backgroundFillStrength sets an exact integer percentage from 0 to 100 and enables the fill when used alone. Only video/image clips on the bottom video track (V1). speed/playbackRate: 0.1..8 on video/audio/gif (retimes duration). No CSS layout fields (left/right/top/bottom/width/height) — position clips via transform or keyframes x/y; layout INSIDE an MG belongs in its code/props. effect/transition/zoom updates as before (effect assetId swap is for FX stack, not clip media).",
+            "description": "Generic clip update — type MUST be the item's actual kind, one of: video, audio, image, gif, svg, text, solid, motion-graphic. NEVER write the literal \"generic\" or \"clip\" as type — they are rejected (\"update type not supported\"). Shape: {type,itemId|id,track|trackId?,fromFrame|startFrame?,durationInFrames?,srcInFrame?,props?,volume?,fadeInSeconds?,fadeOutSeconds?,keyframes?,clearKeyframes?,filters?,transform?,backgroundFill?,backgroundFillStrength?,speed|playbackRate?}. Explicit slip: {operation:\"slip\",itemId|id,deltaInFrames}; positive moves the source window later, negative earlier, while timeline placement/duration stay fixed. The result reports appliedDeltaInFrames, srcInFrame, sourceWindow, clamped/status, or a structured code for unknown/invalid inputs. Media source ops: {operation:\"replace_media\",itemId,src} bakes/swaps the clip to a video shell at the same slot; {operation:\"relink_media\",itemId,src,name?,durationInFrames?,width?,height?} clip-only relink (detaches pool master — use manage_media_pool relink_asset to update pool + all clips). Do NOT set assetId (use deletes+adds to place a different pool asset). keyframes: {x|y|scale|rotation|opacity|volume:[{frame,value,easing?}]} item-local frames; easing is stored on the left keyframe and controls the following interval. It accepts linear/easeIn/easeOut/easeInOut and CSS aliases ease-in/ease-out/ease-in-out. clearKeyframes:true clears all, or clearKeyframes:\"opacity\" for one prop. filters: {brightness?,contrast?,saturate? 0..2 (1=normal), blur? 0..30 px} on visual clips. transform: {scale? 0.05..16, x?/y? % of canvas, rotation? deg, opacity? 0..1, borderRadius?}. backgroundFill:true fills unused canvas with a blurred copy; backgroundFillStrength sets an exact integer percentage from 0 to 100 and enables the fill when used alone. Only video/image clips on the bottom video track (V1). speed/playbackRate: 0.1..8 on video/audio/gif (retimes duration). No CSS layout fields (left/right/top/bottom/width/height) — position clips via transform or keyframes x/y; layout INSIDE an MG belongs in its code/props. effect/transition/zoom updates as before (effect assetId swap is for FX stack, not clip media).",
             "items": {
               "type": "object"
             }
@@ -4253,7 +4253,7 @@
     },
     {
       "name": "read_project",
-      "description": "Read the project currently targeted by this agent session, including draft state visible to the current tool context. Default = full overview. Narrow with view:\"timeline\"|\"assets\", timelineId, track, fromFrame/toFrame, itemId, or assetId; projectId cannot retarget this call. Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error. Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread.",
+      "description": "Read the project currently targeted by this agent session, including draft state visible to the current tool context. Default = full overview. Narrow with view:\"timeline\"|\"assets\", timelineId, track, fromFrame/toFrame, itemId, or assetId; projectId cannot retarget this call. Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error. Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread. Timeline items include canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus) and editable state (keyframes, transform, filters, volume, fadeInFrames, fadeOutFrames).",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5259,7 +5259,7 @@
   "ask": [
     {
       "name": "read_timeline",
-      "description": "Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.",
+      "description": "Read the current timeline: fps and every clip, including canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus) and editable state (keyframes, transform, filters, volume, fades). Call this first to see current state before editing.",
       "input_schema": {
         "type": "object",
         "properties": {}
@@ -5687,7 +5687,7 @@
     },
     {
       "name": "read_project",
-      "description": "Read the project currently targeted by this agent session, including draft state visible to the current tool context. Default = full overview. Narrow with view:\"timeline\"|\"assets\", timelineId, track, fromFrame/toFrame, itemId, or assetId; projectId cannot retarget this call. Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error. Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread.",
+      "description": "Read the project currently targeted by this agent session, including draft state visible to the current tool context. Default = full overview. Narrow with view:\"timeline\"|\"assets\", timelineId, track, fromFrame/toFrame, itemId, or assetId; projectId cannot retarget this call. Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error. Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread. Timeline items include canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus) and editable state (keyframes, transform, filters, volume, fadeInFrames, fadeOutFrames).",
       "input_schema": {
         "type": "object",
         "properties": {

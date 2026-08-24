@@ -13,11 +13,6 @@ import {
 import type { ProjectMeta } from '../persist/projectStoreCoordinators';
 import { kvRemoteMode } from '../persist/sharedKv';
 import { projectStoreWriteCredential } from '../persist/projectStoreTransport';
-import { warmUpLocalAsr } from '../transcript/local-asr';
-import {
-  preferredTranscriptionProvider,
-  TRANSCRIPTION_PROVIDER_CHANGE_EVENT,
-} from '../transcript/provider';
 
 export type AppRoute = { name: 'dashboard' } | { name: 'editor'; id: string };
 
@@ -109,37 +104,6 @@ export function useAgentBackendSync(): void {
     void syncAgentBackends(() => alive);
     return () => { alive = false; };
   }, []);
-}
-
-export function useLocalAsrWarmup(routeName: AppRoute['name']): void {
-  useEffect(() => {
-    if (routeName !== 'editor') return;
-    let alive = true;
-    let timer: number | null = null;
-    const schedule = () => {
-      if (timer !== null) window.clearTimeout(timer);
-      if (preferredTranscriptionProvider() !== 'local') return;
-      timer = window.setTimeout(() => {
-        void fetch('/api/asr-models', { cache: 'no-store' })
-          .then((response) => (response.ok ? response.json() : null))
-          .catch(() => null)
-          .then((body: { models?: { modelId?: string; downloaded?: boolean }[] } | null) => {
-            if (!alive || !Array.isArray(body?.models)) return;
-            const downloadedIds = body.models
-              .filter((model) => model.downloaded && typeof model.modelId === 'string')
-              .map((model) => model.modelId as string);
-            if (downloadedIds.length > 0) void warmUpLocalAsr(downloadedIds);
-          });
-      }, 4000);
-    };
-    schedule();
-    window.addEventListener(TRANSCRIPTION_PROVIDER_CHANGE_EVENT, schedule);
-    return () => {
-      alive = false;
-      if (timer !== null) window.clearTimeout(timer);
-      window.removeEventListener(TRANSCRIPTION_PROVIDER_CHANGE_EVENT, schedule);
-    };
-  }, [routeName]);
 }
 
 export interface ProjectStartupSource {

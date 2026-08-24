@@ -1,4 +1,5 @@
 import { compactToolResultForModel } from '../../src/agent/tool-result-compaction';
+import { isFailedToolResult, toolFailureReason } from '../../src/agent/toolFailure';
 import {
   MAX_SERVER_TOOL_REQUESTS,
   SERVER_TOOL_RESULT_TIMEOUT_MS,
@@ -29,6 +30,11 @@ type SettleToolInput = {
   result?: unknown;
   error?: string;
 };
+
+function normalizeToolSettlement(input: SettleToolInput): SettleToolInput {
+  if (input.error !== undefined || !isFailedToolResult(input.result)) return input;
+  return { ...input, result: undefined, error: toolFailureReason(input.result) };
+}
 
 type ReadyToolSettlement = {
   request: ServerToolRequest;
@@ -176,9 +182,10 @@ export function settleToolResult(
   run: ServerRun,
   input: SettleToolInput,
 ): ToolResultOutcome {
-  const validation = validateToolSettlement(dependencies, run, input);
+  const settled = normalizeToolSettlement(input);
+  const validation = validateToolSettlement(dependencies, run, settled);
   if (typeof validation === 'string') return validation;
   transitionToolSettlement(validation.request, validation.outcomeDigest);
-  deliverToolSettlement(dependencies, run, validation.request, input);
+  deliverToolSettlement(dependencies, run, validation.request, settled);
   return 'accepted';
 }

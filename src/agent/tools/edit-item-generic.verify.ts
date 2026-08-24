@@ -87,6 +87,20 @@ function recorder(relinkResult: MediaRelinkResult = { ok: true, changed: true })
   assert.deepEqual(calls.map((c) => c[0]), ['setItemKeyframe', 'setItemKeyframe', 'setItemKeyframe'], 'one setItemKeyframe per point');
   assert.deepEqual(calls[1], ['setItemKeyframe', 'v1_abc', 'opacity', 30, 0, 'easeOut'], 'frame/value/easing pass through');
 }
+for (const [alias, canonical] of [
+  ['ease-in', 'easeIn'],
+  ['ease-out', 'easeOut'],
+  ['ease-in-out', 'easeInOut'],
+] as const) {
+  const plan = validateGenericUpdate(state, {
+    type: 'video', itemId: 'v1_abc',
+    keyframes: { opacity: [{ frame: 0, value: 1, easing: alias }] },
+  });
+  assert.equal(plan.error, undefined, `${alias} validates`);
+  const { calls, commands } = recorder();
+  applyGeneric(plan, commands);
+  assert.deepEqual(calls[0], ['setItemKeyframe', 'v1_abc', 'opacity', 0, 1, canonical], `${alias} canonicalizes before commit`);
+}
 assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', keyframes: { opacity: [{ frame: 0, value: 2 }] } }).error, 'out-of-range keyframe value errors');
 assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', keyframes: { blur: [{ frame: 0, value: 1 }] } }).error, 'unknown keyframe prop errors');
 assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', keyframes: { opacity: [{ frame: 0, value: 1, easing: 'zigzag' }] } }).error, 'bad easing errors');

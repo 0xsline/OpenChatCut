@@ -34,6 +34,16 @@ export const AUTHORED_ADD_KINDS: ReadonlySet<string> = new Set(['text', 'solid']
 const finiteNum = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 
+const CSS_EASING_ALIASES: Record<string, Keyframe['easing']> = {
+  'ease-in': 'easeIn',
+  'ease-out': 'easeOut',
+  'ease-in-out': 'easeInOut',
+};
+
+function normalizeEasing(easing: unknown): unknown {
+  return typeof easing === 'string' ? CSS_EASING_ALIASES[easing] ?? easing : easing;
+}
+
 function findItem(items: TimelineItem[], id: unknown): TimelineItem | null {
   const q = String(id ?? '');
   if (!q) return null;
@@ -127,10 +137,11 @@ function parseKeyframesArg(raw: unknown): { keyframes?: ItemKeyframes; error?: s
         const unitNote = prop === 'x' || prop === 'y' ? ' (x/y are % of canvas, NOT px; 100 = one full canvas width/height)' : '';
         return { error: `keyframes.${prop}: value must be a finite number in ${lo}..${hi}${unitNote}` };
       }
-      if (k.easing !== undefined && !isValidEasing(k.easing)) {
+      const easing = normalizeEasing(k.easing);
+      if (easing !== undefined && !isValidEasing(easing)) {
         return { error: `keyframes.${prop}: easing must be linear/easeIn/easeOut/easeInOut or [x1,y1,x2,y2]` };
       }
-      kfs.push({ frame: Math.round(frame), value, ...(k.easing !== undefined ? { easing: k.easing as Keyframe['easing'] } : {}) });
+      kfs.push({ frame: Math.round(frame), value, ...(easing !== undefined ? { easing } : {}) });
     }
     if (kfs.length) out[prop as KeyframeProp] = kfs;
   }
