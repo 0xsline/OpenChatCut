@@ -265,12 +265,19 @@ try {
   });
   assert.equal(staleSession.isError, true);
   assert.equal(callOutcome(staleSession), 'stale', 'every tool call revalidates editor instance and base revision');
+  // After a stale error the transport is closed so subsequent requests fail
+  // with a session-not-found error instead of returning another stale result.
   registerEditor(projectA, editorA, revisionA, editorTools);
-  const notRevived = await boundA.client.callTool({
-    name: 'openchatcut_status',
-    arguments: {},
-  });
-  assert.equal(callOutcome(notRevived), 'stale', 'a stale transport cannot revive when an old binding reappears');
+  await assert.rejects(
+    boundA.client.callTool({ name: 'openchatcut_status', arguments: {} }),
+    (error: unknown) => error instanceof Error && /session not found or expired/i.test(error.message),
+    'a stale transport is closed and its session is evicted',
+  );
+  assert.equal(
+    mcpSessionsForTest().some((session) => session.id === boundA.sessionId),
+    false,
+    'stale transport session is removed from the sessions map',
+  );
 
   const switchClient = await connectClient(mcpUrl, 'openchatcut-mcp-switch');
   clients.push(switchClient);
