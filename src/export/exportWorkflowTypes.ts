@@ -5,7 +5,7 @@ import type { ExportQaReport } from './quality';
 import type { ExportResolution } from './mediaSettings';
 import type { ExportFailure } from './exportFailure';
 
-export type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml';
+export type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml' | 'jianying';
 export type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'verifying' | 'downloading' | 'completed' | 'failed' | 'cancelled';
 export type RenderEngine = 'idle' | 'checking' | 'browser' | 'server';
 export type Translate = (zh: string, params?: Record<string, string | number>) => string;

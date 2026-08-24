@@ -2,6 +2,24 @@
   "version": 1,
   "edit": [
     {
+      "name": "export_jianying_draft",
+      "description": "Export the current timeline as a CapCut/JianYing draft (via capcut-cli). The draft appears in the CapCut/JianYing project list; open it there to review and render. Only call this when the user explicitly confirms the export.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "draftName": {
+            "type": "string",
+            "description": "Draft name shown in CapCut/JianYing. Defaults to a timestamped name."
+          },
+          "draftsDir": {
+            "type": "string",
+            "description": "Optional draft store directory override (defaults to the CapCut store)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "read_timeline",
       "description": "Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.",
       "input_schema": {

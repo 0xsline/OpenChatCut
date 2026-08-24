@@ -1,6 +1,8 @@
 import type { TimelineState } from '../editor/types';
 import { trackAlias } from '../editor/types';
+import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
+import { captionCues, mediaItems } from '../agent/tools/jianying-export-tool';
 import {
   MAX_VIDEO_BITRATE_MBPS,
   MIN_VIDEO_BITRATE_MBPS,
@@ -15,6 +17,12 @@ import {
 } from './useExportDialogModel';
 import type { ExportQaUiState, ExportTab } from './useExportWorkflow';
 import { fcpxmlBackgroundFillCount } from './fcpxml';
+import { loadJianYingDraftPreference, saveJianYingDraftPreference, type JianYingDraftStore } from './jianyingDraftPreference';
+import { useState } from 'react';
+
+/** macOS default store for the Chinese JianYing (剪映专业版) app; drafts in 6.0+
+ * are encrypted and capcut-cli cannot decrypt them, hence the ≤5.9 note. */
+const JIANYING_STORE = '~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft';
 
 const resolutionLabel = (value: string): string => value === '4k' ? '4K' : value;
 const clampBitrate = (value: number): number => Math.max(
@@ -203,11 +211,136 @@ function XmlTab({ state, nleFormat, includeMg, mgCount, setNleFormat, setInclude
   );
 }
 
+interface JianyingExportOutcome {
+  draftName: string;
+  draftPath: string;
+  addedVideos: number;
+  addedAudios: number;
+  captions: number;
+  warnings: string[];
+}
+
+function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
+  const t = useT();
+  const initial = loadJianYingDraftPreference();
+  const [draftName, setDraftName] = useState(initial.draftName || base);
+  const [store, setStore] = useState<JianYingDraftStore>(initial.store);
+  const [customDir, setCustomDir] = useState(initial.customDir);
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<JianyingExportOutcome | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const draftsDir = store === 'jianying' ? JIANYING_STORE : store === 'custom' ? customDir.trim() : '';
+  const updateStore = (next: JianYingDraftStore) => {
+    setStore(next);
+    saveJianYingDraftPreference({ store: next, customDir, draftName: draftName === base ? '' : draftName });
+  };
+  const run = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setOutcome(null);
+    try {
+      const body = {
+        draftName: draftName.trim(),
+        fps: state.fps,
+        items: mediaItems(state.items).map((item) => ({
+          kind: item.kind,
+          src: item.src ?? '',
+          startFrame: item.startFrame,
+          durationInFrames: item.durationInFrames,
+          volume: item.volume,
+          name: item.name,
+        })),
+        captions: captionCues(state, state.captions),
+        draftsDir,
+      };
+      const response = await fetch('/api/external-agent/jianying-export', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = (await response.json().catch(() => null)) as (JianyingExportOutcome & { ok?: boolean; error?: string }) | null;
+      if (!response.ok || !data?.ok) {
+        setError(data?.error ?? t('剪映草稿导出失败'));
+        return;
+      }
+      saveJianYingDraftPreference({ store, customDir, draftName: draftName.trim() });
+      setOutcome(data);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <InfoCard icon="video" title={t('生成剪映草稿')}
+        text={t('把时间线上的视频、音轨与字幕写入本地草稿库，用剪映或 CapCut 打开即可继续剪辑。')} />
+      <Row label={t('草稿名称')}>
+        <input className="cc-export-select" value={draftName}
+          onChange={(event) => setDraftName(event.target.value)} disabled={busy} />
+      </Row>
+      <Row label={t('目标草稿库')}>
+        <Segmented
+          options={[
+            { value: 'capcut', label: 'CapCut 草稿库' },
+            { value: 'jianying', label: '剪映草稿库' },
+            { value: 'custom', label: t('自定义路径') },
+          ] as const}
+          value={store}
+          onChange={updateStore}
+        />
+      </Row>
+      {store === 'jianying' && <p className="cc-export-footnote">{JIANYING_STORE}</p>}
+      {store === 'custom' && (
+        <Row label={t('草稿库路径')}>
+          <input className="cc-export-select" placeholder="~/Movies/.../com.lveditor.draft"
+            value={customDir}
+            onChange={(event) => {
+              setCustomDir(event.target.value);
+              saveJianYingDraftPreference({ store, customDir: event.target.value, draftName: draftName === base ? '' : draftName });
+            }}
+            disabled={busy} />
+        </Row>
+      )}
+      <p className="cc-export-footnote">
+        {t('剪映 6.0 起草稿文件已加密，本工具生成明文草稿，建议使用剪映 5.9.0 或更早版本打开；CapCut 国际版不受此限制。')}
+      </p>
+      {error && <p className="cc-export-error" role="alert">{error}</p>}
+      {outcome && (
+        <div className="cc-export-info">
+          <span><Icon name="check" size={19} /></span>
+          <div>
+            <strong>{t('草稿已生成')} · {outcome.draftName}</strong>
+            <p>
+              {t('{videos} 个视频 · {audios} 个音轨 · {captions} 条字幕', {
+                videos: outcome.addedVideos,
+                audios: outcome.addedAudios,
+                captions: outcome.captions,
+              })}
+              <br />
+              {outcome.draftPath}
+              {outcome.warnings.length > 0 && (
+                <><br />{outcome.warnings.join('；')}</>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+      <button type="button" className="cc-export-cta" onClick={() => void run()} disabled={busy}>
+        {!busy && <Icon name="download" size={17} />}
+        {busy ? t('正在生成草稿…') : t('导出到剪映')}
+      </button>
+    </>
+  );
+}
+
 export interface ExportTabContentProps extends VideoTabProps, XmlTabProps {
   tab: ExportTab;
   state: TimelineState;
   subtitles: ExportSubtitleSettings;
   mgCount: number;
+  base: string;
 }
 
 export function ExportTabContent(props: ExportTabContentProps) {
@@ -215,5 +348,6 @@ export function ExportTabContent(props: ExportTabContentProps) {
   if (props.tab === 'audio') return <AudioTab />;
   if (props.tab === 'mg') return <MotionGraphicsTab count={props.mgCount} />;
   if (props.tab === 'subtitles') return <SubtitlesTab state={props.state} subtitles={props.subtitles} />;
+  if (props.tab === 'jianying') return <JianyingTab state={props.state} base={props.base} />;
   return <XmlTab {...props} />;
 }

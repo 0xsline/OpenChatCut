@@ -1,7 +1,9 @@
 import type { AgentToolSchema } from '../../tool-schema';
+import { jianyingExportToolSchema } from '../jianying-export-tool';
 
 /** Core schemas shared by the browser registry and the server-side data-only executor. */
 export const CORE_TOOL_SCHEMAS: AgentToolSchema[] = [
+  jianyingExportToolSchema,
   {
     name: 'read_timeline',
     description: 'Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.',
