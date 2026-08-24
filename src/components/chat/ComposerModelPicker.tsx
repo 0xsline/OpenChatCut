@@ -35,11 +35,7 @@ export function ComposerModelPicker({ anchor, onClose, view }: {
           {view.modelState.loaded ? t('请先在设置中配置一个模型厂商。') : t('正在读取模型配置…')}
         </div>
       )}
-      {(
-        view.modelState.choices.some((choice) => choice.backend === 'codex')
-          ? view.modelState.choices.filter((choice) => choice.backend === 'codex')
-          : view.modelState.choices
-      ).map((choice) => {
+      {view.modelState.choices.map((choice) => {
         const active = choice.id === view.modelState.activeId;
         return (
           <button type="button" key={choice.id}
