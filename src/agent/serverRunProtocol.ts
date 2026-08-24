@@ -4,7 +4,11 @@ import { TOOL_SCHEMAS } from './tools';
 import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import { ToolActivation } from './tool-activation';
 import type { AgentToolSchema } from './tool-schema';
-import type { AgentCacheMode } from './settings/agentSettings';
+import {
+  DEFAULT_ACCEPTANCE_ITERATIONS,
+  normalizeAcceptanceIterations,
+  type AgentCacheMode,
+} from './settings/agentSettings';
 
 
 import type { AgentSend, AgentSendOptions } from './useAgentRun';
@@ -118,6 +122,8 @@ export interface ServerRunPayload {
   readonly backend?: ServerRunBackend;
   readonly cacheMode: AgentCacheMode;
   readonly maxOutputTokens: number;
+  readonly autonomousAcceptance: boolean;
+  readonly maxAcceptanceIterations: number;
   readonly externalSessionId?: string;
   readonly openAiApiMode?: string;
 }
@@ -130,6 +136,8 @@ interface ServerRunTransportContext {
   readonly backend?: ServerRunBackend;
   readonly cacheMode: AgentCacheMode;
   readonly maxOutputTokens: number;
+  readonly autonomousAcceptance?: boolean;
+  readonly maxAcceptanceIterations?: number;
   readonly openAiApiMode?: string;
   readonly externalSessionId?: string;
 }
@@ -310,6 +318,10 @@ export function buildServerRunPayload(
     ...(transport.backend ? { backend: transport.backend } : {}),
     cacheMode: transport.cacheMode,
     maxOutputTokens: transport.maxOutputTokens,
+    autonomousAcceptance: transport.autonomousAcceptance === true,
+    maxAcceptanceIterations: transport.autonomousAcceptance === true
+      ? normalizeAcceptanceIterations(transport.maxAcceptanceIterations)
+      : DEFAULT_ACCEPTANCE_ITERATIONS,
     ...(transport.openAiApiMode ? { openAiApiMode: transport.openAiApiMode } : {}),
     ...(transport.externalSessionId
       ? { externalSessionId: transport.externalSessionId }

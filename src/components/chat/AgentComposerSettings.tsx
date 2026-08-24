@@ -1,7 +1,10 @@
 import type { CSSProperties } from 'react';
 import {
   AGENT_CACHE_MODES,
+  MAX_ACCEPTANCE_ITERATIONS,
+  MIN_ACCEPTANCE_ITERATIONS,
   MG_TIERS,
+  normalizeAcceptanceIterations,
   type AgentCacheMode,
   type AgentSettings,
   type MgTier,
@@ -88,6 +91,21 @@ export function AgentComposerSettings(props: AgentComposerSettingsProps) {
       </label>
       <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
         {t('先出编号计划，确认后再动手。')}
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
+        <input type="checkbox" checked={settings.autonomousAcceptance}
+          onChange={(event) => onSettingsChange({ autonomousAcceptance: event.target.checked })}
+          style={{ accentColor: theme.accent }} />
+        {t('自主验收')}
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px 10px', color: theme.textDim, fontSize: 11 }}>
+        <span>{t('修改后主动读取最新工程并检查结果，最多')}</span>
+        <input type="number" min={MIN_ACCEPTANCE_ITERATIONS} max={MAX_ACCEPTANCE_ITERATIONS}
+          value={settings.maxAcceptanceIterations} disabled={!settings.autonomousAcceptance}
+          onChange={(event) => onSettingsChange({ maxAcceptanceIterations: normalizeAcceptanceIterations(Number(event.target.value)) })}
+          aria-label={t('自主验收最大轮次')}
+          style={{ width: 42, color: theme.text, background: theme.panel, border: `1px solid ${theme.borderLight}`, borderRadius: 5 }} />
+        <span>{t('轮')}</span>
       </div>
     </>
   );

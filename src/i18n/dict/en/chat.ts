@@ -245,6 +245,15 @@ export default {
   '短对话使用默认缓存；长对话在支持的模型厂商上请求 1 小时缓存。': 'Short sessions use the default cache; long sessions request a 1-hour cache from supported providers.',
   '计划模式': 'Plan mode',
   '先出编号计划，确认后再动手。': 'Presents a numbered plan first; acts after you confirm.',
+  '自主验收': 'Autonomous acceptance',
+  '修改后主动读取最新工程并检查结果，最多': 'After edits, inspect the latest project state for up to',
+  '自主验收最大轮次': 'Maximum autonomous acceptance iterations',
+  '轮': 'iterations',
+  '自主验收：{status} · 第 {iteration}/{max} 轮': 'Autonomous acceptance: {status} · pass {iteration}/{max}',
+  '检查中': 'Checking',
+  '等待补充信息': 'Waiting for input',
+  '已通过': 'Passed',
+  '未通过': 'Not passed',
 
   // ── ChatComposer: Reference / Skill / Action Bar ──
   '选择模式：点片段 / 拖画布 / 选文字稿作为引用': 'Selection mode: click clips / drag canvas / select transcript as references',

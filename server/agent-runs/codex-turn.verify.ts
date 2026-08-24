@@ -15,6 +15,7 @@ import type { AgentToolSchema } from '../../src/agent/tool-schema';
 import type { CodexTurnStreamEvent } from '../../shared/codex-agent';
 import type { ServerRun } from './store-types';
 import { ToolFailureTracker } from '../../src/agent/toolFailure';
+import { createAcceptanceLoop } from './acceptance-loop';
 
 const searchMediaSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'search_media')!;
 const analyzeMusicSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'analyze_music')!;
@@ -35,6 +36,7 @@ function makeInput(run: ServerRun) {
     tail: Promise.resolve(),
     followupText: null,
     toolFailures: new ToolFailureTracker(),
+    acceptance: createAcceptanceLoop(false, 3),
   };
   const messages: ModelMessage[] = [{ role: 'user', content: 'Find media.' }];
   return {

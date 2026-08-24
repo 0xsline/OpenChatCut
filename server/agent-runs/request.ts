@@ -1,5 +1,10 @@
 import type { IncomingMessage } from 'node:http';
-import type { AgentCacheMode } from '../../src/agent/settings/agentSettings';
+import {
+  DEFAULT_ACCEPTANCE_ITERATIONS,
+  MAX_ACCEPTANCE_ITERATIONS,
+  MIN_ACCEPTANCE_ITERATIONS,
+  type AgentCacheMode,
+} from '../../src/agent/settings/agentSettings';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_MESSAGES = 64;
@@ -27,6 +32,8 @@ export interface ValidatedCreateInput {
   readonly instructions?: string;
   readonly cacheMode: AgentCacheMode;
   readonly maxOutputTokens: number;
+  readonly autonomousAcceptance: boolean;
+  readonly maxAcceptanceIterations: number;
 }
 
 export function requestHeader(req: IncomingMessage, name: string): string | null {
@@ -133,6 +140,20 @@ function validatedMaxOutputTokens(value: unknown): number {
   }
   return value;
 }
+function validatedAcceptance(body: Record<string, unknown>): {
+  autonomousAcceptance: boolean;
+  maxAcceptanceIterations: number;
+} {
+  if (body.autonomousAcceptance !== undefined && typeof body.autonomousAcceptance !== 'boolean') {
+    throw new Error('autonomousAcceptance must be a boolean');
+  }
+  const value = body.maxAcceptanceIterations ?? DEFAULT_ACCEPTANCE_ITERATIONS;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)
+    || value < MIN_ACCEPTANCE_ITERATIONS || value > MAX_ACCEPTANCE_ITERATIONS) {
+    throw new Error(`maxAcceptanceIterations must be an integer between ${MIN_ACCEPTANCE_ITERATIONS} and ${MAX_ACCEPTANCE_ITERATIONS}`);
+  }
+  return { autonomousAcceptance: body.autonomousAcceptance === true, maxAcceptanceIterations: value };
+}
 function validatedOptionalIdentifier(
   value: unknown,
   field: 'model' | 'externalSessionId',
@@ -158,6 +179,7 @@ export function validateCreateInput(body: Record<string, unknown>): ValidatedCre
   const messages = validatedMessages(body.messages);
   const cacheMode = validatedCacheMode(body.cacheMode);
   const maxOutputTokens = validatedMaxOutputTokens(body.maxOutputTokens);
+  const acceptance = validatedAcceptance(body);
   const model = validatedOptionalIdentifier(body.model, 'model', MAX_MODEL_ID_CHARS);
   const externalSessionId = validatedOptionalIdentifier(
     body.externalSessionId,
@@ -189,6 +211,7 @@ export function validateCreateInput(body: Record<string, unknown>): ValidatedCre
     externalSessionId,
     cacheMode,
     maxOutputTokens,
+    ...acceptance,
     ...(instructions ? { instructions } : {}),
   };
 }

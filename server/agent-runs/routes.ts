@@ -158,6 +158,8 @@ function runRequestDigests(
       openAiApiMode: execution.openAiApiMode,
       cacheMode: execution.cacheMode,
       maxOutputTokens: execution.maxOutputTokens,
+      autonomousAcceptance: execution.autonomousAcceptance,
+      maxAcceptanceIterations: execution.maxAcceptanceIterations,
       tools: execution.tools,
       instructions: execution.instructions,
     }),
@@ -218,6 +220,8 @@ async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<
     openAiApiMode,
     cacheMode: input.cacheMode,
     maxOutputTokens: input.maxOutputTokens,
+    autonomousAcceptance: input.autonomousAcceptance,
+    maxAcceptanceIterations: input.maxAcceptanceIterations,
     origin,
     tools,
     instructions: input.instructions,
@@ -495,7 +499,9 @@ function sendRouteError(res: ServerResponse, error: unknown): void {
     return;
   }
   if (error instanceof CursorProtocolError) {
-    sendJson(res, error.status, { error: error.message, ...(error.details ?? {}) });
+    const details = error.details && typeof error.details === 'object' && !Array.isArray(error.details)
+      ? error.details : {};
+    sendJson(res, error.status, Object.assign({ error: error.message }, details));
     return;
   }
   const message = error instanceof Error ? error.message : String(error);

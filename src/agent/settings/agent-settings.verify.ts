@@ -13,6 +13,8 @@ assert.deepStrictEqual(loadAgentSettings(), DEFAULT_AGENT_SETTINGS, '无存储 �
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.mgTier, 'balance', 'mgTier 默认 balance');
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.planMode, false, 'planMode 默认 false');
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.cacheMode, 'short', 'cacheMode 默认 short');
+assert.strictEqual(DEFAULT_AGENT_SETTINGS.autonomousAcceptance, false, '自主验收默认关闭，旧用户行为不变');
+assert.strictEqual(DEFAULT_AGENT_SETTINGS.maxAcceptanceIterations, 3, '自主验收默认最多 3 轮');
 assert.deepStrictEqual([...AGENT_CACHE_MODES], ['short', 'long']);
 assert.deepStrictEqual([...MG_TIERS], ['speed', 'balance', 'quality']);
 
@@ -26,17 +28,26 @@ Object.defineProperty(globalThis, 'localStorage', {
     setItem: (k: string, v: string) => { store.set(k, v); },
   },
 });
-saveAgentSettings({ mgTier: 'quality', planMode: true, cacheMode: 'long', serverRun: false });
+saveAgentSettings({
+  mgTier: 'quality', planMode: true, cacheMode: 'long', serverRun: false,
+  autonomousAcceptance: true, maxAcceptanceIterations: 5,
+});
 assert.deepStrictEqual(
   loadAgentSettings(),
-  { mgTier: 'quality', planMode: true, cacheMode: 'long', serverRun: true },
+  {
+    mgTier: 'quality', planMode: true, cacheMode: 'long', serverRun: true,
+    autonomousAcceptance: true, maxAcceptanceIterations: 5,
+  },
   'save→load roundtrip 保真(server-side execution is always on)',
 );
 // Removed settings from older storage must not leak back into the active settings shape.
 store.set('cc.agentSettings.v1', JSON.stringify({ skillGuard: true, thinkingEnabled: true, mgTier: 'speed', planMode: false }));
 assert.deepStrictEqual(
   loadAgentSettings(),
-  { mgTier: 'speed', planMode: false, cacheMode: 'short', serverRun: true },
+  {
+    mgTier: 'speed', planMode: false, cacheMode: 'short', serverRun: true,
+    autonomousAcceptance: false, maxAcceptanceIterations: 3,
+  },
   '旧 thinkingEnabled 字段被忽略且新缓存字段安全回退(server-side execution stays on)',
 );
 // Illegal tier / Missing fields fall back to default

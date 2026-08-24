@@ -32,6 +32,7 @@ import {
   settleToolResult,
 } from './store.ts';
 import { canonicalServerRunToolCatalog } from './tool-policy.ts';
+import { createAcceptanceLoop } from './acceptance-loop.ts';
 function record(value: unknown): Record<string, unknown> {
   assert(value && typeof value === 'object' && !Array.isArray(value));
   return value as Record<string, unknown>;
@@ -94,6 +95,15 @@ assert.equal(validatedRequest.capability, validRequest.capability);
 assert.equal(validatedRequest.cacheMode, 'long');
 assert.equal(validatedRequest.model, 'configured-model');
 assert.equal(validatedRequest.externalSessionId, 'browser-session-1');
+assert.equal(validatedRequest.autonomousAcceptance, false, 'omitted feature flag preserves existing runs');
+assert.equal(validatedRequest.maxAcceptanceIterations, 3);
+const acceptanceRequest = validateCreateInput({
+  ...validRequest,
+  autonomousAcceptance: true,
+  maxAcceptanceIterations: 7,
+});
+assert.equal(acceptanceRequest.autonomousAcceptance, true);
+assert.equal(acceptanceRequest.maxAcceptanceIterations, 7);
 assert.equal(
   validatedRequest.maxOutputTokens,
   64_000,
@@ -128,6 +138,14 @@ assert.throws(
 assert.throws(
   () => validateCreateInput({ ...validRequest, maxOutputTokens: 4_096.5 }),
   /maxOutputTokens/,
+);
+assert.throws(
+  () => validateCreateInput({ ...validRequest, autonomousAcceptance: 'yes' }),
+  /autonomousAcceptance/,
+);
+assert.throws(
+  () => validateCreateInput({ ...validRequest, maxAcceptanceIterations: 11 }),
+  /maxAcceptanceIterations/,
 );
 assert.throws(
   () => validateCreateInput({ ...validRequest, model: 'x'.repeat(257) }),
@@ -290,6 +308,7 @@ const cacheActivation: ActivationState = {
   tail: Promise.resolve(),
   followupText: null,
   toolFailures: new ToolFailureTracker(),
+  acceptance: createAcceptanceLoop(false, 3),
 };
 async function settledTool(
   schema: NonNullable<typeof analyzeMusicSchema>,

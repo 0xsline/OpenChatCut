@@ -6,6 +6,11 @@ export interface ServerRunInspectorEvent {
   readonly data: Record<string, unknown>;
   readonly at: number;
 }
+export interface ServerRunAcceptance {
+  readonly status: 'checking' | 'paused' | 'passed' | 'failed';
+  readonly iteration: number;
+  readonly maxIterations: number;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -52,6 +57,17 @@ export function serverRunTerminalReason(
   return typeof reason === 'string' && reason.length > 0 ? reason : undefined;
 }
 
+export function serverRunAcceptance(
+  events: readonly ServerRunInspectorEvent[],
+): ServerRunAcceptance | undefined {
+  const event = [...events].reverse().find((candidate) => candidate.type === 'acceptance');
+  if (!event) return undefined;
+  const { status, iteration, maxIterations } = event.data;
+  if ((status !== 'checking' && status !== 'paused' && status !== 'passed' && status !== 'failed')
+    || !Number.isSafeInteger(iteration) || !Number.isSafeInteger(maxIterations)) return undefined;
+  return { status, iteration: Number(iteration), maxIterations: Number(maxIterations) };
+}
+
 export function serverEventDetail(event: ServerRunInspectorEvent): string | undefined {
   const data = event.data;
   if (typeof data.name === 'string') return data.name;
@@ -60,6 +76,7 @@ export function serverEventDetail(event: ServerRunInspectorEvent): string | unde
   }
   if (typeof data.error === 'string') return data.error;
   if (typeof data.reason === 'string') return data.reason;
+  if (event.type === 'acceptance' && typeof data.status === 'string') return data.status;
   if (event.type === 'text-end' || event.type === 'finish') return '完成';
   return undefined;
 }

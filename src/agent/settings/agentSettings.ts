@@ -11,6 +11,9 @@ export type MgTier = 'speed' | 'balance' | 'quality';
 export const MG_TIERS: readonly MgTier[] = ['speed', 'balance', 'quality'];
 export type AgentCacheMode = 'short' | 'long';
 export const AGENT_CACHE_MODES: readonly AgentCacheMode[] = ['short', 'long'];
+export const DEFAULT_ACCEPTANCE_ITERATIONS = 3;
+export const MIN_ACCEPTANCE_ITERATIONS = 1;
+export const MAX_ACCEPTANCE_ITERATIONS = 10;
 
 
 export interface AgentSettings {
@@ -22,6 +25,10 @@ export interface AgentSettings {
   cacheMode: AgentCacheMode;
   /** Opt-in: run the Agent loop on the local server so browser refreshes do not interrupt it. */
   serverRun: boolean;
+  /** Opt-in settled-turn verification after the Agent changes project state. */
+  autonomousAcceptance: boolean;
+  /** Maximum verification passes before the run reports an unverified result. */
+  maxAcceptanceIterations: number;
 }
 
 const KEY = 'cc.agentSettings.v1';
@@ -31,7 +38,18 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   planMode: false,
   cacheMode: 'short',
   serverRun: true,
+  autonomousAcceptance: false,
+  maxAcceptanceIterations: DEFAULT_ACCEPTANCE_ITERATIONS,
 };
+
+export function normalizeAcceptanceIterations(value: unknown): number {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= MIN_ACCEPTANCE_ITERATIONS
+    && value <= MAX_ACCEPTANCE_ITERATIONS
+    ? value
+    : DEFAULT_ACCEPTANCE_ITERATIONS;
+}
 
 export function loadAgentSettings(): AgentSettings {
   try {
@@ -45,6 +63,8 @@ export function loadAgentSettings(): AgentSettings {
         ? parsed.cacheMode as AgentCacheMode
         : DEFAULT_AGENT_SETTINGS.cacheMode,
       serverRun: true, // server-side execution is the only Agent path (issue-less refactor); stored/old false is ignored.
+      autonomousAcceptance: parsed.autonomousAcceptance === true,
+      maxAcceptanceIterations: normalizeAcceptanceIterations(parsed.maxAcceptanceIterations),
     };
   } catch {
     return { ...DEFAULT_AGENT_SETTINGS };

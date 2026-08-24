@@ -20,7 +20,12 @@ import {
   type AgentRunRecord,
   type AgentRuntimeSidecar,
 } from '../../persist/agentRuntimeStore';
-import { serverEventsForRun, serverRunTerminalReason, isServerRunRecord } from './serverRunInspector';
+import {
+  isServerRunRecord,
+  serverEventsForRun,
+  serverRunAcceptance,
+  serverRunTerminalReason,
+} from './serverRunInspector';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 
@@ -309,6 +314,7 @@ function InspectorContent({ sidecar, loading, failed, t }: {
   const serverRun = isServerRunRecord(run);
   const serverEvents = serverRun ? serverEventsForRun(run) : [];
   const terminalReason = serverRun ? serverRunTerminalReason(run, serverEvents) : undefined;
+  const acceptance = serverRun ? serverRunAcceptance(serverEvents) : undefined;
   return <>
     <div style={runSummary}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -323,6 +329,11 @@ function InspectorContent({ sidecar, loading, failed, t }: {
     </div>
     {run.status === 'interrupted' && <div role="note" style={interrupted}>{t('这次运行被意外中断，系统不会自动继续或重放副作用。请先检查外部任务状态，再决定是否重试。')}{terminalReason && <div style={reason}>{terminalReason}</div>}</div>}
     {serverRun && run.status !== 'interrupted' && terminalReason && <div role="note" style={serverReason}>{terminalReason}</div>}
+    {acceptance && <div role="status" style={serverReason}>{t('自主验收：{status} · 第 {iteration}/{max} 轮', {
+      status: t({ checking: '检查中', paused: '等待补充信息', passed: '已通过', failed: '未通过' }[acceptance.status]),
+      iteration: acceptance.iteration,
+      max: acceptance.maxIterations,
+    })}</div>}
     <ContextSection run={run} t={t} />
     <CheckpointSection checkpoint={checkpoint} t={t} />
     <ToolOutcomeSection events={run.events} t={t} />

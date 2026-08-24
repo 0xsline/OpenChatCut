@@ -62,6 +62,8 @@ assert.equal(askPayload.askOnly, true, 'ask-only mode survives the server-run tr
 assert.deepEqual(askPayload.references, references, 'message references survive the server-run transport boundary');
 assert.notEqual(askPayload.references, references, 'payload snapshots references instead of retaining caller mutation');
 assert.equal(askPayload.externalSessionId, sessionId, 'retries and reconnects retain the external session identity');
+assert.equal(askPayload.autonomousAcceptance, false, 'old callers retain the previous completion behavior');
+assert.equal(askPayload.maxAcceptanceIterations, 3);
 
 const editPayload = buildServerRunPayload(
   'project-1',
@@ -102,6 +104,8 @@ const contextualPayload = buildServerRunPayload(
     provider: 'deepseek',
     model: 'deepseek-chat',
     cacheMode: 'long',
+    autonomousAcceptance: true,
+    maxAcceptanceIterations: 5,
     maxOutputTokens: 64_000,
     openAiApiMode: 'chat',
     externalSessionId: sessionId,
@@ -117,6 +121,8 @@ assert.equal(contextualPayload.provider, 'deepseek');
 assert.equal(contextualPayload.model, 'deepseek-chat');
 assert.equal(contextualPayload.openAiApiMode, 'chat');
 assert.equal(contextualPayload.cacheMode, 'long');
+assert.equal(contextualPayload.autonomousAcceptance, true);
+assert.equal(contextualPayload.maxAcceptanceIterations, 5);
 assert.equal(
   contextualPayload.maxOutputTokens,
   64_000,
