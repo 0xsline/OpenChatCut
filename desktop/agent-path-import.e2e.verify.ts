@@ -54,7 +54,7 @@ try {
     knownHashes: [],
   });
   assert.equal(unconfigured.errors[0]?.code, 'IMPORT_ROOTS_NOT_CONFIGURED');
-  assert.match(unconfigured.errors[0]?.error ?? '', /\.env\.local/, 'unconfigured roots explain the next action');
+  assert.match(unconfigured.errors[0]?.error ?? '', /系统窗口.*文件夹/, 'unconfigured roots explain the next action');
 
   seedKeystore({ AGENT_IMPORT_ROOTS: importRoot });
 

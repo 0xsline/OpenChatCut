@@ -1,5 +1,5 @@
 import './chdir-first.ts';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -27,7 +27,10 @@ import { supportsDirectDesktopUpdates } from './update-service.ts';
 import { installDesktopInferenceIpc } from './native-inference-ipc.ts';
 import { detectDesktopHardwareProfile } from './native-hardware-profile.ts';
 import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
-import { importAgentPaths } from './agent-path-import.ts';
+import {
+  AGENT_IMPORT_ROOTS_KEY,
+  importAgentPathsWithGrant,
+} from './agent-path-import.ts';
 import { getKey, setKeys } from '../server/keystore.ts';
 import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
 import { modelCachePath } from '../shared/model-cache-path.ts';
@@ -95,6 +98,16 @@ function handOffExternalUrl(decision: DesktopPageUrlDecision): void {
   void shell.openExternal(decision.url).catch((error: unknown) => {
     console.error('[desktop] failed to open external URL:', error);
   });
+}
+
+function agentImportPickerDefaultPath(requestedPath: string): string {
+  try {
+    return existsSync(requestedPath) && statSync(requestedPath).isDirectory()
+      ? requestedPath
+      : dirname(requestedPath);
+  } catch {
+    return dirname(requestedPath);
+  }
 }
 
 function installDesktopPageGuards(win: BrowserWindow, trustedOrigin: string): void {
@@ -314,7 +327,7 @@ async function boot(): Promise<void> {
     }),
   });
   installDirectoryWatchIpc(origin);
-  ipcMain.handle(AGENT_PATH_IMPORT_CHANNEL, trustedDesktopHandler(origin, async (_event, request: unknown) => {
+  ipcMain.handle(AGENT_PATH_IMPORT_CHANNEL, trustedDesktopHandler(origin, async (event, request: unknown) => {
     const value = request as { paths?: unknown; projectId?: unknown; knownHashes?: unknown };
     const paths = Array.isArray(value?.paths)
       ? value.paths.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0 && entry.length < 4096)
@@ -325,7 +338,22 @@ async function boot(): Promise<void> {
     if (!paths.length || typeof value?.projectId !== 'string') {
       throw new Error('invalid agent path import request');
     }
-    return importAgentPaths({ paths, projectId: value.projectId, knownHashes });
+    return importAgentPathsWithGrant({ paths, projectId: value.projectId, knownHashes }, {
+      chooseRoot: async (requestedPath) => {
+        const parent = BrowserWindow.fromWebContents(event.sender);
+        const options: OpenDialogOptions = {
+          title: '选择允许 Agent 访问的素材文件夹',
+          defaultPath: agentImportPickerDefaultPath(requestedPath),
+          properties: ['openDirectory'],
+        };
+        const selected = parent
+          ? await dialog.showOpenDialog(parent, options)
+          : await dialog.showOpenDialog(options);
+        return selected.canceled ? null : (selected.filePaths[0] ?? null);
+      },
+      readRoots: () => getKey(AGENT_IMPORT_ROOTS_KEY as never),
+      writeRoots: (roots) => setKeys({ [AGENT_IMPORT_ROOTS_KEY]: roots }),
+    });
   }));
   const hardware = await detectDesktopHardwareProfile(app);
   const desktopInference = installDesktopInferenceIpc(

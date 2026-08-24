@@ -22,6 +22,19 @@ import {
 
 export const AGENT_IMPORT_ROOTS_KEY = 'AGENT_IMPORT_ROOTS';
 
+function parseAuthorizedRoots(raw: string): string[] {
+  return raw
+    .split(/[\n,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+export function appendAgentImportRoot(raw: string, root: string): string {
+  const clean = root.trim();
+  if (!clean || /[\r\n,]/.test(clean)) throw new Error('所选目录名称不能包含逗号或换行符');
+  return [...new Set([...parseAuthorizedRoots(raw), clean])].join(',');
+}
+
 /** Whether a requested path sits inside one of the configured import
  *  roots. Extracted for the check; uses the same containment semantics as
  *  watched folders. */
@@ -30,12 +43,7 @@ export function pathAllowedByRoots(roots: readonly string[], path: string): bool
 }
 
 function authorizedRoots(): readonly string[] {
-  const raw = getKey(AGENT_IMPORT_ROOTS_KEY as never).trim();
-  if (!raw) return [];
-  return raw
-    .split(/[\n,]+/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+  return parseAuthorizedRoots(getKey(AGENT_IMPORT_ROOTS_KEY as never));
 }
 
 async function canonicalRoots(roots: readonly string[]): Promise<string[]> {
@@ -68,7 +76,7 @@ async function planCandidates(paths: readonly string[]): Promise<{
   if (!configuredRoots.length) return {
     candidates,
     errors: paths.map((path) => ({ path, code: 'IMPORT_ROOTS_NOT_CONFIGURED',
-      error: 'AGENT_IMPORT_ROOTS 尚未配置。请在 .env.local 中填写允许 Agent 访问的绝对路径。' })),
+      error: '尚未添加本地素材目录。请在弹出的系统窗口中选择允许 Agent 访问的文件夹。' })),
   };
   for (const path of paths) {
     if (!pathAllowedByRoots(configuredRoots, path)) {
@@ -143,4 +151,28 @@ export async function importAgentPaths(
     }
   }
   return { imported, errors, unsupportedFiles, duplicateCount };
+}
+
+interface AgentPathImportGrantDependencies {
+  readonly chooseRoot: (requestedPath: string) => Promise<string | null>;
+  readonly readRoots: () => string;
+  readonly writeRoots: (roots: string) => Promise<void>;
+  readonly runImport?: typeof importAgentPaths;
+}
+
+export async function importAgentPathsWithGrant(
+  request: AgentPathImportRequest,
+  dependencies: AgentPathImportGrantDependencies,
+): Promise<AgentPathImportResult> {
+  const runImport = dependencies.runImport ?? importAgentPaths;
+  const first = await runImport(request);
+  const grant = first.imported.length === 0
+    ? first.errors.find((error) => error.code === 'IMPORT_ROOTS_NOT_CONFIGURED'
+      || error.code === 'PATH_OUTSIDE_IMPORT_ROOTS')
+    : undefined;
+  if (!grant) return first;
+  const root = await dependencies.chooseRoot(grant.path);
+  if (!root) return first;
+  await dependencies.writeRoots(appendAgentImportRoot(dependencies.readRoots(), root));
+  return runImport(request);
 }
