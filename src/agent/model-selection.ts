@@ -120,27 +120,28 @@ function allChoices(): readonly AgentModelChoice[] {
   return [...apiModelChoices, ...codexModelChoices];
 }
 function rebuildCodexChoices(): void {
-  const requestedModel = codexSavedModel.trim();
-  const discoveredModel = requestedModel
-    ? codexDiscoveredModels.find((model) => model.id === requestedModel)
-    : codexDiscoveredModels.find((model) => model.isDefault);
-  const model = requestedModel || discoveredModel?.id || '';
-  if (!codexStatus?.installed || codexStatus.account?.type !== 'chatgpt' || !model) {
+  if (!codexStatus?.installed || codexStatus.account?.type === 'apiKey') {
     codexModelChoices = [];
     return;
   }
-  const identity: ModelIdentity = { backend: 'codex', provider: 'openai', modelId: model };
-  const capabilities = modelCapabilities(identity);
-  codexModelChoices = [{
-    id: `codex:${model}`,
-    backend: 'codex',
-    provider: 'openai',
-    providerLabel: 'OpenAI Codex',
-    model,
-    ...(requestedModel ? { requestModel: requestedModel } : {}),
-    reasoningEffort: selectedReasoningEffort(codexSavedReasoningEffort, capabilities),
-    capabilities,
-  }];
+  const entries = codexDiscoveredModels.length > 0
+    ? codexDiscoveredModels
+    : (codexSavedModel.trim() ? [{ id: codexSavedModel.trim() }] : []);
+  codexModelChoices = entries.map((entry) => {
+    const requested = entry.id === codexSavedModel;
+    const identity: ModelIdentity = { backend: 'codex', provider: 'openai', modelId: entry.id };
+    const capabilities = modelCapabilities(identity);
+    return {
+      id: `codex:${entry.id}`,
+      backend: 'codex',
+      provider: 'openai',
+      providerLabel: 'OpenAI Codex',
+      model: entry.id,
+      ...(requested ? { requestModel: entry.id } : {}),
+      reasoningEffort: selectedReasoningEffort(codexSavedReasoningEffort, capabilities),
+      capabilities,
+    };
+  });
 }
 
 
@@ -157,9 +158,9 @@ export function applyAgentModelStatus(
   const choices = allChoices();
   const initialApiId = chooseInitialApiId(apiModelChoices, models);
   const preferred = loadAgentModelPref();
-  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId
-    : choices.some((choice) => choice.id === preferred) ? preferred : '';
-  commitChoices(choices, preserved || initialApiId || choices[0]?.id || '', true,
+  const preserved = choices.some((choice) => choice.id === preferred) ? preferred
+    : choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
+  commitChoices(choices, preserved || codexModelChoices[0]?.id || initialApiId || choices[0]?.id || '', true,
     apiModelChoices.find((choice) => choice.id === initialApiId));
 }
 
@@ -187,9 +188,9 @@ export function applyCodexAgentStatus(
   rebuildCodexChoices();
   const choices = allChoices();
   const preffered = loadAgentModelPref();
-  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId
-    : choices.some((choice) => choice.id === preffered) ? preffered : '';
-  commitChoices(choices, preserved || choices[0]?.id || '', true);
+  const preserved = choices.some((choice) => choice.id === preffered) ? preffered
+    : choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
+  commitChoices(choices, preserved || codexModelChoices[0]?.id || choices[0]?.id || '', true);
 }
 
 export function getAgentModelSnapshot(): AgentModelSnapshot {

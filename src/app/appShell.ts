@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../agent/capabilities';
 import { fetchCodexModels, fetchCodexStatus } from '../agent/codex/client';
-import { applyAgentModelStatus, applyCodexAgentStatus } from '../agent/model-selection';
+import { applyAgentModelStatus, applyCodexAgentStatus, selectAgentModel, getActiveAgentModelChoice, getAgentModelSnapshot } from '../agent/model-selection';
+import { loadAgentModelPref } from '../persist/sessionPrefs';
 import type { ProjectDoc, TimelineState } from '../editor/types';
 import {
   createProject,
@@ -72,7 +73,7 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
     }
   }
   if (codexResult.status !== 'fulfilled') return;
-  const modelResult = codexResult.value.account?.type === 'chatgpt'
+  const modelResult = codexResult.value.installed && codexResult.value.account?.type !== 'apiKey'
     ? await fetchCodexModels().catch(() => null)
     : null;
   if (!isActive()) return;
@@ -82,6 +83,14 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
     savedCodexReasoningEffort,
     modelResult && !modelResult.error ? modelResult.models : [],
   );
+  // When Codex (the MCP route) is available and the user has never pinned a
+  // model, make Codex the active model so the composer starts on the MCP
+  // backend instead of the configured default LLM.
+  const active = getActiveAgentModelChoice();
+  if (active && active.backend !== 'codex' && !loadAgentModelPref()) {
+    const codex = getAgentModelSnapshot().choices.find((choice) => choice.backend === 'codex');
+    if (codex) selectAgentModel(codex.id);
+  }
 }
 
 export function useAppRoute(): AppRoute {

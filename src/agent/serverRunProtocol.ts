@@ -430,7 +430,9 @@ export async function requestServerRunCancellation(
     },
     body: JSON.stringify({ projectId }),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+  }
   const value = await response.json() as { status?: unknown };
   if (value.status === 'awaiting-user') return 'awaiting_user';
   if (value.status !== 'completed'
