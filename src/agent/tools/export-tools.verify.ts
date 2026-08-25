@@ -5,6 +5,7 @@ import assert from 'node:assert';
 import { makeDraft } from '../../editor/store';
 import type { ProjectDoc } from '../../editor/types';
 import { docFromTimeline } from '../../persist/projectStore';
+import { subscribeAgentExportSubmissions } from '../../export/agentExportTracking';
 import type { AgentContext } from '../context';
 import { execExportTool, EXPORT_TOOL_NAMES, EXPORT_TOOL_SCHEMAS, __resetExportSessionJobs } from './export-tools';
 import { executeGenerateCommand } from './generate-tool-handlers';
@@ -81,14 +82,27 @@ const originalFetch = globalThis.fetch;
 
 // 1) submit_render_job POSTs the right body to /export/job and returns renderId.
 let posted: { url: string; body: Record<string, unknown> } | null = null;
+const announcements: Array<{ renderId: string; projectId: string; label: string; createdAt: number }> = [];
+const unsubscribeAnnouncement = subscribeAgentExportSubmissions((submission) => { announcements.push(submission); });
 globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
   posted = { url: String(url), body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> };
   return new Response(JSON.stringify({ renderId: 'r-123' }), { status: 200 });
 }) as typeof fetch;
 
-const submit = await execExportTool('submit_render_job', { format: 'video', codec: 'h264', name: 'final.mp4', startFrame: 0, endFrameExclusive: 90 }, ctx) as { ok?: boolean; renderId?: string };
+const submit = await execExportTool('submit_render_job', { format: 'video', codec: 'h264', name: 'final.mp4', startFrame: 0, endFrameExclusive: 90 }, {
+  ...ctx,
+  getProjectId: () => 'project-export',
+}) as { ok?: boolean; renderId?: string };
+unsubscribeAnnouncement();
 assert.strictEqual(submit.ok, true);
 assert.strictEqual(submit.renderId, 'r-123');
+const announced = announcements[0];
+assert.deepStrictEqual({
+  renderId: announced?.renderId,
+  projectId: announced?.projectId,
+  label: announced?.label,
+}, { renderId: 'r-123', projectId: 'project-export', label: 'final.mp4' });
+assert.strictEqual(typeof announced?.createdAt, 'number');
 assert.ok(posted, 'submit should have called fetch');
 const rec = posted as { url: string; body: Record<string, unknown> };
 assert.strictEqual(rec.url, '/export/job');
@@ -268,6 +282,9 @@ assert.ok(!('ok' in missing), 'a transport error should not claim ok:true');
 
 // ── Schema requires action and supports renderIds/latest/onlyActive/timelineId/timeoutSeconds ──
 {
+  const submitSchema = EXPORT_TOOL_SCHEMAS.find((t) => t.name === 'submit_render_job')!;
+  const submitProperties = (submitSchema.input_schema as { properties: Record<string, unknown> }).properties;
+  assert.ok('saveToMediaPool' in submitProperties, 'submit_render_job can retain a derived asset in My Media');
   const schema = EXPORT_TOOL_SCHEMAS.find((t) => t.name === 'track_export')!;
   const s = schema.input_schema as { required?: string[]; properties: Record<string, unknown> };
   assert.deepStrictEqual(s.required, ['action'], 'track_export requires only action (NOT renderId)');
@@ -331,8 +348,16 @@ assert.ok(!('ok' in missing), 'a transport error should not claim ok:true');
 
   // wait respects timeoutSeconds: running job + tiny timeout returns the non-terminal snapshot
   const t0 = Date.now();
-  const waited2 = await execExportTool('track_export', { action: 'wait', renderIds: 'render-bbb-2', timeoutSeconds: 0.01 }, ctx) as { status?: string };
+  const waited2 = await execExportTool('track_export', { action: 'wait', renderIds: 'render-bbb-2', timeoutSeconds: 0.01 }, ctx) as {
+    status?: string;
+    waitExpired?: boolean;
+    background?: boolean;
+    next?: string;
+  };
   assert.strictEqual(waited2.status, 'running', 'wait returns latest snapshot at timeout');
+  assert.strictEqual(waited2.waitExpired, true, 'timed wait identifies a still-running background render');
+  assert.strictEqual(waited2.background, true);
+  assert.match(waited2.next ?? '', /end this turn/i, 'agent must stop blocking after one bounded wait');
   assert.ok(Date.now() - t0 < 5000, 'tiny timeout returns promptly');
 }
 

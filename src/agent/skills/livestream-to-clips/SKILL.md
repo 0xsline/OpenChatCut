@@ -49,6 +49,8 @@ Generate event candidates from independent signals:
 
 Interaction and metadata are supporting signals, not mandatory inputs. Never invent absent chat, telemetry, product, or score evidence.
 
+Treat music intelligence as an enhancement: call `analyze_music` with `optional: true`. If it reports `available: false`, continue with `detect_beats`, waveform/audio cues, and visual timing rather than blocking the clip.
+
 ### 4. Turn each event into a complete candidate arc
 
 Expand the event to the smallest source range that preserves its meaning and payoff. Use the profile-specific arc from `profile-matrix.md`. Common shapes include:
@@ -82,7 +84,7 @@ Before heavy editing, record a compact candidate ledger. For every candidate inc
 }
 ```
 
-Inspect representative source frames for serious candidates. Sample the opening, peak, payoff, and any detected visual transition. A transcript-only candidate is provisional until visual evidence confirms that the range is usable, unless the source is intentionally audio-first.
+Inspect representative source frames for serious candidates. Use one `view_asset_frames` call per candidate range with at most six samples covering the opening, peak, payoff, and one meaningful visual transition. Reuse that contact sheet; repeat only after extraction failure or a changed source range. A transcript-only candidate is provisional until visual evidence confirms that the range is usable, unless the source is intentionally audio-first.
 
 ### 6. Reject, score, and diversify
 
@@ -94,7 +96,7 @@ When the source is long, the style is unsettled, or many outputs are requested, 
 
 ### 7. Edit for the selected profile
 
-Create a named timeline per output. Keep edits reversible and source-linked.
+Create every approved output as its own named Sequence. Batch-create them with one `manage_timelines` call using `action:"create"` and `timelines:[...]`, then switch to each returned timeline and add the selected range from the original asset with `sourceStartFrame` and `sourceDurationInFrames`. Reuse the original `sourceAssetId`; do not copy the long recording. Keep edits reversible and source-linked.
 
 - Tighten filler, false starts, repeated attempts, and dead time only when speech remains natural and intent is preserved.
 - Hide necessary jump cuts with an appropriate reaction shot, source cutaway, crop change, or subtle scale change when the evidence supports it.
@@ -107,9 +109,11 @@ Create a named timeline per output. Keep edits reversible and source-linked.
 
 ### 8. Verify the composed result
 
-Use `view_timeline_frames` on the composed timeline. Inspect at least the opening, the main event or claim, and the ending; inspect every overlay or major crop change. Verify audio boundaries, subtitle timing, subject visibility, factual consistency, duration, aspect ratio, and export readiness using `qa-and-evaluation.md`.
+Use one `view_timeline_frames` call on the composed timeline with at most four samples. Cover the opening, the main event or claim, the ending, and any highest-risk overlay or crop change. Verify audio boundaries, subtitle timing, subject visibility, factual consistency, duration, aspect ratio, and export readiness using `qa-and-evaluation.md`.
 
 If an optional enhancement such as subject tracking or automatic caption avoidance fails, preserve the verified cut and continue with a frame-checked static layout. Report the omitted enhancement instead of blocking the deliverable.
+
+After review, export each approved Sequence independently. Set `saveToMediaPool:true` only when the user wants the finished MP4 or audio registered in My Media for reuse. The saved asset records the source Sequence, render job, original source asset IDs, and source ranges; the editable Sequence remains the master.
 
 Report the selected source ranges, profile, main evidence, applied edits, known uncertainty, and verification performed. Do not report a finished clip from tool success alone.
 

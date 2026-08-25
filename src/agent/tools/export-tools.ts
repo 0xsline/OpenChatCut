@@ -4,6 +4,16 @@ import { recordExport, listExportHistory } from '../../persist/exportHistoryStor
 import { isTerminal, isComplete, isFailed, type JobReportBase } from '../progress/job-model';
 import { materializeTimelineExport } from '../../export/materializeBlobMedia';
 import { exportFailureFrom } from '../../export/exportFailure';
+import { exportMediaExtension } from '../../export/exportMediaExtension';
+import {
+  agentExportMediaPoolState,
+  notifyAgentExportSubmitted,
+  resetAgentExportTrackingState,
+  saveTrackedAgentExport,
+  type AgentExportMediaPoolPlan,
+} from '../../export/agentExportTracking';
+import type { ExportJobResult } from '../../export/exportWorkflowTypes';
+import type { ProjectDoc } from '../../editor/types';
 
 // ═════════════════════════════════════ ══════════════════════════════════════
 // Asynchronous rendering job tool
@@ -12,7 +22,7 @@ import { exportFailureFrom } from '../../export/exportFailure';
 // But `submit_export` has been occupied by the synchronous version of the tool (generate-tools.ts). To avoid conflicts with the same name, asynchronous
 // The rendering submitter is named submit_render_job. Use track_export for polling.
 // track_export parameters: required=['action']; renderIds (comma separated id/prefix),
-// latest (default is true when renderIds is omitted), onlyActive, timelineId, timeoutSeconds (default is 90, 0=unbounded).
+// latest (default is true when renderIds is omitted), onlyActive, timelineId, timeoutSeconds (default is 20, 0=unbounded).
 // The old singular renderId is still a compatible alias. The latest/ prefix is ​​resolved based on the commit records of this session (see sessionJobs).
 //
 // Agent runs in the browser, and the tool uses fetch to hit the /export/job endpoint of dev-server:
@@ -26,7 +36,7 @@ import { exportFailureFrom } from '../../export/exportFailure';
 
 type Args = Record<string, unknown>;
 
-const DEFAULT_WAIT_SECONDS = 90; // schema: "Defaults to 90. Use 0 for unbounded wait."
+const DEFAULT_WAIT_SECONDS = 20; // stays below the browser Agent's 30-second tool deadline
 const MAX_WAIT_SECONDS = 3600;
 const POLL_INTERVAL_MS = 500;
 
@@ -69,6 +79,10 @@ export type PollResult =
     height?: number;
     fps?: number;
     sourceStartSeconds?: number;
+    mediaPoolStatus?: 'pending' | 'saved' | 'failed';
+    mediaAssetId?: string;
+    mediaPoolPath?: string;
+    mediaPoolError?: string;
     error?: string;
   }
   | { error: string };
@@ -81,13 +95,14 @@ const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(reso
  * stands in). Full ids not in the registry still pass straight through to the
  * server. ponytail: session-scoped; add a /export/jobs list endpoint if
  * cross-reload latest ever matters. */
-interface SessionJob { renderId: string; timelineId?: string }
+interface SessionJob { renderId: string; timelineId?: string; saveToMediaPool: boolean }
 // push order = submission order → newest is the LAST entry (no clock needed).
 const sessionJobs: SessionJob[] = [];
 
 /** Test seam: reset the session job registry. */
 export function __resetExportSessionJobs(): void {
   sessionJobs.length = 0;
+  resetAgentExportTrackingState();
 }
 
 // A completed job would be re-seen on every poll; dedupe by renderId so repeated
@@ -100,6 +115,41 @@ function recordIfCompleted(result: PollResult): void {
   recordedRenderIds.add(result.renderId);
   const format = result.codec === 'mp3' || result.codec === 'wav' ? 'audio' : 'video';
   void recordExport({ name: result.name ?? result.renderId, format, codec: result.codec, sizeBytes: result.sizeBytes, createdAt: Date.now() });
+}
+
+function mediaPoolPlan(
+  project: ProjectDoc,
+  timelineId: string,
+  format: 'video' | 'audio',
+): AgentExportMediaPoolPlan {
+  const timeline = project.timelines.find((candidate) => candidate.id === timelineId);
+  if (!timeline) throw new Error(`timeline ${timelineId} not found`);
+  return {
+    format,
+    timelineId,
+    timelineName: timeline.name,
+    timelineFps: timeline.fps,
+    items: timeline.items.flatMap((item) => item.sourceAssetId ? [{
+      id: item.id,
+      sourceAssetId: item.sourceAssetId,
+      startFrame: item.startFrame,
+      durationInFrames: item.durationInFrames,
+      srcInFrame: item.srcInFrame,
+      playbackRate: item.playbackRate,
+    }] : []),
+  };
+}
+
+function withMediaPoolState(result: PollResult): PollResult {
+  if (!('ok' in result) || !isComplete(result.status)) return result;
+  const job = sessionJobs.find((candidate) => candidate.renderId === result.renderId);
+  if (!job?.saveToMediaPool) return result;
+  const state = agentExportMediaPoolState(result.renderId) ?? { status: 'pending' as const };
+  if (state.status === 'saved') {
+    return { ...result, mediaPoolStatus: 'saved', mediaAssetId: state.mediaAssetId, mediaPoolPath: state.path };
+  }
+  if (state.status === 'failed') return { ...result, mediaPoolStatus: 'failed', mediaPoolError: state.error };
+  return { ...result, mediaPoolStatus: 'pending' };
 }
 
 /** GET /export/job/:id once, mapping the snapshot to the tool result; transmission/unknown renderId will return a clean error and never throw a naked exception.
@@ -143,6 +193,11 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
     const format = args.format === 'audio' ? 'audio' : 'video';
     const project = ctx.getDoc();
     const timelineId = project.activeTimelineId;
+    const projectId = ctx.getProjectId?.();
+    const savePlan = args.saveToMediaPool === true
+      ? mediaPoolPlan(project, timelineId, format)
+      : undefined;
+    if (savePlan && !projectId) return { error: 'saveToMediaPool requires an open project' };
     const snapshot = await materializeTimelineExport(project, timelineId);
     const body: Record<string, unknown> = {
       state: snapshot.state,
@@ -167,8 +222,29 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
     });
     const data = (await response.json().catch(() => ({}))) as { renderId?: string; error?: string };
     if (!response.ok || !data.renderId) return { error: data.error ?? `render job submit failed (${response.status})` };
-    sessionJobs.push({ renderId: data.renderId, timelineId });
-    return { ok: true, renderId: data.renderId, format, next: `Call track_export with renderIds=${data.renderId} and action=status or action=wait.` };
+    sessionJobs.push({ renderId: data.renderId, timelineId, saveToMediaPool: !!savePlan });
+    if (projectId) {
+      const codec = format === 'audio' ? 'mp3' : args.codec === 'vp8' ? 'vp8' : 'h264';
+      const extension = format === 'audio' && args.codec === 'wav'
+        ? 'wav'
+        : exportMediaExtension(format, codec);
+      notifyAgentExportSubmitted({
+        renderId: data.renderId,
+        projectId,
+        label: typeof args.name === 'string' && args.name.trim()
+          ? args.name
+          : `${snapshot.state.name || 'export'}.${extension}`,
+        createdAt: Date.now(),
+        saveToMediaPool: savePlan,
+      });
+    }
+    return {
+      ok: true,
+      renderId: data.renderId,
+      format,
+      ...(savePlan ? { mediaPoolStatus: 'pending' } : {}),
+      next: `This job is visible in the editor's top-right export queue. Call track_export once with renderIds=${data.renderId}, action=wait, timeoutSeconds=20. If it is still queued/running, report its background progress and end this turn; do not start another export for the same timeline.`,
+    };
   } catch (error) {
     const failure = exportFailureFrom(error);
     if (failure) {
@@ -221,19 +297,46 @@ async function selectLatestJobs(args: Args): Promise<{ ids: string[]; note?: str
 }
 
 /** Each group of jobs is polled once.*/
-async function pollAll(ids: string[]): Promise<PollResult[]> {
-  const results = await Promise.all(ids.map((id) => pollOnce(id)));
+function completedExportResult(result: PollResult): ExportJobResult | null {
+  if (!('ok' in result) || !isComplete(result.status)) return null;
+  return {
+    path: result.downloadUrl,
+    name: result.name,
+    sizeBytes: result.sizeBytes,
+    durationSeconds: result.durationSeconds,
+    width: result.width,
+    height: result.height,
+    fps: result.fps,
+    sourceStartSeconds: result.sourceStartSeconds,
+  };
+}
+
+async function pollAll(ids: string[], ctx: AgentContext): Promise<PollResult[]> {
+  const polled = await Promise.all(ids.map((id) => pollOnce(id)));
+  for (const result of polled) {
+    const completed = completedExportResult(result);
+    const job = 'ok' in result
+      ? sessionJobs.find((candidate) => candidate.renderId === result.renderId)
+      : undefined;
+    if (completed && job?.saveToMediaPool) {
+      await saveTrackedAgentExport(job.renderId, completed, {
+        commands: ctx.commands,
+        getDoc: ctx.getDoc,
+      }).catch(() => undefined);
+    }
+  }
+  const results = polled.map(withMediaPoolState);
   for (const r of results) recordIfCompleted(r);
   return results;
 }
 
 /** Single job keeps the old flat return; multi-job returns {ok, count, jobs} aggregation.*/
-function presentJobs(results: PollResult[], note?: string): unknown {
-  if (results.length === 1 && !note) return results[0];
+function presentJobs(results: PollResult[], note?: string): Record<string, unknown> {
+  if (results.length === 1 && !note) return { ...results[0] };
   return { ok: true, count: results.length, jobs: results, ...(note ? { note } : {}) };
 }
 
-async function trackExport(args: Args): Promise<unknown> {
+async function trackExport(args: Args, ctx: AgentContext): Promise<unknown> {
   try {
     const action = args.action === 'wait' ? 'wait' : args.action === 'status' ? 'status' : null;
     if (!action) return { error: 'action is required: "status" or "wait"' };
@@ -256,16 +359,22 @@ async function trackExport(args: Args): Promise<unknown> {
       if (!ids.length) return { ok: true, count: 0, jobs: [], ...(note ? { note } : {}) };
     }
 
-    if (action === 'status') return presentJobs(await pollAll(ids), note);
+    if (action === 'status') return presentJobs(await pollAll(ids, ctx), note);
 
-    // action=wait: Poll until all selected jobs are finalized, or timeoutSeconds expires (default 90, 0=unbounded).
+    // action=wait: Poll until all selected jobs are finalized, or timeoutSeconds expires (default 20, 0=unbounded).
     const requested = typeof args.timeoutSeconds === 'number' && Number.isFinite(args.timeoutSeconds) ? args.timeoutSeconds : DEFAULT_WAIT_SECONDS;
     const bounded = Math.min(Math.max(requested, 0), MAX_WAIT_SECONDS);
     const deadline = bounded === 0 ? Infinity : Date.now() + bounded * 1000;
     for (;;) {
-      const results = await pollAll(ids);
+      const results = await pollAll(ids, ctx);
       const allSettled = results.every((r) => !('ok' in r) || isTerminal(r.status));
-      if (allSettled || Date.now() >= deadline) return presentJobs(results, note);
+      if (allSettled) return presentJobs(results, note);
+      if (Date.now() >= deadline) return {
+        ...presentJobs(results, note),
+        waitExpired: true,
+        background: true,
+        next: 'The render continues in the background. Report renderId, status, and progress now and end this turn. Do not submit another render or direct the user to the Export button for the same timeline.',
+      };
       await sleep(POLL_INTERVAL_MS);
     }
   } catch (error) {
@@ -279,7 +388,7 @@ export async function execExportTool(name: string, args: Args, ctx: AgentContext
     case 'submit_render_job':
       return submitRenderJob(args, ctx);
     case 'track_export':
-      return trackExport(args);
+      return trackExport(args, ctx);
     case 'read_export_history': {
       const requested = typeof args.limit === 'number' && Number.isFinite(args.limit) ? Math.floor(args.limit) : 20;
       const limit = Math.min(Math.max(requested, 1), 100);

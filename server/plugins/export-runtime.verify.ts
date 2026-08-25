@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -13,6 +13,7 @@ import {
   forgetExportJobController,
   finalH264EncoderOutcome,
   exportOutputSize,
+  promoteExportResult,
   resolveMaxActiveExports,
   retimeFps,
   retimeVideoEncodingArgs,
@@ -88,6 +89,8 @@ try {
   const freshName = exportJobFilename('00000000-0000-4000-8000-000000000002', 'webm');
   const proresName = exportJobFilename('00000000-0000-4000-8000-000000000003', 'mov');
   const retainedName = exportJobFilename('00000000-0000-4000-8000-000000000004', 'mp4');
+  const promotedId = '00000000-0000-4000-8000-000000000005';
+  const promotionSourceName = exportJobFilename(promotedId, 'mp4');
   const unrelatedName = 'user-owned-video.mp4';
   const prefixedUserName = 'openchatcut-export-job-project.mp4';
   await Promise.all([
@@ -95,6 +98,7 @@ try {
     writeFile(join(exportDir, freshName), 'fresh export'),
     writeFile(join(exportDir, proresName), 'fresh prores export'),
     writeFile(join(exportDir, retainedName), 'recoverable stale export'),
+    writeFile(join(exportDir, promotionSourceName), 'saved sequence export'),
     writeFile(join(exportDir, unrelatedName), 'user media'),
     writeFile(join(exportDir, prefixedUserName), 'user media with reserved-looking prefix'),
   ]);
@@ -102,13 +106,25 @@ try {
   await utimes(join(exportDir, staleName), staleDate, staleDate);
   await utimes(join(exportDir, retainedName), staleDate, staleDate);
   await utimes(join(exportDir, prefixedUserName), staleDate, staleDate);
+  await utimes(join(exportDir, promotionSourceName), staleDate, staleDate);
+
+  const promoted = await promoteExportResult({
+    assetId: promotedId,
+    path: `/media/uploads/${promotionSourceName}`,
+  }, exportDir);
+  assert.equal(promoted.path, `/media/uploads/openchatcut-derived-${promotedId}.mp4`);
+  assert.equal(promoted.sizeBytes, Buffer.byteLength('saved sequence export'));
+  assert.equal((await promoteExportResult({
+    assetId: promotedId,
+    path: `/media/uploads/${promotionSourceName}`,
+  }, exportDir)).path, promoted.path, 'promotion is idempotent');
 
   const removed = await cleanupStaleExportFiles(exportDir, {
     now,
     retentionMs: 60 * 60_000,
     shouldRetain: (renderId) => renderId === '00000000-0000-4000-8000-000000000004',
   });
-  assert.equal(removed, 1);
+  assert.equal(removed, 2);
   assert.equal(existsSync(join(exportDir, staleName)), false, 'stale temporary export should be removed');
   assert.equal(existsSync(join(exportDir, freshName)), true, 'fresh temporary export should be retained');
   assert.equal(existsSync(join(exportDir, proresName)), true, 'fresh prores temporary export should be retained');
@@ -116,6 +132,9 @@ try {
     'unresolved recovery must retain output beyond the default one-hour deadline');
   assert.equal(existsSync(join(exportDir, unrelatedName)), true, 'user media must never be swept');
   assert.equal(existsSync(join(exportDir, prefixedUserName)), true, 'non-UUID user media must never be swept');
+  const promotedName = promoted.path.slice('/media/uploads/'.length);
+  assert.equal(existsSync(join(exportDir, promotedName)), true, 'saved media survives temporary-job cleanup');
+  assert.equal(await readFile(join(exportDir, promotedName), 'utf8'), 'saved sequence export');
 } finally {
   await rm(exportDir, { recursive: true, force: true });
 }

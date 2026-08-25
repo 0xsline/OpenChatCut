@@ -1,5 +1,6 @@
-import { readdir, stat, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { constants as fsConstants } from 'node:fs';
+import { copyFile, link, readdir, stat, unlink } from 'node:fs/promises';
+import { extname, join } from 'node:path';
 import { ffmpegBin } from '../media-binaries.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { isSafeUploadName } from '../media-dir.ts';
@@ -64,6 +65,47 @@ export function exportJobResultName(path: string, assetId: string): string | nul
   const match = EXPORT_JOB_FILENAME.exec(name);
   if (!isSafeUploadName(name) || !match || match[1].toLowerCase() !== assetId.toLowerCase()) return null;
   return name;
+}
+
+interface PromotableExportResult {
+  assetId: string;
+  path: string;
+  sizeBytes?: number;
+}
+
+/** Publish a completed job output as ordinary managed media so job cleanup can
+ * remove its temporary name without removing the user's saved asset. */
+export async function promoteExportResult<T extends PromotableExportResult>(
+  result: T,
+  directory: string,
+): Promise<T> {
+  const sourceName = exportJobResultName(result.path, result.assetId);
+  if (!sourceName) throw new Error('export result is not promotable');
+  const publishedName = `openchatcut-derived-${result.assetId}${extname(sourceName).toLowerCase()}`;
+  const source = join(directory, sourceName);
+  const destination = join(directory, publishedName);
+  const sourceInfo = await stat(source);
+  assertNonEmptyExportBytes(sourceInfo.size);
+  try {
+    await link(source, destination);
+  } catch (error) {
+    const code = errorCode(error);
+    if (code !== 'EEXIST') {
+      if (!['EPERM', 'EXDEV', 'ENOSYS', 'ENOTSUP', 'EOPNOTSUPP'].includes(code ?? '')) throw error;
+      try {
+        await copyFile(source, destination, fsConstants.COPYFILE_EXCL);
+      } catch (copyError) {
+        if (errorCode(copyError) !== 'EEXIST') throw copyError;
+      }
+    }
+  }
+  const publishedInfo = await stat(destination);
+  if (publishedInfo.size !== sourceInfo.size) throw new Error('promoted export size mismatch');
+  return {
+    ...result,
+    path: `/media/uploads/${publishedName}`,
+    sizeBytes: publishedInfo.size,
+  };
 }
 
 export async function unlinkWithRetry(path: string, attempts = 3, delayMs = 100): Promise<void> {

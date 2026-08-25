@@ -16,6 +16,7 @@ import {
   createExportJobStore,
   type ExportJobStore,
 } from '../export/backgroundExportStore';
+import { subscribeAgentExportJobs } from '../export/agentExportTracking';
 import { resumePersistedServerExports } from '../export/serverExportOperation';
 import { useEditorPanelLayout, type EditorPanelLayout } from '../hooks/useEditorPanelLayout';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -141,7 +142,12 @@ interface EditorWorkspaceExportActionsInput {
   selectAllTimelineContent: () => void;
 }
 
-function useExportJobs(projectId: string, t: typeof translate): [ExportJobStore, number] {
+function useExportJobs(
+  projectId: string,
+  t: typeof translate,
+  commands: EditorCommands,
+  docRef: RefObject<ProjectDoc>,
+): [ExportJobStore, number] {
   const exportJobs = useMemo(() => createExportJobStore(), []);
   const activeExportJobs = useSyncExternalStore(
     exportJobs.subscribeActive,
@@ -153,6 +159,13 @@ function useExportJobs(projectId: string, t: typeof translate): [ExportJobStore,
       console.warn('[export] failed to restore interrupted server exports', error);
     });
   }, [exportJobs, projectId, t]);
+  useEffect(
+    () => subscribeAgentExportJobs(projectId, exportJobs, t, {
+      commands,
+      getDoc: () => docRef.current,
+    }),
+    [commands, docRef, exportJobs, projectId, t],
+  );
   return [exportJobs, activeExportJobs];
 }
 
@@ -180,7 +193,12 @@ function relinkedAsset(current: MediaAsset, next: MediaAssetRelinkPatch): MediaA
 export function useEditorWorkspaceExportActions(
   input: EditorWorkspaceExportActionsInput,
 ): EditorWorkspaceExportActions {
-  const [exportJobs, activeExportJobs] = useExportJobs(input.projectId, input.t);
+  const [exportJobs, activeExportJobs] = useExportJobs(
+    input.projectId,
+    input.t,
+    input.commands,
+    input.docRef,
+  );
   const [exportOpen, setExportOpen] = useState(false);
   const onExport = useCallback(() => setExportOpen(true), []);
   useEditorActions({

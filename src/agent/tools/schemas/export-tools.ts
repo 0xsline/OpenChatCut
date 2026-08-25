@@ -6,7 +6,7 @@ export const EXPORT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_render_job',
     description:
-      'Render the active timeline ASYNCHRONOUSLY as MP4/WebM video or MP3/WAV audio. Returns immediately with a renderId instead of blocking; the render runs in a background job. Poll track_export for status/progress and the download URL. Prefer this over the synchronous submit_export for long timelines. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
+      'Render the active timeline ASYNCHRONOUSLY as MP4/WebM video or MP3/WAV audio. Returns immediately with a renderId; the job also appears in the editor top-right export queue with progress and cancellation. Poll track_export for status/progress and the download URL. Prefer this over the synchronous submit_export for long timelines. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
     input_schema: {
       type: 'object',
       properties: {
@@ -20,13 +20,17 @@ export const EXPORT_TOOL_SCHEMAS: AgentToolSchema[] = [
         endFrameExclusive: { type: 'integer', minimum: 1 },
         startSeconds: { type: 'number', minimum: 0, description: 'Legacy; prefer startFrame.' },
         endSeconds: { type: 'number', minimum: 0, description: 'Legacy; prefer endFrameExclusive.' },
+        saveToMediaPool: {
+          type: 'boolean',
+          description: 'When true, keep the completed file in My Media and record its source Sequence and source asset ranges. Defaults to false.',
+        },
       },
     },
   },
   {
     name: 'track_export',
     description:
-      'Inspect render/export jobs started by submit_render_job. action=status: return current status. action=wait: poll until the selected jobs are terminal or timeoutSeconds elapses. Pass renderIds when available. If renderIds is omitted, latest defaults to true and returns the most recent matching render job. Set latest=false to list recent render jobs so you can tell which exports are complete, still rendering, or failed. onlyActive=true narrows the latest lookup to currently rendering jobs. Returns status, progress, and — when completed — a downloadUrl the browser can fetch.',
+      'Inspect render/export jobs started by submit_render_job. action=status: return current status. action=wait: poll until terminal or timeoutSeconds elapses. Use one bounded wait; if waitExpired=true, report the background status and end the turn instead of calling wait again or starting another export. Pass renderIds when available. If omitted, latest defaults to true. Returns status, progress, and — when completed — a downloadUrl plus mediaPoolStatus when saveToMediaPool was requested.',
     input_schema: {
       type: 'object',
       properties: {
@@ -35,7 +39,7 @@ export const EXPORT_TOOL_SCHEMAS: AgentToolSchema[] = [
         latest: { type: 'boolean', description: 'When true, read the newest matching render job. Defaults to true when renderIds is omitted.' },
         onlyActive: { type: 'boolean', description: 'When latest=true, return only currently rendering jobs. Use false/omit to include recently completed or failed renders.' },
         timelineId: { type: 'string', description: 'Optional timeline ID or prefix to narrow latest lookup.' },
-        timeoutSeconds: { type: 'number', minimum: 0, maximum: MAX_WAIT_SECONDS, description: 'For action=wait, maximum seconds before returning the current non-terminal status. Defaults to 90. Use 0 for unbounded wait.' },
+        timeoutSeconds: { type: 'number', minimum: 0, maximum: MAX_WAIT_SECONDS, description: 'For action=wait, maximum seconds before returning the current non-terminal status. Defaults to 20. Use 0 only when the caller owns a sufficiently long tool deadline.' },
       },
       required: ['action'],
     },
