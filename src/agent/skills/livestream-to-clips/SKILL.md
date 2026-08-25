@@ -113,7 +113,9 @@ Use one `view_timeline_frames` call on the composed timeline with at most four s
 
 If an optional enhancement such as subject tracking or automatic caption avoidance fails, preserve the verified cut and continue with a frame-checked static layout. Report the omitted enhancement instead of blocking the deliverable.
 
-After review, export each approved Sequence independently. Set `saveToMediaPool:true` only when the user wants the finished MP4 or audio registered in My Media for reuse. The saved asset records the source Sequence, render job, original source asset IDs, and source ranges; the editable Sequence remains the master.
+After review, automatically materialize every approved Sequence into My Media. Switch to each approved Sequence, call `submit_render_job` with `saveToMediaPool:true` and a filename derived from the Sequence name, then continue queuing the remaining clips without waiting for each render serially. These are background jobs shown in the editor's top-right export queue; the user does not need to run a separate export step. Skip this automatic materialization only when the user explicitly asks for draft Sequences only.
+
+The saved asset records the source Sequence, render job, original source asset IDs, and source ranges; the editable Sequence remains the master. Use `track_export` once after all jobs are queued to report current progress. Do not start duplicate renders for a Sequence that already has an active job.
 
 Report the selected source ranges, profile, main evidence, applied edits, known uncertainty, and verification performed. Do not report a finished clip from tool success alone.
 

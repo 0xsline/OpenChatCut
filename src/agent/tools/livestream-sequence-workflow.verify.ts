@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { makeDraft } from '../../editor/store';
 import { docFromTimeline } from '../../persist/projectStore';
 import type { AgentContext } from '../context';
@@ -74,5 +75,14 @@ for (const [index, createdTimeline] of created.created!.entries()) {
   assert.equal(timeline.items[0]?.srcInFrame, ranges[index]?.sourceStartFrame);
   assert.equal(timeline.items[0]?.durationInFrames, ranges[index]?.sourceDurationInFrames);
 }
+
+const [skill, exportSkill] = await Promise.all([
+  readFile(new URL('../skills/livestream-to-clips/SKILL.md', import.meta.url), 'utf8'),
+  readFile(new URL('../skills/export/SKILL.md', import.meta.url), 'utf8'),
+]);
+assert.match(skill, /automatically materialize every approved Sequence into My Media/);
+assert.match(skill, /submit_render_job` with `saveToMediaPool:true/);
+assert.match(skill, /draft Sequences only/);
+assert.match(exportSkill, /active workflow explicitly defaults to automatic materialization/);
 
 console.log('livestream multi-sequence workflow checks passed');
