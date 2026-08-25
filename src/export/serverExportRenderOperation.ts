@@ -182,7 +182,9 @@ function activePhase(snapshot: ExportJobSnapshot): ExportPhase {
   return snapshot.phase === 'rendering' ? 'rendering' : 'preparing';
 }
 
-function updateActiveProgress(context: ServerExportContext, snapshot: ExportJobSnapshot): void {
+type ServerExportPollContext = Pick<ServerExportContext, 'setProgress' | 't'>;
+
+function updateActiveProgress(context: ServerExportPollContext, snapshot: ExportJobSnapshot): void {
   context.setProgress((current) => current ? {
     ...current,
     phase: activePhase(snapshot),
@@ -192,7 +194,7 @@ function updateActiveProgress(context: ServerExportContext, snapshot: ExportJobS
   } : current);
 }
 
-function completeSnapshot(context: ServerExportContext, snapshot: ExportJobSnapshot): ExportJobResult {
+function completeSnapshot(context: ServerExportPollContext, snapshot: ExportJobSnapshot): ExportJobResult {
   if (!snapshot.result?.path) throw new Error(context.t('导出完成，但没有可下载的文件'));
   context.setProgress((current) => current ? {
     ...current,
@@ -205,7 +207,7 @@ function completeSnapshot(context: ServerExportContext, snapshot: ExportJobSnaps
 }
 
 export async function pollExport(
-  context: ServerExportContext,
+  context: ServerExportPollContext,
   renderId: string,
   signal?: AbortSignal,
 ): Promise<ExportJobResult> {
@@ -223,7 +225,7 @@ export async function pollExport(
   }
 }
 
-async function deleteExportJob(renderId: string): Promise<void> {
+export async function deleteExportJob(renderId: string): Promise<void> {
   const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { method: 'DELETE' });
   if (!response.ok && response.status !== 404) {
     throw new Error(`server export cleanup failed (${response.status})`);
