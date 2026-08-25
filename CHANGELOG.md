@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-08-25
+
+### Added / 新增
+
+- Added an end-to-end Agent livestream clipping workflow that analyzes multimodal evidence, creates multiple named source-linked Sequences, verifies each cut, tracks background rendering in the editor, and automatically saves approved clips to My Media with source provenance.
+  新增端到端 Agent 直播切片工作流：综合分析多模态证据，批量创建命名且保持源素材引用的独立 Sequence，逐个验证切片，在编辑器中跟踪后台渲染，并将审核通过的成片连同来源信息自动保存到“我的素材”。
+
 ## [0.2.10] - 2026-08-24
 
 ### Added / 新增
