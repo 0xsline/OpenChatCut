@@ -12,6 +12,21 @@ interface CreativeSkillMetadata {
 
 export const CREATIVE_SKILL_METADATA: CreativeSkillMetadata[] = [
   {
+    id: '11111111-1240-4000-8000-000000000015',
+    slug: 'livestream-to-clips',
+    name: 'Livestream to Clips',
+    nameZh: '直播智能切片',
+    summary: '把带货、游戏、访谈、教学、娱乐、体育、音乐或混合直播录屏剪成有证据、可发布的高光切片。',
+    scenarios: [
+      'livestream-to-clips',
+      'live-highlights',
+      'stream-clips',
+      'gaming-highlights',
+      'commerce-clips',
+      '直播切片'
+    ]
+  },
+  {
     id: '11111111-1240-4000-8000-000000000004',
     slug: 'long-video-to-shorts',
     name: 'Long Video to Shorts',

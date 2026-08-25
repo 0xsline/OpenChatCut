@@ -15,7 +15,7 @@ const SKILLS_DIR = dirname(fileURLToPath(import.meta.url));
 // Every creative-skill metadata entry resolves to a real SKILL.md on disk with
 // name=slug, a non-empty description, and a substantive body.
 const slugs = CREATIVE_SKILL_METADATA.map((m) => m.slug);
-assert.strictEqual(slugs.length, 10, 'expected 10 creative skills');
+assert.strictEqual(slugs.length, 11, 'expected 11 creative skills');
 for (const slug of slugs) {
   const raw = readFileSync(join(SKILLS_DIR, slug, 'SKILL.md'), 'utf8');
   const { name, description, body } = parseSkillFrontmatter(raw);
@@ -32,6 +32,9 @@ for (const s of CREATIVE_SKILL_METADATA) {
 const shorts = CREATIVE_SKILL_METADATA.find((s) => s.name === 'Long Video to Shorts');
 assert.ok(shorts, 'Long Video to Shorts present');
 assert.strictEqual(shorts!.nameZh, '长视频转短视频');
+const livestream = CREATIVE_SKILL_METADATA.find((s) => s.name === 'Livestream to Clips');
+assert.ok(livestream, 'Livestream to Clips present');
+assert.strictEqual(livestream!.nameZh, '直播智能切片');
 
 // findSkill: null/undefined/unknown → undefined (id-hit lookups are covered in
 // skill-loading.verify.ts where the Vite glob is available).
