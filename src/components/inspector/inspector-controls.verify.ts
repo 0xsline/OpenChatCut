@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { keyframeResetBatch } from '../../editor/keyframeReset';
 import { clampScalar, scalarModifier, scrubScalar, snapScalar } from './scalarMath';
 
@@ -24,7 +25,14 @@ assert.deepEqual(group.actions.at(-1), {
   type: 'setTransform',
   id: 'clip-1',
   // Uniform scale reset also re-links scaleX/scaleY so non-uniform residue is cleared.
-  patch: { scale: 1, scaleX: 1, scaleY: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
+  patch: { scale: 1, scaleX: 1, scaleY: 1, x: 0, y: 0, rotation: 0, opacity: 1, crop: undefined },
 });
+
+const transformSource = readFileSync(new URL('./InspectorKeyframeControls.tsx', import.meta.url), 'utf8');
+assert.match(transformSource, /label: '裁左'/, 'Transform 分组在圆角下应有裁左');
+assert.match(transformSource, /label: '裁右'/, 'Transform 分组应有裁右');
+assert.match(transformSource, /label: '裁上'/, 'Transform 分组应有裁上');
+assert.match(transformSource, /label: '裁下'/, 'Transform 分组应有裁下');
+assert.match(transformSource, /CROP_ROWS\.map/, '四边裁切应排在关键帧行之后');
 
 console.log('inspector-controls.verify: ok');

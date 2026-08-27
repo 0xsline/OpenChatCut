@@ -4,6 +4,14 @@ import { sampleKeyframes } from '../../editor/keyframes';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
+import {
+  clipCropAxisSize,
+  clipCropEdgeMax,
+  clipCropFractionToPx,
+  clipCropPxToFraction,
+  normalizedClipCrop,
+  type ClipCropEdge,
+} from '../../editor/clipCrop';
 import { ScalarControl } from './ScalarControl';
 import { snapScalar } from './scalarMath';
 
@@ -170,19 +178,31 @@ function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekL
   );
 }
 
+const CROP_ROWS: ReadonlyArray<{ edge: ClipCropEdge; label: string }> = [
+  { edge: 'left', label: '裁左' },
+  { edge: 'right', label: '裁右' },
+  { edge: 'top', label: '裁上' },
+  { edge: 'bottom', label: '裁下' },
+];
+
 // scale / position / rotation for visual clips (zoom tab) + per-property
 // keyframe rails and an opacity curve row. A keyframed prop shows the
 // value sampled at the playhead; dragging it then punches a keyframe there.
 export function TransformControl({
-  item, mixed, onChange, onReset, kf,
+  item, canvasWidth, canvasHeight, mixed, mixedCrop, onChange, onCropChange, onReset, kf,
 }: {
   item: TimelineItem;
+  canvasWidth: number;
+  canvasHeight: number;
   mixed?: (prop: KeyframeProp) => boolean;
+  mixedCrop?: (edge: ClipCropEdge) => boolean;
   onChange: (p: ClipTransform) => void;
+  onCropChange: (edge: ClipCropEdge, value: number) => void;
   onReset: (props: readonly KeyframeProp[]) => void;
   kf: KfApi;
 }) {
   const t = useT();
+  const crop = normalizedClipCrop(item.transform?.crop);
   const rows = KEYFRAME_PROPS
     .map(getKeyframePropertyDefinition)
     // Volume is not part of the transform stack — VolumeControl has its own keyframe track
@@ -213,6 +233,26 @@ export function TransformControl({
               onSet={(frame, next, easing) => kf.set(r.id, frame, next, easing)}
               onRemove={(frame) => kf.remove(r.id, frame)} onSeekLocal={kf.seekLocal} />
           </div>
+        );
+      })}
+      {CROP_ROWS.map((row) => {
+        const axis = clipCropAxisSize(row.edge, canvasWidth, canvasHeight);
+        const valuePx = clipCropFractionToPx(crop[row.edge], axis);
+        const maxPx = clipCropFractionToPx(clipCropEdgeMax(item.transform?.crop, row.edge), axis);
+        return (
+          <SliderRow
+            key={row.edge}
+            label={t(row.label)}
+            val={valuePx}
+            min={0}
+            max={Math.max(maxPx, valuePx)}
+            step={1}
+            fmt={`${valuePx}px`}
+            mixed={mixedCrop?.(row.edge)}
+            onReset={() => onCropChange(row.edge, 0)}
+            resetDisabled={!mixedCrop?.(row.edge) && valuePx === 0}
+            onChange={(next) => onCropChange(row.edge, clipCropPxToFraction(next, axis))}
+          />
         );
       })}
     </div>

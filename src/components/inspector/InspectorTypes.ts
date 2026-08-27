@@ -14,6 +14,7 @@ import type {
   TransitionType,
   ZoomEffect,
 } from '../../editor/types';
+import type { ClipCropEdge } from '../../editor/clipCrop';
 import type { SelectedCaptionInspector } from '../../captions/captionSelection';
 import type { CaptionsData } from '../../captions/types';
 
@@ -45,12 +46,15 @@ export interface InspectorPanelProps {
   selectedIds: readonly string[];
   selectedItems: readonly TimelineItem[];
   fps: number;
+  canvasWidth: number;
+  canvasHeight: number;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
   onItemPropChange: (key: string, value: unknown) => void;
   onItemVolumeChange: (volume: number) => void;
   onItemFadeChange: (fade: FadePatch) => void;
   onItemTransformChange: (patch: ClipTransform) => void;
+  onItemCropChange: (edge: ClipCropEdge, value: number) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
   backgroundFillAvailable?: boolean;
   onItemBackgroundFillChange?: (enabled: boolean, strength?: number) => void;

@@ -10,6 +10,7 @@ import { validateBackgroundFillUpdate } from './edit-item-background-fill';
 import { getKeyframePropertyDefinition, KEYFRAME_PROPS, supportsKeyframeProperty } from '../../editor/keyframeRegistry';
 import { planSlip } from '../../editor/slip';
 import { rejectUnknownFields } from './edit-item-fields';
+import { clipCropMergePatch } from '../../editor/clipCrop';
 import { clampNum, parseFiltersArg, parseTransformArg } from './edit-item-visual';
 import { validateMediaSourceUpdate } from './edit-item-media-ops';
 import { validateSourceFrameUpdate, validateSourceWindow } from './edit-item-source-window';
@@ -214,9 +215,15 @@ export function validateGenericUpdate(
   }
   if (entry.transform !== undefined) {
     if (it.kind === 'audio') return { error: 'transform is not supported on audio clips' };
-    const parsed = parseTransformArg(entry.transform);
+    const parsed = parseTransformArg(entry.transform, { width: state.width, height: state.height });
     if (parsed.error) return { error: parsed.error };
-    plan.transform = parsed.transform;
+    const patch = { ...parsed.transform };
+    if (parsed.cropClear) {
+      patch.crop = undefined;
+    } else if (patch.crop) {
+      patch.crop = clipCropMergePatch(it.transform?.crop, patch.crop).crop;
+    }
+    plan.transform = patch;
   }
   const backgroundFill = validateBackgroundFillUpdate(
     state,

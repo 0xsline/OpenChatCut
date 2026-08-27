@@ -1,4 +1,9 @@
 import { isBackgroundFillActive } from '../../editor/backgroundFill';
+import {
+  compactClipCrop,
+  normalizedClipCrop,
+  PREVIEW_CROP_MIN_SPAN,
+} from '../../editor/clipCrop';
 import { resolveClipScaleAxes } from '../../editor/clipTransformScale';
 import { coerceKeyframeValue } from '../../editor/keyframeRegistry';
 import { sampleKeyframes } from '../../editor/keyframes';
@@ -17,37 +22,22 @@ import {
   type TimelineState,
 } from '../../editor/types';
 
+export {
+  clipCropEdgeMax,
+  clipCropInsetPatch,
+  compactClipCrop,
+  hasClipCrop,
+  normalizedClipCrop,
+  PREVIEW_CROP_MIN_SPAN,
+  type ClipCropEdge,
+} from '../../editor/clipCrop';
+
 export interface PreviewPoint { x: number; y: number }
 export interface PreviewSize { width: number; height: number }
 export interface PreviewRect extends PreviewPoint, PreviewSize {}
 
 /** Edge of the selection box (local axes after rotation). */
 export type PreviewScaleEdge = 'n' | 's' | 'e' | 'w';
-
-/** Minimum remaining visible span while edge-cropping (canvas fraction). */
-export const PREVIEW_CROP_MIN_SPAN = 0.05;
-
-export function normalizedClipCrop(crop: ClipCrop | undefined): Required<ClipCrop> {
-  return {
-    left: crop?.left ?? 0,
-    top: crop?.top ?? 0,
-    right: crop?.right ?? 0,
-    bottom: crop?.bottom ?? 0,
-  };
-}
-
-/** Drop near-zero crops so the DOM stays free of no-op clip-path. */
-export function compactClipCrop(crop: Required<ClipCrop>): ClipCrop | undefined {
-  const round = (v: number) => Math.round(v * 1e6) / 1e6;
-  const next = {
-    left: round(Math.max(0, crop.left)),
-    top: round(Math.max(0, crop.top)),
-    right: round(Math.max(0, crop.right)),
-    bottom: round(Math.max(0, crop.bottom)),
-  };
-  if (next.left < 1e-6 && next.top < 1e-6 && next.right < 1e-6 && next.bottom < 1e-6) return undefined;
-  return next;
-}
 
 export interface EffectivePreviewTransform {
   x: number;
