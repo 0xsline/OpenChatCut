@@ -524,3 +524,5 @@ Third-party components and assets remain subject to their respective licenses.
 4. Open a Pull Request and include screenshots or acceptance evidence for UI or video-behavior changes.
 
 Use [GitHub Issues](https://github.com/0xsline/OpenChatCut/issues) for bug reports and feature requests.
+
+<p align="right"><sub><a href="https://github.com/J160KU">j160ku</a></sub></p>
