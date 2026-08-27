@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="#clip-crop">Clip crop</a> ·
   <a href="#what-is-openchatcut">Introduction</a> ·
   <a href="#product-tour">Product Tour</a> ·
   <a href="#quick-start">Quick Start</a> ·
@@ -55,6 +56,31 @@
 
 <p align="center">
   <sub>From a single instruction to a real timeline: agents, media, previews, motion graphics, transitions, effects, and multitrack audio all work together in one project.</sub>
+</p>
+
+---
+
+## Clip crop
+
+Kdenlive-style **Crop Left / Right / Top / Bottom** on visual clips. Cropped pixels are not drawn — they stay fully transparent (checkerboard in the preview).
+
+**Where:** select a video or image clip → **Clip properties** → **Basic** → **Transform**, under **Corner**.
+
+| Control | Edge | Range |
+|---|---|---|
+| Crop Left / Crop Right | left / right | `0` … canvas width, in **px** |
+| Crop Top / Crop Bottom | top / bottom | `0` … canvas height, in **px** |
+
+Opposite edges keep a minimum remaining span so the clip cannot invert. Storage is still a 0–1 canvas fraction; the inspector and agent speak pixels.
+
+**Agent / MCP:** `edit_item` with `transform.crop: { left?, right?, top?, bottom? }` in composition pixels. `transform.crop: null` clears the crop. Do not use CSS `left` / `right` / `top` / `bottom` for clip edges.
+
+<p align="center">
+  <img src="assets/readme-pic/clip-crop-inspector.png" alt="Clip crop: preview edges 1–4 match Crop Left, Crop Right, Crop Top, and Crop Bottom sliders in Clip properties, values in pixels" />
+</p>
+
+<p align="center">
+  <sub>Handles <b>(1)–(4)</b> on the preview match Crop Left, Crop Right, Crop Top, and Crop Bottom. Values are composition pixels, not percent.</sub>
 </p>
 
 ---
@@ -178,7 +204,7 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 | Area | Implemented capabilities |
 |---|---|
 | Timeline | Multitrack editing, move, trim, split, ripple edits, snapping, keyframes, markers, undo, and redo |
-| Visuals | WebGL effects, LUTs, chroma key, zoom, transitions, and custom shaders |
+| Visuals | WebGL effects, LUTs, chroma key, zoom, per-edge clip crop, transitions, and custom shaders |
 | Audio | Multiple audio tracks, sound effects, background music, voice-over recording, loudness, auto-ducking, and vocal isolation |
 | Transcript | Transcription jobs, word-level editing, pause compression, search, speakers, and clip views |
 | Captions | Automatic captions, named styles, translation, timeline overlays, and SRT export |
@@ -525,4 +551,4 @@ Third-party components and assets remain subject to their respective licenses.
 
 Use [GitHub Issues](https://github.com/0xsline/OpenChatCut/issues) for bug reports and feature requests.
 
-<p align="right"><sub><a href="https://github.com/J160KU">j160ku</a></sub></p>
+<p align="right"><sub><a href="https://github.com/J160KU">[[JI60KU x Cursor]]</a></sub></p>

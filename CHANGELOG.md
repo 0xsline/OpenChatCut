@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added / 新增
+
+- Inspector **Crop Left / Right / Top / Bottom** under Clip properties → Basic → Transform (below Corner). Values are composition pixels; cropped pixels are fully transparent. The built-in agent and MCP `edit_item` accept the same edges as `transform.crop: { left, right, top, bottom }` in pixels (`null` clears).
+  检查器「裁左 / 裁右 / 裁上 / 裁下」位于片段属性 → 基础 → 变换（圆角下方）。数值为画布像素，裁掉的区域完全透明。内置 Agent 与 MCP 的 `edit_item` 可用 `transform.crop: { left, right, top, bottom }` 设置同一组边（像素；`null` 清除）。
+
+<p align="center">
+  <img src="assets/readme-pic/clip-crop-inspector.png" alt="Clip crop inspector: preview edges 1–4 match Crop Left, Crop Right, Crop Top, and Crop Bottom sliders" width="920" />
+</p>
+
 ## [0.2.11] - 2026-08-25
 
 ### Added / 新增
