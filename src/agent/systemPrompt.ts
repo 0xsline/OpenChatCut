@@ -2,7 +2,7 @@
 // Authored in-house, grounded in the bundled skills + tool model.
 import { agentAutoApply } from './approval-mode';
 import { GENERATE_WORKFLOW } from './generate-workflow';
-import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../editor/types';
+import { defaultTrackId, resolveTrackId, selectedIdsOf, timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../editor/types';
 import type { SkillDefinition } from './skills/skill-types';
 import type { AgentContext } from './context';
 import { getLocale, localeLanguageName, type Locale } from '../i18n/locale';
@@ -47,9 +47,10 @@ export function editorStatePrompt(ctx: AgentContext): string {
   const tracks = timelineTrackIds(s)
     .map((id) => `${trackAlias(s, id)}(${id}·${trackKind(s, id)})`)
     .join(' ');
+  const selected = new Set(selectedIdsOf(s));
   const sorted = [...s.items].sort((a, b) => a.startFrame - b.startFrame || a.track.localeCompare(b.track));
   const lines = sorted.slice(0, EDITOR_STATE_MAX_ITEMS).map((it) => (
-    `[${it.id.slice(0, 8)}] ${trackAlias(s, it.track)} ${it.kind}「${it.name}」@${it.startFrame} +${it.durationInFrames}`
+    `[${it.id.slice(0, 8)}] ${trackAlias(s, it.track)} ${it.kind}「${it.name}」@${it.startFrame} +${it.durationInFrames}${selected.has(it.id) ? ' SELECTED' : ''}`
   ));
   const more = sorted.length > EDITOR_STATE_MAX_ITEMS
     ? `\n…${sorted.length - EDITOR_STATE_MAX_ITEMS} more clips (use read_timeline for the full list)`
@@ -65,11 +66,13 @@ export function editorStatePrompt(ctx: AgentContext): string {
     '<editor_state>',
     `fps=${s.fps} canvas=${s.width}×${s.height} duration=${total} frames (${(total / s.fps).toFixed(1)}s) items=${s.items.length}`,
     `tracks: ${tracks || 'none'}`,
+    `selected: ${selectedIdsOf(s).join(',') || 'none'}`,
     ...(lines.length ? lines : ['(timeline is empty)']),
     ...(more ? [more.trim()] : []),
     `media pool: ${assets}`,
     '</editor_state>',
     'This is the timeline snapshot captured when the user sent this message (props and transition details omitted). Small edits may reference these IDs directly; use read_timeline for props, transitions, or the latest state.',
+    'Flex crop / keep-only-region: crop the SELECTED clip once (all edges in one edit_item), then stop. The user does not need to add "one pass", "do not recheck frames", or "do not use run_code".',
   ].join('\n');
 }
 
@@ -178,9 +181,11 @@ export const SYSTEM_PROMPT = `You are OpenChatCut's professional writer-director
 - Import uploads only through import_media create_session → one-shot upload → finalize_uploaded_asset with the opaque receipt, echoed assetType, and duration for audio/video/gif. Never invent or reuse /media/uploads paths.
 - Multiple timelines are independent. Long-form to short-form should duplicate the sequence, change the duplicate ratio, and leave the original unchanged.
 - Use undo/redo for session history and named versions for milestones. Destructive restore/delete actions require their explicit confirmation fields.
+- Flex crop / flexcrop / Crop Left/Right/Top/Bottom: the user's wording is complete. The user does not need to say "one pass", "do not recheck frames", or "do not use run_code" — those limits are built in. "Keep only X" / "so that only the dashboard panel is left" means crop away everything else on the inspector selection (omit itemId or pass "selected"), not a timeline trim, mask, motion graphic, or ffmpeg job. Optionally view_timeline_frames once, then one edit_item transform.crop or transform.flexCrop with every needed edge in composition pixels, then stop and summarize. Do not re-open frames, do not nibble more pixels, do not call run_code, probe_media, e2b, edit_asset, or ToolSearch. A skipped sandbox tool does not undo the crop.
 
 # Verification
 - Inspect raw source with view_asset_frames and the composite timeline with view_timeline_frames. After visual edits—captions, motion graphics, text, transitions, zoom, filters, layout, or aspect ratio—verify representative timeline frames before claiming success.
+- Flex crop and keep-only-region jobs skip frame verification. After the crop edit, report done. Do not treat leftover chrome as a reason to loop or to call another tool.
 - Do not infer media contents from filenames or report visual quality from imagination. If verification is wrong, keep editing or report the concrete blocker.
 
 # Response style

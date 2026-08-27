@@ -1,5 +1,5 @@
 import type { ClipFilters, ClipTransform } from '../../editor/types';
-import { CLIP_CROP_EDGES, clipCropAxisSize, clipCropPxToFraction, type ClipCropEdge } from '../../editor/clipCrop';
+import { FLEX_CROP_EDGES, flexCropAxisSize, flexCropPxToFraction, type FlexCropEdge } from '../../editor/flexCrop';
 
 const finiteNum = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
@@ -28,7 +28,18 @@ export function parseFiltersArg(raw: unknown): { filters?: ClipFilters; error?: 
   return { filters: out };
 }
 
-const CROP_EDGES = CLIP_CROP_EDGES;
+const CROP_EDGES = FLEX_CROP_EDGES;
+
+const FLEX_CROP_KEYS = ['crop', 'flexCrop', 'flexcrop', 'flex_crop'] as const;
+
+function flexCropRaw(src: Record<string, unknown>): { raw?: unknown; error?: string } {
+  const present = FLEX_CROP_KEYS.filter((key) => src[key] !== undefined);
+  if (present.length > 1) {
+    return { error: 'flex crop: send only transform.crop or transform.flexCrop, not both' };
+  }
+  if (!present.length) return {};
+  return { raw: src[present[0]!] };
+}
 
 function parseCropArg(
   raw: unknown,
@@ -36,28 +47,28 @@ function parseCropArg(
 ): { crop?: ClipTransform['crop']; clear?: true; error?: string } {
   if (raw === null) return { clear: true };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { error: 'transform.crop must be null (clear) or {left?,right?,top?,bottom?} in composition pixels' };
+    return { error: 'flex crop must be null (clear) or {left?,right?,top?,bottom?} in composition pixels (transform.crop / transform.flexCrop)' };
   }
   const width = canvas.width;
   const height = canvas.height;
   if (!(width > 0) || !(height > 0)) {
-    return { error: 'transform.crop needs a positive canvas size' };
+    return { error: 'flex crop needs a positive canvas size' };
   }
   const src = raw as Record<string, unknown>;
-  const unknown = Object.keys(src).filter((key) => !CROP_EDGES.includes(key as ClipCropEdge));
-  if (unknown.length) return { error: `transform.crop unknown field: ${unknown.join(', ')}` };
+  const unknown = Object.keys(src).filter((key) => !CROP_EDGES.includes(key as FlexCropEdge));
+  if (unknown.length) return { error: `flex crop unknown field: ${unknown.join(', ')}` };
   const crop: NonNullable<ClipTransform['crop']> = {};
   for (const edge of CROP_EDGES) {
     if (src[edge] === undefined) continue;
     const n = finiteNum(src[edge]);
-    const axis = clipCropAxisSize(edge, width, height);
+    const axis = flexCropAxisSize(edge, width, height);
     if (n === undefined || n < 0 || n > axis) {
-      return { error: `transform.crop.${edge} must be 0..${axis} (composition px)` };
+      return { error: `flex crop ${edge} must be 0..${axis} (composition px)` };
     }
-    crop[edge] = clipCropPxToFraction(n, axis);
+    crop[edge] = flexCropPxToFraction(n, axis);
   }
   if (!Object.keys(crop).length) {
-    return { error: 'transform.crop needs at least one of left/right/top/bottom, or null to clear' };
+    return { error: 'flex crop needs at least one of left/right/top/bottom, or null to clear' };
   }
   return { crop };
 }
@@ -71,11 +82,13 @@ export function parseTransformArg(
   error?: string;
 } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { error: 'transform must be an object {scale?,scaleX?,scaleY?,x?,y?,rotation?,opacity?,borderRadius?,crop?}' };
+    return { error: 'transform must be an object {scale?,scaleX?,scaleY?,x?,y?,rotation?,opacity?,borderRadius?,crop?|flexCrop?}' };
   }
   const src = raw as Record<string, unknown>;
   const out: ClipTransform = {};
   let cropClear = false;
+  const cropField = flexCropRaw(src);
+  if (cropField.error) return { error: cropField.error };
   if (src.scale !== undefined) {
     const n = finiteNum(src.scale);
     if (n === undefined || n < 0.05 || n > 16) return { error: 'transform.scale must be 0.05..16 (1 = 100%)' };
@@ -112,14 +125,14 @@ export function parseTransformArg(
     if (n === undefined || n < 0) return { error: 'transform.borderRadius must be ≥ 0 (composition px)' };
     out.borderRadius = Math.round(n * 10) / 10;
   }
-  if (src.crop !== undefined) {
-    const parsed = parseCropArg(src.crop, canvas);
+  if (cropField.raw !== undefined) {
+    const parsed = parseCropArg(cropField.raw, canvas);
     if (parsed.error) return { error: parsed.error };
     if (parsed.clear) cropClear = true;
     else out.crop = parsed.crop;
   }
   if (!Object.keys(out).length && !cropClear) {
-    return { error: 'transform needs at least one of scale/scaleX/scaleY/x/y/rotation/opacity/borderRadius/crop' };
+    return { error: 'transform needs at least one of scale/scaleX/scaleY/x/y/rotation/opacity/borderRadius/crop/flexCrop' };
   }
   return { transform: out, cropClear };
 }

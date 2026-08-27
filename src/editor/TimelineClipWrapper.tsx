@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AbsoluteFill, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { TimelineItem } from './types';
 import { zoomAt } from './zoom';
 import { appearanceAt } from './clipFade';
@@ -11,7 +11,8 @@ export function ClipWrapper({ item, frameOffset = 0, hiddenByCaptions = false, c
   children: (borderRadius: number) => ReactNode;
 }) {
   const frame = useCurrentFrame() + frameOffset;
-  const appearance = appearanceAt(item, frame, hiddenByCaptions);
+  const { width, height } = useVideoConfig();
+  const appearance = appearanceAt(item, frame, hiddenByCaptions, { width, height });
   let foreground = children(appearance.borderRadius);
   if (item.zoom) {
     const zoom = zoomAt(item.zoom, frame, item.durationInFrames);
@@ -21,5 +22,16 @@ export function ClipWrapper({ item, frameOffset = 0, hiddenByCaptions = false, c
       </AbsoluteFill>
     );
   }
-  return <AbsoluteFill style={{ opacity: appearance.opacity, ...appearance.foregroundStyle }}>{foreground}</AbsoluteFill>;
+  const { clipPath, ...rest } = appearance.foregroundStyle;
+  return (
+    <AbsoluteFill
+      style={{
+        opacity: appearance.opacity,
+        ...rest,
+        clipPath,
+      }}
+    >
+      {foreground}
+    </AbsoluteFill>
+  );
 }

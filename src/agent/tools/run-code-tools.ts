@@ -1,3 +1,5 @@
+import { sandboxSkipFromHttpError, sandboxSkipIfUnconfigured } from '../sandbox-unavailable';
+
 export { RUN_CODE_TOOL_SCHEMAS, RUN_CODE_TOOL_NAMES } from './schemas/run-code-tools';
 // run_code — lets a loaded skill execute its shipped scripts (ffmpeg / node / python /
 // bash) in our own e2b cloud sandbox, via the server-side /e2b/run proxy (which holds the
@@ -8,6 +10,8 @@ export { RUN_CODE_TOOL_SCHEMAS, RUN_CODE_TOOL_NAMES } from './schemas/run-code-t
 
 export async function execRunCodeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name !== 'run_code') return { error: `unknown tool ${name}` };
+  const unconfigured = sandboxSkipIfUnconfigured();
+  if (unconfigured) return unconfigured;
   try {
     const res = await fetch('/e2b/run', {
       method: 'POST',
@@ -15,9 +19,13 @@ export async function execRunCodeTool(name: string, args: Record<string, unknown
       body: JSON.stringify(args),
     });
     const data = (await res.json()) as Record<string, unknown>;
-    if (!res.ok) return { error: (data.error as string) ?? `e2b failed (${res.status})` };
+    if (!res.ok) {
+      const message = (data.error as string) ?? `e2b failed (${res.status})`;
+      return sandboxSkipFromHttpError(message) ?? { error: message };
+    }
     return data;
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    return sandboxSkipFromHttpError(message) ?? { error: message };
   }
 }

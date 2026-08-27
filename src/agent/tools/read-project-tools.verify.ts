@@ -71,5 +71,6 @@ const schemaDescription = READ_PROJECT_TOOL_SCHEMAS[0]!.description ?? '';
 assert.match(schemaDescription, /currently targeted by this agent session/);
 assert.match(schemaDescription, /return an error/);
 assert.match(schemaDescription, /empty item\/asset arrays/);
+assert.match(schemaDescription, /selectedId/);
 
 console.log('read-project-tools.verify: session targeting and documented failure/filter semantics ok');

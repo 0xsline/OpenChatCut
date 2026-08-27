@@ -14,7 +14,7 @@ import type {
   TransitionType,
   ZoomEffect,
 } from '../../editor/types';
-import type { ClipCropEdge } from '../../editor/clipCrop';
+import type { FlexCropEdge } from '../../editor/flexCrop';
 import type { SelectedCaptionInspector } from '../../captions/captionSelection';
 import type { CaptionsData } from '../../captions/types';
 
@@ -54,7 +54,7 @@ export interface InspectorPanelProps {
   onItemVolumeChange: (volume: number) => void;
   onItemFadeChange: (fade: FadePatch) => void;
   onItemTransformChange: (patch: ClipTransform) => void;
-  onItemCropChange: (edge: ClipCropEdge, value: number) => void;
+  onItemCropChange: (edge: FlexCropEdge, value: number) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
   backgroundFillAvailable?: boolean;
   onItemBackgroundFillChange?: (enabled: boolean, strength?: number) => void;

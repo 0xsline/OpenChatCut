@@ -28,11 +28,14 @@ export function renderedVisualFrameRect(
   const scale = fit === 'cover'
     ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
     : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
-  const width = sourceWidth * scale;
-  const height = sourceHeight * scale;
+  // Whole composition pixels so Crop Top/Bottom and the orange box step 1px.
+  // Unrounded contain of 16:9 on 9:16 is y=656.25, h=607.5 — browsers paint that
+  // box on integers while the overlay kept the fractions, so the cut drifted.
+  const width = Math.round(sourceWidth * scale);
+  const height = Math.round(sourceHeight * scale);
   return {
-    x: (canvasWidth - width) / 2,
-    y: (canvasHeight - height) / 2,
+    x: Math.round((canvasWidth - width) / 2),
+    y: Math.round((canvasHeight - height) / 2),
     width,
     height,
   };
@@ -53,11 +56,21 @@ export function visibleVisualFrameRect(
     : rendered;
 }
 
+/**
+ * Replaced media inside {@link visibleVisualFrameRect} already sits in the
+ * contain/cover box. `contain` again letterboxes when the file's real aspect
+ * differs from stored width/height (often 5–15px top/bottom) while the orange
+ * outline hugs the metadata box. `fill` paints to that box; `cover` stays cover.
+ */
+export function objectFitInsideVisualFrame(fit: AspectFit): 'cover' | 'fill' {
+  return fit === 'cover' ? 'cover' : 'fill';
+}
+
 /** CSS normalizes over-large radii too, but resolving here keeps preview/export geometry explicit. */
 export function clampVisualBorderRadius(
   borderRadius: number,
   frame: VisualFrameSize,
 ): number {
   if (!Number.isFinite(borderRadius) || borderRadius <= 0) return 0;
-  return Math.min(borderRadius, Math.max(0, Math.min(frame.width, frame.height) / 2));
+  return Math.min(borderRadius, Math.max(0, Math.floor(Math.min(frame.width, frame.height) / 2)));
 }

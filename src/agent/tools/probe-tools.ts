@@ -6,6 +6,7 @@ export { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES } from './schemas/probe-tools';
 // transcription remains a separate explicit transcribe_track call.
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
+import { sandboxSkipFromHttpError, sandboxSkipIfUnconfigured } from '../sandbox-unavailable';
 
 type Args = Record<string, unknown>;
 
@@ -100,6 +101,10 @@ function resolveSource(ctx: AgentContext, raw: string): ResolvedSource {
 
 export async function execProbeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name !== 'probe_media') return { error: `unknown tool ${name}` };
+  const unconfigured = sandboxSkipIfUnconfigured();
+  if (unconfigured) {
+    return { ...unconfigured, hint: 'finalize_uploaded_asset can still commit the upload, but it will not start transcription.' };
+  }
   const resolved = resolveSource(ctx, String(args.source ?? ''));
   if ('error' in resolved) return resolved;
 
@@ -114,10 +119,16 @@ export async function execProbeTool(name: string, args: Args, ctx: AgentContext)
     const res = await fetch('/e2b/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     data = (await res.json()) as Record<string, unknown>;
     if (!res.ok) {
-      return { error: (data.error as string) ?? `probe failed (${res.status})`, hint: 'e2b sandbox may be unconfigured — finalize_uploaded_asset can still commit the upload, but it will not start transcription.' };
+      const message = (data.error as string) ?? `probe failed (${res.status})`;
+      const skipped = sandboxSkipFromHttpError(message);
+      if (skipped) {
+        return { ...skipped, hint: 'finalize_uploaded_asset can still commit the upload, but it will not start transcription.' };
+      }
+      return { error: message, hint: 'e2b sandbox may be unconfigured — finalize_uploaded_asset can still commit the upload, but it will not start transcription.' };
     }
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    return sandboxSkipFromHttpError(message) ?? { error: message };
   }
 
   const exitCode = typeof data.exitCode === 'number' ? data.exitCode : -1;

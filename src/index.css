@@ -772,8 +772,9 @@ button, input, select { font: inherit; }
   display:flex; align-items:center; justify-content:center;
   overflow:hidden; padding:12px 20px; background:var(--cc-bg);
 }
-/* Remotion Player root — allow shrink, keep letterbox */
-.cc-preview-stage > div { flex:0 1 auto; max-width:100%; max-height:100%; }
+/* Fitted composition rect — do not flex-shrink on the row axis only (that
+ * letterboxes the Player on Y while the overlay still covers the taller box). */
+.cc-preview-stage > div { flex:0 0 auto; max-width:100%; max-height:100%; }
 @container preview-workspace (max-width:480px) {
   .cc-preview-header { padding-inline:8px !important; }
   .cc-preview-header-actions { overflow-x:auto; scrollbar-width:none; }

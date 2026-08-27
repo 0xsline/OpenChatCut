@@ -7,6 +7,7 @@ export const FRAMES_TOOL_SCHEMAS: AgentToolSchema[] = [
       'Render still frames of one timeline composition (pending/draft edits included).',
       'frames and seconds are ABSOLUTE TIMELINE coordinates, not source-media positions.',
       'Use after visual edits (MG/text, transitions, zoom, filters, aspect, captions) to verify the composed result.',
+      'Do not use to verify flex crop / keep-only-region jobs: at most one look before cropping, never after.',
       'Provide exact coordinates or count; with neither, samples evenly (default 4, max 16). Multi-frame results are one labeled contact sheet when possible.',
     ].join(' '),
     input_schema: {

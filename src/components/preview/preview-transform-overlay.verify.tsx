@@ -6,7 +6,7 @@ import type { RefObject } from 'react';
 import type { TimelineItem, TimelineState } from '../../editor/types';
 import { t } from '../../i18n/locale';
 import { PreviewTransformOverlay } from './PreviewTransformOverlay';
-import { fitPreviewCanvasSize } from './previewCanvasGeometry';
+import { fitPreviewCanvasSize, previewPaddedClientSize, previewStageContentSize } from './previewCanvasGeometry';
 
 const item: TimelineItem = {
   id: 'card',
@@ -55,7 +55,7 @@ assert.deepEqual(
     { width: 1920, height: 1080 },
   ),
   { width: 558, height: 313.875 },
-  '16:9 应在竖向较高的预览栏中按宽度 contain，不能保留旧竖屏高度',
+  '16:9 应在竖向较高的预览栏中按宽度 contain，且宽高共用同一 scale',
 );
 assert.deepEqual(
   fitPreviewCanvasSize(
@@ -71,13 +71,44 @@ assert.deepEqual(
     { width: 1080, height: 1920 },
   ),
   { width: 281.25, height: 500 },
-  '9:16 应在横向较宽的预览栏中按高度 contain',
+  '9:16 应在横向较宽的预览栏中按高度 contain，不能把 281.25 收成 281',
+);
+{
+  const fitted = fitPreviewCanvasSize({ width: 360, height: 776 }, { width: 1080, height: 1920 });
+  assert.equal(fitted.width * 1920, fitted.height * 1080, 'preview wrapper aspect must equal the composition');
+  assert.deepEqual(fitted, { width: 360, height: 640 });
+}
+assert.deepEqual(
+  previewStageContentSize({
+    contentBoxSize: [{ inlineSize: 360, blockSize: 776 }],
+    contentRect: { width: 360, height: 776 },
+  }),
+  { width: 360, height: 776 },
+  'stage size is the content box, not clientWidth with padding',
+);
+assert.deepEqual(
+  previewPaddedClientSize(
+    { width: 400, height: 800 },
+    { left: 20, right: 20, top: 12, bottom: 12 },
+  ),
+  { width: 360, height: 776 },
+  '12px 20px stage padding must not be treated as composition space',
 );
 const previewPanelSource = readFileSync(new URL('../PreviewPanel.tsx', import.meta.url), 'utf8');
 assert.match(
   previewPanelSource,
   /fitPreviewCanvasSize\(stageSize,\s*\{\s*width:\s*state\.width,\s*height:\s*state\.height/s,
   '预览面板必须把 contain 后的同一画布尺寸交给播放器、字幕命中层和片段变换层',
+);
+assert.match(
+  previewPanelSource,
+  /previewStageContentSize/,
+  'ResizeObserver must use the stage content box so padding is not composition space',
+);
+assert.match(
+  previewPanelSource,
+  /previewPaddedClientSize/,
+  'first layout must subtract stage padding from clientWidth',
 );
 
 // A selected editable clip exposes one compact transform frame and nine handles.

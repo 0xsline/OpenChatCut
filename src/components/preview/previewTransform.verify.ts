@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { TimelineItem, TimelineState } from '../../editor/types';
+import { appearanceAt } from '../../editor/clipFade';
 import * as previewTransformModule from './previewTransform';
 import {
   cyclePreviewCandidate,
@@ -50,8 +51,7 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
 });
 
 // 圆角必须落在素材实际可见矩形，而不是铺满整个项目画布。
-// 1:1 画布 contain 一个 16:9 横屏素材时，可见矩形应为 1080×607.5；
-// 405px 需要按这块矩形的短边收敛到 303.75px。
+// 1:1 画布 contain 一个 16:9 横屏素材时，可见矩形为整数像素 1080×608。
 {
   const geometryApi = previewTransformModule as unknown as {
     visibleVisualFrameRect?: (
@@ -72,9 +72,15 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
       { width: 1920, height: 1080 },
       'contain',
     );
-    assert.deepEqual(frame, { x: 0, y: 236.25, width: 1080, height: 607.5 });
-    assert.equal(geometryApi.clampVisualBorderRadius(405, frame), 303.75);
+    assert.deepEqual(frame, { x: 0, y: 236, width: 1080, height: 608 });
+    assert.equal(geometryApi.clampVisualBorderRadius(405, frame), 304);
   }
+}
+
+{
+  const { objectFitInsideVisualFrame } = previewTransformModule;
+  assert.equal(objectFitInsideVisualFrame('contain'), 'fill', 'contain box is already fitted; fill avoids a second letterbox');
+  assert.equal(objectFitInsideVisualFrame('cover'), 'cover');
 }
 
 // A wrong paint-order mirror would select the background instead of the card.
@@ -104,21 +110,44 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
   );
 }
 
-// 9:16 canvas containing a 16:9 source produces a centered 1080×607.5 box.
+// 9:16 canvas containing a 16:9 source produces a centered integer 1080×608 box.
 {
   const item = visualItem('wide', 'V1');
   const state = stateOf({ items: [item] });
   const [candidate] = visiblePreviewCandidates(state, 0);
   assert.ok(candidate);
   const geometry = previewCandidateGeometry(state, candidate);
-  assert.deepEqual(geometry.baseRect, { x: 0, y: 656.25, width: 1080, height: 607.5 });
+  assert.deepEqual(geometry.baseRect, { x: 0, y: 656, width: 1080, height: 608 });
 
   const cropped = visualItem('cropped', 'V1', {
     transform: { crop: { left: 0.25, right: 0.25 } },
   });
   const cropState = stateOf({ items: [cropped] });
   const cropGeometry = previewCandidateGeometry(cropState, visiblePreviewCandidates(cropState, 0)[0]!);
-  assert.deepEqual(cropGeometry.baseRect, { x: 270, y: 656.25, width: 540, height: 607.5 });
+  assert.deepEqual(cropGeometry.baseRect, { x: 270, y: 656, width: 540, height: 608 });
+
+  const bottomCropped = visualItem('bottom', 'V1', {
+    transform: { crop: { bottom: 800 / 1920 } },
+  });
+  const bottomState = stateOf({ items: [bottomCropped] });
+  const bottomGeometry = previewCandidateGeometry(bottomState, visiblePreviewCandidates(bottomState, 0)[0]!);
+  assert.deepEqual(
+    bottomGeometry.baseRect,
+    { x: 0, y: 656, width: 1080, height: 464 },
+    'Crop Bottom uses canvas pixels; outline meets the clipped picture, not a leftover strip',
+  );
+}
+
+// Rotation is around the composition center (CSS 50% 50%), so that point stays put.
+{
+  const item = visualItem('wide', 'V1', { transform: { rotation: 90 } });
+  const state = stateOf({ items: [item] });
+  const geometry = previewCandidateGeometry(state, visiblePreviewCandidates(state, 0)[0]!);
+  assert.equal(geometry.center.x, 540);
+  assert.equal(geometry.center.y, 960);
+  const appearance = appearanceAt(item, 0, false, { width: 1080, height: 1920 });
+  assert.equal(appearance.foregroundStyle.transformOrigin, '50% 50%');
+  assert.equal(appearance.foregroundStyle.transformBox, 'border-box');
 }
 
 // Background fill renders a contained sharp foreground even when the timeline's normal fit is cover.
@@ -127,7 +156,7 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
   const item = visualItem('background-fill', 'V1', { backgroundFill: true });
   const state = stateOf({ fit: 'cover', items: [item] });
   const geometry = previewCandidateGeometry(state, visiblePreviewCandidates(state, 0)[0]!);
-  assert.deepEqual(geometry.baseRect, { x: 0, y: 656.25, width: 1080, height: 607.5 });
+  assert.deepEqual(geometry.baseRect, { x: 0, y: 656, width: 1080, height: 608 });
 }
 
 // A transient zero-size canvas during window resize must not leak NaN geometry.

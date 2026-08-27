@@ -93,7 +93,7 @@ export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
  * canvas width (left/right) or height (top/bottom). Rendered as clip-path inset
  * BEFORE translate/rotate/scale, so the cropped window then moves/scales as one
  * unit — named layouts (apply_layout) rely on exactly this composition order. */
-export interface ClipCrop {
+export interface FlexCrop {
   left?: number;
   top?: number;
   right?: number;
@@ -119,7 +119,7 @@ export interface ClipTransform {
   /** clipped layer corner radius in composition pixels */
   borderRadius?: number;
   /** crop the full-canvas layer to a sub-rect (split-screen / for PiP) */
-  crop?: ClipCrop;
+  crop?: FlexCrop;
 }
 
 /** one per-clip WebGL effect instance (effects[] entry with an assetId

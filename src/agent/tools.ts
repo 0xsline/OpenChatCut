@@ -1,6 +1,7 @@
 import type { AgentToolSchema } from './tool-schema';
 import type { AgentContext } from './context';
 import type { HarnessToolExecutionContext } from './harness-context';
+import { guardFlexCropToolLoop, noteFlexCropToolResult } from './inspect-loop';
 import { CORE_TOOL_SCHEMAS } from './tools/schemas/core-tools';
 import { AUDIO_ASSET_TOOL_NAMES } from './tools/schemas/audio-asset-tools';
 import { SCENE_QUALITY_TOOL_NAMES, SCENE_QUALITY_TOOL_SCHEMAS } from './tools/schemas/scene-quality-tools';
@@ -304,12 +305,18 @@ export async function executeTool(
   searchCatalog: readonly AgentToolSchema[] = TOOL_SCHEMAS,
   harness?: HarnessToolExecutionContext,
 ): Promise<unknown> {
+  const skipped = guardFlexCropToolLoop(ctx, name, args);
+  if (skipped) return skipped;
+  let result: unknown;
   if (name === 'track_progress') {
     const { execProgressTool } = await import('./tools/progress-tools');
-    return execProgressTool(name, args, ctx);
+    result = await execProgressTool(name, args, ctx);
+  } else {
+    const loadExecutor = EXECUTOR_BY_NAME.get(name);
+    result = loadExecutor
+      ? await (await loadExecutor())(name, args, ctx, harness)
+      : await (await import('./tools/core-tools')).execCoreTool(name, args, ctx, searchCatalog);
   }
-  const loadExecutor = EXECUTOR_BY_NAME.get(name);
-  if (loadExecutor) return (await loadExecutor())(name, args, ctx, harness);
-  const { execCoreTool } = await import('./tools/core-tools');
-  return execCoreTool(name, args, ctx, searchCatalog);
+  noteFlexCropToolResult(ctx, name, args, result);
+  return result;
 }

@@ -53,3 +53,14 @@ Timeline frame renderer caveat:
 - If `view_timeline_frames` fails for one frame, the project write path can still be healthy — retry with fewer frames or a different time before concluding anything.
 - Assets still on `blob:` placeholders (upload in flight) render as empty; wait for `track_progress` target=upload before treating a blank frame as a bug.
 - Do not report visual proof success unless the tool returns image content that visibly confirms the target frame.
+
+Missing e2b sandbox (`run_code` / `probe_media`):
+
+- Error text: `e2b sandbox is not configured. Set E2B_API_KEY in .env.local.`
+- This is not a failed flex crop. Do not retry `run_code`. Continue with `edit_item transform.crop` / `transform.flexCrop` in composition pixels, or stop and summarize prior successful edits.
+- Do not tell the user the whole crop job failed if `edit_item` already applied.
+
+Flex crop inspect loop:
+
+- A request like "flex crop the selected clip so that only the dashboard panel is left" is complete. Do not wait for "one pass", "do not recheck frames", or "do not use run_code".
+- At most one `view_timeline_frames` before the crop. After `edit_item` crop, stop and summarize. Do not nibble more pixels.

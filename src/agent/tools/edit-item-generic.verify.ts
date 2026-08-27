@@ -252,5 +252,31 @@ assert.equal(validateGenericDelete(state, { type: 'video', id: 'v1_abc' }).itemI
   assert.equal(plan.error, undefined, 'crop null clears');
   assert.equal(plan.transform?.crop, undefined);
 }
+{
+  const plan = validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', transform: { flexCrop: { right: 192 } } }) as { error?: string; transform?: ClipTransform };
+  assert.equal(plan.error, undefined, 'flexCrop alias validates');
+  assert.equal(plan.transform?.crop?.right, 192 / 1920);
+}
+{
+  const err = String(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', transform: { crop: { left: 10 }, flexCrop: { left: 10 } } }).error ?? '');
+  assert.ok(err.includes('flex crop'), err);
+}
+{
+  const selected = { ...state, selectedId: 'v1_abc', selectedIds: ['v1_abc'] } as TimelineState;
+  const plan = validateGenericUpdate(selected, { type: 'video', transform: { flexCrop: { left: 96 } } }) as { error?: string; itemId?: string; transform?: ClipTransform };
+  assert.equal(plan.error, undefined, 'omit itemId uses inspector selection');
+  assert.equal(plan.itemId, 'v1_abc');
+  assert.equal(plan.transform?.crop?.left, 96 / 1920);
+}
+{
+  const selected = { ...state, selectedId: 'v1_abc', selectedIds: ['v1_abc'] } as TimelineState;
+  const plan = validateGenericUpdate(selected, { type: 'video', itemId: 'selected', transform: { crop: { top: 54 } } }) as { error?: string; itemId?: string };
+  assert.equal(plan.error, undefined);
+  assert.equal(plan.itemId, 'v1_abc');
+}
+{
+  const err = String(validateGenericUpdate(state, { type: 'video', transform: { crop: { left: 10 } } }).error ?? '');
+  assert.ok(err.includes('no clip selected'), err);
+}
 
 console.log('edit-item-generic.check.ts OK');

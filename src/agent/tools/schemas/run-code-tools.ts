@@ -4,7 +4,8 @@ export const RUN_CODE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'run_code',
     description:
-      'Run a shell command in an isolated Linux sandbox (e2b) — use for skill-shipped scripts, ffmpeg/ffprobe media probing/transcoding, or node/python. Optionally write input files first (files[]) and read output files back (outputs[]). The sandbox cannot touch the editor timeline; apply any result with the editor tools. Call this when a loaded skill instructs you to run a script or command.',
+      'Run a shell command in an isolated Linux sandbox (e2b) — use for skill-shipped scripts, ffmpeg/ffprobe media probing/transcoding, or node/python. Optionally write input files first (files[]) and read output files back (outputs[]). The sandbox cannot touch the editor timeline; apply any result with the editor tools. Call this when a loaded skill instructs you to run a script or command. '
+      + 'Do not use for flex crop, keep-only-region jobs, or measuring clip edges (use edit_item transform.crop). The user does not need to forbid this tool in the prompt. If sandbox is not in configured capabilities, do not call this tool.',
     input_schema: {
       type: 'object',
       additionalProperties: false,

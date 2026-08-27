@@ -9,6 +9,7 @@ export const READ_PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
       'Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error.',
       'Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread.',
       'Timeline items include canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus), exact source window (srcInFrame, sourceStartFrame, sourceDurationInFrames, sourceEndFrameExclusive), and editable state (keyframes, transform, filters, volume, fadeInFrames, fadeOutFrames).',
+      'timeline.selectedId / selectedIds / selected is the inspector selection. If the user says "the selected clip" or "this clip", use that id — do not pick an adjacent track. Video aliases are bottom-up: V1 is the bottom video track, not the top lane.',
     ].join(' '),
     input_schema: {
       type: 'object',

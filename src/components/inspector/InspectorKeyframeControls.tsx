@@ -5,13 +5,13 @@ import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyf
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import {
-  clipCropAxisSize,
-  clipCropEdgeMax,
-  clipCropFractionToPx,
-  clipCropPxToFraction,
-  normalizedClipCrop,
-  type ClipCropEdge,
-} from '../../editor/clipCrop';
+  flexCropAxisSize,
+  flexCropEdgeMax,
+  flexCropFractionToPx,
+  flexCropPxToFraction,
+  normalizedFlexCrop,
+  type FlexCropEdge,
+} from '../../editor/flexCrop';
 import { ScalarControl } from './ScalarControl';
 import { snapScalar } from './scalarMath';
 
@@ -61,7 +61,7 @@ export function SliderRow({
         aria-label={label}
         className="cc-insp-range"
         style={{ '--cc-insp-range-fill': `${progress}%` } as CSSProperties}
-        type="range" min={min} max={max} step="any" value={val}
+        type="range" min={min} max={max} step={step} value={val}
         disabled={disabled || mixed}
         onChange={(e) => onChange(snapScalar(Number(e.target.value), min, max, step))}
         {...gesture}
@@ -178,7 +178,7 @@ function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekL
   );
 }
 
-const CROP_ROWS: ReadonlyArray<{ edge: ClipCropEdge; label: string }> = [
+const CROP_ROWS: ReadonlyArray<{ edge: FlexCropEdge; label: string }> = [
   { edge: 'left', label: '裁左' },
   { edge: 'right', label: '裁右' },
   { edge: 'top', label: '裁上' },
@@ -195,14 +195,14 @@ export function TransformControl({
   canvasWidth: number;
   canvasHeight: number;
   mixed?: (prop: KeyframeProp) => boolean;
-  mixedCrop?: (edge: ClipCropEdge) => boolean;
+  mixedCrop?: (edge: FlexCropEdge) => boolean;
   onChange: (p: ClipTransform) => void;
-  onCropChange: (edge: ClipCropEdge, value: number) => void;
+  onCropChange: (edge: FlexCropEdge, value: number) => void;
   onReset: (props: readonly KeyframeProp[]) => void;
   kf: KfApi;
 }) {
   const t = useT();
-  const crop = normalizedClipCrop(item.transform?.crop);
+  const crop = normalizedFlexCrop(item.transform?.crop);
   const rows = KEYFRAME_PROPS
     .map(getKeyframePropertyDefinition)
     // Volume is not part of the transform stack — VolumeControl has its own keyframe track
@@ -236,9 +236,9 @@ export function TransformControl({
         );
       })}
       {CROP_ROWS.map((row) => {
-        const axis = clipCropAxisSize(row.edge, canvasWidth, canvasHeight);
-        const valuePx = clipCropFractionToPx(crop[row.edge], axis);
-        const maxPx = clipCropFractionToPx(clipCropEdgeMax(item.transform?.crop, row.edge), axis);
+        const axis = flexCropAxisSize(row.edge, canvasWidth, canvasHeight);
+        const valuePx = flexCropFractionToPx(crop[row.edge], axis);
+        const maxPx = flexCropFractionToPx(flexCropEdgeMax(item.transform?.crop, row.edge), axis);
         return (
           <SliderRow
             key={row.edge}
@@ -251,7 +251,7 @@ export function TransformControl({
             mixed={mixedCrop?.(row.edge)}
             onReset={() => onCropChange(row.edge, 0)}
             resetDisabled={!mixedCrop?.(row.edge) && valuePx === 0}
-            onChange={(next) => onCropChange(row.edge, clipCropPxToFraction(next, axis))}
+            onChange={(next) => onCropChange(row.edge, flexCropPxToFraction(next, axis))}
           />
         );
       })}

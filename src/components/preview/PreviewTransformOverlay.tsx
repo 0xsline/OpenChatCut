@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import type { ClipCrop, ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
+import type { FlexCrop, ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
 import { t } from '../../i18n/locale';
 import {
   cyclePreviewCandidate,
@@ -53,7 +53,7 @@ interface GestureState {
   /** When mode is crop-edge, which edge is being dragged. */
   edge?: PreviewScaleEdge;
   /** Crop snapshot at pointer-down (edge crop keeps the opposite side fixed). */
-  startCrop?: ClipCrop;
+  startCrop?: FlexCrop;
   startUi: PreviewPoint;
   startComposition: PreviewPoint;
   center: PreviewPoint;
@@ -70,7 +70,7 @@ interface PendingValues {
   localFrame: number;
   values: Partial<Record<TransformWriteProp, number>>;
   /** Edge crop writes the full crop object (or undefined to clear). */
-  crop?: ClipCrop | undefined;
+  crop?: FlexCrop | undefined;
   cropTouched?: boolean;
 }
 
@@ -326,7 +326,6 @@ export function PreviewTransformOverlay({
     playerRef.current?.pause();
     setFrame(Math.round(playerRef.current?.getCurrentFrame() ?? frame));
     event.currentTarget.setPointerCapture(event.pointerId);
-    const geometry = previewCandidateGeometry(state, candidate);
     gestureRef.current = {
       pointerId: event.pointerId,
       item: candidate.item,
@@ -335,7 +334,7 @@ export function PreviewTransformOverlay({
       startCrop: candidate.item.transform?.crop,
       startUi: pointUi,
       startComposition: pointComposition,
-      center: geometry.center,
+      center: { x: state.width / 2, y: state.height / 2 },
       previewSize: { width: rect.width, height: rect.height },
       transform: candidate.transform,
       localFrame: candidate.localFrame,
@@ -381,12 +380,15 @@ export function PreviewTransformOverlay({
     const dx = top.x - selection.center.x;
     const dy = top.y - selection.center.y;
     const length = Math.hypot(dx, dy) || 1;
-    const compositionOffset = previewSize.height > 0 ? 28 * state.height / previewSize.height : 28;
+    const previewScale = previewSize.width > 0 && previewSize.height > 0
+      ? Math.min(previewSize.width / state.width, previewSize.height / state.height)
+      : 0;
+    const compositionOffset = previewScale > 0 ? 28 / previewScale : 28;
     return {
       stem: top,
       handle: { x: top.x + dx / length * compositionOffset, y: top.y + dy / length * compositionOffset },
     };
-  }, [previewSize.height, selection, state.height]);
+  }, [previewSize.height, previewSize.width, selection, state.height, state.width]);
 
   const percentPosition = (point: PreviewPoint) => ({
     left: `${point.x / state.width * 100}%`,
