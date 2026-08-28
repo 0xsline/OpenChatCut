@@ -251,6 +251,31 @@ export function movePreviewTransform(
 }
 
 /**
+ * Map a viewport client point onto the current preview canvas.
+ * Always pass the live getBoundingClientRect() — a cached overlay origin
+ * treats inspector open/close (canvas recenter) as a drag.
+ */
+export function previewPointerFromClient(
+  client: PreviewPoint,
+  canvas: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>,
+  composition: Pick<TimelineState, 'width' | 'height'>,
+): { ui: PreviewPoint; composition: PreviewPoint } {
+  const ui = { x: client.x - canvas.left, y: client.y - canvas.top };
+  return {
+    ui,
+    composition: {
+      x: canvas.width > 0 ? ui.x / canvas.width * composition.width : 0,
+      y: canvas.height > 0 ? ui.y / canvas.height * composition.height : 0,
+    },
+  };
+}
+
+/** Screen-space pointer delta. Overlay translation/resize must not count. */
+export function previewClientDelta(startClient: PreviewPoint, currentClient: PreviewPoint): PreviewPoint {
+  return { x: currentClient.x - startClient.x, y: currentClient.y - startClient.y };
+}
+
+/**
  * Build one keyboard nudge against the exact transform value currently shown by
  * the preview and Inspector. Existing x/y curves receive a keyframe at the
  * playhead; un-keyframed clips update their static transform instead.

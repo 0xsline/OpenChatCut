@@ -226,6 +226,40 @@ assert.deepEqual(
   { x: 15, y: 5 },
 );
 
+{
+  const { previewClientDelta, previewPointerFromClient } = previewTransformModule;
+  const startClient = { x: 420, y: 510 };
+  const identity = { x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1, rotation: 0 };
+  const afterInspector = { left: 100, top: 200, width: 360, height: 640 };
+  // Click empty canvas then the clip: inspector mounts (320px), canvas recenters
+  // downward. Overlay-relative coords would see ~120px of fake Y motion.
+  const staleUiDelta = {
+    x: (startClient.x - afterInspector.left) - (startClient.x - 100),
+    y: (startClient.y - afterInspector.top) - (startClient.y - 80),
+  };
+  assert.equal(staleUiDelta.y, -120);
+  assert.deepEqual(
+    movePreviewTransform(identity, staleUiDelta, { width: 360, height: 640 }),
+    { x: 0, y: -18.75 },
+    'cached overlay origin would jump the clip up when the inspector opens',
+  );
+  const liveDelta = previewClientDelta(startClient, startClient);
+  assert.deepEqual(liveDelta, { x: 0, y: 0 });
+  assert.deepEqual(
+    movePreviewTransform(identity, liveDelta, { width: afterInspector.width, height: afterInspector.height }),
+    { x: 0, y: 0 },
+    'a stationary click must not write x/y when the canvas recenters',
+  );
+  const dragged = previewClientDelta(startClient, { x: 420, y: 558 });
+  assert.deepEqual(
+    movePreviewTransform(identity, dragged, { width: 480, height: 480 }),
+    { x: 0, y: 10 },
+  );
+  const mapped = previewPointerFromClient(startClient, afterInspector, { width: 1080, height: 1920 });
+  assert.equal(mapped.ui.x, 320);
+  assert.equal(mapped.ui.y, 310);
+}
+
 // Uniform scale uses distance from center and respects the usable minimum.
 assert.equal(scalePreviewTransform(1, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }), 2);
 assert.equal(scalePreviewTransform(1, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 0 }), 0.05);
@@ -323,5 +357,10 @@ assert.match(editorActionsSource, /setItemKeyframe/, '已有位置关键帧时�
 const overlaySource = readFileSync(new URL('./PreviewTransformOverlay.tsx', import.meta.url), 'utf8');
 assert.match(overlaySource, /tabIndex=\{0\}/, '预览变换层应可获得键盘焦点');
 assert.match(overlaySource, /event\.currentTarget\.focus\(/, '在预览里点选片段时应激活方向键微移模式');
+assert.match(
+  overlaySource,
+  /previewClientDelta\(gesture\.startClient/,
+  'move/scale/rotate must use viewport client delta, not a cached overlay origin',
+);
 
 console.log('previewTransform.verify: ok (候选/画框/关键帧/命中/循环/移动/缩放/旋转/方向键微移)');
