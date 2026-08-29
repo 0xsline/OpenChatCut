@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { toMcpContent, toStructuredContent } from './mcp.ts';
+import { projectMcpReply } from './mcp-result.ts';
 
 const object = { ok: true };
 assert.equal(toStructuredContent(object), object);
@@ -30,5 +31,7 @@ assert.deepEqual(toMcpContent(imageResult), [
     mimeType: 'image/jpeg',
   },
 ]);
+const projectedImage = projectMcpReply(imageResult) as typeof imageResult;
+assert.equal(projectedImage.__images[0]!.base64, 'jpeg-data', 'MCP projection preserves image bytes');
 
 console.log('external-agent MCP structured content check passed');
