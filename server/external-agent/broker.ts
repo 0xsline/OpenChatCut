@@ -157,7 +157,16 @@ function sessionRecoveryResult(ownerId: string, binding: EditorBinding, value: u
     const record = entry as Record<string, unknown>;
     const id = typeof record.editSessionId === 'string' ? record.editSessionId : '';
     const owner = editSessionOwners.get(id);
-    const orphaned = orphanedEditSessions.has(id);
+    // The editor persists draft sessions, while transport ownership is held in
+    // this broker process. After an MCP/server crash or restart the durable
+    // draft can therefore come back without an in-memory owner entry. Treat an
+    // ownerless active draft as orphaned so a new authenticated transport can
+    // explicitly resume or discard it instead of leaving the project locked.
+    const activeDraft = record.status === 'drafting' || record.status === 'awaiting_review';
+    const orphaned = activeDraft && (orphanedEditSessions.has(id) || !owner);
+    if (orphaned && !orphanedEditSessions.has(id)) {
+      orphanedEditSessions.set(id, { ...binding });
+    }
     return {
       ...record,
       ownerOnline: Boolean(owner),
@@ -341,6 +350,19 @@ function requireOwnedEditSession(
   args: Record<string, unknown>,
 ): void {
   if (editSessionOwnerMatches(ownerId, binding, args.editSessionId)) return;
+  const editSessionId = typeof args.editSessionId === 'string' ? args.editSessionId.trim() : '';
+  const owner = editSessionOwners.get(editSessionId);
+  // A page refresh may renew the browser ownership lease and therefore change
+  // only the epoch. The tab-scoped editor identity and unchanged project
+  // revision prove this is the same editor, while a competing tab has a
+  // different identity and still fails closed.
+  if (owner
+    && owner.ownerId === ownerId
+    && sameEditorIdentity(owner.binding, binding)
+    && owner.binding.baseRevision === binding.baseRevision) {
+    owner.binding = { ...binding };
+    return;
+  }
   throw new ExternalEditorCallError(
     'rejected',
     'The requested edit session does not belong to this MCP transport and editor binding.',

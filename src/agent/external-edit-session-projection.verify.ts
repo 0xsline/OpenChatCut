@@ -48,6 +48,17 @@ assert.deepEqual(
   { password: '[REDACTED]', ok: true },
   'small connected results use the same redacted model projection',
 );
+const imageProjectionInvocation = await projectionLedger.requested('view_timeline_frames', {});
+await projectionLedger.started(imageProjectionInvocation);
+const imageProjection = await projectionLedger.captureToolOutcome(
+  imageProjectionInvocation,
+  { kind: 'success' },
+  { note: 'contact-sheet-metadata-'.repeat(1_000), __images: [{ frame: 12, base64: 'aGVsbG8=', mimeType: 'image/jpeg' }] },
+) as { __images?: Array<{ base64?: string }>; artifactId?: string };
+assert.equal(imageProjection.__images?.[0]?.base64, 'aGVsbG8=',
+  'connected external replies preserve image bytes outside artifact serialization');
+assert.equal(typeof imageProjection.artifactId, 'string',
+  'connected visual metadata remains durably archived');
 assert.match(connectedArtifact.body, /recoverable-connected-result/);
 assert.doesNotMatch(connectedArtifact.body, /must-not-cross-the-external-boundary/);
 assert.match(connectedArtifact.body, /\[REDACTED\]/);

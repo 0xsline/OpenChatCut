@@ -14,6 +14,7 @@ import {
   executeExternalCall,
   editorInstanceIdForProject,
   hydrateExternalBridge,
+  projectExternalReply,
   type ExternalResultSender,
 } from './useExternalAgentBridge';
 import { base } from './external-edit-session-core.verify';
@@ -33,6 +34,13 @@ assert.notEqual(
   refreshIdentity,
   'different project bindings do not share editor identity',
 );
+const projectedImageReply = projectExternalReply({
+  note: 'frame',
+  __images: [{ frame: 1, base64: 'a'.repeat(40_000), mimeType: 'image/jpeg' }],
+}) as { note?: string; __images?: Array<{ base64?: string }> };
+assert.equal(projectedImageReply.note, 'frame');
+assert.equal(projectedImageReply.__images?.[0]?.base64?.length, 40_000,
+  'browser-to-server projection preserves image bytes outside the text size guard');
 const cancellationBeforeRegister = new ExternalCallCancellationRegistry();
 cancellationBeforeRegister.cancel('late-call', 'transport closed');
 assert.equal(cancellationBeforeRegister.tombstoneCount, 1);

@@ -111,6 +111,39 @@ adoptedPromise.catch(() => undefined);
 assert.equal(pendingEditorCallsForTest().length, 1, 'adopted call is queued');
 const adopted = pendingEditorCallsForTest()[0];
 assert.notEqual(adopted, undefined);
+assert.equal(cancelEditorCallsForOwner('owner-old-binding'), 1);
+await assert.rejects(adoptedPromise, hasOutcome('cancelled'));
+
+const currentBinding = editorBinding(projectId);
+assert(currentBinding);
+const ownerlessListPromise = invokeEditorTool(
+  'owner-after-broker-restart',
+  currentBinding,
+  'list_edit_sessions',
+  {},
+);
+const ownerlessListCall = await nextEditorCall(
+  projectId,
+  editorId,
+  currentBinding.baseRevision,
+  new AbortController().signal,
+  registrationCapability,
+);
+assert(ownerlessListCall);
+assert.equal(settleEditorCall(ownerlessListCall.id, 'applied', [{
+  editSessionId: 'persisted-ownerless-draft',
+  status: 'drafting',
+  stale: false,
+}], registrationCapability), true);
+assert.deepEqual(await ownerlessListPromise, [{
+  editSessionId: 'persisted-ownerless-draft',
+  status: 'drafting',
+  stale: false,
+  ownerOnline: false,
+  orphaned: true,
+  recoveryActions: ['resume', 'discard'],
+  ownedByCurrentTransport: false,
+}], 'a persisted draft without an in-memory transport owner is recoverable after broker restart');
 
 await import('./mcp.verify.ts');
 await import('./broker-poll-refresh.verify.ts');

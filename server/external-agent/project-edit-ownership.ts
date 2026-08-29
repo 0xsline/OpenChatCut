@@ -84,17 +84,10 @@ export async function claimBrowserProjectOwnership(
     // Genuine anti-spoof is enforced at the registration-route capability layer
     // (broker capabilityMatches / the route's renewing check), so this claim
     // gate only needs to fence cross-layer writes, not same-owner recovery.
-    // A genuinely DIFFERENT browser window that holds the expected revision also
-    // takes over from a previously registered browser window. Single-window
-    // desktop users never open the same project in two windows, so there is no
-    // cross-browser exclusivity to enforce. We still refuse to steal from a live
-    // OFFLINE writer (external MCP / a serialized offline commit) or an
-    // epoch-pinned owner, so the browser cannot clobber a non-browser write in
-    // flight. Lost-update protection additionally holds via the CAS revision
-    // match in createProjectDocumentStoreOperation.
-    if (current && current.leaseExpiresAt > Date.now() && current.ownerKind !== 'browser') {
-      return { status: 'blocked' };
-    }
+    // A different live browser/editor must never be silently replaced. Page
+    // refresh uses the same tab-scoped editor id and is covered by sameOwner;
+    // a second tab/window has a different id and must wait for lease release.
+    if (current && current.leaseExpiresAt > Date.now() && !sameOwner) return { status: 'blocked' };
     if (current && current.epoch === Number.MAX_SAFE_INTEGER) return { status: 'blocked' };
     const claim: ProjectEditOwnershipClaim = {
       projectId,

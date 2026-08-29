@@ -204,7 +204,8 @@ async function callTool(
   validateBrowserBinding(
     session,
     allowRevisionDrift,
-    MCP_CONTROL_TOOL_NAMES[name] !== true && !carriesSession,
+    MCP_CONTROL_TOOL_NAMES[name] !== true,
+    carriesSession,
   );
   const control = await callControlTool(session, name, args, baseUrl);
   if (control !== undefined) return control;
