@@ -259,7 +259,7 @@ function makeServer(baseUrl: string, session: McpSession): Server {
         'Bind this MCP transport with target_project before editing. A connected browser is preferred; an existing stored project can use the offline fallback when no browser owns it.',
         'The target response and openchatcut_status report bindingMode. Offline bindings expose only server-direct data tools and require approvalMode="auto".',
         session.exposure.mode === 'progressive'
-          ? 'This client negotiated progressive tool exposure. Call ToolSearch or load_skill to reveal task tools; tools/list_changed is sent when the visible set grows.'
+          ? 'This client negotiated progressive tool exposure. Call ToolSearch for list_edit_sessions and recover_edit_session before session recovery; tools/list_changed is sent when the visible set grows.'
           : 'This client uses the compatibility tool surface. All currently available tools are listed.',
         'Call begin_edit_session first, pass editSessionId to every editor tool, then call review_edit_session. Do not claim success until status is applied.',
         'Manual approval and visual/canvas inspection, generation, upload, network, preset, render, and export tools require opening the returned editorUrl.',
