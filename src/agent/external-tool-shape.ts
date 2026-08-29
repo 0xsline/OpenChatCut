@@ -23,6 +23,25 @@ const SESSION_ID_PROPERTY = {
 
 export const EXTERNAL_SESSION_TOOLS: readonly ExternalRegisteredTool[] = [
   {
+    name: 'list_edit_sessions',
+    description: 'List edit sessions for the bound project, including recovery metadata for drafts whose MCP owner disconnected.',
+    input_schema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'recover_edit_session',
+    description: 'Resume or discard an orphaned edit session. Resume is allowed only when its checkpoint still matches the live project revision.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        editSessionId: SESSION_ID_PROPERTY,
+        action: { type: 'string', enum: ['resume', 'discard'] },
+      },
+      required: ['editSessionId', 'action'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: 'begin_edit_session',
     description: 'Start an isolated OpenChatCut edit draft. Manual mode waits for proposal review; auto mode applies only the staged proposal at review_edit_session. Real-project tools always require separate confirmation.',
     input_schema: {
