@@ -12,10 +12,27 @@ import {
 } from './external-edit-session';
 import {
   executeExternalCall,
+  editorInstanceIdForProject,
   hydrateExternalBridge,
   type ExternalResultSender,
 } from './useExternalAgentBridge';
 import { base } from './external-edit-session-core.verify';
+const sessionValues = new Map<string, string>();
+const sessionStorageStub = {
+  getItem: (key: string) => sessionValues.get(key) ?? null,
+  setItem: (key: string, value: string) => { sessionValues.set(key, value); },
+};
+const refreshIdentity = editorInstanceIdForProject('refresh-project', sessionStorageStub);
+assert.equal(
+  editorInstanceIdForProject('refresh-project', sessionStorageStub),
+  refreshIdentity,
+  'a page refresh reuses the tab-scoped editor identity',
+);
+assert.notEqual(
+  editorInstanceIdForProject('other-project', sessionStorageStub),
+  refreshIdentity,
+  'different project bindings do not share editor identity',
+);
 const cancellationBeforeRegister = new ExternalCallCancellationRegistry();
 cancellationBeforeRegister.cancel('late-call', 'transport closed');
 assert.equal(cancellationBeforeRegister.tombstoneCount, 1);
