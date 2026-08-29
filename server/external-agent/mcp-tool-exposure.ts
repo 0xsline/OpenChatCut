@@ -41,6 +41,8 @@ const PROGRESSIVE_BOOT_NAMES = [
   'read_timeline',
   'read_agent_artifact',
   'begin_edit_session',
+  'list_edit_sessions',
+  'recover_edit_session',
   'get_edit_session',
   'review_edit_session',
   'discard_edit_session',
