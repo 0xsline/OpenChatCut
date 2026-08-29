@@ -48,7 +48,7 @@ export interface ExternalEditorCancellation {
   id: string;
   outcome: Exclude<ExternalCallTerminalOutcome, 'applied'>;
   message: string;
-  /** Edit sessions orphaned by the owner transport disconnect; the editor discards them. */
+  /** Legacy field accepted by older editors. New brokers preserve orphaned drafts for recovery. */
   ownerGone?: string[];
 }
 
@@ -62,6 +62,7 @@ const queues = new Map<string, QueuedCall[]>();
 const pending = new Map<string, QueuedCall>();
 const waiters = new Map<string, Set<() => void>>();
 const editSessionOwners = new Map<string, EditSessionOwner>();
+const orphanedEditSessions = new Map<string, EditorBinding>();
 const cancellationQueues = new Map<string, ExternalEditorCancellation[]>();
 const cancellationWaiters = new Map<string, Set<() => void>>();
 
@@ -133,17 +134,37 @@ function terminalMessage(value: unknown): string {
 
 function recordEditSessionOwner(call: QueuedCall, value: unknown): void {
   if (
-    call.name !== 'begin_edit_session'
+    call.name !== 'begin_edit_session' && call.name !== 'recover_edit_session'
     || !value
     || typeof value !== 'object'
     || Array.isArray(value)
   ) return;
   if (!('editSessionId' in value)) return;
+  if (call.name === 'recover_edit_session' && call.arguments.action !== 'resume') return;
   const editSessionId = value.editSessionId;
   if (typeof editSessionId !== 'string' || !editSessionId.trim()) return;
   editSessionOwners.set(editSessionId.trim(), {
     ownerId: call.ownerId,
     binding: { ...call.binding },
+  });
+  orphanedEditSessions.delete(editSessionId.trim());
+}
+
+function sessionRecoveryResult(ownerId: string, binding: EditorBinding, value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+    const record = entry as Record<string, unknown>;
+    const id = typeof record.editSessionId === 'string' ? record.editSessionId : '';
+    const owner = editSessionOwners.get(id);
+    const orphaned = orphanedEditSessions.has(id);
+    return {
+      ...record,
+      ownerOnline: Boolean(owner),
+      orphaned,
+      recoveryActions: orphaned ? (record.stale === true ? ['discard'] : ['resume', 'discard']) : [],
+      ownedByCurrentTransport: owner?.ownerId === ownerId && sameBinding(owner.binding, binding),
+    };
   });
 }
 
@@ -159,7 +180,15 @@ function finishCall(
   wake(waiters, call.binding.projectId);
   if (outcome === 'applied') {
     recordEditSessionOwner(call, value);
-    call.resolve(value);
+    if (call.name === 'recover_edit_session' && call.arguments.action === 'discard') {
+      const sessionId = typeof call.arguments.editSessionId === 'string'
+        ? call.arguments.editSessionId.trim()
+        : '';
+      if (sessionId) orphanedEditSessions.delete(sessionId);
+    }
+    call.resolve(call.name === 'list_edit_sessions'
+      ? sessionRecoveryResult(call.ownerId, call.binding, value)
+      : value);
     return true;
   }
   const message = terminalMessage(value);
@@ -355,7 +384,14 @@ export function invokeEditorTool(
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<unknown> {
   const allowRevisionDrift = name === 'get_edit_session';
-  const ownsSession = name !== 'begin_edit_session' && 'editSessionId' in args;
+  const recoveryTool = name === 'list_edit_sessions' || name === 'recover_edit_session';
+  const ownsSession = name !== 'begin_edit_session' && !recoveryTool && 'editSessionId' in args;
+  if (name === 'recover_edit_session') {
+    const sessionId = typeof args.editSessionId === 'string' ? args.editSessionId.trim() : '';
+    if (!sessionId || !orphanedEditSessions.has(sessionId)) {
+      throw new ExternalEditorCallError('rejected', 'Only an orphaned edit session can be recovered.');
+    }
+  }
   if (ownsSession) {
     requireOwnedEditSession(ownerId, binding, args);
   }
@@ -519,27 +555,10 @@ export function cancelEditorCallsForOwner(
   outcome: Extract<ExternalCallTerminalOutcome, 'cancelled' | 'stale' | 'failed'> = 'cancelled',
   message = 'MCP transport session closed before the editor call completed.',
 ): number {
-  const orphanedByEditor = new Map<string, string[]>();
   for (const [sessionId, owner] of editSessionOwners) {
     if (owner.ownerId !== ownerId) continue;
     editSessionOwners.delete(sessionId);
-    const key = editorKey(owner.binding.projectId, owner.binding.editorInstanceId);
-    const list = orphanedByEditor.get(key) ?? [];
-    list.push(sessionId);
-    orphanedByEditor.set(key, list);
-  }
-  // Let each connected editor discard the sessions its transport orphaned, so a
-  // crashed or closed MCP client cannot leave a drafting session wedged forever.
-  for (const [key, sessionIds] of orphanedByEditor) {
-    const queue = cancellationQueues.get(key) ?? [];
-    queue.push({
-      id: '',
-      outcome,
-      message: `MCP transport session closed; ${sessionIds.length} edit session(s) orphaned.`,
-      ownerGone: sessionIds,
-    });
-    cancellationQueues.set(key, queue);
-    wake(cancellationWaiters, key);
+    orphanedEditSessions.set(sessionId, { ...owner.binding });
   }
   return cancelCalls((call) => call.ownerId === ownerId, outcome, message);
 }
@@ -562,4 +581,5 @@ export function resetExternalAgentBrokerForTest(): void {
   cancellationQueues.clear();
   cancellationWaiters.clear();
   editSessionOwners.clear();
+  orphanedEditSessions.clear();
 }
