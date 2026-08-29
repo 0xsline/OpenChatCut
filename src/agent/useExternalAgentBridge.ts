@@ -324,6 +324,26 @@ interface ExternalRuntimeController {
   readiness: ExternalBridgeReadinessToken | null;
 }
 
+const EDITOR_INSTANCE_STORAGE_PREFIX = 'openchatcut.external-editor-instance.';
+
+export function editorInstanceIdForProject(
+  projectId: string,
+  storage: Pick<Storage, 'getItem' | 'setItem'> | null = typeof sessionStorage === 'undefined'
+    ? null
+    : sessionStorage,
+): string {
+  const key = `${EDITOR_INSTANCE_STORAGE_PREFIX}${projectId}`;
+  try {
+    const existing = storage?.getItem(key);
+    if (existing && /^[0-9a-f-]{36}$/i.test(existing)) return existing;
+    const created = crypto.randomUUID();
+    storage?.setItem(key, created);
+    return created;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
 function installExternalRuntime(
   projectId: string,
   ctxRef: ContextRef,
@@ -333,7 +353,10 @@ function installExternalRuntime(
   setReadiness: StateSetter<ExternalBridgeReadinessToken | null>,
 ): () => void {
   let alive = true;
-  const editorInstanceId = crypto.randomUUID();
+  // sessionStorage is isolated per browser tab and survives reloads. Reusing
+  // this identity lets a refresh renew the same browser ownership lease while
+  // a second tab/window still receives an independent id and cannot adopt it.
+  const editorInstanceId = editorInstanceIdForProject(projectId);
   const runtimeIdentity = {};
   const isCurrent = () => alive && runtimeRef.current?.runtimeIdentity === runtimeIdentity;
   const runtime = new ExternalBridgeRuntime(
