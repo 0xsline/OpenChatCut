@@ -28,7 +28,7 @@ import { executeExternalGlobalReadTool } from './external-global-read';
 export interface ExternalProposalSnapshot { proposal: Proposal | null; stale: boolean }
 /** Confirmation request for a real-project tool (generation/export/import/…)
  * issued from an external session; the user decides in the OpenChatCut UI. */
-export interface ExternalGuardRequest { id: string; sessionId: string; tool: string; summary: string; details: readonly ApprovalDetail[]; argsDigest: string; operationId?: string }
+export interface ExternalGuardRequest { kind: 'real_tool_confirmation'; id: string; sessionId: string; tool: string; summary: string; details: readonly ApprovalDetail[]; argsDigest: string; operationId?: string }
 export interface ExternalBridgeBinding { projectId: string; editorInstanceId: string; baseRevision: string }
 const INDEX_UPDATE_WARNING = 'The edit was applied, but the project list timestamp could not be updated.';
 const DEFAULT_PERSISTENCE: ExternalBridgePersistence = { saveProject, saveAutomaticVersion, saveExternalProposal };
@@ -102,6 +102,32 @@ export class ExternalBridgeRuntime {
       name,
       validateExternalInvocation(name, rawArgs),
     );
+    if (name === 'list_edit_sessions') {
+      if (binding.projectId !== this.projectId) {
+        throw new ExternalEditSessionOutcomeError('stale', 'The editor call belongs to a different project.');
+      }
+      return [...this.sessions.values()].map((session) => this.info(session));
+    }
+    if (name === 'recover_edit_session') {
+      if (binding.projectId !== this.projectId) {
+        throw new ExternalEditSessionOutcomeError('stale', 'The editor call belongs to a different project.');
+      }
+      const sessionId = externalSessionId(rawArgs);
+      const session = this.requireSession(sessionId);
+      if (!EXTERNAL_ACTIVE_STATUSES.has(session.status)) return this.info(session);
+      if (invocationArgs.action === 'discard') return this.discard(session);
+      if (invocationArgs.action !== 'resume') {
+        throw new ExternalEditSessionOutcomeError('rejected', 'action must be "resume" or "discard".');
+      }
+      if (session.baseRevision !== revisionOf(this.getContext().getDoc())) {
+        await this.markTerminal(session, 'stale');
+        throw new ExternalEditSessionOutcomeError(
+          'stale',
+          `Edit session ${session.id} cannot be resumed because the project revision changed.`,
+        );
+      }
+      return this.info(session);
+    }
     if (name === 'begin_edit_session') {
       await this.validateBinding(binding);
       throwIfExternalCallCancelled(signal);
@@ -200,7 +226,7 @@ export class ExternalBridgeRuntime {
       details: presentation.details,
     }, (entry) => run.approvalRequested(entry));
     this.onGuardRequest?.({
-      id: guard.guardId, sessionId: session.id, tool,
+      kind: 'real_tool_confirmation', id: guard.guardId, sessionId: session.id, tool,
       summary: guard.summary, details: guard.details,
       argsDigest: guard.argsDigest,
       operationId: guard.operationId ? redactTextForAgentRuntime(guard.operationId) : undefined,
@@ -209,6 +235,7 @@ export class ExternalBridgeRuntime {
       needs_confirmation: true,
       confirmationId: guard.guardId,
       tool,
+      status: 'pending',
       note: '这个操作会作用于真实工程。请在 OpenChatCut 中确认后重试同一次调用。',
     };
   }
@@ -224,7 +251,7 @@ export class ExternalBridgeRuntime {
   pendingGuard(): ExternalGuardRequest | null {
     const pending = this.approvalGate.pending();
     return pending ? {
-      id: pending.guardId, sessionId: pending.sessionId, tool: pending.tool,
+      kind: 'real_tool_confirmation', id: pending.guardId, sessionId: pending.sessionId, tool: pending.tool,
       summary: pending.summary, details: pending.details,
       argsDigest: pending.argsDigest,
       operationId: pending.operationId ? redactTextForAgentRuntime(pending.operationId) : undefined,
@@ -301,10 +328,14 @@ export class ExternalBridgeRuntime {
   private async begin(clientName: unknown, approvalMode: unknown): Promise<unknown> {
     const active = findActiveExternalSession(this.sessions);
     if (active) {
-      throw new ExternalEditSessionOutcomeError(
-        'rejected',
-        'An edit session is already active. Resolve it before starting another.',
-      );
+      const activeInfo = this.info(active);
+      const { editSessionId: _privateSessionId, ...safeActiveInfo } = activeInfo;
+      return {
+        conflict: true,
+        message: 'An edit session is already active. List sessions to inspect ownership and recovery actions.',
+        activeSession: safeActiveInfo,
+        nextAction: 'Call list_edit_sessions. Resume/discard is available only after the original owner disconnects.',
+      };
     }
     const session = createExternalEditSession(this.getContext().getDoc(), clientName, approvalMode);
     const run = await ExternalSessionRunLedger.start(this.projectId, session.clientName, session.id, 'external-connected', executeTool);
