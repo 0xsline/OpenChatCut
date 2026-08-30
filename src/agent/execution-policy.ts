@@ -66,13 +66,23 @@ function designStylePolicy(args?: Readonly<Record<string, unknown>>): ToolExecut
 /**
  * Materialize setting-backed defaults after schema validation so persistence
  * and execution bind to the same effective invocation.
+ *
+ * Also strips `__`-prefixed keys from the model-supplied args: those are
+ * INTERNAL control fields (generation reservation/rerun plumbing injects
+ * `__operationId`/`__rerunGeneration` AFTER this boundary). Ajv runs with
+ * strict:false and tool schemas do not set additionalProperties:false, so a
+ * prompt-injected `__rerunGeneration: true` would otherwise bypass the paid
+ * generation idempotency window and the durable reservation chain.
  */
 export function effectiveToolInvocationArgs(
   name: string,
   args: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (name !== 'transcribe_track' || args.provider !== undefined) return args;
-  return { ...args, provider: effectiveTranscriptionProvider(args) };
+  const effective = Object.keys(args).some((key) => key.startsWith('__'))
+    ? Object.fromEntries(Object.entries(args).filter(([key]) => !key.startsWith('__')))
+    : args;
+  if (name !== 'transcribe_track' || effective.provider !== undefined) return effective;
+  return { ...effective, provider: effectiveTranscriptionProvider(effective) };
 }
 
 
