@@ -94,6 +94,7 @@ const overrides: Record<string, string> = {
   '西班牙语（es）': 'Spagnolo (es)',
   '法语（fr）': 'Francese (fr)',
   '德语（de）': 'Tedesco (de)',
+  '俄语（ru）': 'Russo (ru)',
 
   '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。': 'Ogni provider salva endpoint, chiave e modello separatamente. Testa la connessione, poi scegli tra i modelli restituiti dall’API.',
   '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。': 'Inserisci il prefisso API completo. Puoi usare endpoint ufficiali, gateway personali o relay compatibili.',

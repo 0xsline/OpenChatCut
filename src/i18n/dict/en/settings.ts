@@ -119,6 +119,7 @@ export default {
   '西班牙语（es）': 'Spanish (es)',
   '法语（fr）': 'French (fr)',
   '德语（de）': 'German (de)',
+  '俄语（ru）': 'Russian (ru)',
   '启用': 'On',
   '停用': 'Off',
   '本地模型（whisper）': 'Local model (Whisper)',
