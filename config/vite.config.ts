@@ -190,12 +190,21 @@ export default defineConfig(({ mode }) => {
         },
         output: {
           codeSplitting: {
+            // `includeDependenciesRecursively` defaults to TRUE, which drags a
+            // group's whole dependency closure into it. The highest-priority
+            // group wins, so with it left on, `remotion` (20) swallowed react
+            // and react-dom before the `react` group (10) could ever claim
+            // them — the react chunk came out empty and the dashboard route,
+            // which needs React but no player, had to download 2 MB of
+            // Remotion to boot. Every group here matches on the package it is
+            // named after, so each one wants ONLY its own modules; shared
+            // dependencies belong in their own chunk.
             groups: [
-              { name: 'babel', test: /node_modules[\\/]@babel[\\/]standalone/, priority: 30 },
+              { name: 'babel', test: /node_modules[\\/]@babel[\\/]standalone/, priority: 30, includeDependenciesRecursively: false },
               { name: 'templates', test: /openchatcut-templates\.json/, priority: 25, includeDependenciesRecursively: false },
-              { name: 'remotion', test: /node_modules[\\/](?:@remotion|remotion)[\\/]/, priority: 20 },
-              { name: 'anthropic', test: /node_modules[\\/]@anthropic-ai[\\/]sdk/, priority: 15 },
-              { name: 'react', test: /node_modules[\\/](?:react|react-dom)[\\/]/, priority: 10 },
+              { name: 'remotion', test: /node_modules[\\/](?:@remotion|remotion)[\\/]/, priority: 20, includeDependenciesRecursively: false },
+              { name: 'anthropic', test: /node_modules[\\/]@anthropic-ai[\\/]sdk/, priority: 15, includeDependenciesRecursively: false },
+              { name: 'react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/, priority: 10, includeDependenciesRecursively: false },
             ],
           },
         },

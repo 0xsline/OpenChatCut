@@ -6,12 +6,9 @@
 // LLM interface (systemPrompt/tool ​​description/skill content) and persistent dynamic history tags do not enter i18n.
 // Default language: the saved choice wins; otherwise the system language (zh/ru), and English for everything else.
 import { useSyncExternalStore } from 'react';
-import { EN } from './dict/en';
-import EN_DATA from './dict/en/templates-data';
-import { IT } from './dict/it';
-import IT_DATA from './dict/it/templates-data';
-import { RU } from './dict/ru';
-import { ZH_DATA } from './dict/zh';
+import { ensureLocaleDict, localeDictReady, localeDicts } from './dictRegistry';
+
+export { ensureLocaleDict } from './dictRegistry';
 
 export type Locale = 'zh' | 'en' | 'it' | 'ru';
 
@@ -70,8 +67,13 @@ export function localizedCatalogText(
   return locale === 'zh' ? chinese : english;
 }
 
+function notifySubscribers(): void {
+  subscribers.forEach((notify) => notify());
+}
+
 export function setLocale(next: Locale): void {
   if (next === current) return;
+  const alreadyLoaded = localeDictReady(next);
   current = next;
   try {
     localStorage.setItem(STORAGE_KEY, next);
@@ -79,14 +81,27 @@ export function setLocale(next: Locale): void {
   if (typeof document !== 'undefined') {
     document.documentElement.lang = DOCUMENT_LANG[next];
   }
-  subscribers.forEach((notify) => notify());
+  // Switch the UI now — an unloaded dictionary renders the Chinese original
+  // rather than nothing — then re-render once the dictionary lands. In practice
+  // prefetchLocaleDicts() has already loaded it and no second pass happens.
+  notifySubscribers();
+  if (!alreadyLoaded) void ensureLocaleDict(next).then(notifySubscribers);
+}
+
+/**
+ * Warm the dictionaries the user has not selected, so switching language is
+ * instant. Call after the first paint — never before, it competes with it.
+ */
+export function prefetchLocaleDicts(): void {
+  for (const locale of ALL_LOCALES) {
+    if (locale !== current) void ensureLocaleDict(locale);
+  }
 }
 
 /** t('Selected {n}', { n: 3 }) - The Chinese original text is the key; the placeholder {name} has the same name in both languages. */
 export function t(zh: string, params?: Record<string, string | number>): string {
-  const raw = current === 'en' ? (EN[zh] ?? zh)
-    : current === 'it' ? (IT[zh] ?? EN[zh] ?? zh)
-      : current === 'ru' ? (RU[zh] ?? zh) : zh;
+  const { ui, uiFallback } = localeDicts(current);
+  const raw = ui[zh] ?? uiFallback[zh] ?? zh;
   if (!params) return raw;
   return raw.replace(/\{(\w+)\}/g, (match, key: string) => (key in params ? String(params[key]) : match));
 }
@@ -95,9 +110,8 @@ export function t(zh: string, params?: Record<string, string | number>): string 
  * English key data (211 built-in items) zh state walking ZH_DATA; Chinese key data (self-made package) en state walking EN_DATA.
  * It is only used for display and does not change the data itself (the name is also a reference key). */
 export function tData(text: string): string {
-  if (current === 'zh') return ZH_DATA[text] ?? text;
-  if (current === 'it') return IT_DATA[text] ?? EN_DATA[text] ?? text;
-  return EN_DATA[text] ?? text;
+  const { data, dataFallback } = localeDicts(current);
+  return data[text] ?? dataFallback[text] ?? text;
 }
 
 /** Get t in the component: subscribe to language switching, trigger rerendering of this component when switching. */
