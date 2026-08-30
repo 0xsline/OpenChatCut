@@ -12,6 +12,7 @@ import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { derivativeQueue, type DerivativeWork } from '../derivative-queue.ts';
 import { handlePreviewProxy, handlePreviewProxyFile, runPreviewProcess } from '../preview-proxy.ts';
 import { capturePreviewGenerationEpoch, invalidatePreviewGenerations, isPreviewGenerationCurrent } from '../preview-cache-epoch.ts';
+import { editorCredentialAuthorized } from '../editor-auth.ts';
 
 const PEAKS_PER_SECOND = 100; // source samplesPerPeak = sampleRate/100
 const MAX_PEAK_BINS = 12_000; // Reduce the density of ultra-long assets (far wider than any screen pixel width, no loss of appearance)
@@ -30,6 +31,14 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
+}
+/** Derivative endpoints spawn ffmpeg/ffprobe per request; gate them on the
+ * same loopback + local-Host shape as the media reads they derive from. */
+function requireEditorRead(req: IncomingMessage, res: ServerResponse): boolean {
+  if (editorCredentialAuthorized(req, false)) return true;
+  req.resume();
+  sendJson(res, 403, { error: 'local editor request required' });
+  return false;
 }
 function uploadNameFromSrc(src: string): string | null {
   const clean = decodeURIComponent((src.split('?')[0] ?? '').trim());
@@ -489,12 +498,24 @@ export function mediaPreviewPlugin(): Plugin {
       const cleanupTimer = setInterval(() => { void prunePreviewCache(); }, PREVIEW_GC_INTERVAL_MS);
       cleanupTimer.unref?.();
       server.httpServer?.once('close', () => clearInterval(cleanupTimer));
-      server.middlewares.use('/api/waveform', (req, res) => handleWaveform(req, res, logError));
-      server.middlewares.use('/api/filmstrip', (req, res) => handleFilmstrip(req, res, logError));
-      server.middlewares.use('/api/media-frame', (req, res) => handleMediaFrame(req, res, logError));
-      server.middlewares.use('/api/media-poster', (req, res) => handleMediaPoster(req, res, logError));
-      server.middlewares.use('/api/preview-proxy-file', (req, res) => handlePreviewProxyFile(req, res, proxyDeps));
-      server.middlewares.use('/api/preview-proxy', (req, res) => handlePreviewProxy(req, res, proxyDeps));
+      server.middlewares.use('/api/waveform', (req, res) => {
+        if (requireEditorRead(req, res)) void handleWaveform(req, res, logError);
+      });
+      server.middlewares.use('/api/filmstrip', (req, res) => {
+        if (requireEditorRead(req, res)) void handleFilmstrip(req, res, logError);
+      });
+      server.middlewares.use('/api/media-frame', (req, res) => {
+        if (requireEditorRead(req, res)) void handleMediaFrame(req, res, logError);
+      });
+      server.middlewares.use('/api/media-poster', (req, res) => {
+        if (requireEditorRead(req, res)) void handleMediaPoster(req, res, logError);
+      });
+      server.middlewares.use('/api/preview-proxy-file', (req, res) => {
+        if (requireEditorRead(req, res)) void handlePreviewProxyFile(req, res, proxyDeps);
+      });
+      server.middlewares.use('/api/preview-proxy', (req, res) => {
+        if (requireEditorRead(req, res)) void handlePreviewProxy(req, res, proxyDeps);
+      });
     },
   };
 }

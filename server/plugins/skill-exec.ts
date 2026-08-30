@@ -9,7 +9,7 @@ import type { Plugin } from 'vite';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { skillDirFor, skillFilesRoot } from '../skills-files.ts';
 
 const execFileAsync = promisify(execFile);
@@ -20,6 +20,39 @@ const ALLOWED_BINARIES = new Set([
   'bash', 'sh', 'node', 'npm', 'npx', 'python3', 'python', 'uv', 'uvx',
   'ffmpeg', 'ffprobe', 'mkdir', 'cp', 'chmod',
 ]);
+
+// Interpreters may only run a script FILE that lives inside the skill
+// directory. Inline program text (`bash -c`, `node -e/--eval`, `python -c/-m`)
+// is a full command-execution primitive the whitelist cannot contain, so the
+// eval-style flags are rejected per interpreter (flag semantics differ: bash
+// `-e` is errexit and legal, node `-e` is eval and not). Only the option
+// region BEFORE the script path is scanned — the script's own arguments may
+// legitimately contain `-c` etc.
+const INTERPRETERS = new Set(['bash', 'sh', 'node', 'python3', 'python']);
+const INLINE_EXEC_FLAGS: Record<string, RegExp> = {
+  bash: /^-[A-Za-z]*c/,
+  sh: /^-[A-Za-z]*c/,
+  node: /^(-[A-Za-z]*[ep]|--eval(=|$)|--print(=|$))/,
+  python: /^(-[A-Za-z]*[cm]|--command(=|$))/,
+  python3: /^(-[A-Za-z]*[cm]|--command(=|$))/,
+};
+
+/** Reject interpreter invocations that execute anything but an in-dir script file. */
+export function interpreterGuardError(dir: string, binary: string, args: string[]): string | null {
+  if (!INTERPRETERS.has(binary)) return null;
+  const pattern = INLINE_EXEC_FLAGS[binary]!;
+  let script: string | undefined;
+  for (const arg of args) {
+    if (!arg.startsWith('-') || arg === '-') { script = arg === '-' ? undefined : arg; break; }
+    if (pattern.test(arg)) return `inline execution flag not allowed for ${binary}: ${arg}`;
+  }
+  if (!script) return `${binary} requires a script file inside the skill directory`;
+  const resolved = resolve(dir, script);
+  if (resolved !== dir && !resolved.startsWith(dir + sep)) {
+    return `script path escapes the skill directory: ${script}`;
+  }
+  return null;
+}
 
 const MAX_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 512 * 1024;
@@ -87,6 +120,8 @@ async function runInSkillDir(slug: string, body: ExecRequest): Promise<unknown> 
   const rest = body.command.slice(binary.length).trim();
   const args = rest ? rest.split(/\s+/) : [];
   args.push(...body.args);
+  const guardError = interpreterGuardError(dir, binary, args);
+  if (guardError) return { error: guardError };
   const timeout = Math.min(Math.max(body.timeout ?? 60_000, 1_000), MAX_TIMEOUT_MS);
   try {
     const result = await execFileAsync(binary, args, {

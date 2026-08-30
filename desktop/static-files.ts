@@ -7,6 +7,7 @@ import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join, normalize, sep } from 'node:path';
 import { mimeFor, resolveUploadFile, serveDiskFile } from '../server/media-dir.ts';
+import { editorCredentialAuthorized } from '../server/editor-auth.ts';
 import type { Middleware } from './mini-connect.ts';
 
 const EXTRA_MIME: Record<string, string> = {
@@ -41,9 +42,17 @@ async function sendFile(req: IncomingMessage, res: ServerResponse, file: string)
   return true;
 }
 
-/** /media/uploads/<name> → uploadDir() direct reading (cannot find next(), fall back to the build copy of dist). */
+/** /media/uploads/<name> → uploadDir() direct reading (cannot find next(), fall back to the build copy of dist).
+ *  Gated on the same loopback + local-Host shape the vite-side route uses:
+ *  without it a rebound DNS name could read the whole media library. Origin is
+ *  not required — media elements (video/img) send none. */
 export function uploadsMiddleware(): Middleware {
   return async (req, res, next) => {
+    if (!editorCredentialAuthorized(req, false)) {
+      res.statusCode = 403;
+      res.end('local editor request required');
+      return;
+    }
     const name = decodeURIComponent((req.url ?? '/').split('?')[0].replace(/^\/+/, ''));
     const file = resolveUploadFile(name);
     if (!file) { next(); return; }
