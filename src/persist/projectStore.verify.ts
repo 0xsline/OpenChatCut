@@ -7,6 +7,7 @@ import {
   hasProjectHistory,
   listProjects,
   loadChat,
+  loadProjectForEditing,
   purgeProject,
   renameProject,
   resetProjectStoreMemory,
@@ -408,6 +409,34 @@ assert.equal(
   assert.equal(deleted?.name, 'Renamed before delete');
   assert.equal(typeof deleted?.deletedAt, 'number');
   assert.equal(described?.description, 'Preserved metadata');
+}
+
+// loadProjectForEditing distinguishes "missing" (open as empty is fine) from
+// "unreadable" (stored bytes exist but cannot be migrated — the editor must
+// block instead of opening empty and letting autosave overwrite real data).
+{
+  const readableDoc = {
+    version: CURRENT_PROJECT_VERSION,
+    assets: [],
+    mediaFolders: [],
+    timelines: [{
+      id: 'tl1', name: '序列 1', fps: 30, width: 1920, height: 1080, selectedId: null, items: [],
+    }],
+    activeTimelineId: 'tl1',
+  } as unknown as ProjectDoc;
+  const meta = await createProject('Readable', readableDoc);
+  const ok = await loadProjectForEditing(meta.id);
+  assert.equal(ok.status, 'ok');
+  assert.equal(ok.status === 'ok' && ok.doc.version, CURRENT_PROJECT_VERSION);
+
+  const missing = await loadProjectForEditing('no-such-project');
+  assert.equal(missing.status, 'missing', 'absent document reads as missing');
+
+  await kvSet(`project:${meta.id}`, { version: 99, corrupted: true });
+  const unreadable = await loadProjectForEditing(meta.id);
+  assert.equal(unreadable.status, 'unreadable',
+    'a stored-but-unmigratable document must NOT read as missing/empty');
+  await purgeProject(meta.id);
 }
 
 console.log('projectStore.verify: ok');

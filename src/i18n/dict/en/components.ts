@@ -23,6 +23,8 @@ export default {
   '加载编辑器…': 'Loading editor…',
   '加载中…': 'Loading…',
   '工程不存在，返回…': 'Project not found, going back…',
+  '工程数据暂时无法读取': 'Project data is temporarily unreadable',
+  '为避免覆盖已保存的内容，已停止打开该工程。数据仍保留在本机存储中，可稍后重试。': 'Opening was stopped to avoid overwriting your saved work. The data is still in local storage — try again shortly.',
   '已导出「{name}」;{n} 个素材两端都取不到,未随包': 'Exported "{name}"; {n} asset(s) unavailable on both ends, not bundled',
   '已导出「{name}」(含 {n} 个素材)': 'Exported "{name}" ({n} assets included)',
   '导入失败:{error}': 'Import failed: {error}',

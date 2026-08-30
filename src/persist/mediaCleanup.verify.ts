@@ -1,7 +1,7 @@
 // 素材清理纯逻辑检查:引用做差、级联删的独占判定语义(经内存态 projectStore 走真流程)。
 // 跑法:npx tsx src/persist/mediaCleanup.check.ts(已挂 verify:persist,随 pretest 执行)。
 import assert from 'node:assert/strict';
-import { collectAllUploadRefs, unreferencedOf } from './mediaCleanup';
+import { collectAllUploadRefs, orphanDocIdsToPurge, unreferencedOf } from './mediaCleanup';
 import { createProject, listProjectDocIds, purgeProject } from './projectStore';
 import type { ProjectDoc } from '../editor/types';
 
@@ -16,6 +16,16 @@ import type { ProjectDoc } from '../editor/types';
   const orphans = unreferencedOf(files, refs);
   assert.deepEqual(orphans.map((f) => f.name), ['a.mp4', '李白_01_开篇.mp3'], '引用的不进无主清单(中文名照常)');
   console.log('unreferencedOf: OK');
+}
+
+// ── orphanDocIdsToPurge:索引健康守卫 ────────────────────────────────────
+{
+  assert.deepEqual(orphanDocIdsToPurge(new Set(['a']), ['a', 'b']), ['b'], '不在索引中的文档是孤儿');
+  assert.deepEqual(orphanDocIdsToPurge(new Set(['a']), ['a']), [], '索引齐全时无孤儿');
+  assert.deepEqual(orphanDocIdsToPurge(new Set(), []), [], '空库无事发生');
+  assert.deepEqual(orphanDocIdsToPurge(new Set(), ['a', 'b']), [],
+    '索引为空但文档存在 = 索引丢失/不可读,禁止把全部工程当孤儿清除');
+  console.log('orphanDocIdsToPurge: OK');
 }
 
 // ── 引用并集 + 独占判定(内存态 projectStore) ────────────────────────────

@@ -292,6 +292,31 @@ export async function loadProject(id: string, options?: ProjectMigrationOptions)
   }
 }
 
+/** Editor-entry load result: "missing" (no stored document — an empty project
+ * is legitimate) is distinct from "unreadable" (stored bytes exist but the
+ * read or migration failed). The editor must never open an unreadable project
+ * as empty: the 500ms autosave would overwrite the real data. */
+export type ProjectLoadResult =
+  | { readonly status: 'ok'; readonly doc: ProjectDoc }
+  | { readonly status: 'missing' }
+  | { readonly status: 'unreadable' };
+
+export async function loadProjectForEditing(
+  id: string,
+  options?: ProjectMigrationOptions,
+): Promise<ProjectLoadResult> {
+  let raw: unknown;
+  try {
+    raw = await idbGet<unknown>(projectKey(id));
+  } catch {
+    // Transient read failure is NOT "no document" — block editing, retry later.
+    return { status: 'unreadable' };
+  }
+  if (raw === undefined || raw === null) return { status: 'missing' };
+  const doc = migrateProjectDoc(raw, options);
+  return doc ? { status: 'ok', doc } : { status: 'unreadable' };
+}
+
 /** Capture and enqueue a project's document; writes for the same project never overlap. */
 export function saveProject(id: string, doc: ProjectDoc): Promise<ProjectSaveResult> {
   return projectSaveCoordinator.enqueue(id, doc);

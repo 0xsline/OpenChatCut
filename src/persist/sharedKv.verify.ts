@@ -153,6 +153,43 @@ try {
     mergeBodies.length = 0;
   }
 
+  // A failed merge must never fall through to the sync-down branch: with an
+  // empty remote library that branch would delete the only local project
+  // index. Migration stays pending and a later load retries the merge.
+  {
+    let failMerge = true;
+    let remoteEntry: unknown = { found: false };
+    installGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/merge')) {
+        if (failMerge) return new Response('merge unavailable', { status: 500 });
+        const body = JSON.parse(String(init?.body ?? '{}')) as { entries?: Record<string, unknown> };
+        const entries = body.entries ?? {};
+        if ('projects' in entries) remoteEntry = { found: true, value: entries.projects };
+        return jsonResponse({ version: 1, entries });
+      }
+      if (url.includes('/entry?key=projects')) return jsonResponse(remoteEntry);
+      if (url.endsWith('/api/project-store')) return jsonResponse({ version: 1, entries: {} });
+      throw new Error(`unexpected request: ${url}`);
+    });
+    local.clear();
+    local.set('projects', localProjects);
+    resetSharedKvMemory();
+    assert.deepEqual(await kvGet('projects'), localProjects,
+      'after a failed merge the local project index stays authoritative for reads');
+    assert.deepEqual(local.get('projects'), localProjects,
+      'a failed merge with an empty remote library must not delete the local index');
+    assert.equal(local.has(MIGRATION_KEY), false,
+      'migration stays pending so a later load retries the merge');
+
+    failMerge = false;
+    resetSharedKvMemory();
+    assert.deepEqual(await kvGet('projects'), localProjects,
+      'the retried merge serves the preserved local index');
+    assert.equal(local.has(MIGRATION_KEY), true,
+      'a later successful merge completes the migration');
+  }
+
   installGlobal('location', { hash: '', pathname: '/', protocol: 'file:', search: '' });
   resetSharedKvMemory();
   local.clear();

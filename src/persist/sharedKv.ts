@@ -278,6 +278,7 @@ async function bootstrap(): Promise<void> {
     const migrated = await localGet<boolean>(MIGRATION_KEY);
     projects = await requestEntry('projects');
     const canWrite = projectStoreWriteCredential();
+    let mergeFailed = false;
     if ((!migrated || !projects.found || locallyPendingKeys.size > 0) && canWrite) {
       try {
         const local = await localEntries();
@@ -287,12 +288,16 @@ async function bootstrap(): Promise<void> {
           : { found: false };
         await clearPendingKeys();
       } catch {
-        // Merge contention (another origin/instance holds the write lease):
-        // keep the remote cache usable for reads; the local backlog can be
-        // merged on a later load when the lease is free.
+        // Merge failure (lease contention, transient 5xx, timeout): keep the
+        // remote cache usable for reads and retry the merge on a later load.
+        // When a local 'projects' entry exists it must stay authoritative —
+        // a failed merge is never allowed to fall through to the sync-down
+        // branch below, which would overwrite it (or, with an empty remote
+        // library, delete the only copy of the local project index).
+        mergeFailed = (await localGet<unknown>('projects')) !== undefined;
       }
     }
-    projectMigrationPending = locallyPendingKeys.has('projects') || (!canWrite
+    projectMigrationPending = locallyPendingKeys.has('projects') || mergeFailed || (!canWrite
       && (!projects.found || (Array.isArray(projects.value) && projects.value.length === 0)));
   } catch {
     await disableRemote();
