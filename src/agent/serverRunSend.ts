@@ -489,6 +489,15 @@ export async function sendServerRun(
     });
     return;
   }
+  // prepare() checked `running` before two awaits (payload build + ownership),
+  // and ownership QUEUES behind an in-flight run rather than failing. Without
+  // this re-check a double Enter starts a second run with the same prompt as
+  // soon as the first finishes — a duplicate edit, or a duplicate paid
+  // generation. Ownership is released so the queued slot is not held.
+  if (environment.refs.running.current) {
+    releaseServerRunOwnership(environment.projectId, prepared.payload.runId);
+    return;
+  }
   const active = setupLocalServerRun(environment, prepared);
   try {
     persistLocalServerRun(environment, active);

@@ -283,6 +283,10 @@ export class ServerRunToolExecutor {
     request: BrowserToolRequest,
     error: unknown,
     persist: boolean,
+    /** Draft document as of just before this tool ran. Present when the tool
+     *  reached execution: the draft is rewound to it so partial mutations from
+     *  a failed tool cannot leak into the tools that follow. */
+    draftDocBeforeTool?: ProjectDoc,
   ): Promise<boolean> {
     if (this.abort?.signal.aborted) return false;
     const message = environmentFailureHint(error);
@@ -296,6 +300,7 @@ export class ServerRunToolExecutor {
       actions: persist ? (this.draft?.takeActions() ?? []) : [],
       baseDoc: this.baseDoc ?? this.callbacks.ctx().getDoc(),
     };
+    if (draftDocBeforeTool) this.draft = makeDraft(draftDocBeforeTool);
     if (persist) {
       await Promise.resolve(this.callbacks.onToolAction(outcome)).catch(() => undefined);
     }
@@ -352,6 +357,12 @@ export class ServerRunToolExecutor {
     request: BrowserToolRequest,
   ): Promise<boolean> {
     if (!this.draft) this.draft = makeDraft(this.baseDoc ?? this.callbacks.ctx().getDoc());
+    // Snapshot for rollback: a tool that mutates and THEN fails leaves partial
+    // changes in this draft, while the proposal side discards a failed tool's
+    // actions entirely (applyToolActions returns early on error). Without the
+    // rollback below the two drift apart, and every later tool in the turn
+    // runs against state the user's preview does not have.
+    const draftDocBeforeTool = this.draft.getDoc();
     this.callbacks.setLiveTool({ name: request.name, partial: '' });
     try {
       let update;
@@ -372,7 +383,7 @@ export class ServerRunToolExecutor {
           signal: this.abort?.signal,
         });
       } catch (error) {
-        return this.reportFailure(runId, toolCallId, request, error, true);
+        return this.reportFailure(runId, toolCallId, request, error, true, draftDocBeforeTool);
       }
       this.activation = update.activation;
       if (isFailedToolResult(update.execution.result)) {
@@ -382,6 +393,7 @@ export class ServerRunToolExecutor {
           request,
           toolFailureReason(update.execution.result),
           true,
+          draftDocBeforeTool,
         );
       }
       const outcome: ServerRunToolAction = {
@@ -490,7 +502,7 @@ export class ServerRunToolExecutor {
         || sessionAbort.signal.aborted) return false;
       return this.process(runId, toolCallId, name, args, argsDigest, admit);
     };
-    return toolExecutionMode(name) === 'parallel'
+    return toolExecutionMode(name, args) === 'parallel'
       ? this.requestQueue.enqueueParallel(runId, run)
       : this.requestQueue.enqueueExclusive(runId, run);
   }

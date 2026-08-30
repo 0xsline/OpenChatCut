@@ -272,18 +272,26 @@
           },
           "durationSeconds": {
             "type": "number",
+            "minimum": 0.5,
+            "maximum": 600,
             "description": "Duration in seconds (default 3)."
           },
           "durationInFrames": {
             "type": "number",
+            "minimum": 15,
+            "maximum": 36000,
             "description": "Duration in frames (overrides durationSeconds when set)."
           },
           "width": {
             "type": "number",
+            "minimum": 16,
+            "maximum": 8192,
             "description": "Natural width px (default 1920)."
           },
           "height": {
             "type": "number",
+            "minimum": 16,
+            "maximum": 8192,
             "description": "Natural height px (default 1080)."
           }
         },
@@ -312,16 +320,24 @@
           },
           "durationSeconds": {
             "type": "number",
+            "minimum": 0.5,
+            "maximum": 600,
             "description": "Duration in seconds (default 3)."
           },
           "durationInFrames": {
-            "type": "number"
+            "type": "number",
+            "minimum": 15,
+            "maximum": 36000
           },
           "width": {
-            "type": "number"
+            "type": "number",
+            "minimum": 16,
+            "maximum": 8192
           },
           "height": {
-            "type": "number"
+            "type": "number",
+            "minimum": 16,
+            "maximum": 8192
           }
         },
         "required": [

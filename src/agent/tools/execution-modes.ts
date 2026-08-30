@@ -30,7 +30,8 @@ export const PARALLEL_TOOL_NAMES: ReadonlySet<string> = new Set([
   'read_script',
   'read_captions',
   // audio / color / music inspection
-  'detect_beats',
+  // NOTE: detect_beats is NOT here — it writes markers when `markers` is set.
+  // It is classified per-invocation by toolExecutionMode(name, args).
   'inspect_color',
   'inspect_music',
   // search surfaces
@@ -44,6 +45,18 @@ export const PARALLEL_TOOL_NAMES: ReadonlySet<string> = new Set([
   'verify_export',
 ]);
 
-export function toolExecutionMode(name: string): ToolExecutionMode {
-  return PARALLEL_TOOL_NAMES.has(name) ? 'parallel' : 'exclusive';
+/** Tools that only read for SOME argument shapes. Returning true means this
+ * invocation touches no editor state and may run in parallel. */
+const CONDITIONALLY_PARALLEL: Readonly<Record<string, (args?: Readonly<Record<string, unknown>>) => boolean>> = {
+  // Writes beat markers through ctx.commands only when `markers` is requested;
+  // analysis-only calls stay parallel so a slow decode does not block the chain.
+  detect_beats: (args) => args?.markers !== 'beats' && args?.markers !== 'downbeats',
+};
+
+export function toolExecutionMode(
+  name: string,
+  args?: Readonly<Record<string, unknown>>,
+): ToolExecutionMode {
+  if (PARALLEL_TOOL_NAMES.has(name)) return 'parallel';
+  return CONDITIONALLY_PARALLEL[name]?.(args) ? 'parallel' : 'exclusive';
 }

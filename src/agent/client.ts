@@ -159,6 +159,21 @@ function generationChoice(): AgentModelChoice | undefined {
   ));
 }
 
+// A fixed 60s total budget silently capped what these calls could produce:
+// MG/shader generation asks for up to 64k output tokens, and most providers
+// stream well under 100 tok/s, so large generations failed as "timeout" no
+// matter how healthy the connection was. Scale the ceiling with the requested
+// budget instead, keeping 60s as the floor for small asks.
+const GENERATION_TIMEOUT_FLOOR_MS = 60_000;
+const GENERATION_TIMEOUT_MAX_MS = 600_000;
+const GENERATION_TOKENS_PER_SECOND = 40;
+
+export function generationTimeoutMs(maxOutputTokens: number): number {
+  if (!Number.isFinite(maxOutputTokens) || maxOutputTokens <= 0) return GENERATION_TIMEOUT_FLOOR_MS;
+  const streamingMs = (maxOutputTokens / GENERATION_TOKENS_PER_SECOND) * 1000;
+  return Math.min(GENERATION_TIMEOUT_MAX_MS, Math.max(GENERATION_TIMEOUT_FLOOR_MS, Math.round(streamingMs)));
+}
+
 export async function generateAgentText(options: {
   system?: string;
   prompt?: string;
@@ -181,7 +196,7 @@ export async function generateAgentText(options: {
     model: await getLanguageModel(provider, model, apiMode),
     system: options.system,
     maxOutputTokens,
-    timeout: { totalMs: 60_000 },
+    timeout: { totalMs: generationTimeoutMs(maxOutputTokens) },
     ...(providerOptions ? { providerOptions } : {}),
   };
   const normalized = options.messages ? normalizeLlmMessages(options.messages) : null;

@@ -183,7 +183,18 @@ export async function applySelectedProposal(
   state.applyingProposalRef.current = true;
   const currentDoc = state.ctxRef.current.getDoc();
   const chosen = proposal.options[0].operations.filter((_, index) => selected.has(index));
-  const result = replayActions(currentDoc, chosen.flatMap((operation) => operation.actions));
+  let result: ProjectDoc;
+  try {
+    // Inside the try: replaying a SUBSET (the user unchecked a prerequisite
+    // operation) is the one step that can throw before any await, and doing it
+    // outside left applyingProposalRef stuck true — every later apply in the
+    // session would then silently no-op.
+    result = replayActions(currentDoc, chosen.flatMap((operation) => operation.actions));
+  } catch {
+    state.applyingProposalRef.current = false;
+    showProposalError(state, '所选操作无法应用（可能取消勾选了前置步骤），提案未改动工程。');
+    return;
+  }
   try {
     await claimProposalRun(proposal);
     const persisted = await persistSelectedProposal(
