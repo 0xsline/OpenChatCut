@@ -12,7 +12,11 @@ export function downloadBlob(blob: Blob, filename: string): void {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Bare setTimeout, not window.setTimeout: this helper is reached from the
+  // agent's export tools, which run wherever the tool runtime does. Reaching
+  // through `window` threw "window is not defined" there and turned a
+  // completed export into a failed one AFTER the file had already downloaded.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export async function selectExportDirectory(): Promise<ExportDirectoryHandle | null> {
