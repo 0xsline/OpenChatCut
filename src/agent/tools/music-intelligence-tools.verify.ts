@@ -7,6 +7,7 @@ import type { TimelineItem, TimelineState } from '../../editor/types';
 import type { AgentContext } from '../context';
 import { ASK_MODE_TOOL_SCHEMAS } from '../ask-mode-tools';
 import { policyForTool } from '../execution-policy';
+import { isFailedToolResult } from '../toolFailure';
 import { ToolActivation } from '../tool-activation';
 import { TOOL_SCHEMAS } from '../tools';
 import {
@@ -39,6 +40,49 @@ function analysisWith(beatsMs: number[], downbeatsMs: number[] = beatsMs): Music
     tags: [{ kind: 'mood', label: 'energetic', score: 0.91 }],
     embedding: Array.from({ length: 512 }, (_, index) => index === 0 ? 1 : 0),
   };
+}
+
+// ── optional analysis absence must not poison a successful larger Agent run ──
+{
+  const music = item('optional-music', 'audio', 'A1', 0, 120, {
+    src: '/media/uploads/optional.wav',
+    sourceAssetId: 'asset_music_optional',
+  });
+  const ctx = {
+    getState: () => state([music]),
+    getDoc: () => ({
+      schemaVersion: 7,
+      assets: [{
+        id: 'asset_music_optional', name: 'Optional music', kind: 'audio' as const,
+        src: '/media/uploads/optional.wav', durationInFrames: 120,
+        sourceRevision: 'sha256:optional',
+      }],
+    }),
+    commands: { batch: () => { throw new Error('must not mutate'); } },
+  } as unknown as AgentContext;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    packs: [
+      { id: 'rhythm-lite', status: 'absent' },
+      { id: 'music-semantics-lite', status: 'absent' },
+    ],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+  try {
+    const required = await execMusicIntelligenceTool('analyze_music', { itemId: 'optional-music' }, ctx);
+    assert.equal(isFailedToolResult(required), true, 'required analysis keeps strict failure semantics');
+    const optional = await execMusicIntelligenceTool(
+      'analyze_music',
+      { itemId: 'optional-music', optional: true },
+      ctx,
+    ) as { ok?: boolean; available?: boolean; reason?: string; note?: string };
+    assert.equal(optional.ok, true);
+    assert.equal(optional.available, false);
+    assert.equal(optional.reason, 'analysis-unavailable');
+    assert.match(optional.note ?? '', /Install rhythm-lite/);
+    assert.equal(isFailedToolResult(optional), false, 'optional unavailable analysis is a successful capability probe');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 }
 
 function item(

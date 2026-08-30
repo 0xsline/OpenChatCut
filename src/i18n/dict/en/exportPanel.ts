@@ -112,6 +112,7 @@ export default {
   '输出规格': 'Output settings',
   '已生成': 'Created',
   '等待渲染': 'Waiting to render',
+  '已有其他导出任务正在运行，当前任务将在其完成后自动开始': 'Another export is running. This job will start automatically when it finishes.',
   '准备素材': 'Preparing media',
   '正在渲染': 'Rendering',
   '浏览器渲染中…': 'Rendering in browser…',

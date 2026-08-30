@@ -992,7 +992,7 @@
     },
     {
       "name": "view_timeline_frames",
-      "description": "Render still frames of one timeline composition (pending/draft edits included). frames and seconds are ABSOLUTE TIMELINE coordinates, not source-media positions. Use after visual edits (MG/text, transitions, zoom, filters, aspect, captions) to verify the composed result. Provide exact coordinates or count; with neither, samples evenly (default 4, max 16). Multi-frame results are one labeled contact sheet when possible.",
+      "description": "Render still frames of one timeline composition (pending/draft edits included). frames and seconds are ABSOLUTE TIMELINE coordinates, not source-media positions. Use after visual edits (MG/text, transitions, zoom, filters, aspect, captions) to verify the composed result. Provide exact coordinates or count; with neither, samples evenly (default 4, max 8). Multi-frame results are one labeled contact sheet when possible.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1001,6 +1001,7 @@
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Absolute timeline frame numbers to render."
           },
           "seconds": {
@@ -1008,11 +1009,14 @@
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Absolute timeline seconds (converted by timeline fps)."
           },
           "count": {
             "type": "number",
-            "description": "Even midpoints across the timeline/range (default 4, max 16)."
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Even midpoints across the timeline/range (default 4, max 8)."
           },
           "fromSeconds": {
             "type": "number",
@@ -1031,7 +1035,7 @@
     },
     {
       "name": "view_asset_frames",
-      "description": "Inspect SOURCE media and see a labeled contact sheet; these coordinates never refer to the composed timeline. Pass assetId for the full pool source, or itemId to constrain sampling to that placed clip’s visible source window (srcInFrame + playbackRate aware). sourceTimesMs, frames, seconds, and fromSeconds/toSeconds are all SOURCE-MEDIA coordinates. With itemId, samples are clamped to its visible source window. Use for source selection/quality inspection; use view_timeline_frames for composed timeline proof. Audio has no frames. Default broad scan = 12 source-window midpoints, max 16. Finalized uploaded video prefers ffmpeg; blob/image/MG paths use browser or Remotion rendering.",
+      "description": "Inspect SOURCE media and see a labeled contact sheet; these coordinates never refer to the composed timeline. Pass assetId for the full pool source, or itemId to constrain sampling to that placed clip’s visible source window (srcInFrame + playbackRate aware). sourceTimesMs, frames, seconds, and fromSeconds/toSeconds are all SOURCE-MEDIA coordinates. With itemId, samples are clamped to its visible source window. Use for source selection/quality inspection; use view_timeline_frames for composed timeline proof. Audio has no frames. Default broad scan = 6 source-window midpoints, max 8. Reuse the contact sheet instead of repeatedly sampling the same range. Finalized uploaded video prefers ffmpeg; blob/image/MG paths use browser or Remotion rendering.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1052,13 +1056,15 @@
             "items": {
               "type": "number"
             },
-            "description": "Millisecond offsets in source-media time. Accepts 1–16 values."
+            "maxItems": 8,
+            "description": "Millisecond offsets in source-media time. Accepts 1–8 values."
           },
           "frames": {
             "type": "array",
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Source-media frame numbers (project/source timebase)."
           },
           "seconds": {
@@ -1066,11 +1072,14 @@
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Source-media seconds."
           },
           "count": {
             "type": "number",
-            "description": "Even source-window midpoints (default 12 for video, max 16)."
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Even source-window midpoints (default 6 for video, max 8)."
           },
           "fromSeconds": {
             "type": "number",
@@ -4895,6 +4904,10 @@
           "force": {
             "type": "boolean",
             "description": "Recompute even when a valid cached analysis exists. Defaults to false."
+          },
+          "optional": {
+            "type": "boolean",
+            "description": "When true, missing packs or an analysis failure returns available=false so a larger edit can continue with simpler audio evidence. Invalid targets still fail."
           }
         }
       }
@@ -5499,7 +5512,7 @@
     },
     {
       "name": "view_timeline_frames",
-      "description": "Render still frames of one timeline composition (pending/draft edits included). frames and seconds are ABSOLUTE TIMELINE coordinates, not source-media positions. Use after visual edits (MG/text, transitions, zoom, filters, aspect, captions) to verify the composed result. Provide exact coordinates or count; with neither, samples evenly (default 4, max 16). Multi-frame results are one labeled contact sheet when possible.",
+      "description": "Render still frames of one timeline composition (pending/draft edits included). frames and seconds are ABSOLUTE TIMELINE coordinates, not source-media positions. Use after visual edits (MG/text, transitions, zoom, filters, aspect, captions) to verify the composed result. Provide exact coordinates or count; with neither, samples evenly (default 4, max 8). Multi-frame results are one labeled contact sheet when possible.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5508,6 +5521,7 @@
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Absolute timeline frame numbers to render."
           },
           "seconds": {
@@ -5515,11 +5529,14 @@
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Absolute timeline seconds (converted by timeline fps)."
           },
           "count": {
             "type": "number",
-            "description": "Even midpoints across the timeline/range (default 4, max 16)."
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Even midpoints across the timeline/range (default 4, max 8)."
           },
           "fromSeconds": {
             "type": "number",
@@ -5538,7 +5555,7 @@
     },
     {
       "name": "view_asset_frames",
-      "description": "Inspect SOURCE media and see a labeled contact sheet; these coordinates never refer to the composed timeline. Pass assetId for the full pool source, or itemId to constrain sampling to that placed clip’s visible source window (srcInFrame + playbackRate aware). sourceTimesMs, frames, seconds, and fromSeconds/toSeconds are all SOURCE-MEDIA coordinates. With itemId, samples are clamped to its visible source window. Use for source selection/quality inspection; use view_timeline_frames for composed timeline proof. Audio has no frames. Default broad scan = 12 source-window midpoints, max 16. Finalized uploaded video prefers ffmpeg; blob/image/MG paths use browser or Remotion rendering.",
+      "description": "Inspect SOURCE media and see a labeled contact sheet; these coordinates never refer to the composed timeline. Pass assetId for the full pool source, or itemId to constrain sampling to that placed clip’s visible source window (srcInFrame + playbackRate aware). sourceTimesMs, frames, seconds, and fromSeconds/toSeconds are all SOURCE-MEDIA coordinates. With itemId, samples are clamped to its visible source window. Use for source selection/quality inspection; use view_timeline_frames for composed timeline proof. Audio has no frames. Default broad scan = 6 source-window midpoints, max 8. Reuse the contact sheet instead of repeatedly sampling the same range. Finalized uploaded video prefers ffmpeg; blob/image/MG paths use browser or Remotion rendering.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5559,13 +5576,15 @@
             "items": {
               "type": "number"
             },
-            "description": "Millisecond offsets in source-media time. Accepts 1–16 values."
+            "maxItems": 8,
+            "description": "Millisecond offsets in source-media time. Accepts 1–8 values."
           },
           "frames": {
             "type": "array",
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Source-media frame numbers (project/source timebase)."
           },
           "seconds": {
@@ -5573,11 +5592,14 @@
             "items": {
               "type": "number"
             },
+            "maxItems": 8,
             "description": "Source-media seconds."
           },
           "count": {
             "type": "number",
-            "description": "Even source-window midpoints (default 12 for video, max 16)."
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Even source-window midpoints (default 6 for video, max 8)."
           },
           "fromSeconds": {
             "type": "number",
@@ -5830,6 +5852,10 @@
           "force": {
             "type": "boolean",
             "description": "Recompute even when a valid cached analysis exists. Defaults to false."
+          },
+          "optional": {
+            "type": "boolean",
+            "description": "When true, missing packs or an analysis failure returns available=false so a larger edit can continue with simpler audio evidence. Invalid targets still fail."
           }
         }
       }

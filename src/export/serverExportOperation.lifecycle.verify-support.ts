@@ -5,8 +5,9 @@ import type { ExportDestination } from './exportDestination';
 import { ExportFailureError } from './exportFailure';
 import { createExportRunner } from './exportRunOperation';
 import { createServerExporter, isServerRenderError } from './serverExportOperation';
+import { pollExport, type ServerExportContext } from './serverExportRenderOperation';
 import { listServerExportJobs, resetServerExportRecoveryMemory } from './serverExportRecovery';
-import type { ExportJobResult, UseExportWorkflowOptions, WorkflowOperations } from './exportWorkflowTypes';
+import type { ExportJobResult, ExportProgress, UseExportWorkflowOptions, WorkflowOperations } from './exportWorkflowTypes';
 import { deferred, exporter, noop, type Deferred } from './serverExportOperation.verify-support';
 
 async function verifyRenderFailureIsTypedAndDeleted(): Promise<void> {
@@ -137,6 +138,37 @@ async function verifyCancellationDeletesActiveJob(): Promise<void> {
   setTimeout(() => controller.abort(), 10);
   await assert.rejects(operation, (error) => error instanceof DOMException && error.name === 'AbortError');
   assert.equal(requests.at(-1), 'DELETE /export/job/render-cancelled');
+}
+
+async function verifyQueuedProgressExplainsTheWait(): Promise<void> {
+  for (const phases of [['queued', 'rendering', 'finalizing', 'succeeded'], ['queued', 'succeeded'], ['rendering', 'succeeded']]) {
+    let polls = 0;
+    let progress: ExportProgress | null = {
+      phase: 'preparing', percent: 0, startedAt: Date.now(), detail: 'Hardware encoder detected',
+    };
+    const seen: Array<ExportProgress | null> = [];
+    globalThis.fetch = (async () => {
+      const phase = phases[polls++];
+      return Response.json(phase === 'succeeded' ? {
+        status: 'succeeded', progress: 100,
+        result: { path: '/media/output.mp4', name: 'output.mp4', sizeBytes: 5 },
+      } : { status: phase === 'queued' ? 'queued' : 'running', progress: 10 * polls, phase });
+    }) as typeof fetch;
+    await pollExport({
+      setProgress: (update) => {
+        progress = typeof update === 'function' ? update(progress) : update;
+        seen.push(progress);
+      },
+      t: (key) => key,
+    } as ServerExportContext, 'render-queued');
+    assert.equal(seen.length, phases.length);
+    if (phases[0] === 'queued') {
+      assert.equal(seen[0]?.detail, '已有其他导出任务正在运行，当前任务将在其完成后自动开始');
+      assert.ok(seen.slice(1).every((entry) => entry?.detail === undefined), 'queue hint clears when rendering or completion starts');
+    } else {
+      assert.ok(seen.every((entry) => entry?.detail === 'Hardware encoder detected'), 'nonqueued detail is unchanged');
+    }
+  }
 }
 
 interface BackgroundServerExportOptions {
@@ -434,6 +466,7 @@ export async function runServerExportLifecycleVerifications(): Promise<void> {
   await verifyDeliveryFailureDoesNotTriggerRenderFallback();
   await verifyPollFailureDoesNotTriggerRenderFallback();
   await verifyCancellationDeletesActiveJob();
+  await verifyQueuedProgressExplainsTheWait();
   await verifyCancellationAfterRenderDoesNotSave();
   await verifyCancellationDuringServerQaDoesNotSave();
   await verifyNormalServerSaveStillCompletes();

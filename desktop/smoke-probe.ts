@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import { externalMcpToken } from '../server/editor-auth.ts';
 import { runDesktopMcpRecoverySmoke } from './smoke-mcp-recovery.ts';
+import { runDesktopRendererRecoverySmoke } from './smoke-renderer-recovery.ts';
 
 const RENDER_DRAIN_MS = 500;
 
@@ -80,6 +81,9 @@ export async function runDesktopSmokeProbe(
     throw new Error('desktop native inference preload is unavailable');
   }
   console.log('[smoke] desktop native inference preload ok');
+  if (process.env.CC_SMOKE_RENDERER_RECOVERY === '1') {
+    await runDesktopRendererRecoverySmoke(win);
+  }
   if (!render) return;
   const state = { fps: 30, width: 640, height: 360, items: [], selectedId: null };
   const response = await fetch(`${origin}/render-still`, {

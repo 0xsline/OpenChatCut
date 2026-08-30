@@ -94,6 +94,7 @@ export const MUSIC_INTELLIGENCE_TOOL_SCHEMAS: AgentToolSchema[] = [
       properties: {
         ...TARGET_PROPERTIES,
         force: { type: 'boolean', description: 'Recompute even when a valid cached analysis exists. Defaults to false.' },
+        optional: { type: 'boolean', description: 'When true, missing packs or an analysis failure returns available=false so a larger edit can continue with simpler audio evidence. Invalid targets still fail.' },
       },
     },
   },

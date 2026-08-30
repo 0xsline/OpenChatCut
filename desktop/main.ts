@@ -61,6 +61,11 @@ import {
 } from './export-directory-state.ts';
 import { runDesktopSmokeProbe } from './smoke-probe.ts';
 import { runtimeProfile } from '../server/runtime-profile.ts';
+import {
+  applyWindowsGpuCrashFallback,
+  installWindowsGpuCrashRecovery,
+  installWindowsRendererRecovery,
+} from './window-recovery.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
@@ -214,7 +219,9 @@ function registerDesktopHandlers(trustedOrigin: string): void {
     return createTransparentMovProxy(storedName);
   }));
   let transcriptWindow: BrowserWindow | null = null;
+  let transcriptPayload: TranscriptWindowPayload | null = null;
   const openTranscriptWindow = (payload: TranscriptWindowPayload): void => {
+    transcriptPayload = payload;
     if (transcriptWindow && !transcriptWindow.isDestroyed()) {
       transcriptWindow.webContents.send(TRANSCRIPT_WINDOW_CHANNELS.update, payload);
       transcriptWindow.show();
@@ -241,15 +248,21 @@ function registerDesktopHandlers(trustedOrigin: string): void {
       },
     });
     transcriptWindow = win;
+    const uninstallRendererRecovery = installWindowsRendererRecovery(win);
     win.once('closed', () => {
-      if (transcriptWindow === win) transcriptWindow = null;
+      uninstallRendererRecovery();
+      if (transcriptWindow === win) {
+        transcriptWindow = null;
+        transcriptPayload = null;
+      }
     });
     installDesktopPageGuards(win, trustedOrigin);
-    void win.loadURL(`${trustedOrigin}/?transcript-window=1`).then(() => {
-      if (win.isDestroyed()) return;
-      win.webContents.send(TRANSCRIPT_WINDOW_CHANNELS.update, payload);
+    win.webContents.on('did-finish-load', () => {
+      if (win.isDestroyed() || !transcriptPayload) return;
+      win.webContents.send(TRANSCRIPT_WINDOW_CHANNELS.update, transcriptPayload);
       win.show();
     });
+    void win.loadURL(`${trustedOrigin}/?transcript-window=1`);
   };
   ipcMain.handle(TRANSCRIPT_WINDOW_CHANNELS.open, trustedDesktopHandler(trustedOrigin, (_event, value: unknown) => {
     if (!isTranscriptWindowPayload(value)) throw new Error('invalid transcript window payload');
@@ -382,8 +395,10 @@ async function boot(): Promise<void> {
   });
   applyDesktopWindowFrame(win);
   installResponsiveWindowScale(win);
+  const uninstallRendererRecovery = installWindowsRendererRecovery(win);
   mainWindow = win;
   win.once('closed', () => {
+    uninstallRendererRecovery();
     mainWindow = null;
   });
   installDesktopPageGuards(win, origin);
@@ -407,6 +422,8 @@ const hasSingleInstanceLock = requestProfileScopedSingleInstanceLock(app, runtim
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
+  applyWindowsGpuCrashFallback(app);
+  installWindowsGpuCrashRecovery(app, () => BrowserWindow.getAllWindows());
   app.on('second-instance', () => {
     if (mainWindow) focusExistingWindow(mainWindow);
   });

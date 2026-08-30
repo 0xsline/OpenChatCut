@@ -181,6 +181,7 @@ jobs:
           CC_SMOKE: '1'
           CC_SMOKE_RENDER: '1'
           CC_SMOKE_MCP_RECOVERY: '1'
+          CC_SMOKE_RENDERER_RECOVERY: '1'
         run: |
           $ErrorActionPreference = 'Stop'
           $installers = @(Get-ChildItem -LiteralPath release -Filter '*.exe' -File)

@@ -191,6 +191,9 @@ function updateActiveProgress(context: ServerExportPollContext, snapshot: Export
     percent: Math.min(99, Math.max(current.percent, Math.round(snapshot.progress))),
     processedFrames: snapshot.processedFrames,
     totalFrames: snapshot.totalFrames,
+    detail: snapshot.phase === 'queued'
+      ? context.t('已有其他导出任务正在运行，当前任务将在其完成后自动开始')
+      : current.phase === 'queued' ? undefined : current.detail,
   } : current);
 }
 
@@ -199,6 +202,7 @@ function completeSnapshot(context: ServerExportPollContext, snapshot: ExportJobS
   context.setProgress((current) => current ? {
     ...current,
     phase: 'finalizing',
+    detail: current.phase === 'queued' ? undefined : current.detail,
     percent: 99,
     processedFrames: snapshot.processedFrames,
     totalFrames: snapshot.totalFrames,

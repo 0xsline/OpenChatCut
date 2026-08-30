@@ -9,7 +9,7 @@ import {
   TranscriptionError, transcriptionSourceForPath,
   type AssemblyAiCheckpointWriter, type AssemblyAiResumeCheckpoint, type TranscribeOptions,
 } from './assemblyai';
-import { downsampleMono } from './client-asr-extract';
+import { downsampleMono, hasTranscribableSignal } from './client-asr-extract';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
 import { tryDesktopNativeAsr, warmUpDesktopNativeAsr } from './desktop-native-asr';
 import { desktopNativeInferenceEnabled } from './desktop-inference-preference';
@@ -297,13 +297,16 @@ export async function localTranscribePathResumable(
       return toTranscriptResult(native.result);
     }
   }
+  const source = await runTranscriptionStage('音轨准备', () => transcriptionSourceForPath(path, opts, true));
+  const samples = await runTranscriptionStage('音频解码', () => decodeSourceToSamples(source));
+  if (!hasTranscribableSignal(samples, TARGET_SR)) {
+    await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
+    return toTranscriptResult({ text: '', chunks: [] });
+  }
   const client = getSharedClient();
   client.attachProgress((progress, file) => reportModelProgress(onWait, progress, file));
   await runTranscriptionStage('模型加载', () => client.ensureLoaded(config));
   await onCheckpoint({ ...checkpoint, providerStatus: 'processing' });
-
-  const source = await runTranscriptionStage('音轨准备', () => transcriptionSourceForPath(path, opts, true));
-  const samples = await runTranscriptionStage('音频解码', () => decodeSourceToSamples(source));
   const result = await runTranscriptionStage('模型推理', () => client.transcribe(samples, opts.languageCode ?? 'zh'));
   await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
   return toTranscriptResult(result);

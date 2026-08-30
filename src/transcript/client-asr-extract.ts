@@ -13,6 +13,21 @@ const MAX_WEBAUDIO_BYTES = 80 * 1024 * 1024; // decodeAudioData loads whole buff
 const MAX_CAPTURE_WALL_MS = 90_000;
 const CAPTURE_PLAYBACK_RATE = 4;
 const TARGET_SR = 16_000;
+const ASR_SIGNAL_WINDOW_MS = 50;
+const ASR_SIGNAL_RMS_FLOOR = 10 ** (-50 / 20);
+
+/** Ignore only recordings whose loudest speech-sized window stays below -50 dBFS. */
+export function hasTranscribableSignal(samples: Float32Array, sampleRate = TARGET_SR): boolean {
+  if (!samples.length || sampleRate <= 0) return false;
+  const windowSize = Math.max(1, Math.round((sampleRate * ASR_SIGNAL_WINDOW_MS) / 1000));
+  for (let start = 0; start < samples.length; start += windowSize) {
+    const end = Math.min(samples.length, start + windowSize);
+    let sum = 0;
+    for (let index = start; index < end; index += 1) sum += samples[index]! ** 2;
+    if (Math.sqrt(sum / (end - start)) >= ASR_SIGNAL_RMS_FLOOR) return true;
+  }
+  return false;
+}
 
 function safeAsrName(file: File, ext: string): string {
   const stem = (file.name || 'media').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]+/g, '_').slice(0, 60) || 'media';

@@ -1,11 +1,20 @@
 // 桌面壳纯逻辑检查:env 解析 round-trip、mini-connect 前缀路由语义(插件挂载的
 // 契约)、静态 MIME。跑法:npx tsx desktop/desktop.check.ts(已入 npm test 链)。
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { EventEmitter } from 'node:events';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { App, BrowserWindow } from 'electron';
 import { parseEnvText } from './env-file.ts';
 import { createMiniConnect, matchRoute, rewriteUrl } from './mini-connect.ts';
 import { staticMime } from './static-files.ts';
+import {
+  applyWindowsGpuCrashFallback,
+  installWindowsGpuCrashRecovery,
+  installWindowsRendererRecovery,
+} from './window-recovery.ts';
 
 // ── env-file ────────────────────────────────────────────────────────────
 {
@@ -111,6 +120,56 @@ async function tick(): Promise<void> { await new Promise((r) => setTimeout(r, 0)
   for (const block of prefs) {
     assert.match(block, /backgroundThrottling:\s*false/, 'every editor webPreferences keeps the bridge heartbeat running in the background');
   }
+  assert.match(main, /if \(!hasSingleInstanceLock\)\s*\{\s*app\.quit\(\);\s*\}\s*else\s*\{\s*applyWindowsGpuCrashFallback\(app\);/,
+    'GPU fallback runs only after profile selection and successful single-instance acquisition');
+  assert.match(main, /webContents\.on\('did-finish-load',[\s\S]*?TRANSCRIPT_WINDOW_CHANNELS\.update, transcriptPayload/,
+    'every floating-window load receives its latest transcript payload');
+}
+
+// Windows keeps the current GPU-fast path, but a real child/renderer crash
+// repaints the window and makes the next launch use software rendering once.
+{
+  const userData = await mkdtemp(join(tmpdir(), 'openchatcut-gpu-recovery-'));
+  const appEvents = new EventEmitter();
+  let hardwareDisabled = 0;
+  const fakeApp = {
+    disableHardwareAcceleration: () => { hardwareDisabled += 1; },
+    getPath: () => userData,
+    on: appEvents.on.bind(appEvents),
+    off: appEvents.off.bind(appEvents),
+  } as unknown as App;
+  const windowEvents = new EventEmitter();
+  let reloads = 0;
+  const fakeWindow = {
+    isDestroyed: () => false,
+    webContents: Object.assign(windowEvents, { reload: () => { reloads += 1; } }),
+  } as unknown as BrowserWindow;
+  const uninstallGpu = installWindowsGpuCrashRecovery(fakeApp, () => [fakeWindow], 'win32');
+  appEvents.emit('child-process-gone', {}, { type: 'GPU', reason: 'clean-exit', exitCode: 0 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(reloads, 0, 'normal GPU termination does not reload windows');
+  assert.equal(applyWindowsGpuCrashFallback(fakeApp, 'win32'), false, 'normal GPU termination leaves no fallback marker');
+  appEvents.emit('child-process-gone', {}, { type: 'GPU', reason: 'crashed', exitCode: 7 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(reloads, 1, 'GPU loss repaints the open editor');
+  uninstallGpu();
+  assert.equal(applyWindowsGpuCrashFallback(fakeApp, 'win32'), true);
+  assert.equal(hardwareDisabled, 1, 'the launch after a GPU crash uses software rendering');
+  assert.equal(applyWindowsGpuCrashFallback(fakeApp, 'win32'), false, 'fallback applies for one session');
+
+  const rendererEvents = new EventEmitter();
+  let rendererReloads = 0;
+  const rendererWindow = {
+    isDestroyed: () => false,
+    webContents: Object.assign(rendererEvents, { reload: () => { rendererReloads += 1; } }),
+  } as unknown as BrowserWindow;
+  const uninstallRenderer = installWindowsRendererRecovery(rendererWindow, 'win32');
+  rendererEvents.emit('render-process-gone', {}, { reason: 'clean-exit', exitCode: 0 });
+  rendererEvents.emit('render-process-gone', {}, { reason: 'oom', exitCode: 9 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(rendererReloads, 1, 'renderer OOM reloads into a fresh process');
+  uninstallRenderer();
+  await rm(userData, { recursive: true, force: true });
 }
 
 console.log('\ndesktop.check: ALL PASSED');

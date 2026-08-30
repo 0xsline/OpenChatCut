@@ -12,6 +12,24 @@ interface TimelinePhrase extends TranscriptPhrase {
   toFrame: number;
 }
 
+function transcriptUnavailable(items: readonly TimelineItem[], itemId?: string, track?: string): Record<string, unknown> {
+  if (items.some((item) => item.transcriptStale)) {
+    return { error: 'matching transcript is stale after a source change; call transcribe_track again' };
+  }
+  return {
+    ok: true,
+    available: false,
+    reason: 'not-transcribed',
+    ...(itemId ? { itemId } : {}),
+    ...(track ? { track } : {}),
+    clips: 0,
+    phraseCount: 0,
+    returned: 0,
+    phrases: [],
+    nextAction: 'transcribe_track',
+  };
+}
+
 function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
   const parsed = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : fallback;
   return Math.max(minimum, Math.min(maximum, parsed));
@@ -76,13 +94,15 @@ function timelinePhrases(item: TimelineItem, ctx: AgentContext, args: Args): Tim
 
 export function execReadTranscript(args: Args, ctx: AgentContext): unknown {
   const state = ctx.getState();
-  let items = state.items.filter((item) => hasOperationalTranscript(item));
+  const mediaItems = state.items.filter((item) => item.kind === 'audio' || item.kind === 'video');
+  let items = mediaItems.filter((item) => hasOperationalTranscript(item));
 
   const itemQuery = typeof args.itemId === 'string' ? args.itemId.trim() : '';
   if (itemQuery) {
-    const item = matchingItem(items, itemQuery);
-    if (!item) return { error: `no transcribed item matching "${itemQuery}"` };
+    const item = matchingItem(mediaItems, itemQuery);
+    if (!item) return { error: `no audio/video item matching "${itemQuery}"` };
     if ('error' in item) return item;
+    if (!hasOperationalTranscript(item)) return transcriptUnavailable([item], item.id);
     items = [item];
   } else {
     const trackQuery = typeof args.track === 'string' ? args.track.trim() : '';
@@ -90,11 +110,12 @@ export function execReadTranscript(args: Args, ctx: AgentContext): unknown {
       const trackId = resolveTrackId(state, trackQuery);
       if (!trackId) return { error: `no track "${trackQuery}"` };
       items = items.filter((item) => item.track === trackId);
+      if (!items.length) return transcriptUnavailable(mediaItems.filter((item) => item.track === trackId), undefined, trackAlias(state, trackId));
     }
   }
 
   items = [...items].sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
-  if (!items.length) return { error: 'no matching transcript on the timeline; call transcribe_track first' };
+  if (!items.length) return transcriptUnavailable(mediaItems);
 
   const allPhrases = items.flatMap((item) => timelinePhrases(item, ctx, args));
   const offset = boundedInteger(args.offset, 0, 0, Math.max(0, allPhrases.length));
@@ -102,6 +123,7 @@ export function execReadTranscript(args: Args, ctx: AgentContext): unknown {
   const phrases = allPhrases.slice(offset, offset + limit);
   return {
     ok: true,
+    available: true,
     view: 'phrases',
     timeUnit: 'milliseconds',
     clips: items.length,

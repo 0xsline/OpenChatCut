@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AgentContext } from '../context';
 import type { TimelineState } from '../../editor/types';
+import { isFailedToolResult } from '../toolFailure';
 import { execReadTranscript } from './transcript-read';
 
 const state: TimelineState = {
@@ -60,5 +61,48 @@ assert.equal(one.hasMore, false);
 const track = execReadTranscript({ track: 'V1' }, ctx) as { clips: number; phrases: Array<{ sourceItemId: string }> };
 assert.equal(track.clips, 1, 'track alias narrows the phrase view');
 assert.equal(track.phrases[0]!.sourceItemId, 'clip-video');
+
+const untranscribedState = {
+  ...state,
+  items: state.items.map((item) => ({ ...item, transcript: undefined })),
+};
+const unavailable = execReadTranscript(
+  { itemId: 'clip-aud' },
+  { ...ctx, getState: () => untranscribedState } as AgentContext,
+) as { ok: boolean; available: boolean; reason: string; itemId: string; nextAction: string };
+assert.deepEqual(
+  unavailable,
+  {
+    ok: true,
+    available: false,
+    reason: 'not-transcribed',
+    itemId: 'clip-audio',
+    clips: 0,
+    phraseCount: 0,
+    returned: 0,
+    phrases: [],
+    nextAction: 'transcribe_track',
+  },
+  'an existing clip without a transcript is an availability state, not a failed read',
+);
+assert.equal(isFailedToolResult(unavailable), false, 'optional transcript discovery must not poison final Agent completion');
+assert.match(
+  String((execReadTranscript({ itemId: 'missing' }, ctx) as { error: string }).error),
+  /no audio\/video item/,
+  'a bad item id remains a real tool failure',
+);
+
+const staleState = { ...state, items: state.items.map((item) => ({ ...item, transcriptStale: true })) };
+for (const args of [{}, { itemId: 'clip-aud' }, { track: 'V1' }]) {
+  const stale = execReadTranscript(args, { ...ctx, getState: () => staleState });
+  assert.equal(isFailedToolResult(stale), true, 'stale source words remain a failed read in every scope');
+  assert.match(String((stale as { error: string }).error), /stale/);
+}
+const mixedState = { ...state, items: [staleState.items[0]!, untranscribedState.items[1]!] };
+assert.equal(
+  isFailedToolResult(execReadTranscript({ track: 'V1' }, { ...ctx, getState: () => mixedState })),
+  false,
+  'stale words on another track do not change an untranscribed track availability',
+);
 
 console.log('transcript read checks passed');

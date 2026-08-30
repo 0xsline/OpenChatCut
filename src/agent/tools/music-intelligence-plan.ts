@@ -266,7 +266,17 @@ export async function inspectMusic(args: Args, ctx: AgentContext): Promise<unkno
 export async function analyzeMusic(args: Args, ctx: AgentContext): Promise<unknown> {
   const { asset } = resolveMusicTarget(args, ctx);
   const analysis = await enqueueMusicAnalysis(asset, { force: args.force === true });
-  return analysis ? await inspectMusic(args, ctx) : await unavailableAnalysis(asset);
+  if (analysis) return await inspectMusic(args, ctx);
+  const unavailable = await unavailableAnalysis(asset);
+  if (args.optional !== true || typeof unavailable.error !== 'string') return unavailable;
+  const { error, ...details } = unavailable;
+  return {
+    ok: true,
+    available: false,
+    reason: 'analysis-unavailable',
+    note: error,
+    ...details,
+  };
 }
 
 export function normalizePlanOptions(args: Args): MusicPlanOptions {

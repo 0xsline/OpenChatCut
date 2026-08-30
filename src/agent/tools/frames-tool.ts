@@ -12,7 +12,7 @@ import { maybeDescribeFramesResult } from '../vision';
 
 // view_timeline_frames + view_asset_frames provide visual inspection tools.
 //
-// - view_asset_frames: media contact sheet (sourceTimesMs midpoints, 12–20 samples)
+// - view_asset_frames: media contact sheet (sourceTimesMs midpoints, up to 8 samples)
 // - view_timeline_frames: COMPOSED timeline stills (draft edits included)
 // Both return labeled JPEG evidence the model can SEE (multimodal tool_result).
 //
@@ -22,10 +22,26 @@ import { maybeDescribeFramesResult } from '../vision';
 
 type Args = Record<string, unknown>;
 
-const MAX_FRAMES = 16;
+const MAX_FRAMES = 8;
 /** Default sample count for a broad media scan. */
-const DEFAULT_ASSET_SCAN = 12;
+const DEFAULT_ASSET_SCAN = 6;
 const DEFAULT_TIMELINE_SCAN = 4;
+
+/** Normalize explicit source coordinates once so every renderer honors the same cap. */
+export function explicitSourceTimesMs(args: Args, fps: number): number[] | undefined {
+  const values = Array.isArray(args.sourceTimesMs) && args.sourceTimesMs.length
+    ? args.sourceTimesMs.map(Number)
+    : Array.isArray(args.seconds) && args.seconds.length
+      ? args.seconds.map((seconds) => Number(seconds) * 1000)
+      : Array.isArray(args.frames) && args.frames.length
+        ? args.frames.map((frame) => (Number(frame) / fps) * 1000)
+        : undefined;
+  const normalized = values
+    ?.filter((value) => Number.isFinite(value) && value >= 0)
+    .slice(0, MAX_FRAMES)
+    .map(Math.round);
+  return normalized?.length ? normalized : undefined;
+}
 
 /** Midpoints of n equal blocks in [0, total). */
 function evenMidpoints(total: number, count: number): number[] {
@@ -259,12 +275,9 @@ async function extractAssetContactSheet(
   if (asset.kind !== 'video' && asset.kind !== 'gif') return null;
 
   const body: Record<string, unknown> = { src };
-  if (Array.isArray(args.sourceTimesMs) && args.sourceTimesMs.length) {
-    body.sourceTimesMs = args.sourceTimesMs.map(Number).filter((n) => Number.isFinite(n) && n >= 0);
-  } else if (Array.isArray(args.seconds) && args.seconds.length) {
-    body.sourceTimesMs = args.seconds.map((s) => Math.round(Number(s) * 1000));
-  } else if (Array.isArray(args.frames) && args.frames.length) {
-    body.sourceTimesMs = args.frames.map((f) => Math.round((Number(f) / fps) * 1000));
+  const sourceTimesMs = explicitSourceTimesMs(args, fps);
+  if (sourceTimesMs) {
+    body.sourceTimesMs = sourceTimesMs;
   } else {
     body.count = Math.max(1, Math.min(MAX_FRAMES, Math.round(Number(args.count) || DEFAULT_ASSET_SCAN)));
     if (typeof args.fromSeconds === 'number') body.fromMs = Math.round(args.fromSeconds * 1000);
@@ -412,13 +425,7 @@ async function viewAssetFrames(args: Args, ctx: AgentContext): Promise<unknown> 
         1,
         Math.min(MAX_FRAMES, Math.round(Number(constrainedArgs.count) || DEFAULT_ASSET_SCAN)),
       );
-      const sourceTimesMs = Array.isArray(constrainedArgs.sourceTimesMs)
-        ? constrainedArgs.sourceTimesMs.map(Number).filter((value) => Number.isFinite(value))
-        : Array.isArray(constrainedArgs.seconds)
-          ? constrainedArgs.seconds.map((seconds) => Math.round(Number(seconds) * 1000))
-          : Array.isArray(constrainedArgs.frames)
-            ? constrainedArgs.frames.map((frame) => Math.round((Number(frame) / fps) * 1000))
-            : undefined;
+      const sourceTimesMs = explicitSourceTimesMs(constrainedArgs, fps);
       const sheet = await extractBlobContactSheet(asset.src, {
         sourceTimesMs,
         count,
