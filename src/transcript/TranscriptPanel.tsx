@@ -3,8 +3,9 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId } from '../editor/types';
 import { emitSelectionRef, transcriptRefFromDomSelection, useSelectionRefMode } from '../agent/selection-refs';
 import { useTranscript } from './useTranscript';
+import { wordTimelineFrame } from './edit';
 import { preferredTranscriptionProvider } from './provider';
-import { hasOperationalTranscript, msToFrame, type TranscriptWord } from './types';
+import { hasOperationalTranscript, type TranscriptWord } from './types';
 import { analyzeSilences } from './segment';
 import { ScriptView } from './TranscriptViews';
 import { theme } from '../theme';
@@ -435,7 +436,10 @@ export function TranscriptPanel({
                           if (!operational) return;
                           setFocusItemId(c.id);
                           if (editMode) onToggleWord(c.id, w.gi);
-                          else playerRef.current?.seekTo(c.startFrame + msToFrame(w.start, fps));
+                          // Project the SOURCE word through the same math the
+                          // render layer uses — naive startFrame+msToFrame is
+                          // wrong on split/trimmed/edited/rate-stretched clips.
+                          else playerRef.current?.seekTo(wordTimelineFrame(c, w, fps) ?? c.startFrame);
                         }}
                         onDeleteGap={(afterGi) => {
                           if (!operational) return;

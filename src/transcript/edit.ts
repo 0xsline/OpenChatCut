@@ -193,21 +193,57 @@ export function editedFrames(words: TranscriptWord[], deleted: Set<number>, fps:
   return Math.max(1, editedStreamFrames(words, deleted, fps, opts));
 }
 
-/** Source indices of words that SURVIVE the edit state (deletions + window) — the
- * exact same segment-containment rule retimeWords uses, so callers that need
- * "which words does the render show" (caption word overrides) stay aligned. */
-export function keptWordIndices(words: TranscriptWord[], deleted: Set<number>, fps: number, opts: EditOpts = {}): number[] {
-  const segs = keptSegments(words, deleted, fps, 0, opts);
-  const out: number[] = [];
+interface RetimedWordEntry {
+  index: number;
+  word: TranscriptWord;
+}
+
+// Core projection shared by retimeWords/keptWordIndices: surviving words with
+// their SOURCE indices, in final TIMELINE order (sorted by projected start,
+// then de-overlapped). Both public views are slices of THIS list, so
+// words[i] ↔ indices[i] stay positionally aligned even when playOrder makes
+// timeline order differ from source order (speech-block reorder).
+function retimedWordEntries(
+  words: TranscriptWord[],
+  deleted: Set<number>,
+  fps: number,
+  offsetFrames: number,
+  opts: EditOpts = {},
+): RetimedWordEntry[] {
+  const segs = keptSegments(words, deleted, fps, offsetFrames, opts);
+  const out: RetimedWordEntry[] = [];
   for (let i = 0; i < words.length; i++) {
     if (deleted.has(i)) continue;
     const wS = msToFrame(words[i].start, fps);
     const wE = msToFrame(words[i].end, fps);
     const seg = segs.find((s) => wS >= s.srcStartFrame && wS < s.srcEndFrame)
       ?? segs.find((s) => wS <= s.srcEndFrame && wE >= s.srcStartFrame);
-    if (seg) out.push(i);
+    if (!seg) continue;
+    const fromF = seg.fromFrame + (Math.max(wS, seg.srcStartFrame) - seg.srcStartFrame);
+    const toF = seg.fromFrame + (Math.min(wE, seg.srcEndFrame) - seg.srcStartFrame);
+    const start = (fromF / fps) * 1000;
+    out.push({
+      index: i,
+      word: { text: words[i].text, start, end: Math.max(start + 1, (toF / fps) * 1000), speaker: words[i].speaker },
+    });
+  }
+  out.sort((a, b) => a.word.start - b.word.start);
+  for (let n = 1; n < out.length; n++) {
+    const prev = out[n - 1]!.word;
+    let word = out[n]!.word;
+    if (word.start < prev.end) word = { ...word, start: prev.end };
+    if (word.end <= word.start) word = { ...word, end: word.start + 1 };
+    if (word !== out[n]!.word) out[n] = { index: out[n]!.index, word };
   }
   return out;
+}
+
+/** Source indices of words that SURVIVE the edit state (deletions + window),
+ * in the SAME timeline order retimeWords emits its words — position i here is
+ * the source index of retimeWords(...)[i], so caption overrides/refs that pair
+ * the two arrays by position stay aligned under playOrder reordering. */
+export function keptWordIndices(words: TranscriptWord[], deleted: Set<number>, fps: number, opts: EditOpts = {}): number[] {
+  return retimedWordEntries(words, deleted, fps, 0, opts).map((entry) => entry.index);
 }
 
 // Re-project surviving words onto the EDITED timeline (`fVe` algorithm):
@@ -221,26 +257,7 @@ export function retimeWords(
   offsetFrames: number,
   opts: EditOpts = {},
 ): TranscriptWord[] {
-  const segs = keptSegments(words, deleted, fps, offsetFrames, opts);
-  const out: TranscriptWord[] = [];
-  for (let i = 0; i < words.length; i++) {
-    if (deleted.has(i)) continue;
-    const wS = msToFrame(words[i].start, fps);
-    const wE = msToFrame(words[i].end, fps);
-    const seg = segs.find((s) => wS >= s.srcStartFrame && wS < s.srcEndFrame)
-      ?? segs.find((s) => wS <= s.srcEndFrame && wE >= s.srcStartFrame);
-    if (!seg) continue;
-    const fromF = seg.fromFrame + (Math.max(wS, seg.srcStartFrame) - seg.srcStartFrame);
-    const toF = seg.fromFrame + (Math.min(wE, seg.srcEndFrame) - seg.srcStartFrame);
-    const start = (fromF / fps) * 1000;
-    out.push({ text: words[i].text, start, end: Math.max(start + 1, (toF / fps) * 1000), speaker: words[i].speaker });
-  }
-  out.sort((a, b) => a.start - b.start);
-  for (let n = 1; n < out.length; n++) {
-    if (out[n].start < out[n - 1].end) out[n] = { ...out[n], start: out[n - 1].end };
-    if (out[n].end <= out[n].start) out[n] = { ...out[n], end: out[n].start + 1 };
-  }
-  return out;
+  return retimedWordEntries(words, deleted, fps, offsetFrames, opts).map((entry) => entry.word);
 }
 
 // ── split_item transcript partition with word/frame alignment ──────────────
@@ -389,4 +406,43 @@ export function mediaWindowKeptIndices(
     idxs.push(i);
   }
   return idxs;
+}
+
+/** Clip fields needed to project a source word onto the timeline. */
+interface WordSeekItem extends MediaWindowItem {
+  kind: string;
+  transcript?: TranscriptWord[];
+  deletedWordIdx?: number[];
+  silenceFrames?: number;
+  gapCapsMs?: Record<string, number>;
+  transcriptPlayOrder?: number[];
+  cutPadFrames?: number;
+}
+
+/**
+ * Timeline frame where a SOURCE word starts playing inside this clip — the
+ * same projection the render/caption layers use (audio = edited kept-segment
+ * stream honoring deletions/silence/playOrder/trim window; video = continuous
+ * [srcIn, srcIn+dur×rate) media window). Naive `startFrame + msToFrame(word.start)`
+ * is WRONG whenever the clip was split/trimmed/edited/rate-stretched.
+ * A word whose span touches a kept segment (e.g. a deleted word at a cut)
+ * maps to the cut point where playback resumes; returns null only when the
+ * word cannot be located in this clip's playback at all (outside the trim
+ * window / inside a fully removed span).
+ */
+export function wordTimelineFrame(item: WordSeekItem, word: TranscriptWord, fps: number): number | null {
+  const wS = msToFrame(word.start, fps);
+  const wE = msToFrame(word.end, fps);
+  if (item.kind !== 'audio') {
+    const window = sourceWindowForTimelineRange(item, 0, item.durationInFrames);
+    if (wE <= window.startFrame || wS >= window.endFrame) return null;
+    const local = Math.round(sourceFramesToTimelineFrames(item, Math.max(wS, window.startFrame) - window.startFrame));
+    return item.startFrame + Math.min(Math.max(0, local), Math.max(0, item.durationInFrames - 1));
+  }
+  const deleted = new Set(item.deletedWordIdx ?? []);
+  const segs = keptSegments(item.transcript ?? [], deleted, fps, 0, { ...itemEditOpts(item), window: itemWindow(item) });
+  const seg = segs.find((s) => wS >= s.srcStartFrame && wS < s.srcEndFrame)
+    ?? segs.find((s) => wS <= s.srcEndFrame && wE >= s.srcStartFrame);
+  if (!seg) return null;
+  return item.startFrame + seg.fromFrame + (Math.max(wS, seg.srcStartFrame) - seg.srcStartFrame);
 }
