@@ -72,7 +72,10 @@ export async function exportClipMov(
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Revoking synchronously can cut off a download the browser has not started
+  // reading yet (observed historically in Firefox). Match downloadBlob in
+  // src/export/exportFiles.ts, which defers by a second.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Convert to video → opaque h264 mp4 saved under uploads; returns its path (alpha is

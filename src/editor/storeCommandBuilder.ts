@@ -38,12 +38,31 @@ const uid = (p: string) => `${p}_${crypto.randomUUID()}`;
 // (real dispatch → history) and by the proposal draft engine (draft dispatch
 // that records + applies to a scratch ProjectDoc without touching the real one).
 export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): EditorCommands {
+  // Track creations produced while BUILDING an action (pickTrack runs inside
+  // the item literal, before dispatch) are staged here and folded into the same
+  // batch as that action, so "add audio to a project with no audio track" is
+  // ONE undo step instead of two — previously the first undo removed the clip
+  // and left an empty track behind.
+  let pendingTrackCreates: AtomicAction[] = [];
+  const takePendingTrackCreates = (): AtomicAction[] => {
+    const pending = pendingTrackCreates;
+    pendingTrackCreates = [];
+    return pending;
+  };
+  /** dispatch that atomically includes any track created while building `action`. */
+  const dispatchWithTracks = (action: AtomicAction, label: string): void => {
+    const pending = takePendingTrackCreates();
+    dispatch(pending.length ? { type: 'batch', label, actions: [...pending, action] } : action);
+  };
   const pickTrack = (ref: TrackId | undefined, kind: TrackKind): TrackId => {
     const state = activeTimeline(getDoc());
     const existing = resolveTrackId(state, ref, kind) ?? defaultTrackId(state, kind);
     if (existing) return existing;
     const id = uid('track');
-    dispatch({ type: 'track.create', track: { id, kind } });
+    // Staged, not dispatched: the enclosing command commits it with its own
+    // action. Any command that does not use dispatchWithTracks/placeItem still
+    // gets it flushed as part of its next batch.
+    pendingTrackCreates.push({ type: 'track.create', track: { id, kind } });
     return id;
   };
   const placeItem = (
@@ -51,15 +70,18 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
     at: { startFrame?: number; ripple?: boolean; overwrite?: boolean } | undefined,
     before: AtomicAction[] = [],
   ) => {
+    // Any track created while building `item` must land in the SAME step.
+    const trackCreates = takePendingTrackCreates();
     if (!at?.overwrite) {
       const add: AtomicAction = { type: 'add', item, startFrame: at?.startFrame, ripple: at?.ripple };
-      dispatch(before.length ? { type: 'batch', label: 'Add media', actions: [...before, add] } : add);
+      const actions = [...trackCreates, ...before, add];
+      dispatch(actions.length > 1 ? { type: 'batch', label: 'Add media', actions } : add);
       return;
     }
     const doc = getDoc();
     const state = { ...activeTimeline(doc), assets: doc.assets };
     const plan = planOverwrite(state, item, at.startFrame ?? 0, () => uid('item'));
-    if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: [...before, ...plan.actions] });
+    if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: [...trackCreates, ...before, ...plan.actions] });
   };
   const commitRelink = (
     action: Extract<AtomicAction, { type: 'pool.relinkAsset' | 'relinkTimelineItem' }>,
@@ -141,7 +163,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       relinkTimelineItem: (id, next) => commitRelink({ type: 'relinkTimelineItem', id, ...next }),
       addSolidItem: (at) => {
         const id = uid('item');
-        dispatch({
+        dispatchWithTracks({
           type: 'add',
           startFrame: at?.startFrame,
           ripple: at?.ripple,
@@ -155,7 +177,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
             height: 1080,
             props: { color: at?.color ?? '#1a1a1a' },
           },
-        });
+        }, 'Add solid');
         return id;
       },
       setDesignStyle: (style) => dispatch({ type: 'design.set', style }),
@@ -208,7 +230,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       addTextClip: (at) => {
         const id = uid('item');
         const align = at?.align === 'left' || at?.align === 'right' ? at.align : 'center';
-        dispatch({
+        dispatchWithTracks({
           type: 'add',
           startFrame: at?.startFrame,
           ripple: at?.ripple,
@@ -228,7 +250,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
               align,
             },
           },
-        });
+        }, 'Add title');
         return id;
       },
       addAsset: (asset: MediaAsset) => dispatch({ type: 'addAsset', asset }),
@@ -296,7 +318,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
         );
         const playbackRate = Math.max(0.1, Math.min(8, at?.playbackRate ?? 1));
         const id = uid('item');
-        dispatch({
+        dispatchWithTracks({
           type: 'add',
           startFrame: at?.startFrame,
           ripple: at?.ripple,
@@ -312,14 +334,14 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
             srcInFrame: sourceStartFrame,
             playbackRate,
           },
-        });
+        }, 'Add sequence');
         return { ok: true, itemId: id };
       },
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
       moveItem: (id, to) => {
         const item = activeTimeline(getDoc()).items.find((candidate) => candidate.id === id);
         const track = to.track && item ? pickTrack(to.track, item.kind === 'audio' ? 'audio' : 'video') : to.track;
-        dispatch({ type: 'move', id, ...to, track });
+        dispatchWithTracks({ type: 'move', id, ...to, track }, 'Move clip');
       },
       setItemTiming: (id, timing) => dispatch({ type: 'retime', id, ...timing }),
       slipItem: (id, deltaInFrames) => {

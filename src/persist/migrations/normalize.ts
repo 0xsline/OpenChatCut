@@ -268,35 +268,47 @@ function isLinkGroup(value: unknown, itemIds: ReadonlySet<string>): value is Tim
     && group.itemIds.includes(group.anchorItemId);
 }
 
-function isMulticamEvidence(value: unknown, angleIds: ReadonlySet<string>): value is MulticamSyncEvidence {
-  if (!value || typeof value !== 'object') return false;
+/** Confidence is a 0..1 score. A stored value marginally outside that range is
+ * float noise from the sync estimator, not corruption — clamping keeps the
+ * group; rejecting it used to delete the user's whole multicam setup. */
+const clampConfidence = (value: number): number => Math.min(1, Math.max(0, value));
+
+function normalizeMulticamEvidence(
+  value: unknown,
+  angleIds: ReadonlySet<string>,
+): MulticamSyncEvidence | null {
+  if (!value || typeof value !== 'object') return null;
   const evidence = value as Partial<MulticamSyncEvidence>;
-  return typeof evidence.angleId === 'string' && angleIds.has(evidence.angleId)
-    && (evidence.method === 'source-timecode' || evidence.method === 'capture-clock' || evidence.method === 'audio')
-    && finite(evidence.confidence) && evidence.confidence >= 0 && evidence.confidence <= 1
-    && finite(evidence.offsetFrames);
+  if (typeof evidence.angleId !== 'string' || !angleIds.has(evidence.angleId)) return null;
+  if (evidence.method !== 'source-timecode' && evidence.method !== 'capture-clock' && evidence.method !== 'audio') return null;
+  if (!finite(evidence.confidence) || !finite(evidence.offsetFrames)) return null;
+  return { ...evidence, confidence: clampConfidence(evidence.confidence) } as MulticamSyncEvidence;
 }
 
-function isMulticamAngle(value: unknown): value is MulticamAngle {
-  if (!value || typeof value !== 'object') return false;
+function normalizeMulticamAngle(value: unknown): MulticamAngle | null {
+  if (!value || typeof value !== 'object') return null;
   const angle = value as Partial<MulticamAngle>;
-  return typeof angle.id === 'string' && !!angle.id
+  const structurallyValid = typeof angle.id === 'string' && !!angle.id
     && typeof angle.itemId === 'string' && !!angle.itemId
     && typeof angle.label === 'string'
     && (angle.micRole === undefined
       || angle.micRole === 'program' || angle.micRole === 'reference'
       || angle.micRole === 'camera' || angle.micRole === 'scratch' || angle.micRole === 'none')
     && finite(angle.offsetFrames)
-    && finite(angle.confidence) && angle.confidence >= 0 && angle.confidence <= 1
+    && finite(angle.confidence)
     && isTimelineItem(angle.source)
     && (angle.source.kind === 'video' || angle.source.kind === 'audio');
+  if (!structurallyValid) return null;
+  return { ...angle, confidence: clampConfidence(angle.confidence!) } as MulticamAngle;
 }
 
 function normalizeMulticamGroup(value: unknown): MulticamGroup | null {
   if (!value || typeof value !== 'object') return null;
   const group = value as Partial<MulticamGroup>;
   if (typeof group.id !== 'string' || !group.id || !Array.isArray(group.angles)) return null;
-  const angles = group.angles.filter(isMulticamAngle);
+  const angles = group.angles
+    .map(normalizeMulticamAngle)
+    .filter((angle): angle is MulticamAngle => angle !== null);
   if (angles.length < 2) return null;
   const angleIds = new Set(angles.map((angle) => angle.id));
   if (angleIds.size !== angles.length
@@ -305,8 +317,17 @@ function normalizeMulticamGroup(value: unknown): MulticamGroup | null {
     || (group.syncMethod !== 'source-timecode' && group.syncMethod !== 'capture-clock' && group.syncMethod !== 'audio')) {
     return null;
   }
-  const evidence = Array.isArray(group.evidence) ? group.evidence.filter((entry) => isMulticamEvidence(entry, angleIds)) : [];
-  if (angles.some((angle) => !evidence.some((entry) => entry.angleId === angle.id))) return null;
+  const evidence = Array.isArray(group.evidence)
+    ? group.evidence
+      .map((entry) => normalizeMulticamEvidence(entry, angleIds))
+      .filter((entry): entry is MulticamSyncEvidence => entry !== null)
+    : [];
+  // Missing per-angle evidence no longer discards the group. Evidence is sync
+  // PROVENANCE, not a structural requirement: the only consumer
+  // (multicam-tools) already filters it per angle and copes with an empty
+  // list, whereas dropping the group deleted the user's multicam setup and
+  // the next save made that permanent. Never synthesize evidence to fill the
+  // gap — that would fabricate provenance.
   const decisions = Array.isArray(group.decisions)
     ? group.decisions.filter((decision) => !!decision && typeof decision === 'object'
       && typeof decision.id === 'string'

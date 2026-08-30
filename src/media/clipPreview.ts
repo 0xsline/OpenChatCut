@@ -29,7 +29,27 @@ type Entry = {
   listeners: Set<() => void>;
 };
 
+// Module-level cache. Loaded waveform peaks are large (100 peaks/second — an
+// hour of audio is ~360k numbers), so a session that opens several big
+// projects accumulated tens of MB that nothing ever released: the previous
+// cleanup only deleted entries still LOADING. Cap the number of unobserved
+// entries and evict the oldest; anything still rendered (listeners > 0) is
+// never evicted, and an evicted entry simply refetches if it comes back.
+const MAX_IDLE_PREVIEW_ENTRIES = 40;
 const entries = new Map<string, Entry>();
+
+/** Drop the oldest listener-less entries once the idle set exceeds the cap.
+ * Map iteration is insertion-ordered, which is a good enough LRU proxy here. */
+function evictIdlePreviews(): void {
+  const idle: string[] = [];
+  for (const [key, entry] of entries) {
+    if (!entry.listeners.size && !entry.promise) idle.push(key);
+  }
+  for (const key of idle.slice(0, Math.max(0, idle.length - MAX_IDLE_PREVIEW_ENTRIES))) {
+    entries.get(key)?.controller?.abort();
+    entries.delete(key);
+  }
+}
 
 /** Only local assets can be previewed (blob:/remote URL server cannot reach) */
 export function isPreviewable(src: string | undefined): src is string {
@@ -149,7 +169,11 @@ export function useClipPreview(
       if (!e.listeners.size && e.promise) {
         e.controller?.abort();
         if (entries.get(key) === e) entries.delete(key);
+        return;
       }
+      // Loaded-and-now-unobserved: keep it for a fast re-render, but bound how
+      // many such entries the session may retain.
+      if (!e.listeners.size) evictIdlePreviews();
     };
   }, [key, sourceRevision, src, wantStrip]);
 

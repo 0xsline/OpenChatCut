@@ -71,7 +71,10 @@ export async function deleteUploadFile(name: string): Promise<boolean> {
   const res = await fetch(`/upload?name=${encodeURIComponent(name)}`, {
     method: 'DELETE',
   });
-  await deleteMediaBlob(MEDIA_PREFIX + name).catch(() => {});
+  // Only drop the browser cache copy once the server confirms the disk file is
+  // gone. Deleting it after a rejected DELETE would remove one of the three
+  // fallback layers while the file itself still exists.
+  if (res.ok) await deleteMediaBlob(MEDIA_PREFIX + name).catch(() => {});
   return res.ok;
 }
 
