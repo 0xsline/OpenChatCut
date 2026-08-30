@@ -37,6 +37,7 @@ import {
   sqliteMigrationStatus,
 } from '../storage/sqlite-store.ts';
 import { AgentSessionClearBlockedError } from './project-store-agent-session.ts';
+import { scrubInternalPaths } from '../error-scrub.ts';
 import {
   writeAgentRuntime,
   writeProjectDocument,
@@ -188,9 +189,10 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[project-store] ${message}`);
           if (!res.headersSent) {
+            const clientMessage = scrubInternalPaths(message);
             const body = error instanceof AgentSessionClearBlockedError
-              ? { error: message, code: error.code, run: error.run }
-              : { error: message };
+              ? { error: clientMessage, code: error.code, run: error.run }
+              : { error: clientMessage };
             sendProjectStoreJson(res, 400, body);
           }
         }

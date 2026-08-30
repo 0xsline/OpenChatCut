@@ -46,6 +46,7 @@ import {
 } from '../persist/agentRuntimeStore';
 import type { AgentHookState } from './useAgentState';
 import type { LLMMessage } from './runtime';
+import { showAppToast } from '../ui/appToast';
 
 export async function recordProposalOutcome(
   projectId: string,
@@ -464,10 +465,21 @@ export function agentSessionSnapshot(
   };
 }
 
+// Surface chat-write failures once per failing streak, the same way project
+// saves do. Silently console.error'ing meant a user could talk for an hour,
+// refresh, and find the conversation gone with no prior warning.
+let chatSaveFailureShown = false;
+
 function persistAgentSession(state: AgentHookState, projectId: string): void {
-  void saveChat(projectId, agentSessionSnapshot(state)).catch((error) => {
-    console.error('[agent] chat persistence failed:', error);
-  });
+  void saveChat(projectId, agentSessionSnapshot(state)).then(
+    () => { chatSaveFailureShown = false; },
+    (error: unknown) => {
+      console.error('[agent] chat persistence failed:', error);
+      if (chatSaveFailureShown) return;
+      chatSaveFailureShown = true;
+      showAppToast('聊天记录保存失败，本次对话可能不会被保留。请检查存储后重试。', { error: true });
+    },
+  );
 }
 
 export function useAgentPersistence(

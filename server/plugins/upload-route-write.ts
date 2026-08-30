@@ -19,6 +19,7 @@ import {
   type ImportTokenScope,
 } from '../external-agent/import-token.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
+import { scrubInternalPaths } from '../error-scrub.ts';
 import {
   contentLengthOf, extFromUrlOrType, maxUploadBytes, readBody,
   sendError, sendJson,
@@ -260,7 +261,11 @@ async function handleUploadWrite(
       : error;
     const message = failure instanceof Error ? failure.message : String(failure);
     logger.error(`[upload] ${message}`);
-    if (!res.headersSent) sendError(res, error instanceof UploadTooLargeError ? 413 : 500, message);
+    // Full detail (paths included) stays in the server log; the client gets the
+    // same sentence with host filesystem paths scrubbed.
+    if (!res.headersSent) {
+      sendError(res, error instanceof UploadTooLargeError ? 413 : 500, scrubInternalPaths(message));
+    }
     else res.end();
   }
 }

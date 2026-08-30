@@ -10,6 +10,7 @@ import { withExportPermit } from "./export-runtime.ts";
 
 // @ts-expect-error — plain .mjs render pipeline has no .d.ts
 import { renderTimeline, renderTimelineStills } from "../../remotion/render.mjs";
+import { scrubInternalPaths } from '../error-scrub.ts';
 
 const MAX_BODY_BYTES = 24 * 1024 * 1024;
 const POSTER_PROGRESS = 0.42;
@@ -178,7 +179,7 @@ export function resourcePreviewPlugin(
             sendError(
               res,
               400,
-              error instanceof Error ? error.message : "preview render failed",
+              error instanceof Error ? scrubInternalPaths(error.message) : "preview render failed",
             );
           }
         },
