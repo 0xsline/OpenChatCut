@@ -79,6 +79,23 @@ export const CAPTION_STYLES: CaptionStyle[] = [
 
 export const CAPTION_STYLE_BY_ID = Object.fromEntries(CAPTION_STYLES.map((style) => [style.id, style])) as Record<CaptionTemplate, CaptionStyle>;
 
+/** Template id used when a stored one is unknown to this build. */
+export const FALLBACK_CAPTION_TEMPLATE: CaptionTemplate = 'plain';
+
+/**
+ * Preset lookup that always yields a style. A raw `CAPTION_STYLE_BY_ID[id]`
+ * returns undefined for a template this build does not know — which happens
+ * whenever a project saved by a NEWER build (with a new template) is opened by
+ * an older one — and the first `preset.fontFamily` access then throws, taking
+ * down preview AND export rather than degrading. Persisted template ids are
+ * untrusted input like any other.
+ */
+export function captionStyleFor(template: unknown): CaptionStyle {
+  return (typeof template === 'string'
+    ? CAPTION_STYLE_BY_ID[template as CaptionTemplate]
+    : undefined) ?? CAPTION_STYLE_BY_ID[FALLBACK_CAPTION_TEMPLATE];
+}
+
 // Custom per-caption style patch layered OVER the chosen template preset
 // (edit_captions action=style). Only the visual fields — id/label/hint stay the
 // preset's. Rendered by CaptionsLayer as { ...preset, ...styleOverride }.

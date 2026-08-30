@@ -59,8 +59,11 @@ function useCaptionTranslation(captions: CaptionsData | null, items: TimelineIte
     setRunning(true);
     setError(null);
     try {
-      const cues = await buildTranslation(captions, items, fps, lang);
-      onUpdate({ bilingual: true, translationLang: lang, translation: cues });
+      const { cues, fingerprint } = await buildTranslation(captions, items, fps, lang);
+      onUpdate({
+        bilingual: true, translationLang: lang, translation: cues,
+        translationFingerprint: fingerprint,
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {

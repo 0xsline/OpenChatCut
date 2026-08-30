@@ -5,7 +5,7 @@ import type { CaptionWordOverride } from '../../captions/types';
 import { CAPTION_MAX_CHARS_PER_LINE, CAPTION_MAX_VISUAL_LINES, paginate } from '../../captions/types';
 import { resolveCaptionWords, resolveCaptionWordIndices, resolveCaptionWordRefs, applyWordOverrides } from '../../captions/resolve';
 import { captionWordOverride } from '../../captions/wordOverrides';
-import { CAPTION_STYLE_BY_ID } from '../../captions/styles';
+import { captionStyleFor } from '../../captions/styles';
 import { editCaptions } from './captions-actions';
 import { sourceList } from './captions-sources';
 import { applyCaptionAvoidance } from './caption-avoidance-tools';
@@ -62,7 +62,7 @@ export async function execCaptionsTool(name: string, args: Args, ctx: AgentConte
         for (const [k, v] of Object.entries(c.wordOverrides)) visibleOverrides[Number(k)] = { ...v, hidden: false };
       }
       const applied = applyWordOverrides(words, indices, visibleOverrides, wordRefs);
-      const wordsPerPage = CAPTION_STYLE_BY_ID[c.template].wordsPerPage;
+      const wordsPerPage = captionStyleFor(c.template).wordsPerPage;
       const pages = paginate(
         applied.words,
         c.pacing,

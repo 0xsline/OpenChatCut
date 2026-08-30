@@ -3,7 +3,7 @@ import type { TranscriptWord } from '../transcript/types';
 import { hasOperationalTranscript } from '../transcript/types';
 import { isStableIdentity, newManualCueIdentity } from '../transcript/identity';
 import { normalizeCaptionSourceEntries } from './sourceOrder';
-import { CAPTION_STYLE_BY_ID } from './styles';
+import { captionStyleFor } from './styles';
 import type { CaptionLayout, CaptionsData, CaptionSourceEntry, CaptionTemplate } from './types';
 
 const DEFAULT_CUE_MS = 3_000;
@@ -88,7 +88,7 @@ export function appendDroppedManualCaption(
   const entries = promoteCaptionEntries(captions, items);
   const manualCount = entries.filter(isManualCaptionEntry).length;
   const entry = newManualEntry(manualCount + 1);
-  const { id: _id, label: _label, labelZh: _labelZh, hint: _hint, ...style } = CAPTION_STYLE_BY_ID[template];
+  const { id: _id, label: _label, labelZh: _labelZh, hint: _hint, ...style } = captionStyleFor(template);
   return {
     laneId: entry.id,
     patch: {

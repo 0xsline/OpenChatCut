@@ -66,6 +66,14 @@ export interface CaptionsData {
   translationLang?: string;
   /** translated phrase cues (timeline ms), aligned to the source phrases */
   translation?: TranslatedCue[];
+  /** Timing fingerprint of the caption words the translation was built from.
+   * Cues carry ABSOLUTE timeline ms, so any later edit that re-times the source
+   * (word deletion, silence compression, moving the clip) leaves them pinned to
+   * the old positions. Comparing this against the live fingerprint tells the UI
+   * the translation is out of date instead of silently showing drifted text.
+   * Absent on translations generated before this field existed — treated as
+   * "unknown", never as stale. */
+  translationFingerprint?: string;
   /** display a transcript VARIANT (translation / corrected pass) as the caption
    * text instead of the source words. Keys `sourceItemId`'s `variants` by id; the
    * variant only swaps each word's TEXT; timing stays with the source word. Only

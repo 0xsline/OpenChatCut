@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react';
 import type { CaptionLayout, CaptionsData, CaptionTemplate } from './types';
-import { CAPTION_STYLE_BY_ID, type CaptionStyle, type CaptionStyleOverride } from './styles';
+import { captionStyleFor, type CaptionStyle, type CaptionStyleOverride } from './styles';
 
 /** Template preset merged with the caption's explicit style override. */
 export function effectivePreset(captions: CaptionsData): CaptionStyle {
-  const preset = CAPTION_STYLE_BY_ID[captions.template];
+  const preset = captionStyleFor(captions.template);
   return captions.styleOverride ? { ...preset, ...captions.styleOverride } : preset;
 }
 

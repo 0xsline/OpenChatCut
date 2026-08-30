@@ -178,8 +178,11 @@ export async function bilingual(json: Record<string, unknown>, c: CaptionsData, 
   const lang = langArg ?? (str(json.languageCode) || str(json.lang));
   if (!lang) return { error: 'bilingual needs languageCode (the language to translate INTO)' };
   try {
-    const cues = await buildTranslation(c, s.items, s.fps, lang);
-    ctx.commands.updateCaptions({ translation: cues, translationLang: lang, bilingual: true });
+    const { cues, fingerprint } = await buildTranslation(c, s.items, s.fps, lang);
+    ctx.commands.updateCaptions({
+      translation: cues, translationLang: lang, bilingual: true,
+      translationFingerprint: fingerprint,
+    });
     const primary = str(json.primary) || 'original';
     return {
       ok: true, mode: 'bilingual', languageCode: lang, lines: cues.length,

@@ -97,8 +97,11 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
     setBusy(true);
     onError(null);
     try {
-      const translation = await buildTranslation(captions, state.items, state.fps, lang);
-      const patch = { enabled: true, bilingual: true, translationLang: lang, translation };
+      const { cues, fingerprint } = await buildTranslation(captions, state.items, state.fps, lang);
+      const patch = {
+        enabled: true, bilingual: true, translationLang: lang,
+        translation: cues, translationFingerprint: fingerprint,
+      };
       if (current) commands.updateCaptions(patch, trackId);
       else commands.setCaptions({ ...captions, ...patch }, trackId);
       onClose();

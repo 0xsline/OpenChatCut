@@ -12,7 +12,7 @@ import {
 } from '../editor/types';
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
-import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
+import { sourceWindowForTimelineRange, timelineFramesToSourceFrames } from '../editor/sourceLimit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
 import { backgroundFillStrengthOf, isBackgroundFillActive } from '../editor/backgroundFill';
@@ -197,6 +197,11 @@ function collectAssets(state: TimelineState): Map<string, AssetInfo> {
     const existing = bySrc.get(item.src);
     if (existing) {
       existing.durationFrames = Math.max(existing.durationFrames, full);
+      // hasVideo/hasAudio are derived from `kind` downstream. The FIRST item
+      // referencing a src used to fix it, so a src placed as audio and also as
+      // video exported an audio-only asset — the video clip then imported as
+      // black. Prefer the visual kind when the same file is used both ways.
+      if (existing.kind === 'audio' && item.kind !== 'audio') existing.kind = item.kind;
     } else {
       const sourceFilename = safeSourceFilename(libraryAsset?.sourceFilename)
         ?? safeSourceFilename(item.sourceFilename);
@@ -316,6 +321,37 @@ function backgroundFillMetadataXml(item: TimelineItem): string {
 /** Entries with src (video/audio/image/gif) → asset-clip; entries without src
  * (motion-graphic/text, MG does not have real media files) → placeholder gap with name + annotation,
  * The integrator can use export_motion_graphic_prores to render the transparent video and replace this gap.*/
+/** Source frames consumed by a rate-stretched clip: timeline frames × rate. */
+export function retimeSourceFrames(item: TimelineItem): number {
+  return timelineFramesToSourceFrames(item, item.durationInFrames);
+}
+
+/**
+ * `<timeMap>` for a constant speed change. The clip's rate was previously
+ * dropped entirely, so a 2× clip imported at 1× and showed only the first half
+ * of its source span.
+ *
+ * Mapping: `time` is the retimed (timeline) position, `value` the media
+ * position it samples — a 2× clip covers `duration × 2` of source over its
+ * timeline duration. Both are expressed relative to the clip's `start`
+ * in-point. NOTE: the emitted XML has not been round-tripped through Final Cut
+ * or Resolve here, so the intended rate is also written as a comment for the
+ * integrator to sanity-check.
+ */
+function retimeXml(item: TimelineItem, fps: number): string {
+  const rate = item.playbackRate ?? 1;
+  if (!Number.isFinite(rate) || rate === 1 || rate <= 0) return '';
+  const sourceFrames = retimeSourceFrames(item);
+  if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) return '';
+  return [
+    xmlComment(`speed change ${rate}x: ${item.durationInFrames} timeline frames consume ${Math.round(sourceFrames)} source frames`),
+    '<timeMap>',
+    '  <timept time="0s" value="0s" interp="linear"/>',
+    `  <timept time="${rationalTime(item.durationInFrames, fps)}" value="${rationalTime(Math.round(sourceFrames), fps)}" interp="linear"/>`,
+    '</timeMap>',
+  ].join('\n        ');
+}
+
 function itemToSpineElement(
   item: TimelineItem,
   fps: number,
@@ -337,9 +373,13 @@ function itemToSpineElement(
         .join('\n        ');
     }
     const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${rationalTime(item.srcInFrame ?? 0, fps)}" name="${name}"`;
-    return backgroundFillActive
+    const retime = retimeXml(item, fps);
+    const children = [retime, backgroundFillActive ? backgroundFillMetadataXml(item) : '']
+      .filter(Boolean)
+      .join('\n        ');
+    return children
       ? `<asset-clip ${attributes}>
-        ${backgroundFillMetadataXml(item)}
+        ${children}
       </asset-clip>`
       : `<asset-clip ${attributes}/>`;
   }

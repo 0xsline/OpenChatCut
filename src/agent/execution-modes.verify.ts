@@ -46,9 +46,10 @@ import { generationTimeoutMs } from './client';
   assert.equal(generationTimeoutMs(Number.NaN), 60_000, 'non-finite budget falls back to the floor');
   assert.ok(generationTimeoutMs(64_000) > 60_000,
     'a 64k-token MG generation gets more than the old fixed 60s');
-  assert.equal(generationTimeoutMs(64_000), 1_600_000 > 600_000 ? 600_000 : 1_600_000,
-    '64k tokens is clamped by the 10 minute ceiling');
-  assert.ok(generationTimeoutMs(10_000_000) <= 600_000, 'the ceiling is enforced');
+  // 64k tokens at the assumed streaming rate exceeds the ceiling → clamped.
+  assert.equal(generationTimeoutMs(64_000), 600_000, '64k tokens is clamped by the 10 minute ceiling');
+  assert.equal(generationTimeoutMs(10_000_000), 600_000, 'the ceiling is enforced');
+  assert.equal(generationTimeoutMs(8_000), 200_000, 'mid-size budgets scale linearly');
 }
 
 console.log('execution-modes.verify: ok');

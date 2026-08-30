@@ -1,8 +1,7 @@
 import type { AgentContext } from '../context';
 import type { CaptionAnchor, CaptionLayoutPolicy, CaptionPerSource, CaptionSlot, CaptionsData, CaptionSourceEntry } from '../../captions/types';
 import { mapCaptionStyle } from '../../captions/styleMap';
-import { CAPTION_STYLE_BY_ID } from '../../captions/styles';
-import type { CaptionTemplate } from '../../captions/types';
+import { captionStyleFor } from '../../captions/styles';
 import { findVariantByLang } from '../../transcript/variants';
 import { resolveTrackId, type TimelineState } from '../../editor/types';
 import { moveCaptionSourceEntry, normalizeCaptionSourceEntries } from '../../captions/sourceOrder';
@@ -222,7 +221,7 @@ export function execSourceUpdate(json: Json, c: CaptionsData, ctx: AgentContext,
       // per-source style: preset (template id → complete set of styles) and/or style explicit field
       const presetId = str(o.preset) || str(o.templatePreset);
       if (presetId) {
-        const tpl = CAPTION_STYLE_BY_ID[presetId as CaptionTemplate];
+        const tpl = captionStyleFor(presetId);
         if (!tpl) return { error: `unknown preset "${presetId}"` };
         const { id: _i, label: _l, labelZh: _z, hint: _h, ...styleOnly } = tpl;
         e.style = { ...styleOnly };

@@ -122,6 +122,7 @@ export default {
   '重新翻译': 'Re-translate',
   '生成翻译': 'Generate translation',
   '显示翻译第二行（{lang}）': 'Show translated second line ({lang})',
+  '原文时间已改变，翻译行仍停留在旧位置，建议重新翻译。': 'The source timing changed; the translated line still sits at the old positions — re-translate to realign.',
   // CaptionStyleMenu — Pop-up chrome and errors
   '样式': 'Styles',
   '我的样式': 'My styles',
