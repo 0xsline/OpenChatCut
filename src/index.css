@@ -1568,7 +1568,18 @@ button, input, select { font: inherit; }
 
 /* Script view: speaker blocks + gap rows */
 .cc-tx-script { display:flex; flex-direction:column; gap:14px; }
-.cc-tx-speech { display:flex; flex-direction:column; gap:6px; }
+.cc-tx-speech {
+  display:flex; flex-direction:column; gap:6px;
+  /* Long transcripts render thousands of word spans. content-visibility skips
+     layout AND paint for blocks scrolled out of view while KEEPING them in the
+     DOM — unlike unmount-based virtualization, which would break cross-block
+     text selection (the agent's transcript references come from DOM ranges),
+     find-in-page, and drag-reorder. `auto` in contain-intrinsic-size makes the
+     browser remember each block's last measured height, so the scrollbar does
+     not jump as blocks enter and leave. */
+  content-visibility:auto;
+  contain-intrinsic-size:auto 72px;
+}
 .cc-tx-speech-label {
   font-size:13px; font-weight:600; letter-spacing:0.01em;
 }
