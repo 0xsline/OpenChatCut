@@ -7,13 +7,9 @@ import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
 import { bindAction } from '../../shortcuts/actionRegistry';
 // Opened on demand, so they load on demand — see dashboardDialogs.tsx.
 import {
-  McpGuideDialog,
-  MediaCleanupDialog,
-  SettingsDialog,
-  ShortcutsDialog,
-  StorageMigrationDialog,
-  useDashboardDialogPrefetch,
+  McpGuideDialog, MediaCleanupDialog, SettingsDialog, ShortcutsDialog, StorageMigrationDialog,
 } from './dashboardDialogs';
+import { useDashboardDialogPrefetch } from './dashboardDialogLoaders';
 import { StorageMigrationBanner } from '../settings/StorageMigrationBanner';
 import { SkinPicker } from '../settings/SkinPicker';
 import { LocaleToggle } from '../TopBar';

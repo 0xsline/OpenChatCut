@@ -11,13 +11,9 @@ import { Divider } from '../components/Divider';
 import { AppToastHost } from '../ui/AppToastHost';
 // Opened on demand, so they load on demand — see workspaceDialogs.tsx.
 import {
-  DesignStylePanel,
-  ExportDialog,
-  SettingsDialog,
-  ShortcutsDialog,
-  useWorkspaceDialogPrefetch,
-  VersionHistory,
+  DesignStylePanel, ExportDialog, SettingsDialog, ShortcutsDialog, VersionHistory,
 } from './workspaceDialogs';
+import { useWorkspaceDialogPrefetch } from './workspaceDialogLoaders';
 
 export interface EditorWorkspaceViewProps {
   gridTemplateColumns: string;
