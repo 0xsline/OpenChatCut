@@ -112,6 +112,9 @@ export function moveItemWithGroups(
     .map((item) => item.id === id && destinationTrack ? { ...item, track: destinationTrack } : item);
   const delta = clampMoveDeltaToTrackGaps(state, moving, ids, requestedDelta);
   if (delta === null) return state;
+  // Fully clamped away with no track change = no-op: return the original state
+  // so the rejected nudge does not pollute the undo history.
+  if (delta === 0 && (!destinationTrack || destinationTrack === target.track)) return state;
   const replacements = new Map(moving.map((item) => [
     item.id,
     { ...item, startFrame: item.startFrame + delta },

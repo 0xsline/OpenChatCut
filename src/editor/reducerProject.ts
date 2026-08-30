@@ -66,8 +66,13 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
       }
       case 'tl.rename':
         return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, name: a.name } : t)) };
-      case 'tl.retarget':
-        return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, width: a.width, height: a.height, fit: a.fit ?? t.fit ?? 'contain' } : t)) };
+      case 'tl.retarget': {
+        if (!Number.isFinite(a.width) || !Number.isFinite(a.height)) return p;
+        const width = Math.round(a.width);
+        const height = Math.round(a.height);
+        if (width < 1 || height < 1) return p;
+        return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, width, height, fit: a.fit ?? t.fit ?? 'contain' } : t)) };
+      }
       case 'tl.setHidden': {
         // The last visible timeline cannot be hidden.
         const visible = p.timelines.filter((t) => !t.hidden);

@@ -138,9 +138,13 @@ export function applyTranscriptAction(s: TimelineState, a: Action): TimelineStat
         // Explicit gap-aware repack (apply_script): absolute frames, atomic
         // dispatch so the same-track overlap guard never sees an intermediate
         // overlapping state. Items without a pinned start keep their position.
+        // This is an LLM-facing channel: any non-finite or negative pinned
+        // start rejects the whole action (atomic semantics — no partial repack).
         for (const it of ordered) {
           const pinned = a.starts[it.id];
-          if (pinned !== undefined) starts.set(it.id, pinned);
+          if (pinned === undefined) continue;
+          if (!Number.isFinite(pinned) || pinned < 0) return s;
+          starts.set(it.id, Math.round(pinned));
         }
       } else {
         // Pack from the earliest of the reordered set so the block stays in place.

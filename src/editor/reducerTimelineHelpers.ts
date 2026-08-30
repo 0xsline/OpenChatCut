@@ -129,8 +129,13 @@ export type OverwriteLaneAction = Extract<Action, { type: 'add' | 'retime' | 're
 type RetimePatch = Pick<TimelineItem, 'startFrame' | 'durationInFrames' | 'srcInFrame'>;
 
 export function retimePatchForItem(s: TimelineState, target: TimelineItem, action: RetimeAction): RetimePatch {
+  // Timeline-domain values are integral frames; round action inputs so a
+  // fractional tool argument never enters the document. srcInFrame stays
+  // unrounded: the source domain is legitimately fractional under playbackRate.
   let srcInFrame = action.srcInFrame === undefined ? target.srcInFrame : Math.max(0, action.srcInFrame);
-  let durationInFrames = Math.max(1, action.durationInFrames ?? target.durationInFrames);
+  let durationInFrames = Math.max(1, action.durationInFrames === undefined
+    ? target.durationInFrames
+    : Math.round(action.durationInFrames));
   if (target.kind === 'audio' && hasOperationalTranscript(target)) {
     const total = editedFrames(
       target.transcript,
@@ -144,7 +149,9 @@ export function retimePatchForItem(s: TimelineState, target: TimelineItem, actio
   const sourceLimit = remainingSourceFrames(target, srcInFrame ?? 0, s.assets);
   if (sourceLimit !== null) durationInFrames = Math.min(durationInFrames, sourceLimit);
   return {
-    startFrame: Math.max(0, action.startFrame ?? target.startFrame),
+    startFrame: Math.max(0, action.startFrame === undefined
+      ? target.startFrame
+      : Math.round(action.startFrame)),
     durationInFrames,
     srcInFrame,
   };

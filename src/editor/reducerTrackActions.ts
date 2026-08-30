@@ -43,8 +43,19 @@ export function applyTrackAction(
     }
     case 'addMarker':
       return { ...s, markers: [...(s.markers ?? []), a.marker] };
-    case 'updateMarker':
-      return { ...s, markers: (s.markers ?? []).map((m) => (m.id === a.id ? { ...m, ...a.patch } : m)) };
+    case 'updateMarker': {
+      // Symmetric with addMarker's command-side clamp: frame fields stay
+      // non-negative integers or the patch is rejected whole.
+      const { fromFrame, durationFrames } = a.patch;
+      if ((fromFrame !== undefined && !Number.isFinite(fromFrame))
+        || (durationFrames !== undefined && !Number.isFinite(durationFrames))) return s;
+      const patch = {
+        ...a.patch,
+        ...(fromFrame !== undefined ? { fromFrame: Math.max(0, Math.round(fromFrame)) } : {}),
+        ...(durationFrames !== undefined ? { durationFrames: Math.max(0, Math.round(durationFrames)) } : {}),
+      };
+      return { ...s, markers: (s.markers ?? []).map((m) => (m.id === a.id ? { ...m, ...patch } : m)) };
+    }
     case 'removeMarker':
       return { ...s, markers: (s.markers ?? []).filter((m) => m.id !== a.id) };
     case 'setTransition':
@@ -81,8 +92,14 @@ export function applyTrackAction(
         linkGroups: undefined,
         multicamGroups: undefined,
       });
-    case 'setCanvas':
-      return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
+    case 'setCanvas': {
+      if (!Number.isFinite(a.width) || !Number.isFinite(a.height)) return s;
+      const width = Math.round(a.width);
+      const height = Math.round(a.height);
+      // Zero/negative canvas would divide-by-zero nested sequence layout.
+      if (width < 1 || height < 1) return s;
+      return { ...s, width, height, fit: a.fit ?? s.fit ?? 'contain' };
+    }
     case 'toggleTrack': {
       const trackCaptions = captionsOnTrack(s, a.track);
       if (a.flag === 'hidden' && trackKind(s, a.track) === 'caption' && trackCaptions) {

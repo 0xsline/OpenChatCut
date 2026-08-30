@@ -18,7 +18,10 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     ? s
     : applied;
   if (!TRANSITION_RECONCILING_ACTIONS.has(a.type) || !next.transitions?.length) return next;
-  return { ...next, transitions: reconcileTransitions(next.items, next.transitions) };
+  // Reference-stability contract: a no-op (or rejected) action must return the
+  // original state, or historyReduce records a phantom undo step and clears redo.
+  const reconciled = reconcileTransitions(next.items, next.transitions);
+  return reconciled === next.transitions ? next : { ...next, transitions: reconciled };
 }
 
 function applyAction(s: TimelineState, a: Action): TimelineState {
@@ -33,10 +36,13 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       const item = s.items.find((candidate) => candidate.id === a.id);
       if (!item || s.tracks?.[item.track]?.locked
         || !a.newId || s.items.some((candidate) => candidate.id === a.newId)
-        || !Number.isFinite(a.atFrame)
-        || a.atFrame <= item.startFrame
-        || a.atFrame >= item.startFrame + item.durationInFrames) return s;
-      const [left, right] = splitTimelineItem(s, item, a.atFrame, a.newId);
+        || !Number.isFinite(a.atFrame)) return s;
+      // The frame domain is integral (snap, collision, timecode all assume it);
+      // a fractional cut point from a tool call must not enter the document.
+      const atFrame = Math.round(a.atFrame);
+      if (atFrame <= item.startFrame
+        || atFrame >= item.startFrame + item.durationInFrames) return s;
+      const [left, right] = splitTimelineItem(s, item, atFrame, a.newId);
       return remapSplitTimelineCaptionReferences({
         ...s,
         items: s.items.flatMap((candidate) => candidate.id === a.id ? [left, right] : [candidate]),

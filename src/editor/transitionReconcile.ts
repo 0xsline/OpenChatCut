@@ -11,7 +11,7 @@ export function reconcileTransitions(
   items: readonly TimelineItem[],
   transitions: readonly TransitionItem[],
 ): TransitionItem[] {
-  if (!transitions.length) return [];
+  if (!transitions.length) return transitions as TransitionItem[];
   const byId = new Map(items.map((item) => [item.id, item]));
   const byTrack = new Map<string, TimelineItem[]>();
   for (const item of items) {
@@ -71,6 +71,12 @@ export function reconcileTransitions(
     reconciled.push(durationInFrames === transition.durationInFrames
       ? transition
       : { ...transition, durationInFrames });
+  }
+  // Content-unchanged → return the ORIGINAL array. reduce()'s exit relies on
+  // this identity to keep no-op actions out of the undo history.
+  if (reconciled.length === transitions.length
+    && reconciled.every((transition, index) => transition === transitions[index])) {
+    return transitions as TransitionItem[];
   }
   return reconciled;
 }

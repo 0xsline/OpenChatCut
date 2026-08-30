@@ -96,10 +96,11 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
     case 'move': {
       const target = s.items.find((it) => it.id === a.id);
       if (!target) return s;
+      if (a.startFrame !== undefined && !Number.isFinite(a.startFrame)) return s;
       return moveItemWithGroups(
         s,
         a.id,
-        Math.max(0, a.startFrame ?? target.startFrame),
+        Math.max(0, Math.round(a.startFrame ?? target.startFrame)),
         a.track,
       );
     }
@@ -139,13 +140,15 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
       };
     }
     case 'setVolume':
-      if (lockedItem(s, a.id)) return s;
+      if (lockedItem(s, a.id) || !Number.isFinite(a.volume)) return s;
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, volume: Math.max(0, Math.min(2, a.volume)) } : it)),
       };
     case 'setFade':
-      if (lockedItem(s, a.id)) return s;
+      if (lockedItem(s, a.id)
+        || (a.fadeInFrames !== undefined && !Number.isFinite(a.fadeInFrames))
+        || (a.fadeOutFrames !== undefined && !Number.isFinite(a.fadeOutFrames))) return s;
       return {
         ...s,
         items: s.items.map((it) => {
@@ -211,7 +214,7 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
           : it)),
       };
     case 'setSpeed': {
-      if (lockedItem(s, a.id)) return s;
+      if (lockedItem(s, a.id) || !Number.isFinite(a.rate)) return s;
       const target = s.items.find((it) => it.id === a.id);
       if (!target) return s;
       // Word-driven audio is rate-free by design: the kept-segment stream is
