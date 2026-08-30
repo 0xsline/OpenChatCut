@@ -21,7 +21,7 @@ function makeStore() {
   },
 };
 
-const { loadChat, saveChat, clearChat, isPersistedChat, migrateProjectDoc, docFromTimeline } = await import('./projectStore');
+const { loadChat, loadChatResult, saveChat, clearChat, isPersistedChat, migrateProjectDoc, docFromTimeline } = await import('./projectStore');
 const { configureSharedKvBackend, resetSharedKvMemory } = await import('./sharedKv');
 
 // regression: migrateProjectDoc must PRESERVE designStyle (it rebuilds the doc
@@ -70,6 +70,42 @@ configureSharedKvBackend({
 });
 await assert.rejects(saveChat('p-fail', chat), /forced chat write failure/,
   'saveChat exposes persistence failures to awaited callers');
+resetSharedKvMemory();
+
+// ── load 三态:"读不出来" 必须与 "没有聊天" 区分开 ─────────────────────────
+// 混淆两者会让 hydration 以空会话进入,随后一次常规持久化覆盖掉真实对话。
+assert.strictEqual((await loadChatResult('p-absent')).status, 'missing',
+  'no stored chat reads as missing (an empty chat is legitimate)');
+
+await saveChat('p-ok', chat);
+const okResult = await loadChatResult('p-ok');
+assert.strictEqual(okResult.status, 'ok');
+assert.deepStrictEqual(okResult.status === 'ok' ? okResult.chat.messages : null, chat.messages);
+
+configureSharedKvBackend({
+  get: async () => { throw new Error('forced chat read failure'); },
+  set: async () => undefined,
+  delete: async () => undefined,
+  keys: async () => [],
+  writeAgentRuntime: async () => { throw new Error('unused'); },
+  updateAgentRunLease: async () => { throw new Error('unused'); },
+});
+assert.strictEqual((await loadChatResult('p-ok')).status, 'unreadable',
+  'a transient read failure is unreadable, NOT missing');
+assert.strictEqual(await loadChat('p-ok'), null,
+  'the legacy loadChat wrapper still collapses both to null for its callers');
+resetSharedKvMemory();
+
+configureSharedKvBackend({
+  get: async <T,>() => ({ garbage: true } as T),
+  set: async () => undefined,
+  delete: async () => undefined,
+  keys: async () => [],
+  writeAgentRuntime: async () => { throw new Error('unused'); },
+  updateAgentRunLease: async () => { throw new Error('unused'); },
+});
+assert.strictEqual((await loadChatResult('p-corrupt')).status, 'unreadable',
+  'stored bytes that fail shape validation are unreadable, not missing');
 resetSharedKvMemory();
 
 console.log('chat-persist.check: ok');

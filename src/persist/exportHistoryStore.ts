@@ -3,6 +3,7 @@
 // first. Same shared server-backed KV as projectStore/templateStore.
 // Persisted data is untrusted → validated on read.
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
+import { partitionRecords, withPreservedRecords } from './recordPartition';
 
 const KEY = 'export:history';
 // ponytail: cap so the list can't grow unbounded across a long session; a
@@ -34,21 +35,27 @@ function toValidRecord(v: unknown): ExportRecord | null {
   if (typeof r.id !== 'string' || typeof r.name !== 'string' || typeof r.format !== 'string' || typeof r.createdAt !== 'number') return null;
   const range = r.frameRange && typeof r.frameRange.start === 'number' && typeof r.frameRange.end === 'number'
     ? { start: r.frameRange.start, end: r.frameRange.end } : undefined;
-  return {
+  const validated: ExportRecord = {
+    // Fields this build predates pass through instead of being dropped on the
+    // next write; every field it DOES know is replaced by its checked value.
+    ...r,
     id: r.id, name: r.name, format: r.format, createdAt: r.createdAt,
-    ...(typeof r.codec === 'string' ? { codec: r.codec } : {}),
-    ...(typeof r.sizeBytes === 'number' ? { sizeBytes: r.sizeBytes } : {}),
-    ...(range ? { frameRange: range } : {}),
+    ...(typeof r.codec === 'string' ? { codec: r.codec } : { codec: undefined }),
+    ...(typeof r.sizeBytes === 'number' ? { sizeBytes: r.sizeBytes } : { sizeBytes: undefined }),
+    ...(range ? { frameRange: range } : { frameRange: undefined }),
     ...(typeof r.destinationId === 'string' && DESKTOP_DESTINATION_ID.test(r.destinationId)
       ? { destinationId: r.destinationId }
-      : {}),
+      : { destinationId: undefined }),
   };
+  return validated;
+}
+
+async function readPartitioned() {
+  return partitionRecords(await idbGet<unknown>(KEY), toValidRecord);
 }
 
 async function readAll(): Promise<ExportRecord[]> {
-  const raw = await idbGet<unknown>(KEY);
-  if (!Array.isArray(raw)) return [];
-  return raw.map(toValidRecord).filter((r): r is ExportRecord => r !== null);
+  return (await readPartitioned()).valid;
 }
 
 const newId = () =>
@@ -68,8 +75,9 @@ export async function recordExport(rec: Omit<ExportRecord, 'id'>): Promise<void>
   try {
     const entry: ExportRecord = { ...rec, id: newId() };
     await enqueueMutation(async () => {
-      const next = [entry, ...await readAll()].slice(0, MAX_RECORDS);
-      await idbSet(KEY, next);
+      const { valid, opaque } = await readPartitioned();
+      const next = [entry, ...valid].slice(0, MAX_RECORDS);
+      await idbSet(KEY, withPreservedRecords(next, opaque));
     });
   } catch {
     /* ignore persist failures */

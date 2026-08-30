@@ -16,6 +16,10 @@ export const v1ToV2: ProjectMigrationStep = {
     ));
     const timelines = value.timelines.map(stripTimelineAssets);
     return {
+      // Unknown V1 top-level fields pass through (v2ToV3 already does this):
+      // silently dropping them would violate the migration rule that no field
+      // is discarded without an explicit migration step.
+      ...value,
       version: 2,
       assets,
       mediaFolders,
@@ -23,7 +27,9 @@ export const v1ToV2: ProjectMigrationStep = {
       activeTimelineId: timelines.some((timeline) => timeline.id === value.activeTimelineId)
         ? value.activeTimelineId
         : timelines[0].id,
-      ...(isDesignStyle(value.designStyle) ? { designStyle: value.designStyle } : {}),
+      // Explicit rather than spread-inherited: an invalid designStyle must be
+      // dropped here exactly as before, not carried through by `...value`.
+      ...(isDesignStyle(value.designStyle) ? { designStyle: value.designStyle } : { designStyle: undefined }),
     };
   },
 };

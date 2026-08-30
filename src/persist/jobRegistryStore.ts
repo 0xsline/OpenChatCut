@@ -10,6 +10,7 @@ import {
   type GenerationJobResult,
 } from '../generate/progress';
 import { putMediaBlob } from './mediaBlobStore';
+import { partitionRecords, withPreservedRecords } from './recordPartition';
 import { kvGet as idbGet, kvSet as idbSet, resetSharedKvMemory } from './sharedKv';
 
 const jobsKey = (projectId: string) => `jobs:${projectId}`;
@@ -173,10 +174,12 @@ function normalizeTrackedJob(value: unknown): TrackedJob | null {
   };
 }
 
+async function readPartitionedJobs(projectId: string) {
+  return partitionRecords(await idbGet<unknown>(jobsKey(projectId)), normalizeTrackedJob);
+}
+
 async function readJobs(projectId: string): Promise<TrackedJob[]> {
-  const raw = await idbGet<unknown>(jobsKey(projectId));
-  if (!Array.isArray(raw)) return [];
-  return raw.map(normalizeTrackedJob).filter((job): job is TrackedJob => job !== null);
+  return (await readPartitionedJobs(projectId)).valid;
 }
 
 export async function listTrackedJobs(projectId: string): Promise<TrackedJob[]> {
@@ -216,7 +219,11 @@ async function writeJobs(projectId: string, jobs: TrackedJob[]): Promise<void> {
       terminalHistory += 1;
       return terminalHistory <= MAX_HISTORY;
     });
-  await idbSet(jobsKey(projectId), retained);
+  // Re-read the opaque tail here rather than threading it through all seven
+  // read-modify-write callers: entries this build cannot parse are never
+  // modified by them, and dropping the tail would erase a newer build's jobs.
+  const { opaque } = await readPartitionedJobs(projectId);
+  await idbSet(jobsKey(projectId), withPreservedRecords(retained, opaque));
   notify(projectId);
 }
 

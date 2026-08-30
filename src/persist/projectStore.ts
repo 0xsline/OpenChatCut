@@ -140,18 +140,39 @@ export function isPersistedChat(v: unknown): v is PersistedChat {
     && Array.isArray((v as { llm?: unknown }).llm);
 }
 
-export async function loadChat(projectId: string): Promise<PersistedChat | null> {
+/** Chat load outcome. "missing" (nothing stored, or a fresh session
+ * generation) is a legitimate empty chat; "unreadable" means stored bytes
+ * exist but this read failed — hydrating an empty session then would let the
+ * next persist overwrite a real conversation. */
+export type ChatLoadResult =
+  | { readonly status: 'ok'; readonly chat: PersistedChat }
+  | { readonly status: 'missing' }
+  | { readonly status: 'unreadable' };
+
+export async function loadChatResult(projectId: string): Promise<ChatLoadResult> {
+  let raw: unknown;
+  let generation: Awaited<ReturnType<typeof currentAgentSessionGeneration>>;
   try {
     await chatWriteQueues.get(projectId);
-    const generation = await currentAgentSessionGeneration(projectId);
+    generation = await currentAgentSessionGeneration(projectId);
     // The server store is authoritative after serverization (chat survives
     // origin/browser changes); kvGet falls back to local IndexedDB offline.
-    const raw = await kvGet<unknown>(chatKey(projectId, generation));
-    return isPersistedChat(raw)
-      && agentSessionGenerationMatches(raw.sessionGeneration, generation) ? raw : null;
+    raw = await kvGet<unknown>(chatKey(projectId, generation));
   } catch {
-    return null;
+    // Transient read failure — NOT "there is no chat".
+    return { status: 'unreadable' };
   }
+  if (raw === undefined || raw === null) return { status: 'missing' };
+  if (!isPersistedChat(raw)) return { status: 'unreadable' };
+  // A stored chat from an older session generation is intentionally not shown:
+  // the generation bump IS the "start a fresh conversation" record.
+  if (!agentSessionGenerationMatches(raw.sessionGeneration, generation)) return { status: 'missing' };
+  return { status: 'ok', chat: raw };
+}
+
+export async function loadChat(projectId: string): Promise<PersistedChat | null> {
+  const result = await loadChatResult(projectId);
+  return result.status === 'ok' ? result.chat : null;
 }
 
 function serverRunTurnIds(chat: unknown): string[] {

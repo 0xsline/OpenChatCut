@@ -2,6 +2,7 @@
 // migrateProjectDoc verification. Share native server KV with projectStore.
 import { migrateProjectDoc } from './projectStore';
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
+import { partitionRecords, withPreservedRecords } from './recordPartition';
 import type { ProjectDoc } from '../editor/types';
 
 const versionsKey = (projectId: string) => `versions:${projectId}`;
@@ -24,6 +25,8 @@ function toValidVersion(v: unknown): ProjectVersion | null {
   const doc = migrateProjectDoc(raw.doc);
   if (!doc) return null;
   return {
+    // Unknown envelope fields pass through; only validated ones are replaced.
+    ...raw,
     id: raw.id,
     name: raw.name,
     createdAt: raw.createdAt,
@@ -32,10 +35,15 @@ function toValidVersion(v: unknown): ProjectVersion | null {
   };
 }
 
+/** Readable snapshots plus the entries this build cannot parse — a snapshot
+ * written by a NEWER build reads as unparsable here, and the 30s automatic
+ * save would otherwise erase it within minutes. */
+async function readPartitioned(projectId: string) {
+  return partitionRecords(await idbGet<unknown>(versionsKey(projectId)), toValidVersion);
+}
+
 async function readAll(projectId: string): Promise<ProjectVersion[]> {
-  const raw = await idbGet<unknown>(versionsKey(projectId));
-  if (!Array.isArray(raw)) return [];
-  return raw.map(toValidVersion).filter((version): version is ProjectVersion => version !== null);
+  return (await readPartitioned(projectId)).valid;
 }
 
 /** All snapshots of the project, latest first. An empty array is returned on any failure (persistent data is not trusted).*/
@@ -81,15 +89,15 @@ async function persistVersion(
     automatic,
     doc,
   };
-  const current = await readAll(projectId);
-  const next = [version, ...current];
+  const { valid, opaque } = await readPartitioned(projectId);
+  const next = [version, ...valid];
   const retainedAutomaticIds = new Set(
     next.filter((item) => item.automatic).slice(0, MAX_AUTOMATIC_VERSIONS).map((item) => item.id),
   );
-  await idbSet(
-    versionsKey(projectId),
+  await idbSet(versionsKey(projectId), withPreservedRecords(
     next.filter((item) => !item.automatic || retainedAutomaticIds.has(item.id)),
-  );
+    opaque,
+  ));
   return version;
 }
 
@@ -113,7 +121,10 @@ export function saveAutomaticVersion(
 
 export function deleteVersion(projectId: string, id: string): Promise<void> {
   return serializeMutation(projectId, async () => {
-    const current = await readAll(projectId);
-    await idbSet(versionsKey(projectId), current.filter((v) => v.id !== id));
+    const { valid, opaque } = await readPartitioned(projectId);
+    await idbSet(versionsKey(projectId), withPreservedRecords(
+      valid.filter((v) => v.id !== id),
+      opaque,
+    ));
   });
 }

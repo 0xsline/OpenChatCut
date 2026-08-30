@@ -5,6 +5,7 @@
 // Always use migrateProjectDoc for verification when reading (persistent data is not trustworthy).
 import { migrateProjectDoc } from './projectStore';
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
+import { partitionRecords, withPreservedRecords } from './recordPartition';
 import type { ProjectDoc } from '../editor/types';
 import { projectDocHasOriginalFilePath, sanitizePortableProjectDoc } from './portableProject';
 
@@ -39,22 +40,26 @@ function toValidTemplate(v: unknown): { template: ProjectTemplate; migrated: boo
   };
 }
 
-async function readAll(): Promise<ProjectTemplate[]> {
+/** Templates this build understands, plus the entries it cannot parse (kept
+ * verbatim so a write here never erases a newer build's template). */
+async function readPartitioned() {
   const raw = await idbGet<unknown>(TEMPLATES_KEY);
-  if (!Array.isArray(raw)) return [];
-  const parsed = raw.map(toValidTemplate);
-  const valid = parsed.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  const { valid, opaque } = partitionRecords(raw, toValidTemplate);
   const templates = valid.map((entry) => entry.template);
   // Upgrade the shared library only when every entry migrated successfully.
   // A corrupt sibling therefore never causes destructive partial persistence.
-  if (valid.length === raw.length && valid.some((entry) => entry.migrated)) {
+  if (!opaque.length && valid.some((entry) => entry.migrated)) {
     try {
       await idbSet(TEMPLATES_KEY, templates);
     } catch {
       // The normalized in-memory templates are still usable; retry next read.
     }
   }
-  return templates;
+  return { templates, opaque };
+}
+
+async function readAll(): Promise<ProjectTemplate[]> {
+  return (await readPartitioned()).templates;
 }
 
 /** All saved templates (in insertion order, with the same name replaced in place). On failure, an empty array is returned (persistent data is not trusted). */
@@ -86,7 +91,7 @@ export async function saveTemplate(name: string, doc: ProjectDoc): Promise<Proje
   // ponytail: Carrying the entire asset pool instead of just selecting the referenced assets; tailoring to only referenced assets is additional logic, YAGNI.
   const portableDoc = sanitizePortableProjectDoc(doc);
   const assetIds = portableDoc.assets.map((asset) => asset.id);
-  const current = await readAll();
+  const { templates: current, opaque } = await readPartitioned();
   const existing = current.find((template) => template.name === trimmed);
   // ponytail: createdAt is only metadata, the list is not sorted by it (insertion order is used), so using Date.now() does not destroy determinism.
   const entry: ProjectTemplate = {
@@ -98,7 +103,7 @@ export async function saveTemplate(name: string, doc: ProjectDoc): Promise<Proje
   };
   const next = existing ? current.map((t) => (t.id === entry.id ? entry : t)) : [...current, entry];
   try {
-    await idbSet(TEMPLATES_KEY, next);
+    await idbSet(TEMPLATES_KEY, withPreservedRecords(next, opaque));
   } catch {
     /* ignore persist failures; caller still gets the entry back for in-session use */
   }
@@ -107,8 +112,8 @@ export async function saveTemplate(name: string, doc: ProjectDoc): Promise<Proje
 
 export async function deleteTemplate(id: string): Promise<void> {
   try {
-    const current = await readAll();
-    await idbSet(TEMPLATES_KEY, current.filter((t) => t.id !== id));
+    const { templates, opaque } = await readPartitioned();
+    await idbSet(TEMPLATES_KEY, withPreservedRecords(templates.filter((t) => t.id !== id), opaque));
   } catch {
     /* ignore */
   }
