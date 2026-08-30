@@ -7,6 +7,7 @@ coverage/
 .nyc_output/
 playwright-report/
 .playwright-cli/
+.cc-check-*/
 test-results/
 /output/
 .vite/

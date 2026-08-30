@@ -5,16 +5,24 @@
 import assert from 'node:assert/strict';
 import { buildCommands } from './storeCommandBuilder';
 import { projectReduce } from './reduce';
-import type { AnyAction } from './reduce';
+import type { AnyAction, ProjectDispatch } from './reduce';
+import { isHistoryControlAction } from './reduce';
 import type { MediaAsset, ProjectDoc } from './types';
+
+const isProjectAction = (action: Parameters<ProjectDispatch>[0]): action is AnyAction => (
+  !isHistoryControlAction(action)
+);
 
 function harness(doc: ProjectDoc) {
   const dispatched: AnyAction[] = [];
   let current = doc;
-  const commands = buildCommands((action) => {
+  const dispatch: ProjectDispatch = (action) => {
+    // These commands never emit history-control actions; record project ones.
+    if (!isProjectAction(action)) return;
     dispatched.push(action);
     current = projectReduce(current, action);
-  }, () => current);
+  };
+  const commands = buildCommands(dispatch, () => current);
   return { commands, dispatched, doc: () => current };
 }
 
@@ -48,7 +56,7 @@ const audioAsset: MediaAsset = {
   assert.ok(actions.some((a) => a.type === 'add'), 'the batch adds the clip');
   const timeline = doc().timelines[0]!;
   assert.equal(timeline.items.length, 1, 'the clip landed');
-  assert.equal(Object.values(timeline.tracks ?? {}).some((t) => t.kind === 'audio'), true,
+  assert.equal(Object.values(timeline.tracks ?? {}).some((t) => t?.kind === 'audio'), true,
     'the audio track was created');
 }
 

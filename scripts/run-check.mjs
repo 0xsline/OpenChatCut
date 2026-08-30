@@ -3,7 +3,6 @@
 // 用法:node scripts/run-check.mjs <check 文件路径>
 import { build } from 'esbuild';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -29,7 +28,10 @@ const rawPlugin = {
   },
 };
 
-const dir = await mkdtemp(join(tmpdir(), 'cc-check-'));
+// The bundle must live INSIDE the project: with `packages: 'external'` node
+// resolves bare imports relative to the output file, and a system temp dir has
+// no node_modules to resolve them from.
+const dir = await mkdtemp(join(process.cwd(), '.cc-check-'));
 const outfile = join(dir, 'check.mjs');
 try {
   await build({
@@ -41,6 +43,14 @@ try {
     plugins: [rawPlugin],
     loader: { '.frag': 'text', '.vert': 'text' },
     logLevel: 'silent',
+    // Bundle only OUR source; let node resolve dependencies itself. Bundling
+    // node_modules into a single ESM file breaks any package that does a CJS
+    // dynamic require at import time (@vercel/oidc via ai → @ai-sdk/gateway
+    // throws 'Dynamic require of "path" is not supported'), which made every
+    // verify whose import graph reaches the AI SDK fail for a reason that had
+    // nothing to do with the code under test. Only the Vite-specific
+    // ?raw/.frag imports need bundling, and those are local files.
+    packages: 'external',
   });
   await import(pathToFileURL(outfile).href);
 } finally {
