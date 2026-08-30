@@ -26,6 +26,7 @@ const COMMON_TRANSCRIPTION_FIELDS: readonly SettingsField[] = [
       { value: 'es', label: '西班牙语（es）' },
       { value: 'fr', label: '法语（fr）' },
       { value: 'de', label: '德语（de）' },
+      { value: 'ru', label: '俄语（ru）' },
     ],
   },
   {

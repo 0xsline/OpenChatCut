@@ -10,19 +10,26 @@ function transcriptionLanguageOptions(pageFields: readonly { name: string; optio
 
 for (const page of TRANSCRIPTION_SETTINGS_GROUP.vendors) {
   const options = transcriptionLanguageOptions(page.fields);
-  assert.ok(
-    options.some((option) => option.value === 'it'),
-    `${page.key} must offer Italian transcription`,
-  );
+  for (const language of ['it', 'ru']) {
+    assert.ok(
+      options.some((option) => option.value === language),
+      `${page.key} must offer ${language} transcription`,
+    );
+  }
 }
 
 assert.ok(
   transcriptionLanguageOptions(localAsrPage.fields).some((option) => option.value === 'it'),
   'local ASR settings must offer Italian transcription',
 );
+assert.ok(
+  transcriptionLanguageOptions(localAsrPage.fields).some((option) => option.value === 'ru'),
+  'local ASR settings must offer Russian transcription',
+);
 
 for (const model of ASR_MODELS) {
   assert.match(model.language, /Italian|Italiano|it/i, `${model.id} should be advertised as Italian-capable`);
+  assert.match(model.language, /Russian|Русский|ru/i, `${model.id} should be advertised as Russian-capable`);
 }
 
-console.log('transcription-language.verify: Italian transcription is exposed for local and AI providers');
+console.log('transcription-language.verify: Italian and Russian transcription are exposed for local and AI providers');

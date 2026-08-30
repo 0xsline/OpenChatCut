@@ -10,6 +10,9 @@ function transcriptErrorMessage(error: unknown): string {
     if (error.code === 'source-unavailable') {
       return t('素材文件不可用，请在“我的素材”中重新链接后再转写');
     }
+    if (preferredTranscriptionProvider() === 'local' && error.detail) {
+      return t('本地转写失败：{detail}', { detail: error.detail });
+    }
     return preferredTranscriptionProvider() === 'local'
       ? t('本地转写失败：模型未就绪或音频无法处理，请检查模型下载后重试')
       : t('无法连接转写服务，请检查网络和 AssemblyAI 配置后重试');

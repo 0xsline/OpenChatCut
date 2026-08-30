@@ -4,7 +4,8 @@
 //
 // Large video masters: before uploading to AssemblyAI we ask the dev server to
 // extract a 64kbps mono ASR track (POST /api/extract-audio) so a 1GB clip does
-// not get re-fetched + re-uploaded whole. Falls back to the original path.
+// not get re-fetched + re-uploaded whole. Cloud callers may fall back to the
+// original path; browser-local ASR requires the compact extract.
 import type { TranscriptResult } from './types';
 import { getMediaBlob } from '../persist/mediaBlobStore';
 
@@ -211,9 +212,14 @@ export async function loadTranscriptionSource(path: string): Promise<Blob> {
 /**
  * Ask the local server to extract a speech-sized audio file for ASR.
  * Returns the new /media/uploads/… path, or null if extract is unavailable.
+ * Browser-local ASR sets `required` so a failed extract never falls through to
+ * decoding an entire video master in the renderer.
  */
-export async function extractAudioForAsr(src: string): Promise<string | null> {
-  if (!src.startsWith('/media/uploads/')) return null;
+export async function extractAudioForAsr(src: string, required = false): Promise<string | null> {
+  if (!src.startsWith('/media/uploads/')) {
+    if (required) throw new TranscriptionError('source-unavailable', `音轨提取只支持工程素材：${src}`);
+    return null;
+  }
   try {
     const res = await fetch('/api/extract-audio', {
       method: 'POST',
@@ -224,11 +230,24 @@ export async function extractAudioForAsr(src: string): Promise<string | null> {
       const data = (await res.json().catch(() => null)) as { noAudio?: boolean } | null;
       if (data?.noAudio) throw new TranscriptionError('no-audio', `该片段没有音轨，无法转写：${src}`);
     }
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (!required) return null;
+      const detail = await res.text().catch(() => '');
+      throw new TranscriptionError(
+        'service-unavailable',
+        `音轨提取失败（HTTP ${res.status}${detail ? `：${detail.slice(0, 300)}` : ''}）`,
+      );
+    }
     const data = (await res.json()) as { path?: string; ok?: boolean };
-    return data.path && data.path.startsWith('/media/uploads/') ? data.path : null;
+    if (data.path?.startsWith('/media/uploads/')) return data.path;
+    if (required) throw new TranscriptionError('service-unavailable', '音轨提取服务返回了无效路径');
+    return null;
   } catch (error) {
     if (error instanceof TranscriptionError) throw error;
+    if (required) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new TranscriptionError('service-unavailable', `音轨提取失败：${detail}`);
+    }
     return null;
   }
 }
@@ -258,10 +277,14 @@ async function shouldExtractForAsr(path: string): Promise<boolean> {
  * Pass opts.asrPath when extract already raced ahead of normalize/finalize.
  * Shared with the local ASR provider — do not break its callers.
  */
-export async function transcriptionSourceForPath(path: string, opts: TranscribeOptions): Promise<string> {
+export async function transcriptionSourceForPath(
+  path: string,
+  opts: TranscribeOptions,
+  requireExtractedAudio = false,
+): Promise<string> {
   if (opts.asrPath && opts.asrPath.startsWith('/media/')) return opts.asrPath;
   if (await shouldExtractForAsr(path)) {
-    const extracted = await extractAudioForAsr(path);
+    const extracted = await extractAudioForAsr(path, requireExtractedAudio);
     if (extracted) return extracted;
   }
   return path;

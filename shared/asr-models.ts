@@ -65,7 +65,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: '818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Tiny', sizeLabel: '约 176MB', language: '中文 / English / Italiano', note: '最快最省，适合低配置设备；识别精度一般。',
+    label: 'Whisper Tiny', sizeLabel: '约 176MB', language: '中文 / English / Italiano / Русский', note: '最快最省，适合低配置设备；识别精度一般。',
   },
   {
     id: 'base', modelId: 'onnx-community/whisper-base_timestamped', revision: '608c49e61301901684bc36cac8f74b95ff6b5a8e',
@@ -87,7 +87,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Base', sizeLabel: '约 351MB', language: '中文 / English / Italiano', note: '轻量均衡，日常口播可用；timestamped 转写更快。',
+    label: 'Whisper Base', sizeLabel: '约 351MB', language: '中文 / English / Italiano / Русский', note: '轻量均衡，日常口播可用；timestamped 转写更快。',
   },
   {
     id: 'small', modelId: 'Xenova/whisper-small', revision: '2d67713f236afa48a18992566e7647f6ca848e13',
@@ -104,7 +104,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 308615077, sha256: '8d0e347441bdac2a62b346bbcb6fc69548651658028ec7e424ecb76c0e09ab9a' },
       { path: 'onnx/encoder_model.onnx', sizeBytes: 352839389, sha256: '31a05a14d514440e43746fdaaa8d4e8102c9543e53c5ae1111910af142041406' },
     ],
-    label: 'Whisper Small', sizeLabel: '约 1.0GB', language: '中文 / English / Italiano', note: '推荐：多语言识别均衡，词级时间戳稳定。',
+    label: 'Whisper Small', sizeLabel: '约 1.0GB', language: '中文 / English / Italiano / Русский', note: '推荐：多语言识别均衡，词级时间戳稳定。',
   },
   {
     id: 'medium', modelId: 'Xenova/whisper-medium', revision: '8c5b90880ab9f79487ab33613413431bf661d595',
@@ -117,7 +117,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 313468028, sha256: '7d6b4a00e441271646327f8a71b6e1bd1a305013cd914b51ddd76919c59ee3af' },
       { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 462661606, sha256: '2cdd6d06ebdf9d993d21117bfeeb7e9b399521b7766d3df77c54a85d6dcf3c08' },
     ],
-    label: 'Whisper Medium', sizeLabel: '约 743MB', language: '中文 / English / Italiano', note: '精度最高但体积大、转写较慢；追求效果时选择。',
+    label: 'Whisper Medium', sizeLabel: '约 743MB', language: '中文 / English / Italiano / Русский', note: '精度最高但体积大、转写较慢；追求效果时选择。',
   },
 ];
 
