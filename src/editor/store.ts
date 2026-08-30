@@ -42,8 +42,12 @@ export function useEditor(initial: ProjectDoc): {
   const getUndoTarget = useCallback((): ProjectDoc | null => pastRef.current[pastRef.current.length - 1] ?? null, []);
   const getRedoTarget = useCallback((): ProjectDoc | null => futureRef.current[0] ?? null, []);
 
+  // Stable identity while doc is unchanged — downstream [state] memos/effects
+  // must not re-fire on unrelated renders (e.g. hover state in the workspace).
+  const state = useMemo(() => activeEditorState(doc), [doc]);
+
   return {
-    state: activeEditorState(doc),
+    state,
     doc,
     commands,
     canUndo: h.past.length > 0,

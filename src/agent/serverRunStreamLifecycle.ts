@@ -22,7 +22,13 @@ import {
   clearStoredServerRun,
   patchStoredServerRun,
   readStoredServerRun,
+  type StoredServerRun,
 } from './serverRunSessionStorage';
+import {
+  dropStreamDeltas,
+  queueStreamDeltaPatch,
+  takePendingStreamDeltaPatch,
+} from './serverRunStreamDeltaBuffer';
 import { settleAbandonedServerRun } from './serverRunAbandon';
 import { releaseServerRunOwnership } from './serverRunOwnership';
 import type { ServerRunState } from './serverRunState';
@@ -76,6 +82,7 @@ async function settleStaleRecovery(
       summary: detail || 'Server run recovery became unavailable.',
     });
     await currentOptions(state).onRunAbandon?.(runId);
+    dropStreamDeltas(projectId);
     clearStoredServerRun(projectId, runId);
     releaseServerRunOwnership(projectId, runId);
     resetAbandonedRun(state);
@@ -106,6 +113,7 @@ function resetFinishedRun(
   runId: string,
 ): void {
   const { refs } = state;
+  dropStreamDeltas(projectId);
   releaseServerRunOwnership(projectId, runId);
   refs.terminalRun.current = runId;
   refs.runId.current = null;
@@ -127,9 +135,29 @@ function commitSequence(
   const sequence = Number((event as MessageEvent).lastEventId);
   if (!Number.isSafeInteger(sequence)) return 'ignored';
   if (sequence <= state.refs.cursor.current) return 'replayed';
-  if (!patchStoredServerRun(projectId, { cursor: sequence })) return 'failed';
+  // Fold any buffered stream text into this write so the stored cursor never
+  // runs ahead of the stored text (recovery replays events after the cursor).
+  const pendingText = takePendingStreamDeltaPatch(projectId, state.refs.runId.current);
+  if (!patchStoredServerRun(projectId, { ...pendingText, cursor: sequence })) return 'failed';
   state.refs.cursor.current = sequence;
   return 'committed';
+}
+
+/** Persist a streaming (cursor, text) snapshot — batched while a run id scopes the buffer. */
+function commitStreamDelta(
+  projectId: string,
+  state: ServerRunState,
+  sequence: number,
+  fields: Partial<Pick<StoredServerRun, 'assistantText' | 'assistantThinking'>>,
+): boolean {
+  const runId = state.refs.runId.current;
+  if (!runId) return patchStoredServerRun(projectId, { cursor: sequence, ...fields });
+  queueStreamDeltaPatch(projectId, runId, sequence, fields, (failedRunId) => {
+    state.refs.abandonRecovery.current(failedRunId, permanentServerRunRecoveryError(
+      'Browser durable storage could not persist server run progress.',
+    ));
+  });
+  return true;
 }
 
 function commitTextDelta(
@@ -141,7 +169,7 @@ function commitTextDelta(
   const sequence = Number((event as MessageEvent).lastEventId);
   if (!Number.isSafeInteger(sequence) || sequence <= state.refs.cursor.current) return 'ignored';
   const assistantText = state.refs.assistantText.current + delta;
-  if (!patchStoredServerRun(projectId, { cursor: sequence, assistantText })) return 'failed';
+  if (!commitStreamDelta(projectId, state, sequence, { assistantText })) return 'failed';
   state.refs.cursor.current = sequence;
   state.appendStreamingText(delta);
   return 'committed';
@@ -155,7 +183,7 @@ function commitThinkingDelta(
   const sequence = Number((event as MessageEvent).lastEventId);
   if (!Number.isSafeInteger(sequence) || sequence <= state.refs.cursor.current) return 'ignored';
   const assistantThinking = state.refs.assistantThinking.current + delta;
-  if (!patchStoredServerRun(projectId, { cursor: sequence, assistantThinking })) return 'failed';
+  if (!commitStreamDelta(projectId, state, sequence, { assistantThinking })) return 'failed';
   state.refs.cursor.current = sequence;
   state.appendStreamingThinking(delta);
   return 'committed';

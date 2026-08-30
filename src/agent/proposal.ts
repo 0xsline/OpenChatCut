@@ -185,15 +185,28 @@ export function buildProposal(
  * passed migrateProjectDoc (track normalization, etc.), so fall back to
  * structural equality of *normalized* docs.
  */
+// ProjectDoc updates are immutable, so a (baseDoc, currentDoc) identity pair
+// always yields the same answer. Callers run this per render/per message while
+// a proposal is pending — cache to avoid re-migrating + stringifying two full
+// docs each time. WeakMap keys never outlive the docs themselves.
+const docsDifferCache = new WeakMap<ProjectDoc, WeakMap<ProjectDoc, boolean>>();
+
 export function projectDocsDiffer(baseDoc: ProjectDoc, currentDoc: ProjectDoc): boolean {
   if (baseDoc === currentDoc) return false;
+  const cached = docsDifferCache.get(baseDoc)?.get(currentDoc);
+  if (cached !== undefined) return cached;
+  let result: boolean;
   try {
     const left = migrateProjectDoc(baseDoc) ?? baseDoc;
     const right = migrateProjectDoc(currentDoc) ?? currentDoc;
-    return JSON.stringify(left) !== JSON.stringify(right);
+    result = JSON.stringify(left) !== JSON.stringify(right);
   } catch {
-    return true;
+    result = true;
   }
+  const byBase = docsDifferCache.get(baseDoc) ?? new WeakMap<ProjectDoc, boolean>();
+  byBase.set(currentDoc, result);
+  docsDifferCache.set(baseDoc, byBase);
+  return result;
 }
 
 export function isProposalStale(proposal: Proposal, currentDoc: ProjectDoc): boolean {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { theme } from '../theme';
 import {
   buildScriptRows,
@@ -20,7 +20,9 @@ interface WordRowProps {
   onWord: (w: IndexedWord) => void;
 }
 
-function WordRow({ words, deleted, editMode, onWord }: WordRowProps) {
+// memo: drag-over/gap-adjust state changes in ScriptView re-render the block
+// list only; word spans (thousands on long transcripts) keep stable props.
+const WordRow = memo(function WordRow({ words, deleted, editMode, onWord }: WordRowProps) {
   const t = useT();
   const cjk = isCjkText(words.map((w) => w.text).join(''));
   return (
@@ -45,7 +47,7 @@ function WordRow({ words, deleted, editMode, onWord }: WordRowProps) {
       })}
     </span>
   );
-}
+});
 
 interface ViewProps {
   groups: WordGroup[];
@@ -99,9 +101,11 @@ export function ScriptView({
   onWord, onDeleteGap, onCapGap, onReorderSpeech,
 }: ScriptViewProps) {
   const t = useT();
-  const rows = buildScriptRows(words, deleted, {
+  // Rebuilding rows walks every word; hover/drag state updates below must not
+  // pay that cost (nor invalidate WordRow memo props) on long transcripts.
+  const rows = useMemo(() => buildScriptRows(words, deleted, {
     gapCapsMs, silenceFrames, fps, minDisplayMs, playOrder,
-  });
+  }), [words, deleted, gapCapsMs, silenceFrames, fps, minDisplayMs, playOrder]);
   const [adjustGi, setAdjustGi] = useState<number | null>(null);
   const dragSpeechFrom = useRef<number | null>(null);
   const [dragOverSpeech, setDragOverSpeech] = useState<number | null>(null);

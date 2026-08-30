@@ -224,6 +224,24 @@ function referencedTimeline(
 
 /** Validate every sequence reference in a document before it can be committed or rendered. */
 export function validateSequenceGraph(doc: Pick<ProjectDoc, 'timelines'>, limits: SequenceGraphLimits = {}): void {
+  // Fast path: this runs on every per-timeline action. Without sequence items
+  // the graph is trivially acyclic; only the duplicate-timeline-id invariant
+  // still applies, so check it directly and skip building the traversal.
+  let hasSequenceItems = false;
+  const seenTimelineIds = new Set<string>();
+  for (const timeline of doc.timelines) {
+    if (seenTimelineIds.has(timeline.id)) {
+      throw new SequenceGraphError({
+        code: 'SEQUENCE_DUPLICATE_TIMELINE_ID',
+        timelineId: timeline.id,
+        path: [timeline.id],
+      });
+    }
+    seenTimelineIds.add(timeline.id);
+    if (!hasSequenceItems) hasSequenceItems = timeline.items.some((item) => item.kind === 'sequence');
+  }
+  if (!hasSequenceItems) return;
+
   const resolvedLimits = limitsOf(limits);
   const timelines = timelineIndex(doc);
 
