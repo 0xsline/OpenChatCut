@@ -1,6 +1,5 @@
-import type { ComponentProps } from 'react';
+import { Suspense, type ComponentProps } from 'react';
 import { theme } from '../theme';
-import { ExportDialog } from '../export/ExportDialog';
 import { TopBar } from '../components/TopBar';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { LibraryPanel } from '../library/LibraryPanel';
@@ -9,11 +8,16 @@ import { InspectorPanel } from '../components/InspectorPanel';
 import { Timeline } from '../components/timeline/Timeline';
 import { TimelineTabs } from '../components/timeline/TimelineTabs';
 import { Divider } from '../components/Divider';
-import { DesignStylePanel } from '../components/settings/DesignStylePanel';
-import { VersionHistory } from '../components/VersionHistory';
-import { SettingsDialog } from '../components/settings/SettingsDialog';
-import { ShortcutsDialog } from '../shortcuts/ShortcutsDialog';
 import { AppToastHost } from '../ui/AppToastHost';
+// Opened on demand, so they load on demand — see workspaceDialogs.tsx.
+import {
+  DesignStylePanel,
+  ExportDialog,
+  SettingsDialog,
+  ShortcutsDialog,
+  useWorkspaceDialogPrefetch,
+  VersionHistory,
+} from './workspaceDialogs';
 
 export interface EditorWorkspaceViewProps {
   gridTemplateColumns: string;
@@ -64,6 +68,7 @@ function renderTimeline(props: EditorWorkspaceViewProps) {
 }
 
 export function EditorWorkspaceView(props: EditorWorkspaceViewProps) {
+  useWorkspaceDialogPrefetch();
   return (
     <div
       className="cc-editor-shell"
@@ -79,11 +84,15 @@ export function EditorWorkspaceView(props: EditorWorkspaceViewProps) {
       }}
     >
       <TopBar {...props.topBar} />
-      {props.exportDialog && <ExportDialog {...props.exportDialog} />}
-      {props.settingsDialog && <SettingsDialog {...props.settingsDialog} />}
-      {props.designStylePanel && <DesignStylePanel {...props.designStylePanel} />}
-      {props.versionHistory && <VersionHistory {...props.versionHistory} />}
-      {props.shortcutsDialog && <ShortcutsDialog {...props.shortcutsDialog} />}
+      {/* No fallback: an overlay that is still loading shows nothing, exactly as
+          it did before it was opened. The idle prefetch keeps that window tiny. */}
+      <Suspense fallback={null}>
+        {props.exportDialog && <ExportDialog {...props.exportDialog} />}
+        {props.settingsDialog && <SettingsDialog {...props.settingsDialog} />}
+        {props.designStylePanel && <DesignStylePanel {...props.designStylePanel} />}
+        {props.versionHistory && <VersionHistory {...props.versionHistory} />}
+        {props.shortcutsDialog && <ShortcutsDialog {...props.shortcutsDialog} />}
+      </Suspense>
       <ChatPanel {...props.chatPanel} />
       <div style={{ gridColumn: 2, gridRow: '2 / 5' }}>
         {!props.chatCollapsed && <Divider onResize={props.onResizeChat} />}

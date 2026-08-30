@@ -1,15 +1,19 @@
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import type { ProjectMeta } from '../../persist/projectStoreCoordinators';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
-import { MediaCleanupDialog } from '../../media/MediaCleanupDialog';
-import { ShortcutsDialog } from '../../shortcuts/ShortcutsDialog';
 import { DashboardHeaderLinks } from '../DashboardHeaderLinks';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
-import { McpGuideDialog } from '../settings/McpGuide';
 import { bindAction } from '../../shortcuts/actionRegistry';
-import { SettingsDialog } from '../settings/SettingsDialog';
-import { StorageMigrationDialog } from '../settings/StorageMigrationDialog';
+// Opened on demand, so they load on demand — see dashboardDialogs.tsx.
+import {
+  McpGuideDialog,
+  MediaCleanupDialog,
+  SettingsDialog,
+  ShortcutsDialog,
+  StorageMigrationDialog,
+  useDashboardDialogPrefetch,
+} from './dashboardDialogs';
 import { StorageMigrationBanner } from '../settings/StorageMigrationBanner';
 import { SkinPicker } from '../settings/SkinPicker';
 import { LocaleToggle } from '../TopBar';
@@ -196,13 +200,16 @@ export function DashboardDialogs({ model }: { model: DashboardModel }) {
   // own dialog state does. Without this the button silently does nothing on
   // the projects page, which is exactly where a new user starts.
   useEffect(() => bindAction('open-mcp-guide', () => model.setDialog('mcp', true)), [model]);
+  useDashboardDialogPrefetch();
   return (
-    <>
+    // No fallback: a dialog that is still loading shows nothing, exactly as it
+    // did before it was opened. The idle prefetch keeps that window tiny.
+    <Suspense fallback={null}>
       {model.dialogs.settings && <SettingsDialog onClose={() => model.setDialog('settings', false)} />}
       {model.dialogs.shortcuts && <ShortcutsDialog onClose={() => model.setDialog('shortcuts', false)} />}
       {model.dialogs.mcp && <McpGuideDialog onClose={() => model.setDialog('mcp', false)} />}
       {model.dialogs.cleanup && <MediaCleanupDialog onClose={() => model.setDialog('cleanup', false)} />}
       {model.dialogs.storage && <StorageMigrationDialog onClose={() => model.setDialog('storage', false)} />}
-    </>
+    </Suspense>
   );
 }
