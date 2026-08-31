@@ -68,6 +68,25 @@ jobs:
           echo "--- stderr ---"; head -20 err.txt
           exit 0
 
+      # Negative control. Without it a green job proves only "the exe runs",
+      # not "it runs BECAUSE the DLLs are beside it" — and a future refactor
+      # could re-nest them while this job stayed green for an unrelated reason.
+      - name: Re-nesting the DLLs must break it again
+        shell: bash
+        run: |
+          dir=public/whisper-cli/win32-x64
+          mkdir -p "$dir/Release"
+          mv "$dir"/*.dll "$dir/Release/"
+          set +e
+          ./$dir/whisper-cli.exe --help > /dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli.exe still ran with no DLLs beside it — this job is not testing what it claims." >&2
+            exit 1
+          fi
+          echo "exit $code with the DLLs re-nested: the flattened layout is what makes it start."
+
       - name: Verdict
         shell: bash
         run: |
@@ -112,6 +131,24 @@ jobs:
           echo "exit=$code" | tee -a "$GITHUB_OUTPUT"
           echo "--- stderr ---"; head -20 err.txt
           exit 0
+
+      # The pre-fix layout was never run on a Linux runner, so prove the same
+      # mechanism here rather than arguing it from the archive's shape: put the
+      # shared objects back in a subdirectory and the binary must stop working.
+      - name: Re-nesting the shared objects must break it again
+        run: |
+          dir=public/whisper-cli/linux-x64
+          mkdir -p "$dir/nested"
+          mv "$dir"/*.so* "$dir/nested/"
+          set +e
+          ./$dir/whisper-cli --help > /dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli still ran with no shared objects beside it — this job is not testing what it claims." >&2
+            exit 1
+          fi
+          echo "exit $code with the shared objects re-nested: the flattened layout is what makes it start."
 
       - name: Verdict
         run: |
