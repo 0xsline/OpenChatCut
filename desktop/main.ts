@@ -423,13 +423,14 @@ async function boot(): Promise<void> {
 }
 
 /**
- * app.exit() alone has been observed to wedge on Windows while a crashed
- * renderer is mid-reload: the v0.2.12 smoke printed its failure, called
- * app.exit(1), and the process survived until the CI step killed it at 420s.
- * The next run showed process.exit can wedge the same way (the watchdog left
- * no log at all). A smoke process has nothing to clean up, so before trying
- * the in-process exits, arm an EXTERNAL kill that works even when our own
- * exit paths are stuck.
+ * On Windows, after forced renderer crashes, BOTH in-process exits have been
+ * observed to wedge: app.exit() (v0.2.12 CI run 3) and even process.exit
+ * following it (same run — the process survived to the external 420s kill).
+ * So: arm an EXTERNAL kill on failure codes first, then process.exit
+ * directly — app.exit posts through Chromium's message loop, which is
+ * exactly the thing that deadlocks, and a smoke process has nothing worth a
+ * graceful quit. The CI step treats a printed SMOKE-OK as the pass signal,
+ * so a post-success wedge cannot fail the build.
  */
 function exitSmoke(code: number): void {
   // Failure only: taskkill terminates with its own nonzero status, which
@@ -441,10 +442,9 @@ function exitSmoke(code: number): void {
         stdio: 'ignore',
       }).unref();
     } catch {
-      // The in-process exits below remain the only path.
+      // process.exit below remains the only path.
     }
   }
-  app.exit(code);
   process.exit(code);
 }
 
@@ -481,13 +481,17 @@ if (SMOKE) {
   if (process.platform === 'win32') {
     try {
       const graceSeconds = Math.ceil(SMOKE_TIMEOUT_MS / 1000) + 60;
-      spawn('powershell', [
+      const helper = spawn('powershell.exe', [
         '-NoProfile',
         '-Command',
         `Start-Sleep -Seconds ${graceSeconds}; taskkill /T /F /PID ${process.pid}`,
-      ], { detached: true, stdio: 'ignore' }).unref();
-    } catch {
-      // The in-process watchdog above stays as the only ceiling.
+      ], { detached: true, stdio: 'ignore' });
+      helper.unref();
+      // The pid line is diagnostic: run 6's helper never fired and this says
+      // whether it even spawned.
+      console.log(`[smoke] external watchdog armed: helper pid ${helper.pid ?? 'SPAWN FAILED'}, fires in ${graceSeconds}s`);
+    } catch (error) {
+      console.error('[smoke] external watchdog spawn failed:', error instanceof Error ? error.message : String(error));
     }
   }
 }

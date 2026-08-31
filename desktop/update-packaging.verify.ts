@@ -253,6 +253,11 @@ assert.match(
 );
 assert.match(
   workflow,
+  /Select-String -LiteralPath \$smokeOut -Pattern 'SMOKE-OK' -Quiet/,
+  'the pass signal is the printed SMOKE-OK, not the exit code — Windows can deadlock in teardown after the smoke succeeds',
+);
+assert.match(
+  workflow,
   /Get-ChildItem -LiteralPath \$installDir -Filter 'Uninstall\*\.exe' -File/,
   'Windows smoke must run the generated uninstaller',
 );
