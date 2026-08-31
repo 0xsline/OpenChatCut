@@ -79,3 +79,46 @@ jobs:
             echo "Issue #120 reports transcription failing with a bare number on Windows." >&2
             exit 1
           fi
+
+  linux:
+    # Same shape, same fault: the ubuntu archive nests everything under
+    # whisper-bin-ubuntu-x64/, so moving only the executable out left
+    # libwhisper.so and libggml.so behind, and these binaries find their
+    # libraries through an $ORIGIN RUNPATH relative to the executable.
+    name: whisper-cli loads its shared objects
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Provision whisper-cli the way the app does
+        run: node scripts/sync-whisper-cli.mjs
+
+      - name: Show the layout that produces
+        run: |
+          ls -la public/whisper-cli/linux-x64/
+          echo "--- shared objects beside the executable ---"
+          ls public/whisper-cli/linux-x64/*.so* 2>/dev/null || echo "(none — the executable cannot resolve its libraries)"
+
+      - name: Run whisper-cli --help
+        id: run
+        continue-on-error: true
+        run: |
+          set +e
+          ./public/whisper-cli/linux-x64/whisper-cli --help > out.txt 2> err.txt
+          code=$?
+          echo "exit=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "--- stderr ---"; head -20 err.txt
+          exit 0
+
+      - name: Verdict
+        run: |
+          code="${{ steps.run.outputs.exit }}"
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli ran (exit 0)."
+          else
+            echo "whisper-cli failed with exit $code — it cannot start where we put it." >&2
+            exit 1
+          fi
