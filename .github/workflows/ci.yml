@@ -1,13 +1,19 @@
-# Release CI. Runs only when a v* tag is pushed (release time), never on
-# ordinary branch pushes. Validates the tag against package.json, then runs
-# lint, tests, the agent-skill contract, and the production build. Desktop
-# installers + GitHub Release publishing stay in desktop.yml (manual).
+# Verification CI: lint, tests, the agent-skill contract, and the production
+# build. Runs on pull requests and when a v* tag is pushed (release time, where
+# it also validates the tag against package.json). Ordinary branch pushes stay
+# quiet — use workflow_dispatch for those. Desktop installers + GitHub Release
+# publishing stay in desktop.yml (manual).
+#
+# Pull requests were NOT covered until 2026-08-31, and it showed: PR #123 sat
+# open failing `npm run build` (`tsc -b` catches what `tsc --noEmit` does not)
+# with nothing to tell its author. A PR that cannot build must say so on the PR.
 name: ci
 
 on:
   push:
     tags:
       - 'v*'
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -15,7 +21,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: false
+  # Superseded PR pushes are worth cancelling; a release tag run is not.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
