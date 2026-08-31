@@ -5,6 +5,7 @@ import { backgroundFillStrengthOf } from '../../editor/backgroundFill';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { inspectorMixedValue } from '../../editor/inspectorBatch';
 import { useT } from '../../i18n/locale';
+import { hasFlexCrop, type FlexCropEdge } from '../../editor/flexCrop';
 import { PropSchemaField } from './PropSchemaField';
 import { TransformControl, VolumeControl } from './InspectorKeyframeControls';
 import { FadeControl, IsolateVoiceControl, SpeedControl, TextControl, TransitionControl, ZoomControl } from './InspectorMediaControls';
@@ -127,10 +128,11 @@ function InspectorTabContent(props: InspectorContentProps) {
 function BasicTab({ panel, item, schema, playheadLocal }: InspectorContentProps) {
   const t = useT();
   const transformProps = KEYFRAME_PROPS.filter((prop) => prop !== 'volume' && getKeyframePropertyDefinition(prop).supports(item));
+  const cropActive = panel.selectedItems.some((entry) => hasFlexCrop(entry.transform?.crop));
   const resetDisabled = !transformProps.some((prop) => {
     const definition = getKeyframePropertyDefinition(prop);
     return !!item.keyframes?.[prop]?.length || Math.abs(definition.getBaseValue(item) - definition.defaultValue) >= 1e-6;
-  });
+  }) && !cropActive;
   return (
     <>
       {panel.selectedItems.length === 1 && panel.slipPlan && panel.onItemSlip && (
@@ -144,10 +146,10 @@ function BasicTab({ panel, item, schema, playheadLocal }: InspectorContentProps)
         </>
       )}
       {item.kind === 'text' && panel.selectedItems.every((entry) => entry.kind === 'text') && <><SectionLabel>{t('文字')}</SectionLabel><TextControl item={item} mixed={(key) => isMixed(panel, (entry) => entry.props?.[key])} onPropChange={panel.onItemPropChange} /></>}
-      {panel.selectedItems.every((entry) => entry.kind !== 'audio') && <><SectionLabel onReset={() => panel.onResetItemKeyframes(transformProps)} resetDisabled={resetDisabled && !transformProps.some((prop) => isMixed(panel, (entry) => getKeyframePropertyDefinition(prop).getBaseValue(entry)))}>{t('变换')}</SectionLabel><TransformControl item={item} mixed={(prop) => {
+      {panel.selectedItems.every((entry) => entry.kind !== 'audio') && <><SectionLabel onReset={() => panel.onResetItemKeyframes(transformProps)} resetDisabled={resetDisabled && !transformProps.some((prop) => isMixed(panel, (entry) => getKeyframePropertyDefinition(prop).getBaseValue(entry))) && !isMixed(panel, (entry) => entry.transform?.crop)}>{t('变换')}</SectionLabel><TransformControl item={item} mixed={(prop) => {
         const definition = getKeyframePropertyDefinition(prop);
         return isMixed(panel, (entry) => entry.keyframes?.[prop] ?? definition.getBaseValue(entry));
-      }} onChange={panel.onItemTransformChange} onReset={panel.onResetItemKeyframes} kf={{
+      }} mixedCrop={(edge: FlexCropEdge) => isMixed(panel, (entry) => entry.transform?.crop?.[edge] ?? 0)} onChange={panel.onItemTransformChange} onCropChange={panel.onItemCropChange} canvasWidth={panel.canvasWidth} canvasHeight={panel.canvasHeight} onReset={panel.onResetItemKeyframes} kf={{
         ...playheadLocal,
         set: panel.onSetItemKeyframe,
         remove: panel.onRemoveItemKeyframe,

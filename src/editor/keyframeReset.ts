@@ -25,6 +25,9 @@ export function keyframeResetBatch(
     }
   }
 
+  const visualProps = props.filter((prop) => prop !== 'volume');
+  if (visualProps.length > 1) transform.crop = undefined;
+
   if (Object.keys(transform).length) actions.push({ type: 'setTransform', id, patch: transform });
   if (resetVolume) actions.push({ type: 'setVolume', id, volume: 1 });
   return {

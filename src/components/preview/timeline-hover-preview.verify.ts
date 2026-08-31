@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 const preview = readFileSync(new URL('../PreviewPanel.tsx', import.meta.url), 'utf8');
 const controller = readFileSync(new URL('../timeline/useTimelineController.ts', import.meta.url), 'utf8');
 
+assert.match(preview, /acknowledgeRemotionLicense/, 'the preview Player acknowledges the Remotion license');
 assert.match(preview, /hoverPreviewFrame\?: number \| null/, 'hover preview remains separate from the main playhead');
 assert.match(preview, /className="cc-preview-hover-frame"/, 'the hovered frame renders inside the preview canvas');
 assert.match(preview, /frameToDisplay=\{hoverPreviewFrame\}/, 'the thumbnail renders the exact hovered frame');

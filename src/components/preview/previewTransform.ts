@@ -1,21 +1,38 @@
 import { isBackgroundFillActive } from '../../editor/backgroundFill';
+import {
+  flexCropVisibleRect,
+  compactFlexCrop,
+  normalizedFlexCrop,
+  PREVIEW_CROP_MIN_SPAN,
+} from '../../editor/flexCrop';
 import { resolveClipScaleAxes } from '../../editor/clipTransformScale';
 import { coerceKeyframeValue } from '../../editor/keyframeRegistry';
 import { sampleKeyframes } from '../../editor/keyframes';
 import {
   clampVisualBorderRadius,
+  objectFitInsideVisualFrame,
   visibleVisualFrameRect,
 } from '../../editor/visualFrameGeometry';
 import {
   isVisualItemKind,
   timelineTrackIds,
   trackKind,
-  type ClipCrop,
+  type FlexCrop,
   type ClipTransform,
   type KeyframeProp,
   type TimelineItem,
   type TimelineState,
 } from '../../editor/types';
+
+export {
+  flexCropEdgeMax,
+  flexCropInsetPatch,
+  compactFlexCrop,
+  hasFlexCrop,
+  normalizedFlexCrop,
+  PREVIEW_CROP_MIN_SPAN,
+  type FlexCropEdge,
+} from '../../editor/flexCrop';
 
 export interface PreviewPoint { x: number; y: number }
 export interface PreviewSize { width: number; height: number }
@@ -23,31 +40,6 @@ export interface PreviewRect extends PreviewPoint, PreviewSize {}
 
 /** Edge of the selection box (local axes after rotation). */
 export type PreviewScaleEdge = 'n' | 's' | 'e' | 'w';
-
-/** Minimum remaining visible span while edge-cropping (canvas fraction). */
-export const PREVIEW_CROP_MIN_SPAN = 0.05;
-
-export function normalizedClipCrop(crop: ClipCrop | undefined): Required<ClipCrop> {
-  return {
-    left: crop?.left ?? 0,
-    top: crop?.top ?? 0,
-    right: crop?.right ?? 0,
-    bottom: crop?.bottom ?? 0,
-  };
-}
-
-/** Drop near-zero crops so the DOM stays free of no-op clip-path. */
-export function compactClipCrop(crop: Required<ClipCrop>): ClipCrop | undefined {
-  const round = (v: number) => Math.round(v * 1e6) / 1e6;
-  const next = {
-    left: round(Math.max(0, crop.left)),
-    top: round(Math.max(0, crop.top)),
-    right: round(Math.max(0, crop.right)),
-    bottom: round(Math.max(0, crop.bottom)),
-  };
-  if (next.left < 1e-6 && next.top < 1e-6 && next.right < 1e-6 && next.bottom < 1e-6) return undefined;
-  return next;
-}
 
 export interface EffectivePreviewTransform {
   x: number;
@@ -77,7 +69,7 @@ export interface PreviewCandidateGeometry {
   corners: readonly [PreviewPoint, PreviewPoint, PreviewPoint, PreviewPoint];
 }
 
-export { clampVisualBorderRadius, visibleVisualFrameRect };
+export { clampVisualBorderRadius, objectFitInsideVisualFrame, visibleVisualFrameRect };
 
 export type PreviewNudgeDirection = 'left' | 'right' | 'up' | 'down';
 
@@ -135,14 +127,6 @@ export function visiblePreviewCandidates(state: TimelineState, absoluteFrame: nu
   }));
 }
 
-const intersection = (a: PreviewRect, b: PreviewRect): PreviewRect => {
-  const x = Math.max(a.x, b.x);
-  const y = Math.max(a.y, b.y);
-  const right = Math.min(a.x + a.width, b.x + b.width);
-  const bottom = Math.min(a.y + a.height, b.y + b.height);
-  return { x, y, width: Math.max(0, right - x), height: Math.max(0, bottom - y) };
-};
-
 function previewBaseRect(state: TimelineState, item: TimelineItem): PreviewRect {
   if (state.width <= 0 || state.height <= 0) return { x: 0, y: 0, width: 0, height: 0 };
   const canvas = { x: 0, y: 0, width: state.width, height: state.height };
@@ -159,13 +143,7 @@ function previewBaseRect(state: TimelineState, item: TimelineItem): PreviewRect 
 
   const crop = item.transform?.crop;
   if (!crop) return content;
-  const cropRect = {
-    x: (crop.left ?? 0) * state.width,
-    y: (crop.top ?? 0) * state.height,
-    width: Math.max(0, (1 - (crop.left ?? 0) - (crop.right ?? 0)) * state.width),
-    height: Math.max(0, (1 - (crop.top ?? 0) - (crop.bottom ?? 0)) * state.height),
-  };
-  return intersection(content, cropRect);
+  return flexCropVisibleRect(crop, state.width, state.height, content);
 }
 
 const rotatePoint = (point: PreviewPoint, center: PreviewPoint, degrees: number): PreviewPoint => {
@@ -182,6 +160,7 @@ const applyTransform = (
   point: PreviewPoint,
   transform: EffectivePreviewTransform,
 ): PreviewPoint => {
+  // Same origin as CSS `transform-origin: 50% 50%` on the full-canvas layer.
   const center = { x: state.width / 2, y: state.height / 2 };
   const scaled = {
     x: center.x + (point.x - center.x) * transform.scaleX,
@@ -272,6 +251,31 @@ export function movePreviewTransform(
 }
 
 /**
+ * Map a viewport client point onto the current preview canvas.
+ * Always pass the live getBoundingClientRect() — a cached overlay origin
+ * treats inspector open/close (canvas recenter) as a drag.
+ */
+export function previewPointerFromClient(
+  client: PreviewPoint,
+  canvas: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>,
+  composition: Pick<TimelineState, 'width' | 'height'>,
+): { ui: PreviewPoint; composition: PreviewPoint } {
+  const ui = { x: client.x - canvas.left, y: client.y - canvas.top };
+  return {
+    ui,
+    composition: {
+      x: canvas.width > 0 ? ui.x / canvas.width * composition.width : 0,
+      y: canvas.height > 0 ? ui.y / canvas.height * composition.height : 0,
+    },
+  };
+}
+
+/** Screen-space pointer delta. Overlay translation/resize must not count. */
+export function previewClientDelta(startClient: PreviewPoint, currentClient: PreviewPoint): PreviewPoint {
+  return { x: currentClient.x - startClient.x, y: currentClient.y - startClient.y };
+}
+
+/**
  * Build one keyboard nudge against the exact transform value currently shown by
  * the preview and Inspector. Existing x/y curves receive a keyframe at the
  * playhead; un-keyframed clips update their static transform instead.
@@ -344,31 +348,39 @@ const projectOnAxis = (
 export function edgeCropPreviewTransform(
   state: Pick<TimelineState, 'width' | 'height'>,
   transform: EffectivePreviewTransform,
-  startCrop: ClipCrop | undefined,
+  startCrop: FlexCrop | undefined,
   currentPoint: PreviewPoint,
   edge: PreviewScaleEdge,
-): { crop: ClipCrop | undefined } {
+): { crop: FlexCrop | undefined } {
   if (state.width <= 0 || state.height <= 0) {
-    return { crop: compactClipCrop(normalizedClipCrop(startCrop)) };
+    return { crop: compactFlexCrop(normalizedFlexCrop(startCrop)) };
   }
-  const start = normalizedClipCrop(startCrop);
+  const start = normalizedFlexCrop(startCrop);
   const local = inverseTransform(state, currentPoint, transform);
   const min = PREVIEW_CROP_MIN_SPAN;
   let { left, top, right, bottom } = start;
   if (edge === 'e') {
-    const fx = Math.min(1, Math.max(left + min, local.x / state.width));
-    right = 1 - fx;
+    const xPx = Math.round(local.x);
+    const minX = Math.round((left + min) * state.width);
+    const fx = Math.min(state.width, Math.max(minX, xPx));
+    right = (state.width - fx) / state.width;
   } else if (edge === 'w') {
-    const fx = Math.min(1 - right - min, Math.max(0, local.x / state.width));
-    left = fx;
+    const xPx = Math.round(local.x);
+    const maxX = Math.round((1 - right - min) * state.width);
+    const fx = Math.min(maxX, Math.max(0, xPx));
+    left = fx / state.width;
   } else if (edge === 's') {
-    const fy = Math.min(1, Math.max(top + min, local.y / state.height));
-    bottom = 1 - fy;
+    const yPx = Math.round(local.y);
+    const minY = Math.round((top + min) * state.height);
+    const fy = Math.min(state.height, Math.max(minY, yPx));
+    bottom = (state.height - fy) / state.height;
   } else {
-    const fy = Math.min(1 - bottom - min, Math.max(0, local.y / state.height));
-    top = fy;
+    const yPx = Math.round(local.y);
+    const maxY = Math.round((1 - bottom - min) * state.height);
+    const fy = Math.min(maxY, Math.max(0, yPx));
+    top = fy / state.height;
   }
-  return { crop: compactClipCrop({ left, top, right, bottom }) };
+  return { crop: compactFlexCrop({ left, top, right, bottom }) };
 }
 
 /** @deprecated Prefer edgeCropPreviewTransform — edge handles crop, they do not stretch. */

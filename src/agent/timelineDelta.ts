@@ -1,7 +1,7 @@
 // Compact, reconstructable timeline differences returned after mutating agent tools.
 import { timelineTrackIds, trackAlias } from '../editor/types';
 import type {
-  ClipCrop,
+  FlexCrop,
   ClipEffect,
   ClipFilters,
   ClipTransform,
@@ -32,7 +32,7 @@ export interface TimelineItemChangeValueMap {
   srcInFrame: number | null;
   fadeInFrames: number | null;
   fadeOutFrames: number | null;
-  crop: ClipCrop | null;
+  crop: FlexCrop | null;
   transform: Omit<ClipTransform, 'crop'> | null;
   props: Record<string, unknown> | null;
   keyframes: ItemKeyframes | null;

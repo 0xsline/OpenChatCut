@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added / 新增
+
+- Inspector **Crop Left / Right / Top / Bottom** under Clip properties → Basic → Transform (below Corner). Values are composition pixels; cropped pixels are fully transparent. Agents call this **flex crop** / **flexcrop** via `edit_item` `transform.crop` or `transform.flexCrop: { left, right, top, bottom }` in pixels (`null` clears). Not a timeline trim.
+  检查器「裁左 / 裁右 / 裁上 / 裁下」位于片段属性 → 基础 → 变换（圆角下方）。数值为画布像素，裁掉的区域完全透明。Agent 术语为 **flex crop** / **flexcrop**：`edit_item` 的 `transform.crop` 或 `transform.flexCrop: { left, right, top, bottom }`（像素；`null` 清除）。不是时间线裁剪。
+
+### Fixed / 修复
+
+- Preview orange outline, clip-path cut, and rotation pivot stay aligned: the preview wrapper uses the stage content box and a single composition scale so Remotion does not letterbox on Y under the overlay.
+  预览橙框、裁切与旋转轴对齐：预览容器按舞台 content box 与单一画布比例适配，避免 Remotion 在 overlay 下上下加黑边。
+
+<p align="center">
+  <img src="assets/readme-pic/flexcrop-inspector.png" alt="FlexCrop inspector: preview edges 1–4 match Crop Left, Crop Right, Crop Top, and Crop Bottom sliders" width="920" />
+</p>
+
 ## [0.2.12] - 2026-08-31
 
 ### Fixed / 修复
