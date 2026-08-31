@@ -169,6 +169,26 @@ async function tick(): Promise<void> { await new Promise((r) => setTimeout(r, 0)
   await new Promise((resolve) => setTimeout(resolve, 150));
   assert.equal(rendererReloads, 1, 'renderer OOM reloads into a fresh process');
   uninstallRenderer();
+
+  // The disposer runs from the window's own 'closed' handler, when the window
+  // is already destroyed and Electron's webContents getter THROWS. v0.2.12
+  // shipped this as an uncaught main-process exception — a modal error dialog
+  // on every Windows window close. The fake reproduces the real getter
+  // semantics: accessing webContents on a destroyed window must never be
+  // reached by the disposer.
+  {
+    let destroyed = false;
+    const destroyedWindow = {
+      isDestroyed: () => destroyed,
+      get webContents() {
+        if (destroyed) throw new TypeError('Object has been destroyed');
+        return Object.assign(new EventEmitter(), { reload: () => undefined });
+      },
+    } as unknown as BrowserWindow;
+    const uninstall = installWindowsRendererRecovery(destroyedWindow, 'win32');
+    destroyed = true;
+    assert.doesNotThrow(uninstall, 'disposing recovery on a closed window must not touch its webContents');
+  }
   await rm(userData, { recursive: true, force: true });
 }
 

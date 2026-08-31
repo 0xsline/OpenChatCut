@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-08-31
+
+### Fixed / 修复
+
+- Closing any window on Windows no longer pops "A JavaScript error occurred in the main process — Object has been destroyed": the renderer-recovery disposer ran inside the window's own `closed` handler and touched the already-destroyed `webContents`. macOS was unaffected only because the recovery is Windows-gated, which is exactly why it escaped testing. The same uncaught exception's modal dialog is what deadlocked the release smoke's teardown.
+  Windows 关闭任意窗口不再弹出「A JavaScript error occurred in the main process — Object has been destroyed」：渲染器恢复的卸载器在窗口自身的 `closed` 事件里访问了已销毁的 `webContents`。macOS 因恢复逻辑按平台门禁短路而不受影响——这也正是它逃过验证的原因。同一未捕获异常的模态弹窗正是发版冒烟收尾死锁的真身。
+
 ## [0.2.12] - 2026-08-31
 
 ### Added / 新增

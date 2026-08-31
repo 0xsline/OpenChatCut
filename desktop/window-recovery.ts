@@ -89,5 +89,14 @@ export function installWindowsRendererRecovery(
     scheduleReload(win, `renderer ${details.reason}`);
   };
   win.webContents.on('render-process-gone', onGone);
-  return () => win.webContents.off('render-process-gone', onGone);
+  return () => {
+    // The disposer runs from the window's own 'closed' handler, and by then
+    // the window is destroyed: Electron's webContents getter THROWS
+    // "Object has been destroyed" — an uncaught main-process exception that
+    // pops a modal error dialog on every Windows window close (shipped in
+    // v0.2.12; also the modal that deadlocked the CI smoke's teardown). A
+    // destroyed window's listeners die with it, so there is nothing to
+    // detach.
+    if (!win.isDestroyed()) win.webContents.off('render-process-gone', onGone);
+  };
 }
