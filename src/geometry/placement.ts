@@ -7,6 +7,7 @@
  * writes the transform through EditorCommands.
  */
 
+import { flexCropRect } from '../editor/flexCrop';
 import { resolveClipScaleAxes } from '../editor/clipTransformScale';
 import { sampleKeyframes } from '../editor/keyframes';
 import { sourceFramesToTimelineFrames } from '../editor/sourceLimit';
@@ -177,11 +178,12 @@ export function projectSourceRectThroughItem(
     y: zoom.focalY * state.height + (point.y - zoom.focalY * state.height) * zoom.magnification,
   })) : corners;
   const crop = item.transform?.crop;
+  const snapped = flexCropRect(crop, state.width, state.height);
   const cropRect: GeomRect = {
-    x: (crop?.left ?? 0) * state.width,
-    y: (crop?.top ?? 0) * state.height,
-    w: (1 - (crop?.left ?? 0) - (crop?.right ?? 0)) * state.width,
-    h: (1 - (crop?.top ?? 0) - (crop?.bottom ?? 0)) * state.height,
+    x: snapped.x,
+    y: snapped.y,
+    w: snapped.width,
+    h: snapped.height,
   };
   const contentBounds = boundsOf(zoomed);
   const clipped = crop ? intersectRects(contentBounds, cropRect) : contentBounds;

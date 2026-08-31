@@ -44,13 +44,15 @@ const ctx: AgentContext = {
 
 const full = await execReadProjectTool('read_project', {}, ctx) as {
   ok: boolean;
-  timeline: { items: unknown[]; markers: unknown[] };
+  timeline: { items: unknown[]; markers: unknown[]; selectedIds: unknown[]; selectedId: string | null };
   mediaPool: { assets: unknown[] };
   projectId: string;
 };
 assert.strictEqual(full.ok, true);
 assert.strictEqual(full.projectId, 'p1');
 assert.strictEqual(full.timeline.items.length, 1);
+assert.deepEqual(full.timeline.selectedIds, []);
+assert.equal(full.timeline.selectedId, null);
 assert.strictEqual(full.timeline.markers.length, 1);
 assert.strictEqual(full.mediaPool.assets.length, 1);
 
@@ -112,5 +114,30 @@ assert.deepEqual(
   { sourceStartFrame: 5, sourceDurationInFrames: 60, sourceEndFrameExclusive: 65 },
   'read_project exposes the exact source window',
 );
+
+const selectedDoc = docFromTimeline({
+  fps: 30, width: 1920, height: 1080, selectedId: 'clip1', selectedIds: ['clip1'],
+  trackOrder: ['track_v1'], tracks: { track_v1: { kind: 'video' } },
+  items: [{
+    id: 'clip1', track: 'track_v1', startFrame: 0, durationInFrames: 90, name: 'A', kind: 'video', src: '/media/uploads/a.mp4',
+  }],
+});
+const selectedDraft = makeDraft(selectedDoc);
+const selectedCtx: AgentContext = {
+  commands: selectedDraft.commands,
+  getState: selectedDraft.getState,
+  getDoc: selectedDraft.getDoc,
+  getCreativeMode: () => null,
+  templates: [],
+  audio: [],
+  getProjectId: () => 'p1',
+};
+const selectedFull = await execReadProjectTool('read_project', { view: 'timeline' }, selectedCtx) as {
+  timeline: { selectedId: string | null; selectedIds: string[]; selected: { id: string; track: string }[]; items: { selected?: boolean }[] };
+};
+assert.strictEqual(selectedFull.timeline.selectedId, 'clip1');
+assert.deepEqual(selectedFull.timeline.selectedIds, ['clip1']);
+assert.strictEqual(selectedFull.timeline.selected[0]?.track, 'V1');
+assert.strictEqual(selectedFull.timeline.items[0]?.selected, true);
 
 console.log('read-project-tools.check: ok');

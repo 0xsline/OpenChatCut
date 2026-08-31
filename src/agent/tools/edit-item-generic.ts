@@ -4,12 +4,13 @@
 import type {
   ItemKeyframes, Keyframe, KeyframeProp, MediaAsset, TimelineItem, TimelineState,
 } from '../../editor/types';
-import { defaultTrackId, resolveTrackId } from '../../editor/types';
+import { defaultTrackId, resolveTrackId, selectedIdsOf } from '../../editor/types';
 import { isValidEasing } from '../../editor/keyframes';
 import { validateBackgroundFillUpdate } from './edit-item-background-fill';
 import { getKeyframePropertyDefinition, KEYFRAME_PROPS, supportsKeyframeProperty } from '../../editor/keyframeRegistry';
 import { planSlip } from '../../editor/slip';
 import { rejectUnknownFields } from './edit-item-fields';
+import { flexCropMergePatch } from '../../editor/flexCrop';
 import { clampNum, parseFiltersArg, parseTransformArg } from './edit-item-visual';
 import { validateMediaSourceUpdate } from './edit-item-media-ops';
 import { validateSourceFrameUpdate, validateSourceWindow } from './edit-item-source-window';
@@ -155,6 +156,18 @@ function parseKeyframesArg(raw: unknown): { keyframes?: ItemKeyframes; error?: s
   return { keyframes: out };
 }
 
+function resolveUpdateItemId(state: TimelineState, entry: Record<string, unknown>): string | null {
+  const raw = entry.itemId ?? entry.id;
+  const token = raw === undefined || raw === null ? '' : String(raw).trim();
+  const wantsSelected = token === ''
+    || /^(selected|selection|selectedclip|selected_clip)$/i.test(token);
+  if (wantsSelected) {
+    const ids = selectedIdsOf(state);
+    return ids[ids.length - 1] ?? state.selectedId ?? null;
+  }
+  return token;
+}
+
 // Move (track/startFrame|fromFrame), trim (duration/srcIn), props, volume, fades (seconds→frames).
 // A pool assetId update is an atomic replacement; other fields update the live clip.
 export function validateGenericUpdate(
@@ -166,9 +179,15 @@ export function validateGenericUpdate(
   const unknown = rejectUnknownFields(entry, GENERIC_UPDATE_KEYS);
   if (unknown) return { error: unknown };
 
-  const itemRef = entry.itemId ?? entry.id;
+  const itemRef = resolveUpdateItemId(state, entry);
   const it = findItem(state.items, itemRef);
-  if (!it) return { error: `item not found: ${String(itemRef ?? '')}` };
+  if (!it) {
+    return {
+      error: itemRef
+        ? `item not found: ${itemRef}`
+        : 'no clip selected — pass itemId from read_project.timeline.selectedId',
+    };
+  }
   const plan: OpResult = { ok: true, kind: it.kind, plan: 'genericUpdate', itemId: it.id };
 
   const trackRaw = entry.track ?? entry.trackId;
@@ -214,9 +233,15 @@ export function validateGenericUpdate(
   }
   if (entry.transform !== undefined) {
     if (it.kind === 'audio') return { error: 'transform is not supported on audio clips' };
-    const parsed = parseTransformArg(entry.transform);
+    const parsed = parseTransformArg(entry.transform, { width: state.width, height: state.height });
     if (parsed.error) return { error: parsed.error };
-    plan.transform = parsed.transform;
+    const patch = { ...parsed.transform };
+    if (parsed.cropClear) {
+      patch.crop = undefined;
+    } else if (patch.crop) {
+      patch.crop = flexCropMergePatch(it.transform?.crop, patch.crop).crop;
+    }
+    plan.transform = patch;
   }
   const backgroundFill = validateBackgroundFillUpdate(
     state,

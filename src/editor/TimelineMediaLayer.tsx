@@ -20,7 +20,7 @@ import { volumeAtFrame } from './keyframes';
 import { sourceFrameAt } from './sourceLimit';
 import type { AspectFit, TimelineItem, TransitionItem } from './types';
 import { isAudioTransition } from './types';
-import { clampVisualBorderRadius, visibleVisualFrameRect } from './visualFrameGeometry';
+import { clampVisualBorderRadius, objectFitInsideVisualFrame, visibleVisualFrameRect } from './visualFrameGeometry';
 
 type RuntimeVideoProps = Pick<BrowserVideoProps, 'src' | 'trimBefore' | 'trimAfter' | 'playbackRate' | 'volume' | 'style' | 'muted'> & {
   browserRenderer: boolean;
@@ -76,12 +76,13 @@ export function VisualClipSurface({ item, fit, canvasW, canvasH, borderRadius, c
     );
   const resolvedRadius = clampVisualBorderRadius(borderRadius, frame);
   return (
-    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill>
       <div style={{
-        position: 'relative',
+        position: 'absolute',
+        left: frame.x,
+        top: frame.y,
         width: frame.width,
         height: frame.height,
-        flexShrink: 0,
         overflow: resolvedRadius ? 'hidden' : undefined,
         borderRadius: resolvedRadius ? `${resolvedRadius}px` : undefined,
       }}>
@@ -188,7 +189,7 @@ export function SharedVideoVisualGroup({ group, fit, muted, canvasW, canvasH, pr
   const item = group.find((candidate) => timelineFrame >= candidate.startFrame
     && timelineFrame < candidate.startFrame + candidate.durationInFrames) ?? first;
   const localFrame = timelineFrame - item.startFrame;
-  const appearance = appearanceAt(item, localFrame, false);
+  const appearance = appearanceAt(item, localFrame, false, { width: canvasW, height: canvasH });
   const sourceWidth = item.width ?? canvasW;
   const sourceHeight = item.height ?? canvasH;
   const rect = visibleVisualFrameRect(
@@ -200,8 +201,7 @@ export function SharedVideoVisualGroup({ group, fit, muted, canvasW, canvasH, pr
   const style: CSSProperties = {
     width: '100%',
     height: '100%',
-    objectFit: fit === 'cover' ? 'cover' : 'contain',
-    ...appearance.foregroundStyle,
+    objectFit: objectFitInsideVisualFrame(fit),
   };
   let visual = (
     <RuntimeVideo browserRenderer={browserRenderer} src={first.src} trimBefore={first.srcInFrame ?? 0}
@@ -217,17 +217,27 @@ export function SharedVideoVisualGroup({ group, fit, muted, canvasW, canvasH, pr
   }
   return (
     <Sequence from={first.startFrame} durationInFrames={duration} premountFor={premountFor} name={`${first.name}:visual`}>
-      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', opacity: appearance.opacity }}>
-        <div style={{
-          position: 'relative',
-          width: rect.width,
-          height: rect.height,
-          flexShrink: 0,
-          overflow: resolvedRadius ? 'hidden' : undefined,
-          borderRadius: resolvedRadius,
-        }}>
-          {visual}
-        </div>
+      <AbsoluteFill style={{
+        opacity: appearance.opacity,
+        transform: appearance.foregroundStyle.transform,
+        transformOrigin: appearance.foregroundStyle.transformOrigin,
+        transformBox: appearance.foregroundStyle.transformBox,
+        filter: appearance.foregroundStyle.filter,
+        clipPath: appearance.foregroundStyle.clipPath,
+      }}>
+        <AbsoluteFill>
+          <div style={{
+            position: 'absolute',
+            left: rect.x,
+            top: rect.y,
+            width: rect.width,
+            height: rect.height,
+            overflow: resolvedRadius ? 'hidden' : undefined,
+            borderRadius: resolvedRadius,
+          }}>
+            {visual}
+          </div>
+        </AbsoluteFill>
       </AbsoluteFill>
     </Sequence>
   );
@@ -311,7 +321,7 @@ function PlainMediaFill({ props, trimBefore, volume }: {
   volume: MediaVolume;
 }) {
   const { item, fit, canvasW, canvasH, borderRadius, groupedAudio, browserRenderer, muted } = props;
-  const style: CSSProperties = { width: '100%', height: '100%', objectFit: fit === 'cover' ? 'cover' : 'contain' };
+  const style: CSSProperties = { width: '100%', height: '100%', objectFit: objectFitInsideVisualFrame(fit) };
   const still = item.kind === 'image' || item.kind === 'gif' || item.kind === 'svg';
   return (
     <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>

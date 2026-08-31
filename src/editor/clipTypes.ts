@@ -88,11 +88,12 @@ export type KeyframeProp = 'x' | 'y' | 'scale' | 'scaleX' | 'scaleY' | 'rotation
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 
-/** fractional layer-crop insets (each 0..1; left+right < 1, top+bottom < 1).
- * Rendered as clip-path inset BEFORE translate/rotate/scale, so the cropped
- * window then moves/scales as one unit — named layouts (apply_layout) rely on
- * exactly this composition order. */
-export interface ClipCrop {
+/** Edge insets in composition pixels at the current canvas size.
+ * Cropped pixels are not drawn (fully transparent). Stored as 0..1 fractions of
+ * canvas width (left/right) or height (top/bottom). Rendered as clip-path inset
+ * BEFORE translate/rotate/scale, so the cropped window then moves/scales as one
+ * unit — named layouts (apply_layout) rely on exactly this composition order. */
+export interface FlexCrop {
   left?: number;
   top?: number;
   right?: number;
@@ -118,7 +119,7 @@ export interface ClipTransform {
   /** clipped layer corner radius in composition pixels */
   borderRadius?: number;
   /** crop the full-canvas layer to a sub-rect (split-screen / for PiP) */
-  crop?: ClipCrop;
+  crop?: FlexCrop;
 }
 
 /** one per-clip WebGL effect instance (effects[] entry with an assetId

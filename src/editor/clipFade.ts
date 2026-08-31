@@ -1,5 +1,6 @@
 import { sampleKeyframes } from './keyframes';
 import type { TimelineItem } from './types';
+import { flexCropClipPath, hasFlexCrop } from './flexCrop';
 
 /** Fade multiplier at a Sequence-relative frame. */
 export function clipFadeFactor(
@@ -32,7 +33,12 @@ export interface ClipAppearance {
 
 /** Per-frame clip appearance (opacity/border/transform/crop/filters) shared by
  *  the clip wrapper and the shared-visual video group. */
-export function appearanceAt(item: import('./types').TimelineItem, frame: number, hiddenByCaptions: boolean): ClipAppearance {
+export function appearanceAt(
+  item: import('./types').TimelineItem,
+  frame: number,
+  hiddenByCaptions: boolean,
+  canvas: { width: number; height: number } = { width: 0, height: 0 },
+): ClipAppearance {
   const keyframeValue = (prop: import('./types').KeyframeProp): number | undefined => {
     const values = item.keyframes?.[prop];
     return values?.length ? sampleKeyframes(values, frame) : undefined;
@@ -49,11 +55,7 @@ export function appearanceAt(item: import('./types').TimelineItem, frame: number
     ? `translate(${keyframeValue('x') ?? transform?.x ?? 0}%, ${keyframeValue('y') ?? transform?.y ?? 0}%) rotate(${keyframeValue('rotation') ?? transform?.rotation ?? 0}deg) scale(${scaleX}, ${scaleY})`
     : undefined;
   const crop = transform?.crop;
-  const hasCrop = crop && ((crop.left ?? 0) > 0 || (crop.top ?? 0) > 0 || (crop.right ?? 0) > 0 || (crop.bottom ?? 0) > 0);
-  const cropPercent = (value: number | undefined) => `${((value ?? 0) * 100).toFixed(3)}%`;
-  const clipPath = hasCrop
-    ? `inset(${cropPercent(crop.top)} ${cropPercent(crop.right)} ${cropPercent(crop.bottom)} ${cropPercent(crop.left)})`
-    : undefined;
+  const clipPath = hasFlexCrop(crop) ? flexCropClipPath(crop, canvas.width, canvas.height) : undefined;
   const opacity = clipOpacityAt(item, frame, hiddenByCaptions);
   const filters = item.filters;
   return {
@@ -61,6 +63,8 @@ export function appearanceAt(item: import('./types').TimelineItem, frame: number
     borderRadius: Math.max(0, keyframeValue('borderRadius') ?? transform?.borderRadius ?? 0),
     foregroundStyle: {
       transform: cssTransform,
+      transformOrigin: '50% 50%',
+      transformBox: 'border-box',
       filter: filters
         ? `brightness(${filters.brightness ?? 1}) contrast(${filters.contrast ?? 1}) saturate(${filters.saturate ?? 1}) blur(${filters.blur ?? 0}px)`
         : undefined,

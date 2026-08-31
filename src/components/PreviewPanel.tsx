@@ -36,7 +36,7 @@ import { SlipTwoUpPreview } from './SlipTwoUpPreview';
 import { PREVIEW_SHARED_AUDIO_TAGS } from './previewAudioPool';
 import { SafeZoneOverlay } from './SafeZoneOverlay';
 import { PreviewTransformOverlay } from './preview/PreviewTransformOverlay';
-import { fitPreviewCanvasSize, type PreviewCanvasSize } from './preview/previewCanvasGeometry';
+import { fitPreviewCanvasSize, previewPaddedClientSize, previewStageContentSize, type PreviewCanvasSize } from './preview/previewCanvasGeometry';
 
 const MEDIA_LOADING_NOTICE_DELAY_MS = 160;
 
@@ -229,15 +229,26 @@ export const PreviewPanel = memo(function PreviewPanel({
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === 'undefined') return undefined;
-    const measure = () => {
-      const next = { width: stage.clientWidth, height: stage.clientHeight };
+    const apply = (next: PreviewCanvasSize) => {
       setStageSize((current) => (
         current.width === next.width && current.height === next.height ? current : next
       ));
     };
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) apply(previewStageContentSize(entry));
+    });
     observer.observe(stage);
-    measure();
+    const style = getComputedStyle(stage);
+    apply(previewPaddedClientSize(
+      { width: stage.clientWidth, height: stage.clientHeight },
+      {
+        left: Number.parseFloat(style.paddingLeft) || 0,
+        right: Number.parseFloat(style.paddingRight) || 0,
+        top: Number.parseFloat(style.paddingTop) || 0,
+        bottom: Number.parseFloat(style.paddingBottom) || 0,
+      },
+    ));
     return () => observer.disconnect();
   }, []);
   // Selection mode (canvas-region-marked): drag a marquee → region reference
@@ -367,6 +378,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               // double-toggle it to a no-op).
               clickToPlay={fullscreen}
               spaceKeyToPlayOrPause={false}
+              acknowledgeRemotionLicense
               // No loop: playback stops at the final frame (editor convention).
               // Restart by pressing play again.
             />

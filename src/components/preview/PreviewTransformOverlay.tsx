@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import type { ClipCrop, ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
+import type { FlexCrop, ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
 import { t } from '../../i18n/locale';
 import {
   cyclePreviewCandidate,
@@ -16,7 +16,9 @@ import {
   hitPreviewCandidates,
   movePreviewTransform,
   previewCandidateGeometry,
+  previewClientDelta,
   previewEdgeMidpoints,
+  previewPointerFromClient,
   rotatePreviewTransform,
   uniformScaleAxesPreviewTransform,
   visiblePreviewCandidates,
@@ -53,11 +55,10 @@ interface GestureState {
   /** When mode is crop-edge, which edge is being dragged. */
   edge?: PreviewScaleEdge;
   /** Crop snapshot at pointer-down (edge crop keeps the opposite side fixed). */
-  startCrop?: ClipCrop;
-  startUi: PreviewPoint;
-  startComposition: PreviewPoint;
+  startCrop?: FlexCrop;
+  /** Viewport client coords — not overlay-relative, so inspector layout cannot fake a drag. */
+  startClient: PreviewPoint;
   center: PreviewPoint;
-  previewSize: PreviewSize;
   transform: EffectivePreviewTransform;
   localFrame: number;
   moved: boolean;
@@ -70,25 +71,16 @@ interface PendingValues {
   localFrame: number;
   values: Partial<Record<TransformWriteProp, number>>;
   /** Edge crop writes the full crop object (or undefined to clear). */
-  crop?: ClipCrop | undefined;
+  crop?: FlexCrop | undefined;
   cropTouched?: boolean;
 }
 
 const CLICK_TOLERANCE = 4;
 const DRAG_THRESHOLD = 3;
 
-const uiPoint = (event: ReactPointerEvent, rect: DOMRect): PreviewPoint => ({
-  x: event.clientX - rect.left,
-  y: event.clientY - rect.top,
-});
-
-const compositionPoint = (
-  point: PreviewPoint,
-  rect: DOMRect,
-  state: Pick<TimelineState, 'width' | 'height'>,
-): PreviewPoint => ({
-  x: rect.width > 0 ? point.x / rect.width * state.width : 0,
-  y: rect.height > 0 ? point.y / rect.height * state.height : 0,
+const clientPoint = (event: ReactPointerEvent): PreviewPoint => ({
+  x: event.clientX,
+  y: event.clientY,
 });
 
 const EDGE_HANDLES = new Set<string>(['crop-n', 'crop-s', 'crop-e', 'crop-w']);
@@ -239,14 +231,17 @@ export function PreviewTransformOverlay({
     const root = rootRef.current;
     if (!gesture || !root || gesture.pointerId !== event.pointerId) return;
     const rect = root.getBoundingClientRect();
-    const currentUi = uiPoint(event, rect);
-    const currentComposition = compositionPoint(currentUi, rect, state);
-    const delta = { x: currentUi.x - gesture.startUi.x, y: currentUi.y - gesture.startUi.y };
+    const currentClient = clientPoint(event);
+    const delta = previewClientDelta(gesture.startClient, currentClient);
     if (!gesture.moved && Math.hypot(delta.x, delta.y) >= DRAG_THRESHOLD) gesture.moved = true;
     if (!gesture.moved) return;
 
+    const previewSize = { width: rect.width, height: rect.height };
+    const current = previewPointerFromClient(currentClient, rect, state);
+    const start = previewPointerFromClient(gesture.startClient, rect, state);
+
     if (gesture.mode === 'move') {
-      const moved = movePreviewTransform(gesture.transform, delta, gesture.previewSize);
+      const moved = movePreviewTransform(gesture.transform, delta, previewSize);
       queueValues({ item: gesture.item, localFrame: gesture.localFrame, values: moved });
     } else if (gesture.mode === 'scale') {
       queueValues({
@@ -255,8 +250,8 @@ export function PreviewTransformOverlay({
         values: uniformScaleAxesPreviewTransform(
           gesture.transform,
           gesture.center,
-          gesture.startComposition,
-          currentComposition,
+          start.composition,
+          current.composition,
         ),
       });
     } else if (gesture.mode === 'crop-edge' && gesture.edge) {
@@ -264,7 +259,7 @@ export function PreviewTransformOverlay({
         state,
         gesture.transform,
         gesture.startCrop,
-        currentComposition,
+        current.composition,
         gesture.edge,
       );
       queueValues({
@@ -282,8 +277,8 @@ export function PreviewTransformOverlay({
           rotation: rotatePreviewTransform(
             gesture.transform.rotation,
             gesture.center,
-            gesture.startComposition,
-            currentComposition,
+            start.composition,
+            current.composition,
           ),
         },
       });
@@ -297,8 +292,8 @@ export function PreviewTransformOverlay({
     const rect = root.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     event.currentTarget.focus({ preventScroll: true });
-    const pointUi = uiPoint(event, rect);
-    const pointComposition = compositionPoint(pointUi, rect, state);
+    const pointClient = clientPoint(event);
+    const { ui: pointUi, composition: pointComposition } = previewPointerFromClient(pointClient, rect, state);
     const modeFromHandle = handleMode(event.target);
     let candidate = selectedCandidate;
     let mode: GestureMode = modeFromHandle?.mode ?? 'move';
@@ -326,17 +321,14 @@ export function PreviewTransformOverlay({
     playerRef.current?.pause();
     setFrame(Math.round(playerRef.current?.getCurrentFrame() ?? frame));
     event.currentTarget.setPointerCapture(event.pointerId);
-    const geometry = previewCandidateGeometry(state, candidate);
     gestureRef.current = {
       pointerId: event.pointerId,
       item: candidate.item,
       mode,
       edge,
       startCrop: candidate.item.transform?.crop,
-      startUi: pointUi,
-      startComposition: pointComposition,
-      center: geometry.center,
-      previewSize: { width: rect.width, height: rect.height },
+      startClient: pointClient,
+      center: { x: state.width / 2, y: state.height / 2 },
       transform: candidate.transform,
       localFrame: candidate.localFrame,
       moved: false,
@@ -381,12 +373,15 @@ export function PreviewTransformOverlay({
     const dx = top.x - selection.center.x;
     const dy = top.y - selection.center.y;
     const length = Math.hypot(dx, dy) || 1;
-    const compositionOffset = previewSize.height > 0 ? 28 * state.height / previewSize.height : 28;
+    const previewScale = previewSize.width > 0 && previewSize.height > 0
+      ? Math.min(previewSize.width / state.width, previewSize.height / state.height)
+      : 0;
+    const compositionOffset = previewScale > 0 ? 28 / previewScale : 28;
     return {
       stem: top,
       handle: { x: top.x + dx / length * compositionOffset, y: top.y + dy / length * compositionOffset },
     };
-  }, [previewSize.height, selection, state.height]);
+  }, [previewSize.height, previewSize.width, selection, state.height, state.width]);
 
   const percentPosition = (point: PreviewPoint) => ({
     left: `${point.x / state.width * 100}%`,

@@ -4,7 +4,7 @@
 // ① The visible layer is always the entire canvas size (MediaFill width/height 100%);
 // ② ClipWrapper's clip-path inset first cuts the layer, translate/rotate/scale and then moves it as a whole.
 // And translate% is based on the size of the untransformed layer (=canvas), and scale is around the center of the layer.
-import type { ClipCrop, ClipTransform } from './types';
+import type { FlexCrop, ClipTransform } from './types';
 
 /** Canvas fractional rectangle: x/y is the upper left corner, w/h is the size, both 0..1. */
 export interface SlotRect {
@@ -119,7 +119,7 @@ export function placeInSlot(
   const cy = top + hf / 2;
   const tx = slotCx - (0.5 + (cx - 0.5) * scale);
   const ty = slotCy - (0.5 + (cy - 0.5) * scale);
-  const crop: ClipCrop | undefined = wf < 1 || hf < 1
+  const crop: FlexCrop | undefined = wf < 1 || hf < 1
     ? {
       left: round(left, 6),
       top: round(top, 6),
