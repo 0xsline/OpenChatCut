@@ -315,6 +315,7 @@ const overrides: Record<string, string> = {
   'Whisper Base（约 80MB · 均衡）': 'Whisper Base (circa 80MB · bilanciato)',
   'Whisper Small（约 250MB · 推荐）': 'Whisper Small (circa 250MB · consigliato)',
   'Whisper Medium（约 1.1GB · 精度最高）': 'Whisper Medium (circa 1,1GB · piu accurato)',
+  'Whisper Large v3 Turbo（约 1.1GB · 多语言最强）': 'Whisper Large v3 Turbo (circa 1,1GB · migliore multilingue)',
   '本地智能模型': 'Modelli intelligenti locali',
   '模型不会自动安装。安装后，节拍与音乐语义分析只在本机运行。': 'I modelli non si installano automaticamente. Dopo l’installazione, analisi ritmo e semantica musicale girano solo in locale.',
   '无法读取模型包列表：{err}': 'Impossibile leggere pacchetti modello: {err}',
