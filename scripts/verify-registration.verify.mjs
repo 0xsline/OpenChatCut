@@ -40,4 +40,19 @@ assert.deepEqual(
 const staleExclusions = [...EXCLUDED.keys()].filter((file) => !tracked.includes(file));
 assert.deepEqual(staleExclusions, [], `EXCLUDED names files that are not tracked verifies: ${staleExclusions.join(', ')}`);
 
+// The reverse direction: every verify a script names must be a tracked file.
+// .gitignore excludes /scripts/ wholesale, so a new scripts/*.verify.* can run
+// locally, get registered, and still be silently absent from every commit —
+// CI then dies with MODULE_NOT_FOUND on a file that exists on the author's
+// machine. Existence on disk is not the bar; being tracked is.
+// tsx before ts: alternation takes the first branch that matches, so `ts`
+// listed first clips every `.verify.tsx` token to a nonexistent `.verify.ts`.
+const registered = [...allCommands.matchAll(/\S+\.verify\.(?:tsx|mjs|ts)(?=\s|$)/g)].map((m) => m[0]);
+const untracked = [...new Set(registered)].filter((file) => !tracked.includes(file));
+assert.deepEqual(
+  untracked,
+  [],
+  `package.json scripts run verify files git does not track (check .gitignore):\n  ${untracked.join('\n  ')}`,
+);
+
 console.log(`verify-registration.verify: all ${tracked.length} tracked verify files are registered`);

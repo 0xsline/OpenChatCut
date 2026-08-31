@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT_DIR = join(ROOT, 'public', 'whisper-cli');
@@ -63,6 +63,51 @@ async function extractArchive(archive, outDir) {
 
 function sha256Of(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
+}
+
+// Find `executable` anywhere under `dir`. Depth-first, and it must backtrack:
+// the old `return walk(full)` on the first subdirectory gave up on all later
+// siblings, so an archive listing any other directory first would report
+// "not found".
+export async function findExecutable(dir, executable) {
+  const { readdir } = await import('node:fs/promises');
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() && entry.name === executable) return join(dir, entry.name);
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const hit = await findExecutable(join(dir, entry.name), executable);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// Bring the executable's WHOLE directory up to `targetDir`, not just the
+// executable. The Windows archive nests everything under Release/, and moving
+// only whisper-cli.exe out of it left ggml.dll, whisper.dll and the nine
+// ggml-cpu-*.dll variants behind. Windows resolves a process's DLLs from the
+// directory of the executable first, and native-asr-worker.ts spawns the binary
+// with no cwd, so the exe could not start at all: verified on a windows-latest
+// runner, `whisper-cli.exe --help` exits 127. That is issue #120 — Windows local
+// transcription was never slow, it never ran. Linux has the same shape
+// (libwhisper.so beside the binary, found through an $ORIGIN RUNPATH).
+export async function flattenExecutableDir(targetDir, executable) {
+  const { readdir } = await import('node:fs/promises');
+  const found = await findExecutable(targetDir, executable);
+  if (!found) throw new Error(`${executable} not found under ${targetDir}`);
+  const sourceDir = dirname(found);
+  if (sourceDir !== targetDir) {
+    for (const name of await readdir(sourceDir)) {
+      const to = join(targetDir, name);
+      await rm(to, { recursive: true, force: true });
+      await rename(join(sourceDir, name), to);
+    }
+    await rm(sourceDir, { recursive: true, force: true });
+  }
+  const binPath = join(targetDir, executable);
+  if (!existsSync(binPath)) throw new Error(`${executable} missing after flatten: ${binPath}`);
+  return binPath;
 }
 
 async function buildFromSource(srcDir, buildDir, platformKey) {
@@ -144,22 +189,9 @@ async function main() {
     console.log(`[whisper-cli] downloading ${url}`);
     await download(url, archive);
     await extractArchive(archive, targetDir);
-    // Official archives contain the CLI at a nested path; flatten the first match.
-    const { readdir } = await import('node:fs/promises');
-    const walk = async (dir) => {
-      for (const name of await readdir(dir, { withFileTypes: true })) {
-        const full = join(dir, name.name);
-        if (name.isDirectory()) return walk(full);
-        if (name.name === spec.executable) return full;
-      }
-      return null;
-    };
-    const found = await walk(targetDir);
-    if (!found || !existsSync(found)) throw new Error(`whisper-cli executable not found in ${spec.asset}`);
-    if (found !== binPath) {
-      await rm(binPath, { force: true });
-      await rename(found, binPath);
-    }
+    // Official archives nest the CLI and its libraries together; bring that
+    // whole directory up so the binary keeps its DLLs / shared objects.
+    await flattenExecutableDir(targetDir, spec.executable);
     await rm(archive, { force: true });
   }
   const bytes = await readFile(binPath);
@@ -168,7 +200,11 @@ async function main() {
   console.log(`[whisper-cli] ${platformKey} ready at ${binPath} (${bytes.length} bytes)`);
 }
 
-main().catch((error) => {
-  console.error(`[whisper-cli] ${error.message}`);
-  process.exitCode = 1;
-});
+// Only provision when invoked directly, so the verify can import the flatten
+// helpers without triggering a download.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`[whisper-cli] ${error.message}`);
+    process.exitCode = 1;
+  });
+}

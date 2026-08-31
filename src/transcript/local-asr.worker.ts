@@ -7,7 +7,6 @@ import type {
   AsrChunk, AsrResult, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
 } from './local-asr-types';
 import { localAsrLoadError, localAsrModelHosts } from './local-asr-model-source';
-import { patchWhisperWordTimestampModel, type WhisperTimestampModel } from './whisper-word-timestamps';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
 
 const MAX_AUDIO_SAMPLES = ASR_INFERENCE_CONTRACT.maxAudioSeconds
@@ -72,9 +71,13 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
           )), LOAD_ATTEMPT_TIMEOUT_MS);
         }),
       ]);
-      const pipelineInstance = next as AutomaticSpeechRecognitionPipeline;
-      patchWhisperWordTimestampModel(pipelineInstance.model as unknown as WhisperTimestampModel);
-      asr = pipelineInstance;
+      // Word timestamps need the decoder prefix skipped before DTW and the
+      // sequence trimmed to match. transformers.js did neither through 3.8.1,
+      // so this used to monkey-patch _extract_token_timestamps. 4.x does both
+      // natively — it takes a num_input_ids argument and passes init_tokens.length
+      // at every call site — and no longer exports the dynamic_time_warping the
+      // patch was built on. The library owns this now.
+      asr = next as AutomaticSpeechRecognitionPipeline;
     } catch (error) {
       throw localAsrLoadError(error);
     }

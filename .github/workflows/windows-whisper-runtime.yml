@@ -1,0 +1,161 @@
+# Does the Windows whisper-cli we ship actually run?
+#
+# scripts/sync-whisper-cli.mjs downloads the official whisper.cpp archive and
+# then flattens whisper-cli.exe out of its Release/ directory, leaving every
+# ggml*.dll behind in Release/. Windows resolves a process's DLLs from the
+# directory of the executable first, and desktop/native-asr-worker.ts spawns the
+# binary with no cwd, so the exe should not be able to load ggml.dll at all —
+# which would explain issue #120 ("Any size local Whisper have error", a bare
+# numeric failure on Windows).
+#
+# That is a hypothesis formed on macOS, where the Windows binary cannot be run.
+# This job settles it on a real Windows machine: it provisions the binary
+# exactly as the app does, prints the resulting layout, and then executes it.
+name: Windows whisper runtime
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-whisper-runtime.yml'
+      - 'scripts/sync-whisper-cli.mjs'
+      - 'server/media-binaries.ts'
+      - 'desktop/native-asr-worker.ts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-whisper-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    name: whisper-cli.exe loads its DLLs
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Provision whisper-cli the way the app does
+        shell: bash
+        run: node scripts/sync-whisper-cli.mjs
+
+      - name: Show the layout that produces
+        shell: bash
+        run: |
+          echo "--- public/whisper-cli/win32-x64 ---"
+          ls -la public/whisper-cli/win32-x64/
+          echo "--- DLLs beside the executable ---"
+          ls public/whisper-cli/win32-x64/*.dll 2>/dev/null || echo "(none — this is the suspected fault)"
+          echo "--- DLLs anywhere under it ---"
+          find public/whisper-cli/win32-x64 -name '*.dll' | head -20
+
+      # The real test. `--help` needs no model and no audio: it only has to get
+      # far enough to load the ggml DLLs. An exit code here is the answer.
+      - name: Run whisper-cli.exe --help
+        id: run
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          ./public/whisper-cli/win32-x64/whisper-cli.exe --help > out.txt 2> err.txt
+          code=$?
+          echo "exit=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "--- stdout ---"; head -20 out.txt
+          echo "--- stderr ---"; head -20 err.txt
+          exit 0
+
+      # Negative control. Without it a green job proves only "the exe runs",
+      # not "it runs BECAUSE the DLLs are beside it" — and a future refactor
+      # could re-nest them while this job stayed green for an unrelated reason.
+      - name: Re-nesting the DLLs must break it again
+        shell: bash
+        run: |
+          dir=public/whisper-cli/win32-x64
+          mkdir -p "$dir/Release"
+          mv "$dir"/*.dll "$dir/Release/"
+          set +e
+          ./$dir/whisper-cli.exe --help > /dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli.exe still ran with no DLLs beside it — this job is not testing what it claims." >&2
+            exit 1
+          fi
+          echo "exit $code with the DLLs re-nested: the flattened layout is what makes it start."
+
+      - name: Verdict
+        shell: bash
+        run: |
+          code="${{ steps.run.outputs.exit }}"
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli.exe ran (exit 0) — the flattened layout is fine on Windows."
+          else
+            echo "whisper-cli.exe failed with exit $code — it cannot start where we put it." >&2
+            echo "Issue #120 reports transcription failing with a bare number on Windows." >&2
+            exit 1
+          fi
+
+  linux:
+    # Same shape, same fault: the ubuntu archive nests everything under
+    # whisper-bin-ubuntu-x64/, so moving only the executable out left
+    # libwhisper.so and libggml.so behind, and these binaries find their
+    # libraries through an $ORIGIN RUNPATH relative to the executable.
+    name: whisper-cli loads its shared objects
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Provision whisper-cli the way the app does
+        run: node scripts/sync-whisper-cli.mjs
+
+      - name: Show the layout that produces
+        run: |
+          ls -la public/whisper-cli/linux-x64/
+          echo "--- shared objects beside the executable ---"
+          ls public/whisper-cli/linux-x64/*.so* 2>/dev/null || echo "(none — the executable cannot resolve its libraries)"
+
+      - name: Run whisper-cli --help
+        id: run
+        continue-on-error: true
+        run: |
+          set +e
+          ./public/whisper-cli/linux-x64/whisper-cli --help > out.txt 2> err.txt
+          code=$?
+          echo "exit=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "--- stderr ---"; head -20 err.txt
+          exit 0
+
+      # The pre-fix layout was never run on a Linux runner, so prove the same
+      # mechanism here rather than arguing it from the archive's shape: put the
+      # shared objects back in a subdirectory and the binary must stop working.
+      - name: Re-nesting the shared objects must break it again
+        run: |
+          dir=public/whisper-cli/linux-x64
+          mkdir -p "$dir/nested"
+          mv "$dir"/*.so* "$dir/nested/"
+          set +e
+          ./$dir/whisper-cli --help > /dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli still ran with no shared objects beside it — this job is not testing what it claims." >&2
+            exit 1
+          fi
+          echo "exit $code with the shared objects re-nested: the flattened layout is what makes it start."
+
+      - name: Verdict
+        run: |
+          code="${{ steps.run.outputs.exit }}"
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli ran (exit 0)."
+          else
+            echo "whisper-cli failed with exit $code — it cannot start where we put it." >&2
+            exit 1
+          fi
