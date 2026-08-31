@@ -3,6 +3,7 @@ import {
   cancelEditorCallsForOwner,
   connectedProjectIds,
   editorBinding,
+  editSessionOwnerMatches,
   editorStatuses,
   ExternalEditorCallError,
   invokeEditorTool,
@@ -141,9 +142,94 @@ assert.deepEqual(await ownerlessListPromise, [{
   stale: false,
   ownerOnline: false,
   orphaned: true,
+  recoveryPending: false,
   recoveryActions: ['resume', 'discard'],
   ownedByCurrentTransport: false,
 }], 'a persisted draft without an in-memory transport owner is recoverable after broker restart');
+
+const recoveryPromise = invokeEditorTool(
+  'recovery-owner-one',
+  currentBinding,
+  'recover_edit_session',
+  { editSessionId: 'persisted-ownerless-draft', action: 'resume' },
+);
+assert.throws(
+  () => invokeEditorTool(
+    'recovery-owner-two',
+    currentBinding,
+    'recover_edit_session',
+    { editSessionId: 'persisted-ownerless-draft', action: 'resume' },
+  ),
+  (error) => error instanceof ExternalEditorCallError
+    && error.outcome === 'rejected'
+    && error.message.includes('already being recovered'),
+  'an orphan is reserved atomically before the first recovery reaches the editor',
+);
+const recoveryCall = await nextEditorCall(
+  projectId,
+  editorId,
+  currentBinding.baseRevision,
+  new AbortController().signal,
+  registrationCapability,
+);
+assert(recoveryCall);
+assert.equal(settleEditorCall(recoveryCall.id, 'applied', {
+  editSessionId: 'persisted-ownerless-draft',
+  status: 'drafting',
+}, registrationCapability), true);
+await recoveryPromise;
+assert.equal(editSessionOwnerMatches(
+  'recovery-owner-one',
+  currentBinding,
+  'persisted-ownerless-draft',
+), true);
+
+assert.equal(cancelEditorCallsForOwner('recovery-owner-one'), 0);
+const failedRecovery = invokeEditorTool(
+  'recovery-owner-two',
+  currentBinding,
+  'recover_edit_session',
+  { editSessionId: 'persisted-ownerless-draft', action: 'resume' },
+);
+const failedRecoveryCall = await nextEditorCall(
+  projectId,
+  editorId,
+  currentBinding.baseRevision,
+  new AbortController().signal,
+  registrationCapability,
+);
+assert(failedRecoveryCall);
+assert.equal(settleEditorCall(
+  failedRecoveryCall.id,
+  'failed',
+  'simulated recovery failure',
+  registrationCapability,
+), true);
+await assert.rejects(failedRecovery, hasOutcome('failed'));
+const retriedRecovery = invokeEditorTool(
+  'recovery-owner-three',
+  currentBinding,
+  'recover_edit_session',
+  { editSessionId: 'persisted-ownerless-draft', action: 'resume' },
+);
+const retriedRecoveryCall = await nextEditorCall(
+  projectId,
+  editorId,
+  currentBinding.baseRevision,
+  new AbortController().signal,
+  registrationCapability,
+);
+assert(retriedRecoveryCall);
+assert.equal(settleEditorCall(retriedRecoveryCall.id, 'applied', {
+  editSessionId: 'persisted-ownerless-draft',
+  status: 'drafting',
+}, registrationCapability), true);
+await retriedRecovery;
+assert.equal(editSessionOwnerMatches(
+  'recovery-owner-three',
+  currentBinding,
+  'persisted-ownerless-draft',
+), true, 'a failed recovery releases its claim for another authenticated transport');
 
 await import('./mcp.verify.ts');
 await import('./broker-poll-refresh.verify.ts');

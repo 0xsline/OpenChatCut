@@ -1,4 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import {
+  EXTERNAL_AGENT_CONTROL_BODY_LIMIT_BYTES,
+  EXTERNAL_AGENT_RESULT_BODY_LIMIT_BYTES,
+} from '../../shared/external-agent-limits.ts';
 import type {
   nextEditorCall,
   nextEditorCancellation,
@@ -20,7 +24,6 @@ import {
 } from '../external-agent/import-token.ts';
 import type { claimBrowserProjectOwnership } from '../external-agent/project-edit-ownership.ts';
 
-const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const REGISTRATION_CAPABILITY_HEADER = 'x-openchatcut-editor-registration';
 
 function registrationCapability(req: IncomingMessage, required: boolean): string | null {
@@ -49,13 +52,19 @@ export interface BridgeOperations {
   mcpTools: typeof mcpTools;
 }
 
-export async function readBridgeJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+export async function readBridgeJson(
+  req: IncomingMessage,
+  options: { resultBody?: boolean } = {},
+): Promise<Record<string, unknown>> {
+  const maxBodyBytes = options.resultBody
+    ? EXTERNAL_AGENT_RESULT_BODY_LIMIT_BYTES
+    : EXTERNAL_AGENT_CONTROL_BODY_LIMIT_BYTES;
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.length;
-    if (total > MAX_BODY_BYTES) throw new Error('request body too large');
+    if (total > maxBodyBytes) throw new Error('request body too large');
     chunks.push(buffer);
   }
   const text = Buffer.concat(chunks).toString('utf8') || '{}';
@@ -248,7 +257,7 @@ async function settleBridgeCall(
   res: ServerResponse,
   operations: BridgeOperations,
 ): Promise<void> {
-  const body = await readBridgeJson(req);
+  const body = await readBridgeJson(req, { resultBody: true });
   if (typeof body.id !== 'string') throw new Error('invalid tool result');
   const outcome = validOutcome(body.outcome)
     ? body.outcome

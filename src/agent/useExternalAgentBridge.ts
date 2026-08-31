@@ -18,8 +18,9 @@ import {
   projectStoreRemoteAvailable,
   type BrowserProjectOwnership,
 } from '../persist/projectStoreTransport';
-import { redactTextForAgentRuntime, sanitizeJsonForArtifact } from './runtime-artifact';
-import { TOOL_ARTIFACT_THRESHOLD } from './runtime-ledger';
+import { redactTextForAgentRuntime } from './runtime-artifact';
+import { projectExternalReply } from './external-result-projection';
+export { projectExternalReply } from './external-result-projection';
 import { externalBridgeCanStart, type ExternalBridgeReadinessToken } from './external-bridge-readiness';
 import {
   EditorBridgeRequestError,
@@ -76,36 +77,6 @@ function retryDelay(): Promise<void> {
   return promise;
 }
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
-
-export function projectExternalReply(value: unknown): unknown {
-  const imagePayloads = value
-    && typeof value === 'object'
-    && !Array.isArray(value)
-    && Array.isArray((value as Record<string, unknown>).__images)
-    ? (value as Record<string, unknown>).__images as unknown[]
-    : [];
-  const source = imagePayloads.length
-    ? Object.fromEntries(Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => key !== '__images'))
-    : value;
-  const sanitized = sanitizeJsonForArtifact(source);
-  if (!sanitized) {
-    throw new ExternalEditSessionOutcomeError(
-      'failed',
-      'The external result could not be serialized safely.',
-    );
-  }
-  if (sanitized.originalChars > TOOL_ARTIFACT_THRESHOLD) {
-    throw new ExternalEditSessionOutcomeError(
-      'failed',
-      'The external result was too large and no recoverable artifact reference was available.',
-    );
-  }
-  const projected = JSON.parse(sanitized.body) as unknown;
-  return imagePayloads.length && projected && typeof projected === 'object' && !Array.isArray(projected)
-    ? { ...projected as Record<string, unknown>, __images: imagePayloads }
-    : projected;
-}
 
 function failedOutcome(
   error: unknown,

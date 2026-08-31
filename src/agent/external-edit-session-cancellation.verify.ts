@@ -41,6 +41,34 @@ const projectedImageReply = projectExternalReply({
 assert.equal(projectedImageReply.note, 'frame');
 assert.equal(projectedImageReply.__images?.[0]?.base64?.length, 40_000,
   'browser-to-server projection preserves image bytes outside the text size guard');
+const projectedFrameBatch = projectExternalReply({
+  note: 'frames',
+  __images: Array.from({ length: 8 }, (_, frame) => ({
+    frame,
+    base64: 'a'.repeat(300_000),
+    mimeType: 'image/jpeg',
+  })),
+}) as { __images?: unknown[] };
+assert.equal(projectedFrameBatch.__images?.length, 8,
+  'the maximum frame batch remains below the dedicated bridge result budget');
+assert.throws(
+  () => projectExternalReply({
+    __images: [{ base64: 'a'.repeat(13 * 1024 * 1024), mimeType: 'image/jpeg' }],
+  }),
+  /image payload exceeds/i,
+  'oversized embedded images fail before the bridge request is sent',
+);
+assert.throws(
+  () => projectExternalReply({
+    __images: [{
+      base64: 'jpeg-data',
+      mimeType: 'image/jpeg',
+      note: '图'.repeat(5 * 1024 * 1024),
+    }],
+  }),
+  /image payload exceeds/i,
+  'the client budget counts UTF-8 bytes instead of JavaScript string characters',
+);
 const cancellationBeforeRegister = new ExternalCallCancellationRegistry();
 cancellationBeforeRegister.cancel('late-call', 'transport closed');
 assert.equal(cancellationBeforeRegister.tombstoneCount, 1);

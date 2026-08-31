@@ -35,7 +35,9 @@ import { MCP_CONTROL_TOOL_NAMES, MCP_CONTROL_TOOLS } from './mcp-controls.ts';
 import { offlineExternalToolSchemas } from './offline-tools.ts';
 import type { OfflineEditorBinding } from './offline-runtime.ts';
 import { createExternalProject, listExternalProjects } from './projects.ts';
+import { mcpServerInstructions } from './mcp-instructions.ts';
 import { registerMcpPrompts } from './mcp-prompts.ts';
+import { mcpSessionStatus } from './mcp-session-status.ts';
 import {
   activateMcpToolExposure,
   activatedMcpToolNames,
@@ -64,7 +66,6 @@ const PROJECT_SELECTOR = {
   type: 'string',
   description: 'OpenChatCut project id. It must match the project bound to this MCP transport session.',
 };
-
 
 interface McpSession extends McpBindingSession {
   server: Server | null;
@@ -117,19 +118,15 @@ function currentToolList(session: McpSession): Tool[] {
 }
 
 function mcpStatus(session: McpSession): Record<string, unknown> {
-  const mode = bindingMode(session);
-  const connected = connectedProjectIds();
-  return {
-    connectedProjectIds: connected,
+  const tools = mcpTools(session);
+  return mcpSessionStatus({
+    connectedProjectIds: connectedProjectIds(),
     editors: editorStatuses(),
-    sessionBinding: session.binding ?? session.offline?.binding() ?? null,
-    bindingMode: mode,
-    availableToolTier: mode === 'offline' || (!mode && !connected.length) ? 'server-direct' : 'browser',
-    offlineFallback: 'Target an existing stored project with no browser owner, then begin with approvalMode="auto".',
-    browserRequiredFor: ['visual/canvas inspection', 'generation', 'upload', 'network', 'preset', 'render', 'export', 'manual approval'],
-    toolCount: mcpTools(session).length,
-    ...mcpToolExposureStatus(session.exposure, mcpTools(session).length, fullMcpTools(session).length),
-  };
+    binding: session.binding ?? session.offline?.binding() ?? null,
+    bindingMode: bindingMode(session),
+    toolCount: tools.length,
+    exposure: mcpToolExposureStatus(session.exposure, tools.length, fullMcpTools(session).length),
+  });
 }
 
 async function callControlTool(
@@ -248,25 +245,12 @@ async function activateMcpResult(
     : result;
 }
 
-
-
 function makeServer(baseUrl: string, session: McpSession): Server {
   const server = new Server(
     { name: 'openchatcut', version: '1.0.0' },
     {
       capabilities: { tools: { listChanged: true }, prompts: {} },
-      instructions: [
-        `OpenChatCut external skill baseline: ${OPENCHATCUT_SKILL_BASELINE}. Update with npx skills update openchatcut when the installed skill is older.`,
-        'Bind this MCP transport with target_project before editing. A connected browser is preferred; an existing stored project can use the offline fallback when no browser owns it.',
-        'The target response and openchatcut_status report bindingMode. Offline bindings expose only server-direct data tools and require approvalMode="auto".',
-        session.exposure.mode === 'progressive'
-          ? 'This client negotiated progressive tool exposure. Call ToolSearch for list_edit_sessions and recover_edit_session before session recovery; tools/list_changed is sent when the visible set grows.'
-          : 'This client uses the compatibility tool surface. All currently available tools are listed.',
-        'Call begin_edit_session first, pass editSessionId to every editor tool, then call review_edit_session. Do not claim success until status is applied.',
-        'Manual approval and visual/canvas inspection, generation, upload, network, preset, render, and export tools require opening the returned editorUrl.',
-        'Offline review atomically commits the complete draft. A browser takeover or stored-project change makes the session stale with no partial edit.',
-        'If a session becomes stale, cancelled, or failed, start a new MCP session instead of reusing it.',
-      ].join(' '),
+      instructions: mcpServerInstructions(OPENCHATCUT_SKILL_BASELINE, session.exposure.mode),
     },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentToolList(session) }));
@@ -341,7 +325,7 @@ function evictSession(
 }
 
 export function pruneMcpSessions(now = Date.now()): void {
-  for (const [id, session] of [...sessions]) {
+  for (const [id, session] of sessions) {
     if (now - session.lastUsed > MCP_SESSION_IDLE_LIMIT_MS) {
       evictSession(id, 'cancelled', 'MCP transport session expired while the editor call was pending.');
     }
@@ -470,7 +454,7 @@ export function setMcpSessionLastUsedForTest(id: string, lastUsed: number): void
 export async function resetMcpSessionsForTest(): Promise<void> {
   const disposals = [...sessions.values()].flatMap((session) =>
     session.offline ? [session.offline.dispose()] : []);
-  for (const id of [...sessions.keys()]) evictSession(id);
+  for (const id of sessions.keys()) evictSession(id);
   await Promise.all(disposals);
 }
 
