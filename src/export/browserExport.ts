@@ -4,6 +4,8 @@ import type { TimelineCompositionProps } from '../editor/TimelineComposition';
 import { timelineDuration, type ProjectDoc, type TimelineState } from '../editor/types';
 import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
+// The local renderer's per-frame budget, shared so both engines agree.
+import { DEFAULT_RENDER_TIMEOUT_MS } from '../../remotion/render-timeout.mjs';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
 
@@ -210,6 +212,15 @@ async function executeBrowserRender(
       onProgress,
       hardwareAcceleration: 'prefer-hardware',
       pageResponsiveness: 'medium',
+      // Without this, @remotion/web-renderer falls back to Remotion's 30s
+      // default and delayRender reports 30s minus its own 2s buffer — the
+      // "not cleared after 28000ms" failure users hit on sources that are
+      // merely slow to open (large or long-GOP files, software HEVC decode,
+      // cold disk), while the same project rendered fine on the local engine.
+      // This bounds one frame, not the export: it is a hang guard, and it is
+      // also what triggers Remotion's one-shot frame retry. See
+      // remotion/render-timeout.mjs for why the budget is what it is.
+      delayRenderTimeoutInMilliseconds: DEFAULT_RENDER_TIMEOUT_MS,
       videoBitrate: config.videoBitrate,
       audioBitrate: 'high',
       transparent: false,
