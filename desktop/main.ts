@@ -1,4 +1,5 @@
 import './chdir-first.ts';
+import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -425,9 +426,24 @@ async function boot(): Promise<void> {
  * app.exit() alone has been observed to wedge on Windows while a crashed
  * renderer is mid-reload: the v0.2.12 smoke printed its failure, called
  * app.exit(1), and the process survived until the CI step killed it at 420s.
- * A smoke process has nothing to clean up, so follow with process.exit.
+ * The next run showed process.exit can wedge the same way (the watchdog left
+ * no log at all). A smoke process has nothing to clean up, so before trying
+ * the in-process exits, arm an EXTERNAL kill that works even when our own
+ * exit paths are stuck.
  */
 function exitSmoke(code: number): void {
+  // Failure only: taskkill terminates with its own nonzero status, which
+  // must never be able to turn a SMOKE-OK exit 0 into a failure.
+  if (code !== 0 && process.platform === 'win32') {
+    try {
+      spawn('taskkill', ['/T', '/F', '/PID', String(process.pid)], {
+        detached: true,
+        stdio: 'ignore',
+      }).unref();
+    } catch {
+      // The in-process exits below remain the only path.
+    }
+  }
   app.exit(code);
   process.exit(code);
 }

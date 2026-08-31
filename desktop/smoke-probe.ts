@@ -4,6 +4,9 @@ import { runDesktopMcpRecoverySmoke } from './smoke-mcp-recovery.ts';
 import { runDesktopRendererRecoverySmoke } from './smoke-renderer-recovery.ts';
 
 const RENDER_DRAIN_MS = 500;
+// Under the app's 240s watchdog, over any plausible healthy render (previous
+// green runs finished the whole smoke in ~3 minutes).
+const RENDER_DEADLINE_MS = 180_000;
 
 export async function runDesktopSmokeProbe(
   origin: string,
@@ -81,26 +84,36 @@ export async function runDesktopSmokeProbe(
     throw new Error('desktop native inference preload is unavailable');
   }
   console.log('[smoke] desktop native inference preload ok');
+  if (render) {
+    // The render runs BEFORE the renderer-recovery phase: on the v0.2.12
+    // windows-latest run the app wedged after the deliberate renderer crashes
+    // so hard that neither the 240s watchdog's process.exit nor app.exit ran —
+    // no log line, killed externally at 420s. Destructive probes go last so
+    // the release-gating render is not downstream of them, and the fetch
+    // carries its own deadline so a slow or stuck render names itself instead
+    // of relying on the watchdog.
+    console.log('[smoke] render-still starting');
+    const state = { fps: 30, width: 640, height: 360, items: [], selectedId: null };
+    const response = await fetch(`${origin}/render-still`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: origin,
+        'Sec-Fetch-Site': 'same-origin',
+      },
+      body: JSON.stringify({ state, frames: [0] }),
+      signal: AbortSignal.timeout(RENDER_DEADLINE_MS),
+    });
+    if (!response.ok) {
+      throw new Error(`/render-still → HTTP ${response.status}: ${await response.text()}`);
+    }
+    const rendered = (await response.json()) as { frames?: Array<{ base64?: string }> };
+    if (!rendered.frames?.[0]?.base64) throw new Error('/render-still returned no frame');
+    console.log(`[smoke] render-still ok, base64 ${rendered.frames[0].base64.length}B`);
+    // Remotion can emit late DevTools protocol callbacks after the response.
+    await new Promise((resolve) => setTimeout(resolve, RENDER_DRAIN_MS));
+  }
   if (process.env.CC_SMOKE_RENDERER_RECOVERY === '1') {
     await runDesktopRendererRecoverySmoke(win);
   }
-  if (!render) return;
-  const state = { fps: 30, width: 640, height: 360, items: [], selectedId: null };
-  const response = await fetch(`${origin}/render-still`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Origin: origin,
-      'Sec-Fetch-Site': 'same-origin',
-    },
-    body: JSON.stringify({ state, frames: [0] }),
-  });
-  if (!response.ok) {
-    throw new Error(`/render-still → HTTP ${response.status}: ${await response.text()}`);
-  }
-  const rendered = (await response.json()) as { frames?: Array<{ base64?: string }> };
-  if (!rendered.frames?.[0]?.base64) throw new Error('/render-still returned no frame');
-  console.log(`[smoke] render-still ok, base64 ${rendered.frames[0].base64.length}B`);
-  // Remotion can emit late DevTools protocol callbacks after the response.
-  await new Promise((resolve) => setTimeout(resolve, RENDER_DRAIN_MS));
 }
