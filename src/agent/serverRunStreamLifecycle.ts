@@ -269,6 +269,18 @@ function handleSubscriptionError(
   }
 }
 
+/**
+ * Identity fence (issue #125): a late lifecycle callback — abandon or finish —
+ * from a superseded run must not close the CURRENT run's stream or stop its
+ * executor. A cancelled run's stray 403 once tore down the next run mid-flight
+ * and its final answer never reached the chat. When no run is active (recovery
+ * has not adopted one yet) the callback still proceeds, so a stored run that
+ * fails before adoption is settled rather than retried forever.
+ */
+export function lifecycleRunFence(activeRunId: string | null, runId: string): boolean {
+  return activeRunId === null || activeRunId === runId;
+}
+
 function useAbandonStaleRecovery(
   projectId: string,
   state: ServerRunState,
@@ -277,6 +289,7 @@ function useAbandonStaleRecovery(
   stateRef.current = state;
   return useCallback((runId: string, error: unknown) => {
     const current = stateRef.current;
+    if (!lifecycleRunFence(current.refs.runId.current, runId)) return;
     if (current.refs.staleRecoveryRun.current === runId) return;
     current.refs.staleRecoveryRun.current = runId;
     current.eventSession.close();
@@ -296,6 +309,7 @@ function useFinishRun(
   stateRef.current = state;
   return useCallback(async (runId, status) => {
     const current = stateRef.current;
+    if (!lifecycleRunFence(current.refs.runId.current, runId)) return;
     if (current.refs.terminalRun.current === runId
       || current.refs.finalizingRun.current === runId) return;
     current.refs.finalizingRun.current = runId;

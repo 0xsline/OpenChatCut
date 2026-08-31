@@ -70,9 +70,23 @@ export interface ServerToolExecutorStart {
   readonly recovered: ReadonlyMap<string, RecoveredServerTool>;
 }
 
+/**
+ * Immutable identity of one run: everything a late async continuation needs to
+ * settle with ITS OWN authority. start() replaces the whole object, so
+ * `session === this.session` is the staleness fence. Issue #125: these fields
+ * used to live mutably on the executor, so a tool completing after the next
+ * run started read the NEW run's capability, posted a foreign-authority
+ * /tool-result (HTTP 403), and triggered stale-recovery against the new run.
+ */
+interface RunSession {
+  readonly runId: string;
+  readonly capability: string;
+  readonly claimId: string | null;
+  readonly abort: AbortController;
+}
+
 export class ServerRunToolExecutor {
   private readonly projectId: string;
-  private claimId: string | null = null;
   private readonly requestQueue = new ServerRunToolRequestQueue();
   private callbacks: ServerToolExecutorCallbacks;
   private active = new Set<string>();
@@ -80,9 +94,7 @@ export class ServerRunToolExecutor {
   private activation = new ToolActivation(TOOL_SCHEMAS, []);
   private draft: DraftEngine | null = null;
   private baseDoc: ProjectDoc | null = null;
-  private runId: string | null = null;
-  private capability: string | null = null;
-  private abort: AbortController | null = null;
+  private session: RunSession | null = null;
   private readonly lockManager: ServerRunLockManager | null;
 
   constructor(
@@ -109,49 +121,56 @@ export class ServerRunToolExecutor {
   }
 
   start(input: ServerToolExecutorStart): void {
-    this.claimId = storedClaimIdentity(this.projectId);
-    this.capability = input.capability;
+    this.session = {
+      runId: input.runId,
+      capability: input.capability,
+      claimId: storedClaimIdentity(this.projectId),
+      abort: input.abort,
+    };
     this.active.clear();
     this.recovered = new Map(input.recovered);
     this.activation = this.recoveredActivation(input);
     this.baseDoc = input.baseDoc;
     this.draft = input.draftDoc ? makeDraft(input.draftDoc) : null;
-    this.runId = input.runId;
-    this.abort = input.abort;
     patchStoredServerRun(this.projectId, {
       activeToolNames: this.activation.names(),
     });
   }
 
   stop(): void {
-    this.abort?.abort();
+    this.session?.abort.abort();
+  }
+
+  /** True while `session` is still the run this executor serves. */
+  private current(session: RunSession): boolean {
+    return this.session === session && !session.abort.signal.aborted;
   }
 
   private async claim(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     argsDigest: string,
   ): Promise<ToolClaimResponse | null> {
-    if (!this.capability || !this.claimId) return null;
-    const response = await fetch(`/api/agent-runs/${runId}/tool-claim`, {
+    if (!session.claimId) return null;
+    const response = await fetch(`/api/agent-runs/${session.runId}/tool-claim`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        [SERVER_RUN_CAPABILITY_HEADER]: this.capability,
+        [SERVER_RUN_CAPABILITY_HEADER]: session.capability,
       },
       body: JSON.stringify({
         projectId: this.projectId,
         toolCallId,
         argsDigest,
-        claimId: this.claimId,
+        claimId: session.claimId,
       }),
-      signal: this.abort?.signal,
+      signal: session.abort.signal,
     }).catch(() => null);
     if (response && (response.status === 403
       || response.status === 404
       || response.status === 410)) {
       this.callbacks.abandonRecovery(
-        runId,
+        session.runId,
         permanentServerRunRecoveryError(
           `Server tool claim is permanently unavailable: HTTP ${response.status}`,
         ),
@@ -163,38 +182,38 @@ export class ServerRunToolExecutor {
   }
 
   private async postResult(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     outcome: RecoveredServerTool,
   ): Promise<boolean> {
-    if (!this.capability || !this.claimId) return false;
+    if (!session.claimId) return false;
     const body = outcome.error === undefined
       ? {
         projectId: this.projectId,
         toolCallId,
         argsDigest: outcome.argsDigest,
-        claimId: this.claimId,
+        claimId: session.claimId,
         result: projectServerRunToolResult(outcome.result),
       }
       : {
         projectId: this.projectId,
         toolCallId,
         argsDigest: outcome.argsDigest,
-        claimId: this.claimId,
+        claimId: session.claimId,
         error: outcome.error,
       };
-    const response = await fetch(`/api/agent-runs/${runId}/tool-result`, {
+    const response = await fetch(`/api/agent-runs/${session.runId}/tool-result`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        [SERVER_RUN_CAPABILITY_HEADER]: this.capability,
+        [SERVER_RUN_CAPABILITY_HEADER]: session.capability,
       },
       body: JSON.stringify(body),
-      signal: this.abort?.signal,
+      signal: session.abort.signal,
     }).catch(() => null);
     if (response && permanentToolHttpStatus(response.status)) {
       this.callbacks.abandonRecovery(
-        runId,
+        session.runId,
         permanentServerRunRecoveryError(
           `Server tool result is permanently unavailable: HTTP ${response.status}`,
         ),
@@ -204,27 +223,24 @@ export class ServerRunToolExecutor {
     return response?.ok === true;
   }
 
-  private retry(runId: string, toolCallId: string): void {
+  private retry(session: RunSession, toolCallId: string): void {
     this.active.delete(toolCallId);
-    this.callbacks.retryStream(runId);
+    this.callbacks.retryStream(session.runId);
   }
   private scheduleResultRetry(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     outcome: RecoveredServerTool,
-    sessionAbort = this.abort,
   ): void {
     scheduleServerRunToolResultRetry(
-      () => this.postResult(runId, toolCallId, outcome),
+      () => this.postResult(session, toolCallId, outcome),
       () => clearStoredToolAttempt(this.projectId, toolCallId),
-      () => Boolean(sessionAbort
-        && sessionAbort === this.abort
-        && !sessionAbort.signal.aborted),
+      () => this.current(session),
     );
   }
 
   private async deliverClaimedRecovered(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     argsDigest: string,
     outcome: RecoveredServerTool,
@@ -232,8 +248,8 @@ export class ServerRunToolExecutor {
     const replay = outcome.argsDigest === argsDigest
       ? outcome
       : { argsDigest, error: 'Recovered tool arguments do not match the server request.' };
-    if (!await this.postResult(runId, toolCallId, replay)) {
-      this.scheduleResultRetry(runId, toolCallId, replay);
+    if (!await this.postResult(session, toolCallId, replay)) {
+      this.scheduleResultRetry(session, toolCallId, replay);
       return false;
     }
     clearStoredToolAttempt(this.projectId, toolCallId);
@@ -241,7 +257,7 @@ export class ServerRunToolExecutor {
   }
 
   private async rejectClaimedInterrupted(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     argsDigest: string,
   ): Promise<boolean> {
@@ -249,8 +265,8 @@ export class ServerRunToolExecutor {
       argsDigest,
       error: 'Browser reloaded after this tool began; the operation was not replayed automatically.',
     };
-    if (!await this.postResult(runId, toolCallId, outcome)) {
-      this.scheduleResultRetry(runId, toolCallId, outcome);
+    if (!await this.postResult(session, toolCallId, outcome)) {
+      this.scheduleResultRetry(session, toolCallId, outcome);
       return false;
     }
     clearStoredToolAttempt(this.projectId, toolCallId);
@@ -260,25 +276,24 @@ export class ServerRunToolExecutor {
     runId: string,
     attempts: readonly StoredToolAttempt[],
   ): Promise<void> {
-    const sessionAbort = this.abort;
+    const session = this.session;
+    if (!session || session.runId !== runId) return Promise.resolve();
     return reconcileStoredServerRunToolAttempts({
       projectId: this.projectId,
       runId,
       attempts,
       lockManager: this.lockManager,
-      active: () => Boolean(
-        sessionAbort && sessionAbort === this.abort && !sessionAbort.signal.aborted,
-      ),
-      claim: (attempt) => this.claim(runId, attempt.toolCallId, attempt.argsDigest),
+      active: () => this.current(session),
+      claim: (attempt) => this.claim(session, attempt.toolCallId, attempt.argsDigest),
       recovered: (toolCallId) => this.recovered.get(toolCallId),
-      post: (toolCallId, outcome) => this.postResult(runId, toolCallId, outcome),
+      post: (toolCallId, outcome) => this.postResult(session, toolCallId, outcome),
     });
   }
 
 
 
   private async reportFailure(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     request: BrowserToolRequest,
     error: unknown,
@@ -288,10 +303,10 @@ export class ServerRunToolExecutor {
      *  a failed tool cannot leak into the tools that follow. */
     draftDocBeforeTool?: ProjectDoc,
   ): Promise<boolean> {
-    if (this.abort?.signal.aborted) return false;
+    if (!this.current(session)) return false;
     const message = environmentFailureHint(error);
     const outcome: ServerRunToolAction = {
-      runId: this.runId ?? runId,
+      runId: session.runId,
       toolCallId,
       argsDigest: request.argsDigest,
       name: request.name,
@@ -303,12 +318,13 @@ export class ServerRunToolExecutor {
     if (draftDocBeforeTool) this.draft = makeDraft(draftDocBeforeTool);
     if (persist) {
       await Promise.resolve(this.callbacks.onToolAction(outcome)).catch(() => undefined);
+      if (!this.current(session)) return false;
     }
     const recovered = { name: request.name, argsDigest: request.argsDigest, error: message };
     void captureStoredToolResult(this.projectId, toolCallId, recovered);
     this.recovered.set(toolCallId, recovered);
-    if (!await this.postResult(runId, toolCallId, recovered)) {
-      this.scheduleResultRetry(runId, toolCallId, recovered);
+    if (!await this.postResult(session, toolCallId, recovered)) {
+      this.scheduleResultRetry(session, toolCallId, recovered);
       return false;
     }
     clearStoredToolAttempt(this.projectId, toolCallId);
@@ -316,16 +332,17 @@ export class ServerRunToolExecutor {
   }
 
   private async finishExecution(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     request: BrowserToolRequest,
     result: unknown,
   ): Promise<boolean> {
+    if (!this.current(session)) return false;
     if (!patchStoredServerRun(this.projectId, {
       activeToolNames: this.activation.names(),
     })) {
       return this.reportFailure(
-        runId,
+        session,
         toolCallId,
         request,
         new Error('Browser durable storage could not save the active tool set.'),
@@ -343,8 +360,8 @@ export class ServerRunToolExecutor {
     };
     void captureStoredToolResult(this.projectId, toolCallId, recovered);
     this.recovered.set(toolCallId, recovered);
-    if (!await this.postResult(runId, toolCallId, recovered)) {
-      this.scheduleResultRetry(runId, toolCallId, recovered);
+    if (!await this.postResult(session, toolCallId, recovered)) {
+      this.scheduleResultRetry(session, toolCallId, recovered);
       return false;
     }
     clearStoredToolAttempt(this.projectId, toolCallId);
@@ -352,7 +369,7 @@ export class ServerRunToolExecutor {
   }
 
   private async execute(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     request: BrowserToolRequest,
   ): Promise<boolean> {
@@ -374,21 +391,27 @@ export class ServerRunToolExecutor {
           ctx: {
             ...draftContext(this.callbacks.ctx(), this.draft),
             onToolProgress: (note: string) => {
-              this.callbacks.setLiveTool({ name: request.name, partial: note });
+              if (this.current(session)) {
+                this.callbacks.setLiveTool({ name: request.name, partial: note });
+              }
             },
           },
           settings: this.callbacks.settings(),
           onEvent: (_event: AgentEvent) => undefined,
           toolCallId,
-          signal: this.abort?.signal,
+          signal: session.abort.signal,
         });
       } catch (error) {
-        return this.reportFailure(runId, toolCallId, request, error, true, draftDocBeforeTool);
+        return this.reportFailure(session, toolCallId, request, error, true, draftDocBeforeTool);
       }
+      // The fence that motivated sessions (issue #125): past this await the
+      // next run may own the executor. A stale completion must not touch the
+      // activation, draft, recovered map, chat, or the new run's authority.
+      if (!this.current(session)) return false;
       this.activation = update.activation;
       if (isFailedToolResult(update.execution.result)) {
         return this.reportFailure(
-          runId,
+          session,
           toolCallId,
           request,
           toolFailureReason(update.execution.result),
@@ -397,7 +420,7 @@ export class ServerRunToolExecutor {
         );
       }
       const outcome: ServerRunToolAction = {
-        runId: this.runId ?? runId,
+        runId: session.runId,
         toolCallId,
         argsDigest: request.argsDigest,
         name: request.name,
@@ -415,34 +438,37 @@ export class ServerRunToolExecutor {
         try {
           await this.callbacks.onToolAction(outcome);
         } catch (retryError) {
-          return this.reportFailure(runId, toolCallId, request, retryError, false);
+          return this.reportFailure(session, toolCallId, request, retryError, false);
         }
       }
-      return this.finishExecution(runId, toolCallId, request, update.execution.result);
+      return this.finishExecution(session, toolCallId, request, update.execution.result);
     } finally {
-      this.callbacks.setLiveTool(null);
+      // A stale run's cleanup must not blank the live-tool indicator the
+      // current run is showing.
+      if (this.session === session) this.callbacks.setLiveTool(null);
     }
   }
 
   private async processLocked(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     request: BrowserToolRequest,
   ): Promise<boolean> {
-    const claim = await this.claim(runId, toolCallId, request.argsDigest);
+    const claim = await this.claim(session, toolCallId, request.argsDigest);
+    if (!this.current(session)) return false;
     if (!claim) {
-      this.retry(runId, toolCallId);
+      this.retry(session, toolCallId);
       return false;
     }
     if (!claim.claimed) return false;
     const recovered = this.recovered.get(toolCallId);
     if (recovered) {
       if (!request.admit()) return false;
-      return this.deliverClaimedRecovered(runId, toolCallId, request.argsDigest, recovered);
+      return this.deliverClaimedRecovered(session, toolCallId, request.argsDigest, recovered);
     }
     if (findStoredToolAttempt(this.projectId, toolCallId)) {
       if (!request.admit()) return false;
-      return this.rejectClaimedInterrupted(runId, toolCallId, request.argsDigest);
+      return this.rejectClaimedInterrupted(session, toolCallId, request.argsDigest);
     }
     const durableAttempt = beginStoredToolAttempt(
       this.projectId,
@@ -456,18 +482,18 @@ export class ServerRunToolExecutor {
         : 'Browser durable storage is unavailable; the tool was not executed.';
       const outcome = { name: request.name, argsDigest: request.argsDigest, error };
       this.recovered.set(toolCallId, outcome);
-      if (!await this.postResult(runId, toolCallId, outcome)) {
-        this.scheduleResultRetry(runId, toolCallId, outcome);
+      if (!await this.postResult(session, toolCallId, outcome)) {
+        this.scheduleResultRetry(session, toolCallId, outcome);
         return false;
       }
       clearStoredToolAttempt(this.projectId, toolCallId);
       return true;
     }
-    return this.execute(runId, toolCallId, request);
+    return this.execute(session, toolCallId, request);
   }
 
   private async process(
-    runId: string,
+    session: RunSession,
     toolCallId: string,
     name: string,
     args: Record<string, unknown>,
@@ -480,9 +506,9 @@ export class ServerRunToolExecutor {
     const locked = await withServerRunToolLock(
       this.lockManager,
       this.projectId,
-      runId,
+      session.runId,
       toolCallId,
-      () => this.processLocked(runId, toolCallId, request),
+      () => this.processLocked(session, toolCallId, request),
     );
     return locked.acquired ? locked.value : false;
   }
@@ -495,12 +521,15 @@ export class ServerRunToolExecutor {
     argsDigest: string,
     admit: () => boolean,
   ): Promise<boolean> {
-    const sessionAbort = this.abort;
+    const session = this.session;
     const run = async (): Promise<boolean> => {
-      if (!sessionAbort
-        || sessionAbort !== this.abort
-        || sessionAbort.signal.aborted) return false;
-      return this.process(runId, toolCallId, name, args, argsDigest, admit);
+      // The runId check rejects a request delivered by a superseded event
+      // stream: without it, an old run's tool would execute under the new
+      // run's authority.
+      if (!session
+        || session.runId !== runId
+        || !this.current(session)) return false;
+      return this.process(session, toolCallId, name, args, argsDigest, admit);
     };
     return toolExecutionMode(name, args) === 'parallel'
       ? this.requestQueue.enqueueParallel(runId, run)
