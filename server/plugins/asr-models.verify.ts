@@ -58,11 +58,13 @@ assert.deepEqual(ASR_MODELS.map((entry) => entry.revision), [
   '608c49e61301901684bc36cac8f74b95ff6b5a8e',
   '2d67713f236afa48a18992566e7647f6ca848e13',
   '8c5b90880ab9f79487ab33613413431bf661d595',
+  'b3f77bf9a8c4d5ea3415827033d1ffea7955fd9a',
 ]);
 for (const model of ASR_MODELS) {
   // tiny/base/small carry WebGPU fp16/fp32 variants (7 q8 files + encoder
-  // fp16 + decoder fp16 + encoder fp32); medium stays at the plain q8 set.
-  const expectedFiles = model.id === 'medium' ? 7 : 10;
+  // fp16 + decoder fp16 + encoder fp32); medium and large-v3-turbo stay at
+  // the plain q8 set (their fp32 encoders are 1.2GB / 2.5GB).
+  const expectedFiles = model.id === 'medium' || model.id === 'large-v3-turbo' ? 7 : 10;
   assert.equal(model.files.length, expectedFiles);
   for (const file of model.files) {
     assert(file.sizeBytes > 0);

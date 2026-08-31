@@ -33,7 +33,7 @@ export interface GgmlAsrModelFile {
 }
 
 export interface AsrModelEntry {
-  readonly id: 'tiny' | 'base' | 'small' | 'medium';
+  readonly id: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3-turbo';
   readonly modelId: string;
   readonly revision: string;
   readonly files: readonly AsrModelFile[];
@@ -119,10 +119,37 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
     ],
     label: 'Whisper Medium', sizeLabel: '约 743MB', language: '中文 / English / Italiano / Русский', note: '精度最高但体积大、转写较慢；追求效果时选择。',
   },
+  {
+    // Issue #127: the catalog capped out at medium. large-v3-turbo is the
+    // pruned large-v3 (4 decoder layers): near large-v2 quality at a fraction
+    // of the decode cost. The `_timestamped` export carries cross-attentions
+    // for word-level timestamps like the base tier; no fp16/fp32 slots are
+    // registered (the fp32 encoder alone is 2.5GB), so like medium this tier
+    // is wasm-only in the browser — the desktop ggml path is the fast one.
+    id: 'large-v3-turbo',
+    modelId: 'onnx-community/whisper-large-v3-turbo_timestamped',
+    revision: 'b3f77bf9a8c4d5ea3415827033d1ffea7955fd9a',
+    files: [
+      { path: 'config.json', sizeBytes: 1330, sha256: '32c02d1dfb9a93ff236cdcf0f741f8f3a4cedb437c407a361a022451ac009131' },
+      { path: 'generation_config.json', sizeBytes: 3797, sha256: '8568ddf83476167b4607014956b87142763fa6923e71259a606734beb39bdfc8' },
+      { path: 'preprocessor_config.json', sizeBytes: 340, sha256: '7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711' },
+      { path: 'tokenizer.json', sizeBytes: 2480645, sha256: 'b3c8202bbf06d8ee4232c5984baa563784ac4737e2e7fdc42fa180200d3cfcdb' },
+      { path: 'tokenizer_config.json', sizeBytes: 282843, sha256: '844b642c73a91359722f47b35705f7174686df33d252695d8572cf9ac03a6389' },
+      { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 644883359, sha256: 'a5bece0f99f86b5fed85e59b6b23299500639b283a0a6e00098e6583ed1baeb8' },
+      { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 439997434, sha256: 'b4ab1c92a9bcf8c8fdc49deacb57ac51b707d5248bc7868af42371b896c3ae52' },
+    ],
+    ggmlFile: {
+      fileName: 'ggml-large-v3-turbo-q5_0.bin', sizeBytes: 574041195,
+      sha256: '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2',
+      revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
+    },
+    label: 'Whisper Large v3 Turbo', sizeLabel: '约 1.1GB', language: '中文 / English / Italiano / Русский',
+    note: '多语言精度最强；浏览器端较慢，桌面端本地推理体验最佳。',
+  },
 ];
 
 export const ASR_MODEL_FILES: readonly string[] = ASR_MODELS[0].files.map((file) => file.path);
-export const ASR_MODEL_TIERS: readonly string[] = ['', 'tiny', 'base', 'small', 'medium'] as const;
+export const ASR_MODEL_TIERS: readonly string[] = ['', 'tiny', 'base', 'small', 'medium', 'large-v3-turbo'] as const;
 
 export function asrModelEntry(id: string): AsrModelEntry | undefined {
   return ASR_MODELS.find((entry) => entry.id === id);

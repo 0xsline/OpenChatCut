@@ -79,6 +79,7 @@ export const localAsrPage = transcriptionPage('local', 'localasr', '本地模型
       { value: 'base', label: 'Whisper Base（约 80MB · 均衡）' },
       { value: 'small', label: 'Whisper Small（约 250MB · 推荐）' },
       { value: 'medium', label: 'Whisper Medium（约 1.1GB · 精度最高）' },
+      { value: 'large-v3-turbo', label: 'Whisper Large v3 Turbo（约 1.1GB · 多语言最强）' },
     ],
   },
 ], '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。');

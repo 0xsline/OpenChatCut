@@ -65,19 +65,21 @@ export function chooseAsrConfig(profile: DeviceProfile): AsrConfig {
     preferred = '';
   }
   const tier: AsrModelTier = preferred === 'tiny' || preferred === 'base'
-    || preferred === 'small' || preferred === 'medium'
+    || preferred === 'small' || preferred === 'medium' || preferred === 'large-v3-turbo'
     ? preferred
     : 'base';
   const model = asrModelEntry(tier);
   if (!model) throw new Error(`Unsupported local ASR model tier: ${tier}`);
   // WebGPU is an explicit opt-in (settings → 本地模型 → WebGPU 加速) and only
-  // applies to tiers with fp16/fp32 catalog files (medium has none registered:
-  // its fp32 encoder alone is 1.2GB). Once a WebGPU run produced an empty
-  // transcript we remember it and stay on wasm from then on.
+  // applies to tiers whose catalog registers fp16/fp32 variants (medium and
+  // large-v3-turbo have none: their fp32 encoders alone are 1.2GB and 2.5GB).
+  // Once a WebGPU run produced an empty transcript we remember it and stay on
+  // wasm from then on.
+  const hasWebgpuFiles = model.files.some((file) => file.path.includes('_fp16'));
   const device: AsrDevice = asrBackendPreference() === 'webgpu'
     && !asrWebgpuBroken()
     && profile.webgpu.available
-    && tier !== 'medium'
+    && hasWebgpuFiles
     ? 'webgpu'
     : 'wasm';
   return { device, modelTier: tier, modelId: model.modelId, revision: model.revision };

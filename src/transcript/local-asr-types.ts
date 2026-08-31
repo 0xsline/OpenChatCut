@@ -5,7 +5,7 @@
 export type AsrDevice = 'webgpu' | 'wasm';
 
 /** Whisper model tier (size class). */
-export type AsrModelTier = 'tiny' | 'base' | 'small' | 'medium';
+export type AsrModelTier = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3-turbo';
 
 /** Device capabilities that drive backend + model-tier selection. */
 export interface DeviceProfile {
