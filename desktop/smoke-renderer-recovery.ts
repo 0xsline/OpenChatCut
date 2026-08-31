@@ -49,6 +49,12 @@ export async function runDesktopRendererRecoverySmoke(win: BrowserWindow): Promi
   await waitForTranscript(floating, latest.entries[0]!.name);
   await crashAndWait(floating);
   await waitForTranscript(floating, latest.entries[0]!.name);
-  floating.close();
   console.log('[smoke] floating transcript crash restored the latest payload');
+  // destroy(), not close(): gracefully closing a window whose renderer went
+  // through forcefullyCrashRenderer + reload deadlocks the whole Windows main
+  // process — the fifth v0.2.12 CI run printed the success line above and
+  // then nothing: no SMOKE-OK, no watchdog log, timers and microtasks all
+  // stopped until the workflow's external kill. destroy() skips the
+  // renderer teardown handshake entirely; 'closed' still fires for cleanup.
+  floating.destroy();
 }

@@ -472,6 +472,24 @@ if (SMOKE) {
     console.error(`smoke timed out after ${SMOKE_TIMEOUT_MS}ms`);
     exitSmoke(2);
   }, SMOKE_TIMEOUT_MS);
+  // Pre-armed EXTERNAL watchdog: the Windows main process has wedged so hard
+  // during smoke (crashed-renderer teardown) that timers, microtasks, and
+  // both in-process exits all stopped — the setTimeout above never even
+  // logged. A detached helper is immune to that. On a clean exit our PID is
+  // gone before the helper fires and the kill is a no-op; CI reaps the
+  // helper as an orphan.
+  if (process.platform === 'win32') {
+    try {
+      const graceSeconds = Math.ceil(SMOKE_TIMEOUT_MS / 1000) + 60;
+      spawn('powershell', [
+        '-NoProfile',
+        '-Command',
+        `Start-Sleep -Seconds ${graceSeconds}; taskkill /T /F /PID ${process.pid}`,
+      ], { detached: true, stdio: 'ignore' }).unref();
+    } catch {
+      // The in-process watchdog above stays as the only ceiling.
+    }
+  }
 }
 
 if (hasSingleInstanceLock) {
