@@ -16,6 +16,11 @@ export interface TranscriptWindowPayload {
 export const TRANSCRIPT_WINDOW_CHANNELS = {
   open: 'openchatcut:open-transcript-window',
   update: 'openchatcut:transcript-window-update',
+  // Pull path: the push at did-finish-load races the page's subscription —
+  // React mounts (and registers the listener) after locale/chunk loads, which
+  // on a slow machine lands after the push, and the payload was lost for good.
+  // The window now also asks for the current payload once it subscribes.
+  request: 'openchatcut:transcript-window-request',
 } as const;
 
 const MAX_ENTRIES = 200;

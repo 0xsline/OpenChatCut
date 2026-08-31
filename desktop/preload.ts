@@ -109,6 +109,7 @@ export interface OpenChatCutDesktopApi {
   subscribeUiScale(listener: (scale: number) => void): () => void;
   openTranscriptWindow(payload: TranscriptWindowPayload): Promise<void>;
   subscribeTranscriptWindow(listener: (payload: TranscriptWindowPayload) => void): () => void;
+  requestTranscriptWindowPayload(): Promise<TranscriptWindowPayload | null>;
   revealExport(destinationId: string, filename: string): Promise<void>;
   projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
   editorCredentials(): Promise<EditorBootstrapInfo>;
@@ -188,6 +189,10 @@ const api: OpenChatCutDesktopApi = {
     };
     ipcRenderer.on(TRANSCRIPT_WINDOW_CHANNELS.update, handleUpdate);
     return () => { ipcRenderer.removeListener(TRANSCRIPT_WINDOW_CHANNELS.update, handleUpdate); };
+  },
+  requestTranscriptWindowPayload: async () => {
+    const value: unknown = await ipcRenderer.invoke(TRANSCRIPT_WINDOW_CHANNELS.request);
+    return isTranscriptWindowPayload(value) ? value : null;
   },
   revealExport: (destinationId, filename) =>
     ipcRenderer.invoke('openchatcut:reveal-export', destinationId, filename) as Promise<void>,

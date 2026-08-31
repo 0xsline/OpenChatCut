@@ -85,6 +85,7 @@ declare global {
       subscribeUiScale(listener: (scale: number) => void): () => void;
       openTranscriptWindow(payload: TranscriptWindowPayload): Promise<void>;
       subscribeTranscriptWindow(listener: (payload: TranscriptWindowPayload) => void): () => void;
+      requestTranscriptWindowPayload(): Promise<TranscriptWindowPayload | null>;
       revealExport(destinationId: string, filename: string): Promise<void>;
       projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
       editorCredentials(): Promise<EditorBootstrapInfo>;

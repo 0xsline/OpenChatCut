@@ -13,10 +13,25 @@ export function TranscriptWindowRoot() {
   useEffect(() => {
     const desktop = window.openChatCutDesktop;
     if (!desktop?.subscribeTranscriptWindow) return;
-    return desktop.subscribeTranscriptWindow((next) => {
+    const apply = (next: TranscriptWindowPayload): void => {
       setPayload(next);
       setIndex(Math.min(Math.max(0, Math.round(next.index)), Math.max(0, next.entries.length - 1)));
+    };
+    // The main process pushes once at did-finish-load, which can precede this
+    // effect on a slow machine (React mounts after locale/chunk loads) — that
+    // lost push left the window permanently blank. Pull the current payload
+    // now that the subscription is in place. A push that lands before the
+    // pull resolves is fresher, so the pull then discards its snapshot.
+    let live = true;
+    let pushed = false;
+    const unsubscribe = desktop.subscribeTranscriptWindow((next) => {
+      pushed = true;
+      apply(next);
     });
+    void desktop.requestTranscriptWindowPayload?.().then((current) => {
+      if (live && current && !pushed) apply(current);
+    });
+    return () => { live = false; unsubscribe(); };
   }, []);
   const entries = useMemo<TranscriptViewerAsset[]>(
     () => (payload?.entries ?? []).map((entry) => ({ id: entry.id, name: entry.name, transcript: entry.transcript })),

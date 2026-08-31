@@ -264,6 +264,11 @@ function registerDesktopHandlers(trustedOrigin: string): void {
     });
     void win.loadURL(`${trustedOrigin}/?transcript-window=1`);
   };
+  // Pull path for the floating window: the did-finish-load push races the
+  // page's IPC subscription (React mounts after locale/chunk loads), and a
+  // lost push left the window permanently blank — the v0.2.12 Windows smoke
+  // caught it as "transcript payload timed out".
+  ipcMain.handle(TRANSCRIPT_WINDOW_CHANNELS.request, trustedDesktopHandler(trustedOrigin, () => transcriptPayload));
   ipcMain.handle(TRANSCRIPT_WINDOW_CHANNELS.open, trustedDesktopHandler(trustedOrigin, (_event, value: unknown) => {
     if (!isTranscriptWindowPayload(value)) throw new Error('invalid transcript window payload');
     openTranscriptWindow(value);
@@ -412,8 +417,19 @@ async function boot(): Promise<void> {
   if (SMOKE) {
     await runDesktopSmokeProbe(origin, win, SMOKE_RENDER);
     console.log('SMOKE-OK');
-    app.exit(0);
+    exitSmoke(0);
   }
+}
+
+/**
+ * app.exit() alone has been observed to wedge on Windows while a crashed
+ * renderer is mid-reload: the v0.2.12 smoke printed its failure, called
+ * app.exit(1), and the process survived until the CI step killed it at 420s.
+ * A smoke process has nothing to clean up, so follow with process.exit.
+ */
+function exitSmoke(code: number): void {
+  app.exit(code);
+  process.exit(code);
 }
 
 app.on('window-all-closed', () => app.quit());
@@ -438,13 +454,14 @@ if (SMOKE) {
   // to unref for.
   setTimeout(() => {
     console.error(`smoke timed out after ${SMOKE_TIMEOUT_MS}ms`);
-    app.exit(2);
+    exitSmoke(2);
   }, SMOKE_TIMEOUT_MS);
 }
 
 if (hasSingleInstanceLock) {
   boot().catch((err) => {
     console.error('[desktop] boot failed:', err instanceof Error ? err.stack ?? err.message : err);
-    app.exit(1);
+    if (SMOKE) exitSmoke(1);
+    else app.exit(1);
   });
 }

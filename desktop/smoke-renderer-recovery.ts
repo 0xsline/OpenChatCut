@@ -1,6 +1,10 @@
 import { BrowserWindow } from 'electron';
 
 const RECOVERY_TIMEOUT_MS = 10_000;
+// A fresh BrowserWindow cold-boots a whole renderer (parse, locale dict, lazy
+// chunks) before the transcript view mounts; 10s is too tight on a throttled
+// CI machine even with the pull path in place.
+const TRANSCRIPT_TIMEOUT_MS = 30_000;
 
 async function crashAndWait(win: BrowserWindow): Promise<void> {
   const recovered = new Promise<void>((resolve, reject) => {
@@ -19,7 +23,7 @@ async function crashAndWait(win: BrowserWindow): Promise<void> {
 async function waitForTranscript(win: BrowserWindow, name: string): Promise<void> {
   await win.webContents.executeJavaScript(`new Promise((resolve, reject) => {
     const observer = new MutationObserver(check);
-    const timer = setTimeout(() => { observer.disconnect(); reject(new Error('transcript payload timed out')); }, ${RECOVERY_TIMEOUT_MS});
+    const timer = setTimeout(() => { observer.disconnect(); reject(new Error('transcript payload timed out')); }, ${TRANSCRIPT_TIMEOUT_MS});
     function check() {
       if (!document.body?.textContent?.includes(${JSON.stringify(name)})) return;
       observer.disconnect(); clearTimeout(timer); resolve(true);
