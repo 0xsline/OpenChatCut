@@ -430,10 +430,16 @@ if (!hasSingleInstanceLock) {
 }
 
 if (SMOKE) {
+  // No .unref(): in the Electron main process an unref'd timer is not
+  // guaranteed to ever fire — Node's loop is polled through Chromium's message
+  // pump, and with no ref'd handles the poll can starve. The v0.2.12 Windows
+  // smoke hung for 105 minutes on a 240s watchdog that never fired. A ref'd
+  // timer does not block app.exit(0) on the success path, so there is nothing
+  // to unref for.
   setTimeout(() => {
-    console.error('smoke timed out');
+    console.error(`smoke timed out after ${SMOKE_TIMEOUT_MS}ms`);
     app.exit(2);
-  }, SMOKE_TIMEOUT_MS).unref();
+  }, SMOKE_TIMEOUT_MS);
 }
 
 if (hasSingleInstanceLock) {

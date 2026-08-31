@@ -204,7 +204,27 @@ jobs:
               throw "NSIS installer did not create $installedExe"
             }
             $installed = $true
-            $smoke = Start-Process -FilePath $installedExe -Wait -PassThru
+            # Redirect the app's output: Start-Process discards stdout/stderr
+            # otherwise, which left the v0.2.12 hang with zero evidence — every
+            # [smoke] milestone log evaporated. The bounded wait is the outer
+            # safety net over the app's own 240s watchdog (which the same hang
+            # proved can fail); without it the job burns the 6h runner limit.
+            $smokeOut = Join-Path $env:RUNNER_TEMP 'smoke-stdout.log'
+            $smokeErr = Join-Path $env:RUNNER_TEMP 'smoke-stderr.log'
+            $smoke = Start-Process -FilePath $installedExe -PassThru `
+              -RedirectStandardOutput $smokeOut -RedirectStandardError $smokeErr
+            $null = $smoke.Handle  # cache the handle or ExitCode reads as null
+            $finished = $smoke.WaitForExit(420000)
+            if (-not $finished) {
+              taskkill /T /F /PID $smoke.Id 2>$null | Out-Null
+            }
+            Write-Host '--- smoke stdout ---'
+            if (Test-Path -LiteralPath $smokeOut) { Get-Content -LiteralPath $smokeOut }
+            Write-Host '--- smoke stderr ---'
+            if (Test-Path -LiteralPath $smokeErr) { Get-Content -LiteralPath $smokeErr }
+            if (-not $finished) {
+              throw 'Installed OpenChatCut smoke still running after 420s; killed. The last [smoke] line above is where it hung.'
+            }
             if ($smoke.ExitCode -ne 0) {
               throw "Installed OpenChatCut smoke exited with $($smoke.ExitCode)"
             }

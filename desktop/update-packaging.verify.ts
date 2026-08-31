@@ -228,10 +228,28 @@ assert.match(
   /ArgumentList @\('\/S', "\/D=\$installDir"\)/,
   'Windows smoke must silently install NSIS into an isolated path',
 );
+// Not `-Wait`, and never without redirection: the v0.2.12 Windows smoke hung
+// for 105 minutes with no output because Start-Process discards stdout/stderr
+// and an unbounded -Wait has no ceiling below the 6h runner limit.
 assert.match(
   workflow,
-  /Start-Process -FilePath \$installedExe -Wait -PassThru/,
-  'Windows smoke must launch the installed executable',
+  /Start-Process -FilePath \$installedExe -PassThru `\s+-RedirectStandardOutput \$smokeOut -RedirectStandardError \$smokeErr/,
+  'Windows smoke must launch the installed executable with captured output',
+);
+assert.match(
+  workflow,
+  /\$smoke\.WaitForExit\(\d+\)/,
+  'Windows smoke must bound its wait for the app instead of waiting forever',
+);
+assert.match(
+  workflow,
+  /taskkill \/T \/F \/PID \$smoke\.Id/,
+  'a timed-out smoke must kill the whole app process tree',
+);
+assert.match(
+  workflow,
+  /Get-Content -LiteralPath \$smokeOut/,
+  'the smoke log must be printed so a hang identifies its last milestone',
 );
 assert.match(
   workflow,
