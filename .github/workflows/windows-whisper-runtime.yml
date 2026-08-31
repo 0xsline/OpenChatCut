@@ -1,0 +1,81 @@
+# Does the Windows whisper-cli we ship actually run?
+#
+# scripts/sync-whisper-cli.mjs downloads the official whisper.cpp archive and
+# then flattens whisper-cli.exe out of its Release/ directory, leaving every
+# ggml*.dll behind in Release/. Windows resolves a process's DLLs from the
+# directory of the executable first, and desktop/native-asr-worker.ts spawns the
+# binary with no cwd, so the exe should not be able to load ggml.dll at all —
+# which would explain issue #120 ("Any size local Whisper have error", a bare
+# numeric failure on Windows).
+#
+# That is a hypothesis formed on macOS, where the Windows binary cannot be run.
+# This job settles it on a real Windows machine: it provisions the binary
+# exactly as the app does, prints the resulting layout, and then executes it.
+name: Windows whisper runtime
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-whisper-runtime.yml'
+      - 'scripts/sync-whisper-cli.mjs'
+      - 'server/media-binaries.ts'
+      - 'desktop/native-asr-worker.ts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-whisper-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    name: whisper-cli.exe loads its DLLs
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Provision whisper-cli the way the app does
+        shell: bash
+        run: node scripts/sync-whisper-cli.mjs
+
+      - name: Show the layout that produces
+        shell: bash
+        run: |
+          echo "--- public/whisper-cli/win32-x64 ---"
+          ls -la public/whisper-cli/win32-x64/
+          echo "--- DLLs beside the executable ---"
+          ls public/whisper-cli/win32-x64/*.dll 2>/dev/null || echo "(none — this is the suspected fault)"
+          echo "--- DLLs anywhere under it ---"
+          find public/whisper-cli/win32-x64 -name '*.dll' | head -20
+
+      # The real test. `--help` needs no model and no audio: it only has to get
+      # far enough to load the ggml DLLs. An exit code here is the answer.
+      - name: Run whisper-cli.exe --help
+        id: run
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          ./public/whisper-cli/win32-x64/whisper-cli.exe --help > out.txt 2> err.txt
+          code=$?
+          echo "exit=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "--- stdout ---"; head -20 out.txt
+          echo "--- stderr ---"; head -20 err.txt
+          exit 0
+
+      - name: Verdict
+        shell: bash
+        run: |
+          code="${{ steps.run.outputs.exit }}"
+          if [ "$code" = "0" ]; then
+            echo "whisper-cli.exe ran (exit 0) — the flattened layout is fine on Windows."
+          else
+            echo "whisper-cli.exe failed with exit $code — it cannot start where we put it." >&2
+            echo "Issue #120 reports transcription failing with a bare number on Windows." >&2
+            exit 1
+          fi
