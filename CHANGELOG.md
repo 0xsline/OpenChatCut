@@ -8,6 +8,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-08-31
+
+### Fixed / 修复
+
+- A project this build could not read is no longer overwritten by the next save: reads now report missing and unreadable separately, the editor offers retry instead of silently starting from an empty document, a failed bootstrap merge no longer deletes the local project index, and orphan media cleanup no longer purges everything when the index is momentarily empty.
+  本版读不懂的工程不会再被下一次保存覆盖：读取区分"不存在"与"读不出"，编辑器给出重试而不是静默从空文档开始；引导合并失败不再删除本地工程索引；索引短暂为空时，孤儿素材清理不再清空全部素材。
+- Version history, export history, templates and the job registry now preserve records this build cannot parse instead of dropping them on the next write, so opening a project in an older build no longer discards what a newer one wrote.
+  版本历史、导出历史、模板与任务注册表在写回时保留本版解析不了的记录，不再丢弃——用旧版打开工程不会再抹掉新版写入的内容。
+- Multicam and link groups with a slightly out-of-range field are repaired rather than discarded, and per-angle evidence is no longer required for the whole group to survive.
+  多机位与链接组的轻微越界字段改为修正而非整组丢弃，且不再要求每个角度都带证据才能保留。
+- Browser fast export no longer fails on media that is simply slow to open. It inherited Remotion's 30-second per-frame default while the local renderer allowed far more, so the same project could fail on one engine and render on the other; both now share a ten-minute per-frame budget, which bounds a single stuck frame and never the export as a whole.
+  浏览器快导不再因素材"打开慢"而失败。此前它沿用 Remotion 的 30 秒单帧默认值，而本机渲染器的预算宽得多，导致同一工程在一个引擎失败、在另一个引擎正常；现在两条路径共用 10 分钟单帧预算，该预算只约束单帧卡死，不限制导出总时长。
+- Exports started by the Agent no longer report failure for files that had already been written; the download helper reached the browser through `window`, which does not exist in the tool runtime.
+  Agent 发起的导出不再对已经写出的文件报失败——下载辅助函数经由 `window` 访问，而工具运行时没有 `window`。
+- FCPXML export now emits a time map for speed-changed clips, and asset collection no longer decides a clip's video/audio makeup from the first item alone.
+  FCPXML 导出为变速片段写入 timeMap；素材收集不再仅凭第一个片段判定整体的视频/音频构成。
+- An unknown caption template id falls back to the plain style instead of breaking the preview, and bilingual caption translations are marked stale when their timing changes instead of keeping absolute times.
+  未知字幕模板 id 回退到 plain 样式而不是让预览崩溃；双语字幕在时间轴变化后标记为过期，不再固化绝对时间。
+- Agent runs no longer dispatch the same instruction twice on a rapid double send, tool arguments are bounded so an out-of-range motion-graphic size cannot freeze the tab, model-supplied internal `__` fields are stripped before execution, and a tool that fails midway rolls its draft back instead of leaving a forked one.
+  Agent 运行不再因快速双击发送而重复派发同一指令；工具参数加上界，越界的 MG 尺寸不会再冻结标签页；模型传入的内部 `__` 字段在执行前剥离；工具中途失败会回滚草稿而不是留下分叉。
+- Transcript word clicks seek to the right frame under a reordered play order, and local ASR no longer falls back to transcribing the whole video.
+  在调整播放顺序后，点击文字稿词语可跳转到正确帧；本地 ASR 不再回退成整段视频转写。
+- Chat and version writes that fail now surface a toast instead of only a console error.
+  聊天与版本写入失败会给出提示，而不是只打一条控制台错误。
+- Completed the Russian transcription language labels.
+  补全俄语转写语言标签。
+
+### Performance / 性能
+
+- First load dropped from about 3062 KB (900 KB gzip) to 689 KB (198 KB gzip). React was being pulled into the Remotion chunk, so the project list downloaded a 2 MB video renderer it never used; all four locale dictionaries shipped in the entry chunk, so every user parsed three languages they cannot read; and ten dialogs were imported eagerly although each renders only once opened. Dialogs and the non-active languages now load on demand and warm on idle, so opening them stays instant.
+  首屏从约 3062 KB（900 KB gzip）降到 689 KB（198 KB gzip）。此前 React 被打进 Remotion 分块，工程列表要下载 2 MB 的视频渲染器却从不使用；四份语言词典全部进入入口分块，每个用户都要解析三种读不懂的语言；十个对话框被静态引入，而它们只有打开时才渲染。现在对话框与非当前语言按需加载并在空闲时预热，打开依然瞬时。
+- Moving the pointer across the timeline now updates once per displayed frame instead of once per pointer report: 60 pointer moves went from 890 DOM mutations in 292 ms to 250 in 125 ms.
+  在时间线上移动指针改为每显示帧更新一次，而不是每个指针事件更新一次：60 次移动从 890 次 DOM 变更 / 292 ms 降到 250 次 / 125 ms。
+- Long transcripts skip layout for off-screen speech blocks: a 9000-word transcript went from 34.29 ms of layout to 0.64 ms, with text selection across off-screen blocks unaffected.
+  长文字稿跳过屏幕外语音块的布局：9000 词文字稿的布局耗时从 34.29 ms 降到 0.64 ms，跨屏幕外块的文本选择不受影响。
+- Reduced hot-path overhead in the editor store, sequence-graph validation, transcript rendering and agent stream persistence.
+  降低编辑器 store、序列图校验、文字稿渲染与 Agent 流式持久化的热路径开销。
+
+### Security / 安全
+
+- Media read paths (`/media/uploads`, upload listing, presigned reads, media preview, and the desktop static file server) now require the same local request shape the write paths already did.
+  素材读取路径（`/media/uploads`、上传列表、预签名读取、媒体预览与桌面端静态文件服务）现在与写入路径一样要求相同的本机请求形态。
+- Server errors returned to the browser no longer carry absolute filesystem paths, and skill execution rejects inline interpreter invocations.
+  返回浏览器的服务端错误不再携带绝对文件系统路径；技能执行拒绝内联解释器调用。
+
 ## [0.2.11] - 2026-08-25
 
 ### Added / 新增
