@@ -79,9 +79,17 @@ MODEL-OPT-PLAN.md
 # Keep the external MCP bridge protocol regression with its implementation; the legacy name is intentional.
 !server/external-agent/broker.check.ts
 
-# Local development and verification scripts
-/scripts/
+# Local development and verification scripts.
+# `/scripts/*` rather than `/scripts/`: git never re-includes files inside an
+# ignored DIRECTORY, so with the old form every `!` line below was inert and
+# new canonical scripts could only enter the repo via `git add -f` — a new
+# scripts/*.verify.mjs registered in package.json was silently skipped by
+# `git add -A`, and CI died with MODULE_NOT_FOUND on a file that exists locally.
+/scripts/*
 !/scripts/sync-mediapipe.mjs
+# Stable regressions are *.verify.* by convention (see the *.check.* rule
+# above), so they are never local-only.
+!/scripts/*.verify.mjs
 
 # Local marketing assets and drafts
 /marketing/
