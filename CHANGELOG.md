@@ -8,23 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-08-31
+
 ### Added / 新增
 
-- Inspector **Crop Left / Right / Top / Bottom** under Clip properties → Basic → Transform (below Corner). Values are composition pixels; cropped pixels are fully transparent. Agents call this **flex crop** / **flexcrop** via `edit_item` `transform.crop` or `transform.flexCrop: { left, right, top, bottom }` in pixels (`null` clears). Not a timeline trim.
-  检查器「裁左 / 裁右 / 裁上 / 裁下」位于片段属性 → 基础 → 变换（圆角下方）。数值为画布像素，裁掉的区域完全透明。Agent 术语为 **flex crop** / **flexcrop**：`edit_item` 的 `transform.crop` 或 `transform.flexCrop: { left, right, top, bottom }`（像素；`null` 清除）。不是时间线裁剪。
-
-### Fixed / 修复
-
-- Preview orange outline, clip-path cut, and rotation pivot stay aligned: the preview wrapper uses the stage content box and a single composition scale so Remotion does not letterbox on Y under the overlay.
-  预览橙框、裁切与旋转轴对齐：预览容器按舞台 content box 与单一画布比例适配，避免 Remotion 在 overlay 下上下加黑边。
+- Inspector **Crop Left / Right / Top / Bottom** under Clip properties → Basic → Transform (below Corner). Values are composition pixels; cropped pixels are fully transparent. Agents call this **flex crop** / **flexcrop** via `edit_item` `transform.crop` or `transform.flexCrop: { left, right, top, bottom }` in pixels (`null` clears). Not a timeline trim. Contributed by @J160KU.
+  检查器「裁左 / 裁右 / 裁上 / 裁下」位于片段属性 → 基础 → 变换（圆角下方）。数值为画布像素，裁掉的区域完全透明。Agent 术语为 **flex crop** / **flexcrop**：`edit_item` 的 `transform.crop` 或 `transform.flexCrop: { left, right, top, bottom }`（像素；`null` 清除）。不是时间线裁剪。由 @J160KU 贡献。
+- Local transcription gains a **Whisper Large v3 Turbo** tier (#127): near large-v2 quality at a fraction of the decode cost. Desktop runs the 574MB GGML build natively; the browser uses the word-timestamp ONNX export (~1.05GB).
+  本地转写新增 **Whisper Large v3 Turbo** 档（#127）：接近 large-v2 的质量、远低于它的解码开销。桌面端本地运行 574MB GGML 模型；浏览器端使用带词级时间戳的 ONNX 导出（约 1.05GB）。
 
 <p align="center">
   <img src="assets/readme-pic/flexcrop-inspector.png" alt="FlexCrop inspector: preview edges 1–4 match Crop Left, Crop Right, Crop Top, and Crop Bottom sliders" width="920" />
 </p>
 
-## [0.2.12] - 2026-08-31
-
 ### Fixed / 修复
+
+- **Windows local transcription never actually ran** (#120): packaging moved `whisper-cli.exe` away from its DLLs, so the process died instantly with a bare exit code for every model size. The executable now ships beside its libraries — verified both ways on a real Windows runner. Linux had the same layout fault and is fixed the same way.
+  **Windows 本地转写此前从未真正运行过**（#120）：打包把 `whisper-cli.exe` 和它的 DLL 分开放置，任何模型尺寸都会立刻以裸退出码失败。现在可执行文件与库同目录（在真实 Windows runner 上双向验证）；Linux 存在同样的布局问题，一并修复。
+- Browser Whisper word timestamps no longer drift from the prefix-alignment bug, and the hallucination-suppression list is active again — transformers.js upgraded to 4.2.0 (#109).
+  浏览器 Whisper 词级时间戳不再受前缀对齐问题影响，幻听抑制列表重新生效——transformers.js 升级到 4.2.0（#109）。
+- Stopping an agent run and immediately sending the next task no longer loses the new answer: late results from the cancelled run settled with the new run's credentials and tore its stream down (#125). Every run now carries an immutable identity, and stale callbacks are fenced.
+  停止 Agent 任务后立刻发送新任务不再丢失新回答：被取消任务的迟到结果曾借用新任务的凭证结算并连带关闭其事件流（#125）。现在每个任务携带不可变身份，过期回调被栅栏拦下。
+- One failed proposal apply no longer silently disables every later apply in the session — the symptom behind "the agent says done but the track is empty" (#129).
+  一次失败的 proposal 应用不再静默禁用会话内之后的所有应用——即「Agent 说完成了但轨道是空的」的元凶（#129）。
+- The floating transcript window no longer opens blank on slow machines: its payload was push-only and the push could beat the page's listener; the window now also pulls on mount.
+  浮动文字稿窗口在慢机器上不再打开即空白：载荷原先只推送一次、可能早于页面监听器注册；现在窗口挂载后会主动拉取。
+- Preview orange outline, clip-path cut, and rotation pivot stay aligned: the preview wrapper uses the stage content box and a single composition scale so Remotion does not letterbox on Y under the overlay.
+  预览橙框、裁切与旋转轴对齐：预览容器按舞台 content box 与单一画布比例适配，避免 Remotion 在 overlay 下上下加黑边。
 
 - A project this build could not read is no longer overwritten by the next save: reads now report missing and unreadable separately, the editor offers retry instead of silently starting from an empty document, a failed bootstrap merge no longer deletes the local project index, and orphan media cleanup no longer purges everything when the index is momentarily empty.
   本版读不懂的工程不会再被下一次保存覆盖：读取区分"不存在"与"读不出"，编辑器给出重试而不是静默从空文档开始；引导合并失败不再删除本地工程索引；索引短暂为空时，孤儿素材清理不再清空全部素材。
