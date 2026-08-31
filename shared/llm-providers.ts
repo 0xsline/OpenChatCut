@@ -122,6 +122,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'openrouter/auto',
   },
   {
+    id: 'orcarouter',
+    label: 'OrcaRouter',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.orcarouter.ai/v1',
+    defaultModel: 'orcarouter/auto',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',
