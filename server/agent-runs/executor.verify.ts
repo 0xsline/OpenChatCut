@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { APICallError } from 'ai';
 import { ASK_MODE_TOOL_SCHEMAS } from '../../src/agent/ask-mode-tools';
 import { TOOL_SCHEMAS } from '../../src/agent/tools';
 import { buildServerRunPrompt, SERVER_RUN_AI_TIMEOUT } from './context.ts';
@@ -255,6 +256,49 @@ assert(
   ),
   'Unicode and JSON escaping cannot push a maximum text chunk past 64 KiB',
 );
+// A provider failure arrives as an `error` part on `fullStream`, not as a
+// thrown iterator error. It must reach the caller unchanged so the retry
+// classifier can see the status code, and the text streamed before it must
+// still be flushed and closed with `text-end`.
+resetServerRunStoreForTest();
+const streamErrorRun = createRun({
+  projectId: 'server-stream-error',
+  sessionGeneration: 'legacy',
+  provider: 'deepseek',
+  model: 'test-model',
+});
+const providerFailure = new APICallError({
+  message: 'DeepSeek 认证失败。请在“设置 → Agent 模型”中检查 API Key。',
+  url: 'https://example.invalid/v1/chat',
+  requestBodyValues: {},
+  statusCode: 401,
+  responseBody: '{"error":{"message":"unauthorized"}}',
+  isRetryable: false,
+});
+async function* failingChunks(): AsyncGenerator<
+  | { type: 'text-delta'; id: number; text: string }
+  | { type: 'error'; error: unknown }
+> {
+  yield { type: 'text-delta', id: nextPart(), text: 'partial answer' };
+  yield { type: 'error', error: providerFailure };
+  yield { type: 'text-delta', id: nextPart(), text: 'never reached' };
+}
+await assert.rejects(
+  () => collectServerText(streamErrorRun, failingChunks()),
+  (error: unknown) => error === providerFailure,
+  'the provider error reaches the caller instead of being swallowed',
+);
+await flushRunPersistence(streamErrorRun);
+const streamErrorText = streamErrorRun.events
+  .filter((event) => event.type === 'text-delta')
+  .map((event) => String(record(event.data).text ?? ''))
+  .join('');
+assert.equal(streamErrorText, 'partial answer', 'text streamed before the error is kept');
+assert(
+  streamErrorRun.events.some((event) => event.type === 'text-end'),
+  'the failing turn still closes its text stream',
+);
+
 const largeToolRequestRun = createRun({
   projectId: 'server-large-tool-request',
   sessionGeneration: 'legacy',

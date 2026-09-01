@@ -65,8 +65,30 @@ export async function collectServerText<TOOLS extends ToolSet>(
     if (pending) pending = flushTextEvents(run, pending, true);
     if (pendingThinking) pendingThinking = flushThinkingEvents(run, pendingThinking, true);
   }, 2_000);
+  // Emit the trailing text and the closing event exactly once, on the success
+  // path and on the failing one alike: a provider error must not cost the user
+  // the text that already streamed.
+  const finish = (): string => {
+    const tail = extractor.flush();
+    appendVisible(tail.text);
+    appendThinking(tail.thinking);
+    flushTextEvents(run, pending, true);
+    flushThinkingEvents(run, pendingThinking, true);
+    pushRunEvent(run, 'text-end', serverRunTextMetadata(text));
+    return text;
+  };
   try {
     for await (const part of stream) {
+      // `fullStream` reports provider failures as `error` parts instead of
+      // throwing. Swallowing them discards the real APICallError — its status
+      // code and response body, which carry the proxy's actionable message —
+      // and lets the turn fail later on the AI SDK's generic
+      // NoOutputGeneratedError, which classifyLlmFailure cannot route to AUTH,
+      // RATE_LIMIT or QUOTA. Rethrow so the real cause reaches the user.
+      if (part.type === 'error') {
+        finish();
+        throw part.error;
+      }
       if (part.type === 'reasoning-delta' && part.text) {
         // Native reasoning streams (DeepSeek/OpenAI/… reasoning_content) never
         // appear in the visible text stream; forward them as thinking events.
@@ -81,11 +103,5 @@ export async function collectServerText<TOOLS extends ToolSet>(
   } finally {
     clearInterval(flushTimer);
   }
-  const tail = extractor.flush();
-  appendVisible(tail.text);
-  appendThinking(tail.thinking);
-  flushTextEvents(run, pending, true);
-  flushThinkingEvents(run, pendingThinking, true);
-  pushRunEvent(run, 'text-end', serverRunTextMetadata(text));
-  return text;
+  return finish();
 }

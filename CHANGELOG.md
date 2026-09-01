@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed / 修复
+
+- Agent failures no longer hide behind "No output generated. Check the stream for errors." The server turn read the model stream but dropped its `error` chunks, so the provider's real `APICallError` — status code, response body, and the proxy's actionable message ("认证失败，请检查 API Key" / "额度不足" / "接口或模型不存在") — was discarded, and the turn died on the AI SDK's generic fallback instead. Retrying could only reproduce it. The real error now reaches the chat. Two failures it was masking are fixed with it: failure classification compared with `instanceof` against a class from a second copy of `@ai-sdk/provider`, so every provider error fell through to UNKNOWN and was never retried; and a genuinely empty model stream is now classified `EMPTY_RESPONSE` and retried instead of surfacing that same opaque sentence.
+  Agent 报错不再被「No output generated. Check the stream for errors.」挡住。服务端读取模型流时丢弃了其中的 `error` 分片，厂商真正的 `APICallError`——状态码、响应体，以及代理生成的可操作提示（「认证失败，请检查 API Key」/「额度不足」/「接口或模型不存在」）——被一并扔掉，这一轮改为死在 AI SDK 的兜底文案上，重试只能复现同样一句。现在真实报错会直接显示在对话里。同时修掉它掩盖的两个问题：失败分类用 `instanceof` 比对了来自第二份 `@ai-sdk/provider` 的类，导致所有厂商错误落入 UNKNOWN 且从不重试；模型确实返回空流时现在归类为 `EMPTY_RESPONSE` 并自动重试，而不是抛出同一句看不懂的话。
+
 ## [0.2.13] - 2026-08-31
 
 ### Fixed / 修复
