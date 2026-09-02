@@ -28,6 +28,9 @@ comes from Settings (`OFOX_VIDEO_MODEL`), default
   its own object storage before dispatching to the upstream model, so no
   public hosting is needed. Reference images should be reasonably sized
   (very small images can fail the upstream image validation).
+- Results prefer `mirror_urls` (persistent signed CDN addresses, present when
+  the upstream has mirroring enabled) and fall back to the temporary
+  `unsigned_urls`.
 - The job is asynchronous: `submit_video` returns a `jobId`; poll / wait with
   `track_progress` exactly like the other video vendors.
 

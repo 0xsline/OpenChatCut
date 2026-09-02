@@ -110,10 +110,16 @@ export async function generateOfoxVideo(
     const current = await poll.json() as { status?: unknown; unsigned_urls?: unknown; error?: { message?: unknown } };
     const status = String(current.status ?? '');
     if (SUCCESSES.has(status)) {
-      const urls = Array.isArray(current.unsigned_urls) ? current.unsigned_urls : [];
-      const url = urls.find((item): item is string => typeof item === 'string' && /^https?:\/\//.test(item));
-      if (!url) throw new Error('ofox generation succeeded without a video URL');
-      return url;
+      // Prefer mirror_urls (persistent signed CDN addresses, present only when
+      // the upstream has mirroring enabled) and fall back to unsigned_urls
+      // (temporary upstream links that may expire within 24 hours).
+      const body = current as { mirror_urls?: unknown; unsigned_urls?: unknown };
+      for (const field of ['mirror_urls', 'unsigned_urls'] as const) {
+        const urls = Array.isArray(body[field]) ? body[field] as unknown[] : [];
+        const url = urls.find((item): item is string => typeof item === 'string' && /^https?:\/\//.test(item));
+        if (url) return url;
+      }
+      throw new Error('ofox generation succeeded without a video URL');
     }
     if (FAILURES.has(status)) {
       const detail = typeof current.error?.message === 'string' ? `: ${current.error.message}` : '';
