@@ -4384,7 +4384,7 @@
     },
     {
       "name": "load_skill",
-      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Use files=[...] for whole omitted files; page one file with file, offset, and limit. Bundled skills: ai-cinematic-short-film, asset-import, create-motion-graphics, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
+      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Exactly one selector per call: either files=[...] to load whole omitted files, or file with offset and limit to page a single file. Never send file and files in the same call. Bundled skills: ai-cinematic-short-film, asset-import, create-motion-graphics, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -4394,11 +4394,11 @@
           },
           "file": {
             "type": "string",
-            "description": "One safe relative file path to page; use returned nextOffset for the next call."
+            "description": "One safe relative file path to page; use returned nextOffset for the next call. Omit the key entirely when sending files; never pass an empty string."
           },
           "files": {
             "type": "array",
-            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned.",
+            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned. Omit the key entirely when paging with file; never pass an empty array.",
             "items": {
               "type": "string"
             },
@@ -5813,7 +5813,7 @@
     },
     {
       "name": "load_skill",
-      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Use files=[...] for whole omitted files; page one file with file, offset, and limit. Bundled skills: ai-cinematic-short-film, asset-import, create-motion-graphics, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
+      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Exactly one selector per call: either files=[...] to load whole omitted files, or file with offset and limit to page a single file. Never send file and files in the same call. Bundled skills: ai-cinematic-short-film, asset-import, create-motion-graphics, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5823,11 +5823,11 @@
           },
           "file": {
             "type": "string",
-            "description": "One safe relative file path to page; use returned nextOffset for the next call."
+            "description": "One safe relative file path to page; use returned nextOffset for the next call. Omit the key entirely when sending files; never pass an empty string."
           },
           "files": {
             "type": "array",
-            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned.",
+            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned. Omit the key entirely when paging with file; never pass an empty array.",
             "items": {
               "type": "string"
             },

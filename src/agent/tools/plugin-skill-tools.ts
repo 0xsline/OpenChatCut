@@ -36,6 +36,8 @@ export type PluginSkillLoadResult = PluginSkillLoadSuccess | {
   readonly availableFiles?: readonly string[];
   readonly available?: readonly string[];
   readonly creativeModes?: readonly string[];
+  /** A concrete corrected call, so a rejection is never re-sent unchanged. */
+  readonly retry?: string;
 };
 
 const comparePath = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -89,26 +91,63 @@ type SkillRequest = { readonly kind: 'initial' }
   | { readonly kind: 'page'; readonly file: string; readonly offset: number; readonly limit: number }
   | { readonly error: string };
 
-function parseSkillRequest(args: Record<string, unknown>): SkillRequest {
-  if (args.file !== undefined && args.files !== undefined) {
-    return { error: 'Pass either file or files, not both.' };
-  }
-  if (args.file === undefined && args.files === undefined) {
-    return args.offset === undefined && args.limit === undefined
-      ? { kind: 'initial' }
-      : { error: 'offset and limit require file.' };
-  }
+const isBlankString = (value: unknown): boolean => (
+  typeof value === 'string' && value.trim() === ''
+);
+
+/** Drop filler while preserving wrong-typed values so validation still reports them. */
+function usableFile(value: unknown): unknown {
+  return value === null || isBlankString(value) ? undefined : value;
+}
+
+function usableFiles(value: unknown): unknown {
+  if (value === null) return undefined;
+  if (!Array.isArray(value)) return value;
+  const paths = value.filter((path) => (
+    path !== null && path !== undefined && !isBlankString(path)
+  ));
+  return paths.length === 0 ? undefined : paths;
+}
+
+/**
+ * Models routinely emit both selectors in one call — a blank `file` beside a real `files`
+ * array, `files: []` beside a real `file`, or paging numbers with no `file` at all — because
+ * a result carrying both `omittedFiles` and `nextOffset` reads as one combined next step.
+ * Normalizing that filler away keeps a recoverable call recoverable instead of rejecting it
+ * before the skill is ever read. Paging numbers select the single-file path; otherwise the
+ * whole-file batch wins, and paging numbers never survive without a `file` to page.
+ */
+export function normalizeSkillArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const file = usableFile(args.file);
+  const files = usableFiles(args.files);
+  const paging = args.offset !== undefined || args.limit !== undefined;
+  const keepFile = file !== undefined && (files === undefined || paging);
+  const keepFiles = files !== undefined && !keepFile;
+  return Object.fromEntries(Object.entries({
+    ...args,
+    file: keepFile ? file : undefined,
+    files: keepFiles ? files : undefined,
+    offset: keepFile ? args.offset : undefined,
+    limit: keepFile ? args.limit : undefined,
+  }).filter(([, value]) => value !== undefined));
+}
+
+function parseSkillRequest(rawArgs: Record<string, unknown>): SkillRequest {
+  // Normalization guarantees file and files are mutually exclusive and that offset/limit
+  // only survive beside a file, so neither combination needs rejecting here.
+  const args = normalizeSkillArgs(rawArgs);
   if (args.files !== undefined) {
-    if (args.offset !== undefined || args.limit !== undefined || !Array.isArray(args.files)
-      || args.files.length < 1 || args.files.length > MAX_REQUESTED_FILES
+    if (!Array.isArray(args.files) || args.files.length < 1
+      || args.files.length > MAX_REQUESTED_FILES
       || args.files.some((file) => typeof file !== 'string' || !isSafeRelativePath(file))) {
-      return { error: `files must contain 1-${MAX_REQUESTED_FILES} safe relative paths without paging.` };
+      return { error: `files must contain 1-${MAX_REQUESTED_FILES} safe relative paths.` };
     }
     const files = orderedPaths(args.files);
     return new Set(files).size === files.length
       ? { kind: 'whole', files }
       : { error: 'files must not contain duplicates.' };
   }
+  if (args.file === undefined) return { kind: 'initial' };
   if (typeof args.file !== 'string' || !isSafeRelativePath(args.file)) {
     return { error: 'file must be a safe relative skill path.' };
   }
@@ -139,9 +178,12 @@ function loadResult(
   const contents = selectedContents(source, selected);
   const files = Object.keys(contents);
   const omittedFiles = desired.filter((path) => !selected.has(path));
+  // One selector per call: naming both paths in a single sentence is what makes models
+  // merge them into one rejected request.
+  const selectors = 'One selector per call. To load whole omitted files, send files=[…] and no other selector. To page a single file, send file=… with offset and no files=[…].';
   const note = source.custom
-    ? 'Custom skill files loaded within the active context budget. Use files=[...] for whole omitted files or page one with file/offset; run scripts locally with run_skill_script(skill=…, command="bash scripts/…").'
-    : 'Skill files loaded within the active context budget. Use files=[...] for whole omitted files; page a still-omitted file with file and offset=nextOffset.';
+    ? `Custom skill files loaded within the active context budget. ${selectors} Run scripts locally with run_skill_script(skill=…, command="bash scripts/…").`
+    : `Skill files loaded within the active context budget. ${selectors}`;
   return {
     skill: source.skill,
     file: files[0] ?? desired[0] ?? 'SKILL.md',
@@ -197,7 +239,7 @@ function pageResult(
     omittedFiles: [],
     dependencyCheck: dependencies,
     ...(source.skillDir ? { skillDir: source.skillDir } : {}),
-    note: 'Paged skill file loaded within the active context budget. Continue with the same file and offset=nextOffset until nextOffset is null.',
+    note: 'Paged skill file loaded within the active context budget. Continue with the same file and offset=nextOffset until nextOffset is null. Send only file and offset on those calls; adding files=[…] is not a paging continuation.',
     offset,
     nextOffset: end < totalChars ? end : null,
     totalChars,
@@ -321,7 +363,9 @@ export function buildBoundedSkillResult(
     return {
       ...rootPage,
       omittedFiles: available.filter((path) => path !== 'SKILL.md'),
-      note: 'SKILL.md was paged to the active context budget. Continue it with file="SKILL.md" and offset=nextOffset before loading omitted support files.',
+      // The only result carrying both nextOffset and omittedFiles, so it must spell out that
+      // they are two sequential calls rather than one combined selector.
+      note: 'SKILL.md was paged to the active context budget. Finish it first with file="SKILL.md" and offset=nextOffset until nextOffset is null, sending no files=[…] on those calls. Only then request omittedFiles in a separate call with files=[…] and no file/offset.',
     };
   }
   if (request === undefined) return initial;
@@ -358,6 +402,30 @@ function creativeSource(slug: string): SkillToolSource | undefined {
   };
 }
 
+/**
+ * Naming a concrete corrected call is what stops a model re-sending rejected arguments
+ * verbatim; the tool itself stays pure, so it cannot count attempts across calls.
+ */
+function selectorRetryHint(slug: string, source: SkillToolSource): string {
+  const support = orderedPaths(Object.keys(source.contents))
+    .filter((path) => path !== 'SKILL.md');
+  const batch = support.length > 0
+    ? ` or load_skill(name="${slug}", files=["${support[0]}"]) for one whole support file`
+    : '';
+  return `Do not re-send these arguments unchanged. Send exactly one selector: load_skill(name="${slug}") for SKILL.md${batch}. Never send file and files together, and never send an empty string or an empty array.`;
+}
+
+/** Attach the hint only when it fits, so budgeted error results stay within budget. */
+function withRetryHint(
+  result: PluginSkillLoadResult,
+  hint: string,
+  resultBudgetChars: number,
+): PluginSkillLoadResult {
+  if (!('error' in result)) return result;
+  const hinted = { ...result, retry: hint };
+  return JSON.stringify(hinted).length <= resultBudgetChars ? hinted : result;
+}
+
 export function execPluginSkillTool(
   name: string,
   args: Record<string, unknown>,
@@ -379,17 +447,16 @@ export function execPluginSkillTool(
       creativeModes,
     };
   }
-  const request = parseSkillRequest(args);
-  if ('error' in request) return request;
   const resultBudgetChars = harness?.loadSkillResultBudgetChars ?? MAX_SKILL_RESULT_CHARS;
-  if (request.kind === 'page') {
-    return buildPagedSkillResult(
-      source, request.file, request.offset, request.limit, resultBudgetChars,
+  const hint = selectorRetryHint(slug, source);
+  const request = parseSkillRequest(args);
+  if ('error' in request) return withRetryHint(request, hint, resultBudgetChars);
+  const result = request.kind === 'page'
+    ? buildPagedSkillResult(source, request.file, request.offset, request.limit, resultBudgetChars)
+    : buildBoundedSkillResult(
+      source,
+      request.kind === 'whole' ? request.files : undefined,
+      resultBudgetChars,
     );
-  }
-  return buildBoundedSkillResult(
-    source,
-    request.kind === 'whole' ? request.files : undefined,
-    resultBudgetChars,
-  );
+  return withRetryHint(result, hint, resultBudgetChars);
 }
