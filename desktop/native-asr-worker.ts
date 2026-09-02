@@ -23,6 +23,7 @@ import {
 import { ASR_INFERENCE_CONTRACT } from '../shared/asr-inference-contract.ts';
 import { NativeAsrWorkerLifecycle } from './native-asr-worker-lifecycle.ts';
 import {
+  nativeGgmlFileName,
   whisperLanguage,
   whisperTokensToChunks,
   whisperWordsToChunks,
@@ -40,14 +41,6 @@ interface NativeWorkerData {
   readonly whisperCliPath: string;
   readonly platform: NodeJS.Platform;
 }
-
-// ONNX modelId (browser catalog) -> GGML model file for the desktop engine.
-const GGML_MODELS: Record<string, { fileName: string }> = {
-  'Xenova/whisper-tiny': { fileName: 'ggml-tiny-q5_1.bin' },
-  'onnx-community/whisper-base_timestamped': { fileName: 'ggml-base-q5_1.bin' },
-  'Xenova/whisper-small': { fileName: 'ggml-small-q5_1.bin' },
-  'Xenova/whisper-medium': { fileName: 'ggml-medium-q5_1.bin' },
-};
 
 const SERVER_READY_TIMEOUT_MS = 20_000;
 
@@ -339,9 +332,9 @@ async function transcribeWithEngine(
 }
 
 function ggmlPathFor(modelId: string): string | null {
-  const spec = GGML_MODELS[modelId];
-  if (!spec) return null;
-  const path = join(requireRuntime().cacheDir, 'ggml', spec.fileName);
+  const fileName = nativeGgmlFileName(modelId);
+  if (!fileName) return null;
+  const path = join(requireRuntime().cacheDir, 'ggml', fileName);
   return existsSync(path) ? path : null;
 }
 
