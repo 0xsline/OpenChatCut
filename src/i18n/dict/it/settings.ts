@@ -418,6 +418,10 @@ const overrides: Record<string, string> = {
   '使用 SuperGrok 或 X Premium+ 订阅登录：官方 Grok CLI 管理登录与凭据（终端运行 grok login），OpenChatCut 导入会话并自动续期，不会读取或显示 OAuth 凭据。': 'Accedi con un abbonamento SuperGrok o X Premium+: la CLI ufficiale di Grok gestisce accesso e credenziali (esegui grok login nel terminale). OpenChatCut importa e rinnova automaticamente la sessione senza leggere o mostrare le credenziali OAuth.',
   '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成图片。文生图：最多 4 张，1K / 2K。': 'Genera immagini con la sessione di abbonamento xAI (SuperGrok / X Premium+, preferita) o con LLM_XAI_API_KEY. Da testo a immagine: fino a 4 immagini, 1K / 2K.',
   '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成视频。文生视频：1–15 秒，自带音轨，480p / 720p / 1080p。': 'Genera video con la sessione di abbonamento xAI (SuperGrok / X Premium+, preferita) o con LLM_XAI_API_KEY. Da testo a video: 1-15 secondi, traccia audio inclusa, 480p / 720p / 1080p.',
+  'OFox · 多模型': 'OFox · Multi-modello',
+  'OFox · 多模型网关': 'OFox · Gateway multi-modello',
+  '使用 LLM_OFOX_API_KEY（在 Agent 供应商里配置 OFox）生成视频。一个 Key 覆盖 Seedance、Wan 等视频模型；支持文生视频、首帧/首尾帧图生视频与图片参考（最多 9 张）；时长/分辨率按模型由 API 校验，2–30 秒。':
+    'Genera video con LLM_OFOX_API_KEY (configura OFox tra i provider Agent). Una sola chiave copre Seedance, Wan e altri modelli video; supporta testo-video, immagine-video con primo fotogramma / primo e ultimo fotogramma e fino a 9 immagini di riferimento; durata e risoluzione sono convalidate per modello dalla API, 2–30 secondi.',
   '处理中…': 'Elaborazione…',
   '导入登录状态': 'Importa accesso',
   '新工程和生成素材的默认保存位置，以及可选的 R2 云备份。': 'Posizione predefinita per i nuovi progetti e i media generati, con backup cloud R2 facoltativo.',

@@ -383,6 +383,13 @@ export const PROBES: Record<string, ProbeDef> = {
   'video/hailuo': minimaxProbe,
   'video/byteplus': byteplusProbe,
   'video/xai': xaiMediaProbe,
+  'video/ofox': {
+    needs: [['LLM_OFOX_API_KEY']],
+    run: (get) => fetch(`${base(get, 'LLM_OFOX_BASE_URL', 'https://api.ofox.ai/v1')}/models`, {
+      signal: t(), headers: bearer(get('LLM_OFOX_API_KEY')),
+    }),
+    models: parseModelCatalog,
+  },
   'music/mureka': {
     needs: [['MUREKA_API_KEY']],
     run: (get) => fetch(`${base(get, 'MUREKA_BASE_URL', 'https://api.mureka.ai')}/v1/account/billing`, {

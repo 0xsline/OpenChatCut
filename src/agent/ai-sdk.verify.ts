@@ -46,6 +46,7 @@ assert.equal(normalizeLlmProvider('KIMI'), 'kimi');
 assert.equal(normalizeLlmProvider('qwen'), 'qwen');
 assert.equal(normalizeLlmProvider('glm'), 'glm');
 assert.equal(normalizeLlmProvider('OpenRouter'), 'openrouter');
+assert.equal(normalizeLlmProvider('OFox'), 'ofox');
 assert.equal(normalizeLlmProvider('unexpected'), 'anthropic');
 assert.equal(defaultModelForProvider('anthropic'), 'claude-fable-5');
 assert.equal(defaultModelForProvider('openai'), 'gpt-5');
@@ -53,12 +54,14 @@ assert.equal(defaultModelForProvider('kimi'), 'kimi-k3');
 assert.equal(defaultModelForProvider('qwen'), 'qwen-plus');
 assert.equal(defaultModelForProvider('glm'), 'glm-5.2');
 assert.equal(defaultModelForProvider('openrouter'), 'openrouter/auto');
+assert.equal(defaultModelForProvider('ofox'), 'deepseek/deepseek-v3.2');
 assert.equal(providerApiPath('anthropic'), '/messages');
 assert.equal(providerApiPath('openai'), '/responses');
 assert.equal(providerApiPath('openai', 'chat'), '/chat/completions');
 assert.equal(providerApiPath('kimi'), '/chat/completions');
 assert.equal(providerApiPath('gemini'), '/models');
 assert.equal(providerApiPath('openrouter'), '/chat/completions');
+assert.equal(providerApiPath('ofox'), '/chat/completions');
 
 const strippedVisualMessages = withoutModelImages([{
   role: 'user',
@@ -83,6 +86,7 @@ assert.equal((await getLanguageModel('openai', 'test-model', 'chat')).provider, 
 assert.equal((await getLanguageModel('kimi', 'test-model')).provider, 'moonshotai.chat');
 assert.equal((await getLanguageModel('gemini', 'test-model')).provider, 'google.generative-ai');
 assert.equal((await getLanguageModel('openrouter', 'openrouter/auto')).provider, 'openrouter.chat');
+assert.equal((await getLanguageModel('ofox', 'deepseek/deepseek-v3.2')).provider, 'ofox.chat');
 assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
 assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
 assert.deepEqual(getLanguageModelProviderOptions('minimax'), {

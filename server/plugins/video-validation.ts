@@ -4,7 +4,7 @@ export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -34,7 +34,7 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
   prompt: string;
   durationSeconds: number;
   durationSpecified: boolean;
@@ -192,14 +192,52 @@ function validateGrok(input: ValidVideoRequest): ValidVideoRequest {
   return input;
 }
 
+const OFOX_UNSUPPORTED_ARK_KEYS = ['cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority'] as const;
+
+/** OFox multi-model video gateway: the API validates duration, resolution and
+ * vendor per model with a clear 400 before any task is created, so only
+ * cross-provider limits and unsupported options are enforced here. Text,
+ * first/last-frame and image-reference modes are wired; frame anchors and
+ * references are mutually exclusive at the API level (400 references_conflict),
+ * enforced locally before any paid submission. */
+function validateOfox(input: ValidVideoRequest): ValidVideoRequest {
+  if (!input.prompt || input.prompt.length > 4000) throw new Error('ofox prompt is required and must be at most 4000 characters');
+  if (input.durationSeconds < 2 || input.durationSeconds > 30) throw new Error('ofox durationSeconds must be between 2 and 30 (per-model limits are enforced by the API)');
+  if (!['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3', '21:9', '9:21'].includes(input.ratio)) {
+    throw new Error(`ofox does not support ratio ${input.ratio}`);
+  }
+  if (input.resolution && !['480p', '720p', '1080p'].includes(input.resolution)) throw new Error('ofox resolution must be 480p, 720p, or 1080p (per-model support is enforced by the API)');
+  if (input.lastFramePath && !input.firstFramePath) throw new Error('lastFrame requires firstFrame');
+  if ((input.firstFramePath || input.lastFramePath) && input.refImagePaths.length) {
+    throw new Error('ofox frame anchors (firstFrame/lastFrame) cannot be combined with refImages');
+  }
+  if (input.refImagePaths.length > 9) throw new Error('ofox accepts at most 9 refImages');
+  if (input.refVideoPaths.length || input.refAudioPaths.length) {
+    throw new Error('ofox refVideos/refAudios are not wired in this integration yet; use refImages or firstFrame/lastFrame');
+  }
+  if (input.mode || input.shotType || input.multiPrompts?.length || input.refVideoMode) {
+    throw new Error('multi-shot and editing options are not supported by ofox');
+  }
+  for (const key of OFOX_UNSUPPORTED_ARK_KEYS) {
+    if (input[key] !== undefined) throw new Error(`${key} is supported by seedance2/byteplus only`);
+  }
+  if (input.generateAudio !== undefined && typeof input.generateAudio !== 'boolean') throw new Error('generateAudio must be a boolean');
+  if (input.seed !== undefined && !Number.isSafeInteger(input.seed)) throw new Error('seed must be a safe integer');
+  if (input.promptOptimizer !== undefined || input.fastPretreatment !== undefined) {
+    throw new Error('promptOptimizer/fastPretreatment are supported by hailuo only');
+  }
+  return input;
+}
+
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
-  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video') {
-    throw new Error('model must be seedance2, kling, hailuo, byteplus, or grok-imagine-video');
+  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox') {
+    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, or ofox');
   }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);
   if (normalized.model === 'hailuo') return validateHailuo(normalized);
   if (normalized.model === 'kling') return validateKling(normalized);
   if (normalized.model === 'grok-imagine-video') return validateGrok(normalized);
+  if (normalized.model === 'ofox') return validateOfox(normalized);
   return validateSeedance(normalized);
 }

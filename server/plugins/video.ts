@@ -19,6 +19,7 @@ import {
   ServerReferencePreflightError,
 } from './video-media.ts';
 import { generateGrokVideo } from './grok-video-provider.ts';
+import { generateOfoxVideo } from './ofox-video-provider.ts';
 import { saveVideoResults } from './video-result-save.ts';
 import {
   hailuoApiResolution, seedanceApiResolution, validateVideoRequest, videoSeconds,
@@ -49,6 +50,9 @@ interface VideoOptions {
   xaiBaseUrl: string;
   xaiApiKey: string;
   xaiVideoModel: string;
+  ofoxBaseUrl: string;
+  ofoxApiKey: string;
+  ofoxVideoModel: string;
 }
 
 async function readJson(req: IncomingMessage): Promise<VideoRequest> {
@@ -407,14 +411,16 @@ async function runVideoOperation(
     } else {
       const url = input.model === 'grok-imagine-video'
         ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
-        : input.model === 'kling'
-          ? await generateKling(input, options, registerProviderTask, providerTaskId)
-          : await generateHailuo(input, options, registerProviderTask, providerTaskId);
+        : input.model === 'ofox'
+          ? await generateOfoxVideo(input, options, registerProviderTask, providerTaskId)
+          : input.model === 'kling'
+            ? await generateKling(input, options, registerProviderTask, providerTaskId)
+            : await generateHailuo(input, options, registerProviderTask, providerTaskId);
       urls = requireGenerationResultUrls([url], expectedResultCount);
     }
   }
   urls = requireGenerationResultUrls(urls, expectedResultCount);
-  const resultFetch = input.model === 'grok-imagine-video' ? fetchWithProxy : undefined;
+  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' ? fetchWithProxy : undefined;
   const download = () => saveVideoResults(
     operationId,
     name,
@@ -426,7 +432,7 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,

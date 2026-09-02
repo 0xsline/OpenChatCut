@@ -3,7 +3,7 @@ import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 
 export interface SubmitVideoArgs {
   operationId?: string;
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
