@@ -1,4 +1,6 @@
 export { PLUGIN_SKILL_TOOL_SCHEMAS, PLUGIN_SKILL_TOOL_NAMES } from './schemas/plugin-skill-tools';
+export { normalizeSkillArgs } from './skill-args';
+import { normalizeSkillArgs } from './skill-args';
 import { PLUGIN_SKILLS, readPluginSkillFile } from '../skills/plugin-skills';
 import { allCreativeSkills } from '../skills/skills-catalog';
 import { detectSkillDependencies } from '../skills/skill-deps';
@@ -91,50 +93,10 @@ type SkillRequest = { readonly kind: 'initial' }
   | { readonly kind: 'page'; readonly file: string; readonly offset: number; readonly limit: number }
   | { readonly error: string };
 
-const isBlankString = (value: unknown): boolean => (
-  typeof value === 'string' && value.trim() === ''
-);
-
-/** Drop filler while preserving wrong-typed values so validation still reports them. */
-function usableFile(value: unknown): unknown {
-  return value === null || isBlankString(value) ? undefined : value;
-}
-
-function usableFiles(value: unknown): unknown {
-  if (value === null) return undefined;
-  if (!Array.isArray(value)) return value;
-  const paths = value.filter((path) => (
-    path !== null && path !== undefined && !isBlankString(path)
-  ));
-  return paths.length === 0 ? undefined : paths;
-}
-
-/**
- * Models routinely emit both selectors in one call — a blank `file` beside a real `files`
- * array, `files: []` beside a real `file`, or paging numbers with no `file` at all — because
- * a result carrying both `omittedFiles` and `nextOffset` reads as one combined next step.
- * Normalizing that filler away keeps a recoverable call recoverable instead of rejecting it
- * before the skill is ever read. Paging numbers select the single-file path; otherwise the
- * whole-file batch wins, and paging numbers never survive without a `file` to page.
- */
-export function normalizeSkillArgs(args: Record<string, unknown>): Record<string, unknown> {
-  const file = usableFile(args.file);
-  const files = usableFiles(args.files);
-  const paging = args.offset !== undefined || args.limit !== undefined;
-  const keepFile = file !== undefined && (files === undefined || paging);
-  const keepFiles = files !== undefined && !keepFile;
-  return Object.fromEntries(Object.entries({
-    ...args,
-    file: keepFile ? file : undefined,
-    files: keepFiles ? files : undefined,
-    offset: keepFile ? args.offset : undefined,
-    limit: keepFile ? args.limit : undefined,
-  }).filter(([, value]) => value !== undefined));
-}
-
 function parseSkillRequest(rawArgs: Record<string, unknown>): SkillRequest {
-  // Normalization guarantees file and files are mutually exclusive and that offset/limit
-  // only survive beside a file, so neither combination needs rejecting here.
+  // The invocation boundary already normalized before schema validation; repeating it here
+  // is idempotent and keeps direct callers safe. Afterwards file and files are mutually
+  // exclusive and offset/limit only survive beside a file, so neither needs rejecting.
   const args = normalizeSkillArgs(rawArgs);
   if (args.files !== undefined) {
     if (!Array.isArray(args.files) || args.files.length < 1

@@ -101,10 +101,21 @@ try {
   assert.deepEqual(norm({ name: 's', files: [] }), { name: 's' }, 'an empty files array is dropped');
   assert.deepEqual(norm({ name: 's', files: ['', ' '] }), { name: 's' }, 'an all-blank files array is dropped');
   assert.deepEqual(norm({ name: 's', files: ['', 'a.md'] }), { name: 's', files: ['a.md'] }, 'blank entries are stripped');
+  assert.deepEqual(norm({ name: 's', files: ' a.md ' }), { name: 's', files: ['a.md'] }, 'a bare string is a trimmed one-file batch');
+  assert.deepEqual(norm({ name: 's', file: ['a.md'] }), { name: 's', file: 'a.md' }, 'a one-element array on file is one file');
+  assert.deepEqual(norm({ name: 's', file: ['a.md', 'b.md'] }), { name: 's', files: ['a.md', 'b.md'] }, 'a longer array on file is a batch');
+  assert.deepEqual(norm({ name: 's', file: ' a.md ' }), { name: 's', file: 'a.md' }, 'file paths are trimmed');
+  assert.deepEqual(norm({ name: 's', file: 'a.md', offset: '5', limit: '10' }), { name: 's', file: 'a.md', offset: 5, limit: 10 }, 'integer strings become integers');
+  assert.deepEqual(norm({ name: 's', file: 'a.md', offset: null, limit: '' }), { name: 's', file: 'a.md' }, 'null and blank paging numbers are filler');
+  assert.deepEqual(
+    norm({ name: 's', file: 'a.md', files: ['b.md'], offset: 5, limit: 10 }),
+    { name: 's', file: 'a.md', offset: 5, limit: 10 },
+    'a non-zero offset is a continuation: file wins and files is dropped',
+  );
   assert.deepEqual(
     norm({ name: 's', file: 'a.md', files: ['b.md'], offset: 0, limit: 10 }),
-    { name: 's', file: 'a.md', offset: 0, limit: 10 },
-    'paging numbers select file and drop files',
+    { name: 's', files: ['b.md'] },
+    'offset 0 is not a continuation: the batch wins',
   );
   assert.deepEqual(
     norm({ name: 's', file: 'a.md', files: ['b.md'] }),
@@ -133,6 +144,7 @@ try {
     contents?: Record<string, string>;
     files?: string[];
     omittedFiles?: string[];
+    offset?: number;
     nextOffset?: number | null;
     error?: string;
     retry?: string;
@@ -158,14 +170,29 @@ try {
       expect: (r) => assert.deepEqual(r.files, [firstSupport]),
     },
     {
-      label: 'paging numbers select file when both selectors are present',
+      label: 'offset 0 beside both selectors keeps the batch (SKILL.md at 0 repeats the initial load)',
       args: { file: 'SKILL.md', files: [firstSupport], offset: 0, limit: 48_000 },
-      expect: (r) => assert.deepEqual(r.files, ['SKILL.md']),
+      expect: (r) => assert.deepEqual(r.files, [firstSupport]),
+    },
+    {
+      label: 'a non-zero offset beside both selectors keeps the paged file',
+      args: { file: 'SKILL.md', files: [firstSupport], offset: 2, limit: 48_000 },
+      expect: (r) => { assert.deepEqual(r.files, ['SKILL.md']); assert.equal(r.offset, 2); },
     },
     {
       label: 'without paging numbers the batch wins over file',
       args: { file: 'SKILL.md', files: [firstSupport] },
       expect: (r) => assert.deepEqual(r.files, [firstSupport]),
+    },
+    {
+      label: 'a bare string on files is a one-file batch',
+      args: { files: firstSupport },
+      expect: (r) => assert.deepEqual(r.files, [firstSupport]),
+    },
+    {
+      label: 'string paging numbers are accepted',
+      args: { file: 'SKILL.md', offset: '0', limit: '4000' },
+      expect: (r) => assert.deepEqual(r.files, ['SKILL.md']),
     },
     {
       label: 'empty files array falls back to the initial load',
@@ -280,8 +307,13 @@ try {
       expect: (r: LoadResult) => assert.deepEqual(r.files, [customSupport]),
     },
     {
-      label: 'paging numbers select file when both selectors are present',
+      label: 'offset 0 beside both selectors keeps the batch',
       args: { file: 'SKILL.md', files: [customSupport], offset: 0, limit: 48_000 },
+      expect: (r: LoadResult) => assert.deepEqual(r.files, [customSupport]),
+    },
+    {
+      label: 'a non-zero offset beside both selectors keeps the paged file',
+      args: { file: 'SKILL.md', files: [customSupport], offset: 2 },
       expect: (r: LoadResult) => assert.deepEqual(r.files, ['SKILL.md']),
     },
     {

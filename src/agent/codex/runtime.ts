@@ -105,7 +105,9 @@ async function prepareToolBoundary(
       kind: 'validation_failed', summary: validation.issues.join('; ').slice(0, 1_000),
     });
   }
-  state.invocationArgs = effectiveToolInvocationArgs(schema.name, args);
+  // validation.args is the normalized form that passed the schema; recording and executing
+  // it keeps the ledger consistent with what the tool actually ran.
+  state.invocationArgs = effectiveToolInvocationArgs(schema.name, validation.args);
   state.policy = policyForTool(schema.name, state.invocationArgs);
   state.argsDigest = execution.runRecorder
     ? (await execution.runRecorder.recordToolRequested({
