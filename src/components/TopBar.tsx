@@ -1,14 +1,20 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { theme } from '../theme';
 import { Icon } from './icons';
 import { ExportHistory } from './ExportHistory';
 import { GenerationActivity } from './GenerationActivity';
 import { SkinPicker } from './settings/SkinPicker';
-import { McpGuideDialog } from './settings/McpGuide';
+import { loadMcpGuideDialog } from './settings/mcpGuideLoader';
 import { ALL_LOCALES, getLocale, setLocale, useT } from '../i18n/locale';
 import { invokeAction, bindAction } from '../shortcuts/actionRegistry';
 import { DesktopWindowControls } from './DesktopWindowControls';
 import { TopBarIconButton } from './TopBarIconButton';
+
+// Lazy, like the dashboard's copy of this dialog. A static import here put the
+// whole MCP guide into the editor's eager chunk and made every lazy() built on
+// loadMcpGuideDialog ineffective, dashboard included — both top bars have to go
+// through the thunk for either to be split.
+const McpGuideDialog = lazy(() => loadMcpGuideDialog().then((m) => ({ default: m.McpGuideDialog })));
 
 // Language switching: The text pill displays the current language; clicking
 // cycles through the supported locales. First run defaults to the
@@ -103,7 +109,11 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
       </button>
       <div title={t('账户')} style={{ width: 20, height: 20, borderRadius: '50%', marginLeft: 2, background: 'conic-gradient(from 210deg, #6d6cff, #ff5f9e, #ffb35f, #6d6cff)', flexShrink: 0 }} />
       </div>
-      {mcpOpen && <McpGuideDialog onClose={() => setMcpOpen(false)} />}
+      {/* No fallback: a dialog that is still loading shows nothing, exactly as it
+          did before it was opened — the same treatment the other overlays get. */}
+      <Suspense fallback={null}>
+        {mcpOpen && <McpGuideDialog onClose={() => setMcpOpen(false)} />}
+      </Suspense>
     </header>
   );
 }
