@@ -122,6 +122,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'openrouter/auto',
   },
   {
+    id: 'ofox',
+    label: 'OFox',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.ofox.ai/v1',
+    defaultModel: 'deepseek/deepseek-v3.2',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',

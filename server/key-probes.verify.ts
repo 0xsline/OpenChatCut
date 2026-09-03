@@ -28,7 +28,7 @@ const EXPECTED_PAGES = [
   'image/openai', 'image/gemini', 'image/minimax', 'image/wavespeed', 'image/byteplus', 'image/xai',
   'voice/elevenlabs', 'voice/openai', 'voice/gemini', 'voice/mistral', 'voice/cartesia',
   'voice/doubao', 'voice/minimax', 'voice/inworld', 'voice/fishaudio', 'voice/speechify',
-  'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus', 'video/xai',
+  'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus', 'video/xai', 'video/ofox',
   'music/mureka', 'music/minimax', 'music/atlas', 'music/sonilo',
   'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound',
   'transcription/assemblyai', 'transcription/openai', 'transcription/mistral',

@@ -43,7 +43,7 @@ export type VendorId =
   | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
-  | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth';
+  | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth' | 'ofox';
 
 interface SvgIcon {
   readonly svg: string;
@@ -101,6 +101,7 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   wavespeed: { bg: '#00B8D9', mono: 'WS' }, // WaveSpeed AI, no official SVG vendored yet
   atlas: { bg: '#147D64', mono: 'AC' }, // Atlas Cloud, neutral monogram keeps the provider list asset-free
   sonilo: { bg: '#101828', mono: 'SO', fg: '#e8f6f2' }, // Sonilo, no official SVG vendored yet
+  ofox: { bg: '#FF6A00', mono: 'OF', fg: '#2b1602' }, // OFox, neutral monogram keeps the provider list asset-free
   xai: { bg: '#101010', mono: 'x', fg: '#f7f7f8' }, // xAI Grok, no official SVG vendored yet
   'xai-oauth': { bg: '#101010', mono: 'x', fg: '#f7f7f8' }, // xAI subscription login, shares the Grok monogram
 };

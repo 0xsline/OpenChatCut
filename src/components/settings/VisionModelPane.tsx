@@ -43,6 +43,7 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   xai: 'xAI',
   'xai-oauth': 'xAI (订阅登录)',
   openrouter: 'OpenRouter',
+  ofox: 'OFox',
   ollama: 'Ollama',
   lmstudio: 'LM Studio',
 };

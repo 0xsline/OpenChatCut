@@ -310,6 +310,15 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get xaiVideoModel() {
         return getKey("XAI_VIDEO_MODEL") || "grok-imagine-video-1.5";
       },
+      get ofoxBaseUrl() {
+        return getKey("LLM_OFOX_BASE_URL") || "https://api.ofox.ai/v1";
+      },
+      get ofoxApiKey() {
+        return getKey("LLM_OFOX_API_KEY");
+      },
+      get ofoxVideoModel() {
+        return getKey("OFOX_VIDEO_MODEL") || "bytedance/seedance-2.0-fast";
+      },
       get byteplusModel() {
         return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";
       },
