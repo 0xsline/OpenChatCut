@@ -14,6 +14,6 @@ export function mcpServerInstructions(
     'Call begin_edit_session first, pass editSessionId to every editor tool, then call review_edit_session. Do not claim success until status is applied.',
     'Manual approval and visual/canvas inspection, generation, upload, network, preset, render, and export tools require opening the returned editorUrl.',
     'Offline review atomically commits the complete draft. A browser takeover or stored-project change makes the session stale with no partial edit.',
-    'If a session becomes stale, cancelled, or failed, start a new MCP session instead of reusing it.',
+    'If the original MCP owner disconnects, call list_edit_sessions and recover_edit_session. Terminal stale, cancelled, or failed sessions cannot be reused; start a new edit session.',
   ].join(' ');
 }

@@ -8,8 +8,12 @@ import {
 } from '../plugins/external-agent-bridge-routes.ts';
 import { toMcpContent, toStructuredContent } from './mcp.ts';
 import { projectMcpReply } from './mcp-result.ts';
+import { mcpServerInstructions } from './mcp-instructions.ts';
 
 const object = { ok: true };
+const recoveryInstructions = mcpServerInstructions('test-baseline', 'compatibility');
+assert.match(recoveryInstructions, /list_edit_sessions/);
+assert.match(recoveryInstructions, /recover_edit_session/);
 assert.equal(toStructuredContent(object), object);
 assert.deepEqual(toStructuredContent([{ id: 1 }]), { result: [{ id: 1 }] });
 assert.deepEqual(toStructuredContent(null), { result: null });

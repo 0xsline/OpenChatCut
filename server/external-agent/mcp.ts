@@ -57,7 +57,7 @@ import {
 } from './mcp-result.ts';
 export { toMcpContent, toStructuredContent } from './mcp-result.ts';
 
-export const OPENCHATCUT_SKILL_BASELINE = '2026-08-10.1';
+export const OPENCHATCUT_SKILL_BASELINE = '2026-09-04.1';
 export const MCP_SESSION_IDLE_LIMIT_MS = 60 * 60 * 1000;
 export const MCP_SESSION_COUNT_LIMIT = 64;
 export const MCP_POST_BODY_LIMIT_BYTES = 2 * 1024 * 1024;

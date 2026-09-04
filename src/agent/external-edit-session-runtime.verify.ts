@@ -61,11 +61,11 @@ assert(
 );
 const begun = await runtime.execute('begin_edit_session', {}, runtimeBinding);
 assert(begun && typeof begun === 'object' && 'editSessionId' in begun);
-const conflict = await runtime.execute('begin_edit_session', {}, runtimeBinding);
-assert(conflict && typeof conflict === 'object' && 'conflict' in conflict && conflict.conflict === true);
-assert('activeSession' in conflict, 'active-session conflicts return structured recovery metadata');
-assert.equal(JSON.stringify(conflict).includes(String(begun.editSessionId)), false,
-  'active-session conflicts do not disclose the live edit session UUID');
+await assert.rejects(
+  runtime.execute('begin_edit_session', {}, runtimeBinding),
+  /list_edit_sessions/,
+  'active-session conflicts remain tool errors and point callers to recovery discovery',
+);
 const listed = await runtime.execute('list_edit_sessions', {}, runtimeBinding);
 assert(Array.isArray(listed) && listed.some((entry) => (
   entry && typeof entry === 'object' && 'editSessionId' in entry

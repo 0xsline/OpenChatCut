@@ -306,14 +306,10 @@ export class ExternalBridgeRuntime {
   private async begin(clientName: unknown, approvalMode: unknown): Promise<unknown> {
     const active = findActiveExternalSession(this.sessions);
     if (active) {
-      const activeInfo = this.info(active);
-      const { editSessionId: _privateSessionId, ...safeActiveInfo } = activeInfo;
-      return {
-        conflict: true,
-        message: 'An edit session is already active. List sessions to inspect ownership and recovery actions.',
-        activeSession: safeActiveInfo,
-        nextAction: 'Call list_edit_sessions. Resume/discard is available only after the original owner disconnects.',
-      };
+      throw new ExternalEditSessionOutcomeError(
+        'rejected',
+        'An edit session is already active. Call list_edit_sessions to inspect it before recovery or discard.',
+      );
     }
     const session = createExternalEditSession(this.getContext().getDoc(), clientName, approvalMode);
     const run = await ExternalSessionRunLedger.start(this.projectId, session.clientName, session.id, 'external-connected', executeTool);

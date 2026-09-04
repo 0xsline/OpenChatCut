@@ -132,8 +132,8 @@ async function registerBridgeEditor(
   const input = registrationInput(await readBridgeJson(req));
   const capability = registrationCapability(req, false);
   // A matching registration capability marks a legitimate renewal from the
-  // currently owned window (e.g. a page reload keeps its capability). A
-  // missing/mismatched capability on a DIFFERENT window is no longer blocked —
+  // currently connected runtime. A reload or different window with a
+  // missing/mismatched capability is no longer blocked —
   // that window simply takes over (single-window desktop has no cross-window
   // exclusivity). Stale-revision protection below still prevents clobbering.
   const renewing = capability !== null && operations.editorRegistrationMatches(
