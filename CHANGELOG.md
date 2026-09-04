@@ -6,9 +6,26 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.2.14] - 2026-09-04
+
+### Added / 新增
+
+- **OrcaRouter is now a named LLM provider preset** — configure its Base URL and API key under Settings → Agent model like any other provider and select it as the chat model (contributed in #130).
+  **OrcaRouter 现在是具名 LLM 厂商预设**——在 设置 → Agent 模型 里像其他厂商一样配置 Base URL 与 API Key，并可作为聊天模型选择（#130 贡献）。
 
 ### Fixed / 修复
+
+- **Context-window overflows now recover silently instead of failing the turn (#131)** — the server retries an overflowing turn by compacting the history, then shrinks the output reservation, before surfacing anything. The output reservation is request-aware from the start: a huge-output model (e.g. a 500k-output Grok) no longer starves the input budget on short requests, and stale large tool results are mechanically replaced with one-line stubs only when the conversation is actually under pressure — healthy sessions keep their full history. Oversized tool-call inputs in the recent tail are rescued by replacing their input instead of dead-ending in a retry loop, and when every stage still fails, the overflow guidance now follows the UI language instead of always rendering Chinese.
+  **上下文窗口溢出现在静默自愈，不再直接失败本轮（#131）**——服务端先压缩历史重试，再缩小输出预留，都不行才向用户报错。输出预留从一开始就按请求量计算：超大输出模型（如 500k 输出的 Grok）不会再在短请求上挤占输入预算；陈旧的大型工具结果只在会话真正吃紧时才机械替换为一行 stub——健康会话的历史保持原样。近期窗口里超大的工具调用参数会替换其 input 而不是陷入重试死循环；全部手段用尽后的溢出引导也跟随界面语言，不再永远显示中文。
+
+- **Music analysis failures now carry an actionable next step (#134)** — when the required model packs are missing, the tool result names the missing packs and the settings route, and the failed tool row in chat shows an install button that opens the model-pack page directly; the music skill guides the `detect_beats` fallback (BPM + beat frames only) while the packs stay uninstalled.
+  **音乐分析失败现在自带可操作的下一步（#134）**——所需模型包缺失时，工具结果会列出缺失包与设置路径，聊天里的失败工具行会出现「去设置安装」按钮，直接打开模型包页面；技能指引在模型包未安装时引导 `detect_beats` 降级方案（仅 BPM 与节拍帧）。
+
+- **Schema validation errors now name the offending field** — a rejected `edit_item` call used to say only "/ must NOT have additional properties" with no hint about which field was extra, so the agent retried the same shape and the edit never landed (#135). The error now reads `/ must NOT have additional properties: "itemId"`, letting the model self-correct on the next attempt.
+  **Schema 校验错误现在点名违规字段**——被拒的 `edit_item` 调用过去只说「/ must NOT have additional properties」而不提示多出来的是哪个字段，模型只能原样重试，编辑永远落不了轨（#135）。现在错误会显示 `/ must NOT have additional properties: "itemId"`，模型下一次尝试即可自我修正。
+
+- **Large v3 native transcription resolves its models from the shared catalog (#133)** — desktop native ASR for the large-v3 tier now loads through the same catalog path as the other tiers instead of a hardcoded resolution.
+  **Large v3 本地转写从共享模型目录解析模型（#133）**——桌面端 large-v3 档位的本地 ASR 现在与其他档位一样走共享目录解析，不再使用硬编码路径。
 
 - `load_skill` no longer rejects a recoverable call with "Pass either file or files, not both." before the skill is ever read. Models routinely emit both selectors at once — a blank `file` beside a real `files` array, `files: []` beside a real `file`, or paging numbers with no `file` — and every such call died in argument validation, stalling bundled and custom skills alike. The arguments are now normalized before the shared invocation boundary validates them against the tool schema — the schema's `files.minItems`, `file: string` and `offset: integer` rules would otherwise reject `files: []`, `file: null` or `offset: "0"` before any tool code ran. Blank and null selectors are dropped, empty or all-blank `files` arrays fall back to the initial load, a bare string on `files` becomes a one-file batch, integer-looking strings become integers, and paging numbers are discarded when no `file` remains. When both selectors survive, only a non-zero `offset` keeps the paged file (a continuation worth preserving); `offset: 0` on SKILL.md repeats what the initial load already returned, so the batch wins. The prompts that taught the merged shape are fixed with it — the tool description, the skill-library index, and the result notes now state one selector per call instead of naming both paths in a single sentence — and each remaining rejection carries a concrete corrected call, so the same arguments are never the obvious thing to re-send.
   `load_skill` 不再在读取技能之前就以「Pass either file or files, not both.」拒绝一个本可恢复的调用。模型经常同时给出两个选择器——空字符串 `file` 与真实 `files` 数组并存、`files: []` 与真实 `file` 并存，或只有分页参数而没有 `file`——这些调用全部死在参数校验里，内置技能和自定义技能一样中招。现在参数会在共享调用边界按工具 schema 校验**之前**先归一化——否则 schema 的 `files.minItems`、`file: string`、`offset: integer` 会在任何工具代码运行前就拒掉 `files: []`、`file: null` 或 `offset: "0"`。空值与 null 选择器被删除，空数组或全空字符串的 `files` 回退为初次加载，`files` 上的裸字符串视为单文件批量，形如整数的字符串转为整数，没有 `file` 时分页参数被丢弃。两个选择器同时存活时，只有非零 `offset` 才保留分页文件（那是值得保留的续读）；`offset: 0` 打在 SKILL.md 上只是重复首轮加载，所以批量胜出。诱发该形状的提示词一并修正——工具描述、技能库索引与返回 note 改为「每次调用只用一个选择器」，不再把两条路径写进同一句话——并且每个仍然失败的请求都会带上明确的修正调用，避免原样重发同一组错误参数。
