@@ -205,7 +205,19 @@ export function rescueOversizedTail(messages: readonly ModelMessage[]): ModelMes
       if (typeof candidate.text === 'string') {
         return { ...part, text: `${raw.slice(0, 1_000)}\n…[${raw.length - 1_000} chars elided by context rescue]` };
       }
-      return { ...part, output: { type: 'text', value: `[rescued ${String(candidate.toolName ?? 'part')} output; ${raw.length} chars elided, reread with a narrow filter or id if needed]` } };
+      if (candidate.type === 'tool-result') {
+        return {
+          ...part,
+          output: { type: 'text', value: `[rescued ${String(candidate.toolName ?? 'part')} output; ${raw.length} chars elided, reread with a narrow filter or id if needed]` },
+        };
+      }
+      // Tool calls keep their identity but lose the oversized input: adding an
+      // `output` field to a tool-call part would corrupt its shape AND leave the
+      // input untouched, so prepareContext's retry loop could never make progress.
+      return {
+        ...part,
+        input: { rescuedToolCall: true, note: `[rescued tool call input; ${raw.length} chars elided, re-read with a narrow filter or id if needed]` },
+      };
     });
     return changed ? { ...message, content } as ModelMessage : message;
   });

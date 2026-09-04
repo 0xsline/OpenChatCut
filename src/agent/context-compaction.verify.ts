@@ -417,6 +417,18 @@ assert.match(JSON.stringify(rescued![1]), /rescued read_timeline output/,
   'oversized tool parts inside the tail are elided');
 assert.equal(rescueOversizedTail([{ role: 'user', content: 'small' }]), null,
   'a small tail has nothing to rescue');
+const rescueCallMessages: ModelMessage[] = [
+  { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'big-call', toolName: 'edit_item', input: { batch: 'w'.repeat(20_000) } }] },
+];
+const rescuedCall = rescueOversizedTail(rescueCallMessages);
+assert.ok(rescuedCall, 'an oversized tool call must be rescued instead of dead-ending');
+const rescuedCallPart = (rescuedCall![0].content as Array<Record<string, unknown>>)[0] as Record<string, unknown>;
+assert.equal(rescuedCallPart.type, 'tool-call', 'the tool-call shape survives the rescue');
+assert.equal(rescuedCallPart.toolCallId, 'big-call', 'the call identity survives the rescue');
+assert.equal(rescuedCallPart.toolName, 'edit_item', 'the tool name survives the rescue');
+assert.ok(!('output' in rescuedCallPart), 'a tool-call part must never grow an output field');
+assert.ok(JSON.stringify(rescuedCallPart.input).length < 2_000,
+  'the oversized input must be replaced so the retry loop can terminate');
 assert.ok(truncatedToolResult.length < 13_000, 'large tool payloads cannot overflow the summary request');
 
 console.log('context-compaction.verify: ok');
