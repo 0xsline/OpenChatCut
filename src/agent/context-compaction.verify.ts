@@ -6,8 +6,10 @@ import {
   estimateTextTokens,
   effectiveOutputTokenBudget,
   prepareContext,
+  rescueOversizedTail,
   serializeMessagesForPrompt,
   serializeMessagesForSummary,
+  shakeStaleToolResults,
 } from './context-compaction';
 import { contextWindowForPreparation } from './context-management';
 import { summarizeConversation } from './context-summary';
@@ -376,6 +378,45 @@ assert.equal(effectiveOutputTokenBudget(128_000, 400_000), 128_000,
   'turn output follows the model ceiling (128k) and is not capped at a fixed 64k');
 assert.equal(effectiveOutputTokenBudget(4_096, 400_000), 4_096,
   'lower exact model output ceilings remain authoritative');
+assert.equal(effectiveOutputTokenBudget(500_000, 500_000), 250_000,
+  'omitting the input estimate preserves the legacy half-window reservation');
+assert.equal(effectiveOutputTokenBudget(500_000, 500_000, 45_000), 250_000,
+  'a short first-round request keeps the legacy reservation when input leaves room');
+assert.equal(effectiveOutputTokenBudget(500_000, 500_000, 300_000), 183_616,
+  'a heavy request tightens output reservation to fit window minus input minus reserve');
+assert.equal(effectiveOutputTokenBudget(500_000, 500_000, 495_000), 8_192,
+  'a saturated long session never drops below the output floor');
+assert.ok(effectiveOutputTokenBudget(500_000, 500_000, 300_000) < effectiveOutputTokenBudget(500_000, 500_000),
+  'request-aware reservation frees input budget for huge-output models (issue #131)');
+const shakeMessages: ModelMessage[] = [
+  { role: 'user', content: 'first' },
+  { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'read_project', input: {} }] },
+  { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'read_project', output: { type: 'json', value: { data: 'x'.repeat(5_000) } } }] },
+  { role: 'user', content: 'm4' },
+  { role: 'user', content: 'm5' },
+  { role: 'user', content: 'm6' },
+  { role: 'user', content: 'm7' },
+  { role: 'user', content: 'm8' },
+  { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c2', toolName: 'read_timeline', input: {} }] },
+  { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c2', toolName: 'read_timeline', output: { type: 'json', value: { data: 'y'.repeat(5_000) } } }] },
+];
+const shaken = shakeStaleToolResults(shakeMessages);
+assert.match(JSON.stringify((shaken[2] as { content: unknown[] }).content), /stale tool result from read_project/,
+  'tool results older than the recency window become one-line stubs');
+assert.match(JSON.stringify((shaken[9] as { content: unknown[] }).content), /yyyy/,
+  'recent tool results stay verbatim');
+assert.equal(shakeStaleToolResults([{ role: 'user', content: 'hi' }]).length, 1,
+  'messages without tool parts pass through untouched');
+const rescueMessages: ModelMessage[] = [
+  { role: 'user', content: 'go' },
+  { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'big', toolName: 'read_timeline', output: { type: 'json', value: { blob: 'z'.repeat(20_000) } } }] },
+];
+const rescued = rescueOversizedTail(rescueMessages);
+assert.ok(rescued, 'an oversized tail must be rescued instead of dead-ending');
+assert.match(JSON.stringify(rescued![1]), /rescued read_timeline output/,
+  'oversized tool parts inside the tail are elided');
+assert.equal(rescueOversizedTail([{ role: 'user', content: 'small' }]), null,
+  'a small tail has nothing to rescue');
 assert.ok(truncatedToolResult.length < 13_000, 'large tool payloads cannot overflow the summary request');
 
 console.log('context-compaction.verify: ok');

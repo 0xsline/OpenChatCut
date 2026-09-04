@@ -10,7 +10,7 @@ import { getActiveAgentModelChoice } from './model-selection';
 import { describeImagesForTextModel } from './vision';
 import { resolveVisionModel } from './visionConfig';
 import { withoutModelImages } from './messages';
-import { effectiveOutputTokenBudget } from './context-compaction';
+import { effectiveOutputTokenBudget, estimateContextTokens } from './context-compaction';
 import type { AgentSendOptions } from './useAgentRun';
 import { createAgentRetry, type DisplayMessage } from './agent-session';
 import { ServerRunToolExecutor } from './serverRunToolExecutor';
@@ -145,9 +145,14 @@ async function prepareServerRunPayload(
   } else if (!supportsImages) {
     modelMessages = withoutModelImages(modelMessages);
   }
+  const systemPrompt = buildAgentSystemPrompt(ctx, settings);
+  const estimatedInputTokens = estimateContextTokens(
+    [...modelMessages, { role: 'user', content } as (typeof modelMessages)[number]],
+    systemPrompt,
+  );
   const payload = buildServerRunPayload(environment.projectId, content, sendOptions, {
     history: modelMessages,
-    systemPrompt: buildAgentSystemPrompt(ctx, settings),
+    systemPrompt,
     provider: choice.provider,
     model: choice.model,
     backend: choice.backend,
@@ -157,6 +162,7 @@ async function prepareServerRunPayload(
     maxOutputTokens: effectiveOutputTokenBudget(
       choice.capabilities.maxOutputTokens.value,
       choice.capabilities.contextWindowTokens.value,
+      estimatedInputTokens,
     ),
     openAiApiMode: choice.openAiApiMode,
   });

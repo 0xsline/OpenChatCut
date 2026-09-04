@@ -22,6 +22,7 @@ import {
 } from './tool-policy';
 import { createServerLanguageModel, serverProviderOptions } from './model';
 import {
+  estimateContextTokens,
   estimateTextTokens,
   type AgentContextUsage,
   type ContextPreparation,
@@ -87,6 +88,8 @@ export interface ServerRunInput {
 type ServerTurnInput = Omit<ServerContextInput, 'schemas'> & {
   readonly activation: ActivationState;
   readonly requestIndex: number;
+  /** Silent overflow-recovery stage: shrinks the request after a provider rejection. */
+  readonly overflowStage?: 'reduced-output';
 };
 
 function measuredContextUsage(
@@ -121,16 +124,26 @@ async function executeServerTurn(
     return await runServerTurnOnce(input);
   } catch (error) {
     // A context overflow means the estimate undershot the real tokenizer.
-    // Compress once, regardless of the estimated pressure, then retry the
-    // exact same turn. Deterministic retries for other failures live in
-    // llm-retry.ts; this one must change the request before it can succeed.
+    // Recover silently in escalating stages before surfacing anything:
+    // 1) compress history (forceCompact), 2) shrink the output reservation,
+    // 3) shrink both output and the active tool surface. Each stage only
+    // changes the request; the user never sees an intermediate failure.
+    // Deterministic retries for other failures live in llm-retry.ts.
     if (input.signal.aborted
       || input.forceCompact
       || classifyLlmFailure(error).code !== 'CONTEXT_WINDOW_EXCEEDED') {
       throw error;
     }
     pushRunEvent(input.run, 'context-overflow-retry', { requestIndex: input.requestIndex });
-    return runServerTurnOnce({ ...input, forceCompact: true });
+    try {
+      return await runServerTurnOnce({ ...input, forceCompact: true });
+    } catch (retryError) {
+      if (input.signal.aborted || classifyLlmFailure(retryError).code !== 'CONTEXT_WINDOW_EXCEEDED') {
+        throw retryError;
+      }
+      pushRunEvent(input.run, 'context-overflow-retry', { requestIndex: input.requestIndex, stage: 'reduced-output' });
+      return runServerTurnOnce({ ...input, forceCompact: true, overflowStage: 'reduced-output' });
+    }
   }
 }
 
@@ -152,13 +165,16 @@ async function runServerTurnOnce(
   );
   pushRunEvent(input.run, 'text-start', {});
   const options = serverProviderOptions(input.provider, input.apiMode, input.cacheMode);
+  const maxOutputTokens = input.overflowStage === 'reduced-output'
+    ? Math.max(4_096, Math.floor(input.maxOutputTokens / 4))
+    : input.maxOutputTokens;
   const result = streamText({
     model: input.model,
     instructions: input.instructions,
     messages: prepared.messages,
     tools,
     ...(options ? { providerOptions: options } : {}),
-    maxOutputTokens: input.maxOutputTokens,
+    maxOutputTokens,
     maxRetries: 0,
     abortSignal: input.signal,
     timeout: SERVER_RUN_AI_TIMEOUT,
@@ -213,10 +229,22 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   const backend = input.backend === 'codex' ? 'codex' : 'api';
   const requested = resolveServerRunToolCatalog(input.tools, run.askOnly);
   const capabilities = resolveServerRunCapabilities(provider, backend, input.model);
+  const basePrompt = buildServerRunPrompt({
+    ...input,
+    projectId: run.projectId,
+    askOnly: run.askOnly,
+    references: run.references,
+  });
+  const estimatedInputTokens = estimateContextTokens(
+    basePrompt.messages,
+    basePrompt.instructions,
+    estimateTextTokens(JSON.stringify(requested)),
+  );
   const maxOutputTokens = resolveServerRunMaxOutputTokens(
     input.maxOutputTokens,
     capabilities.maxOutputTokens.value,
     capabilities.contextWindowTokens.value,
+    estimatedInputTokens,
   );
   const maxInputTokens = capabilities.maxInputTokens.estimated
     ? Math.max(1, capabilities.contextWindowTokens.value - maxOutputTokens)
@@ -235,12 +263,6 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
       input.maxAcceptanceIterations,
     ),
   };
-  const basePrompt = buildServerRunPrompt({
-    ...input,
-    projectId: run.projectId,
-    askOnly: run.askOnly,
-    references: run.references,
-  });
   const prompt = {
     ...basePrompt,
     instructions: basePrompt.instructions + acceptanceInstructions(activation.acceptance.enabled),

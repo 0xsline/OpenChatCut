@@ -112,7 +112,7 @@ function EarlierMessagesButton({ controller }: { controller: ChatPanelController
 }
 
 function MessageEntries({ controller }: { controller: ChatPanelController }) {
-  const { agent, composer, visibleMessages, visibleFrom } = controller;
+  const { agent, composer, props, visibleMessages, visibleFrom } = controller;
   const onRetry = (retry: NonNullable<DisplayMessage['retry']>) => {
     if (!agent.running) void agent.send(retry.text, {
       askOnly: retry.askOnly,
@@ -121,9 +121,10 @@ function MessageEntries({ controller }: { controller: ChatPanelController }) {
   };
   return <>
     {groupMessages(visibleMessages, visibleFrom).map((item) => item.kind === 'toolgroup' ? (
-      <ToolGroupRow key={item.index} name={item.name} items={item.items} />
+      <ToolGroupRow key={item.index} name={item.name} items={item.items} onOpenSettings={props.onOpenSettings} />
     ) : (
       <ChatMessage key={item.index} msg={item.msg} running={agent.running}
+        onOpenSettings={props.onOpenSettings}
         retry={item.msg.role === 'user' ? item.msg.retry : undefined}
         streaming={agent.running && item.index === agent.messages.length - 1 && item.msg.role === 'assistant'}
         widgetSubmitted={agent.messages.slice(item.index + 1).some((message) => message.role === 'user')}

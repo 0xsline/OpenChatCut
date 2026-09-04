@@ -9,8 +9,9 @@ export function resolveServerRunMaxOutputTokens(
   requested: number,
   capabilityLimit: number,
   contextWindow: number,
+  estimatedInputTokens?: number,
 ): number {
-  return Math.min(requested, effectiveOutputTokenBudget(capabilityLimit, contextWindow));
+  return Math.min(requested, effectiveOutputTokenBudget(capabilityLimit, contextWindow, estimatedInputTokens));
 }
 
 function flushRunEvents(

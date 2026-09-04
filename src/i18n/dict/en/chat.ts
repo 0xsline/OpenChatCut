@@ -403,6 +403,8 @@ export default {
   '本次运行归档的产物记录（只列前 6 条）': 'Artifacts archived by this run (first 6 only).',
   '以下能力未配置，相关功能暂不可用：': 'These capabilities are not configured; related features are unavailable: ',
   '去设置配置': 'Open settings',
+  '去设置安装': 'Install in settings',
+  '当前请求的上下文超出了模型限制，系统已自动压缩并重试但仍放不下。换个更短的问法或新开一个聊天继续即可。': 'The current request exceeds the model context limit; automatic compaction and retry already ran but it still does not fit. Try a shorter prompt or continue in a new chat.',
   '转写': 'Transcription',
   '图片生成': 'Image generation',
   '语音合成': 'Voice',

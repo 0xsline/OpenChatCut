@@ -59,9 +59,15 @@ interface ChatMessageProps {
   widgetSubmitted?: boolean;
   /** maxTurns pauses the card "continue"; only the last continue card can be clicked (the old card is read-only)*/
   onContinue?: (() => void) | null;
+  /** Open settings (used by the missing-model-pack action button). */
+  onOpenSettings?: (() => void) | null;
 }
 
-export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, widgetSubmitted, onContinue }: ChatMessageProps) {
+function isMissingModelPacksResult(result: unknown): boolean {
+  return !!result && typeof result === 'object' && (result as Record<string, unknown>).action === 'missing-model-packs';
+}
+
+export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, widgetSubmitted, onContinue, onOpenSettings }: ChatMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -99,6 +105,12 @@ overflowWrap:anywhere breaks long tokens - long errors/summaries are wrapped in 
           <span style={{ fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: 0.2 }}>{tool.name}</span>
           {summary && <span style={{ opacity: 0.8 }}> · {summary}</span>}
           {!ok && <span style={{ color: theme.danger }}>：{String(r!.error)}</span>}
+          {!ok && onOpenSettings && isMissingModelPacksResult(r) && (
+            <button type="button" onClick={onOpenSettings}
+              style={{ marginLeft: 8, border: `0.5px solid ${theme.accent}`, background: 'transparent', color: theme.accent, borderRadius: 6, padding: '2px 10px', fontSize: 12, cursor: 'pointer' }}>
+              {t('去设置安装')}
+            </button>
+          )}
         </span>
       </div>
     );

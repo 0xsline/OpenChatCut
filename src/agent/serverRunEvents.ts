@@ -1,5 +1,6 @@
 import type { DisplayMessage } from './agent-session';
 import type { AgentContextUsage } from './context-compaction';
+import { contextOverflowGuidance } from './context-overflow-guidance';
 import type { ServerRunEventStream } from './serverRunFetchEventStream';
 
 export type ServerRunTerminalStatus = 'awaiting_user' | 'completed' | 'failed' | 'cancelled';
@@ -206,7 +207,7 @@ function bindErrorEvent(
       handlers.transportError(source, runId);
       return;
     }
-    handlers.appendMessage({ role: 'error', text: data.message });
+    handlers.appendMessage({ role: 'error', text: contextOverflowGuidance(data.message) ?? data.message });
     handleCommit(commitEvent(event, handlers), runId, handlers);
   });
 }
