@@ -14,7 +14,7 @@ export function CapabilityBanner({ controller }: { controller: ChatPanelControll
   );
   return <div className="cc-chat-capability-banner">
     <span>{t('以下能力未配置，相关功能暂不可用：')}{names}</span>
-    <button type="button" onClick={props.onOpenSettings}>{t('去设置配置')}</button>
+    <button type="button" onClick={() => props.onOpenSettings?.()}>{t('去设置配置')}</button>
     <button type="button" className="cc-chat-capability-banner-close" aria-label={t('关闭')}
       onClick={() => setDismissed(true)}>×</button>
   </div>;

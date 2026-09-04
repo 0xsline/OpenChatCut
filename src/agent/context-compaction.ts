@@ -545,6 +545,12 @@ function compactionBudget(options: ContextPreparationOptions): {
 export async function prepareContext(
   options: ContextPreparationOptions,
 ): Promise<ContextPreparation> {
+  const first = compactionBudget(options);
+  if (first.currentTokens <= first.triggerTokens && !options.forceCompact) {
+    // No pressure: return the history untouched. Shaking is a compaction
+    // strategy and must not rewrite what the model sees on the happy path.
+    return { messages: [...options.messages], usage: usage(first.currentTokens, options, false) };
+  }
   const shaken = shakeStaleToolResults(options.messages);
   const {
     currentTokens,
@@ -553,7 +559,8 @@ export async function prepareContext(
     recentTarget,
   } = compactionBudget({ ...options, messages: shaken });
   if (currentTokens <= triggerTokens && !options.forceCompact) {
-    return { messages: [...shaken], usage: usage(currentTokens, { ...options, messages: shaken }, false) };
+    // The mechanical trim alone recovered the budget: no LLM summarization.
+    return { messages: shaken, usage: usage(currentTokens, { ...options, messages: shaken }, false) };
   }
   const start = recentMessageStart(shaken, recentTarget, availableMessageTokens);
   if (start <= 0) {

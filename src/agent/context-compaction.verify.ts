@@ -52,6 +52,32 @@ assert.equal(untouched.usage.modelId, 'test:model');
 assert.equal(untouched.usage.contextWindowEstimated, false);
 assert.equal(untouched.usage.messageCount, 1);
 assert.deepEqual(untouched.messages, small);
+const staleResult = (toolName: string, chars: number): ModelMessage => ({
+  role: 'tool',
+  content: [{ type: 'tool-result', toolCallId: 'stale-call', toolName, output: { type: 'json', value: { data: 'y'.repeat(chars) } } }],
+});
+let gatedSummaryCalls = 0;
+const noPressure = [
+  staleResult('read_timeline', 5_000),
+  message('user', 'a'), message('user', 'b'), message('user', 'c'),
+  message('user', 'd'), message('user', 'e'), message('user', 'f'), message('user', 'g'),
+];
+const gated = await prepareContext({ ...options(noPressure, async () => {
+  gatedSummaryCalls += 1;
+  return 'unused';
+}), contextWindowTokens: 50_000, maxInputTokens: 49_000 });
+assert.equal(gatedSummaryCalls, 0, 'no-pressure history must not trigger a summary');
+assert.deepEqual(gated.messages, noPressure,
+  'below the trigger the history stays verbatim — shaking must not rewrite the happy path');
+let shakeSummaryCalls = 0;
+const pressured = await prepareContext(options(noPressure, async () => {
+  shakeSummaryCalls += 1;
+  return 'unused';
+}));
+assert.equal(shakeSummaryCalls, 0, 'the mechanical trim alone must recover the budget without a summary');
+assert.match(JSON.stringify(pressured.messages[0]), /stale tool result from read_timeline/,
+  'under pressure the stale tool result becomes a stub');
+assert.equal(pressured.messages.length, noPressure.length, 'shaking preserves the message count');
 const maxInputUsage = (inputTokens: number) => ({
   inputTokens,
   contextWindowTokens: 1_000,

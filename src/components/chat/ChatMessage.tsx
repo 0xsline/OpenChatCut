@@ -59,12 +59,18 @@ interface ChatMessageProps {
   widgetSubmitted?: boolean;
   /** maxTurns pauses the card "continue"; only the last continue card can be clicked (the old card is read-only)*/
   onContinue?: (() => void) | null;
-  /** Open settings (used by the missing-model-pack action button). */
-  onOpenSettings?: (() => void) | null;
+  /** Open settings, optionally on a specific vendor page (used by the missing-model-pack action button). */
+  onOpenSettings?: ((route?: string) => void) | null;
 }
 
 function isMissingModelPacksResult(result: unknown): boolean {
   return !!result && typeof result === 'object' && (result as Record<string, unknown>).action === 'missing-model-packs';
+}
+
+function missingPacksSettingsRoute(result: unknown): string | undefined {
+  if (!isMissingModelPacksResult(result)) return undefined;
+  const route = (result as Record<string, unknown>).settingsRoute;
+  return typeof route === 'string' ? route : undefined;
 }
 
 export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, widgetSubmitted, onContinue, onOpenSettings }: ChatMessageProps) {
@@ -106,7 +112,7 @@ overflowWrap:anywhere breaks long tokens - long errors/summaries are wrapped in 
           {summary && <span style={{ opacity: 0.8 }}> · {summary}</span>}
           {!ok && <span style={{ color: theme.danger }}>：{String(r!.error)}</span>}
           {!ok && onOpenSettings && isMissingModelPacksResult(r) && (
-            <button type="button" onClick={onOpenSettings}
+            <button type="button" onClick={() => onOpenSettings(missingPacksSettingsRoute(r))}
               style={{ marginLeft: 8, border: `0.5px solid ${theme.accent}`, background: 'transparent', color: theme.accent, borderRadius: 6, padding: '2px 10px', fontSize: 12, cursor: 'pointer' }}>
               {t('去设置安装')}
             </button>

@@ -46,6 +46,9 @@ export interface EditorWorkspaceDialogs {
   setShowShortcuts: Dispatch<SetStateAction<boolean>>;
   showSettings: boolean;
   setShowSettings: Dispatch<SetStateAction<boolean>>;
+  /** Settings vendor key to open on the next settings dialog mount (e.g. 'local/music/packs'). */
+  settingsRoute: string | undefined;
+  setSettingsRoute: Dispatch<SetStateAction<string | undefined>>;
   shortcutApiRef: RefObject<TimelineShortcutApi | null>;
   getPlayhead: () => number;
 }
@@ -67,6 +70,7 @@ export function useEditorWorkspaceDialogs({
   const [showVersions, setShowVersions] = useState(false);
 
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [settingsRoute, setSettingsRoute] = useState<string | undefined>(undefined);
   const shortcutApiRef = useRef<TimelineShortcutApi | null>(null);
   const getPlayhead = useCallback(() => playerRef.current?.getCurrentFrame() ?? 0, [playerRef]);
 
@@ -79,6 +83,8 @@ export function useEditorWorkspaceDialogs({
     setShowDesign,
     showSettings,
     setShowSettings,
+    settingsRoute,
+    setSettingsRoute,
     showVersions,
     setShowVersions,
     showShortcuts,

@@ -9,7 +9,7 @@ const GREEN = theme.success;
 // Collapsed row for a run of same-name tool calls: "● edit_gap · 20 times ▸".
 // Click to expand the individual rows (each keeps its own arg summary). Mirrors
 // the single tool-row look in ChatMessage so the collapsed/expanded states match.
-export function ToolGroupRow({ name, items, onOpenSettings }: { name: string; items: { msg: DisplayMessage; index: number }[]; onOpenSettings?: (() => void) | null }) {
+export function ToolGroupRow({ name, items, onOpenSettings }: { name: string; items: { msg: DisplayMessage; index: number }[]; onOpenSettings?: ((route?: string) => void) | null }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const anyError = items.some(({ msg }) => {
