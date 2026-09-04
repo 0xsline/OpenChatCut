@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { isAgentModelReady, type AgentModelSnapshot } from './model-selection';
+import {
+  applyClaudeCodeAgentStatus, getAgentModelSnapshot, isAgentModelReady, type AgentModelSnapshot,
+} from './model-selection';
 import {
   parseModelCapabilityOverrides,
   resolveModelCapabilities,
@@ -93,5 +95,57 @@ assert.throws(() => parseModelCapabilityOverrides(JSON.stringify([{
 assert.throws(() => parseModelCapabilityOverrides(JSON.stringify([{
   backend: 'api', provider: 'openai', modelId: 'x', contextWindowTokens: 8_192, maxInputTokens: 8_193,
 }])), /input limit exceeds/);
+
+// ── Claude Code backend: provider/backend pairing is enforced ────────────────
+assert.throws(
+  () => parseModelCapabilityOverrides(JSON.stringify([
+    { backend: 'claude-code', provider: 'openai', modelId: 'sonnet', supportsTools: true },
+  ])),
+  /Anthropic provider/,
+  'claude-code capabilities are rejected for a non-Anthropic provider',
+);
+assert.doesNotThrow(
+  () => parseModelCapabilityOverrides(JSON.stringify([
+    { backend: 'claude-code', provider: 'anthropic', modelId: 'sonnet', supportsTools: true },
+  ])),
+  'claude-code + anthropic is a valid capability identity',
+);
+
+// ── Claude Code choices only appear installed + signed in ────────────────────
+applyClaudeCodeAgentStatus({ installed: false, version: null, account: null });
+assert.equal(
+  getAgentModelSnapshot().choices.some((choice) => choice.backend === 'claude-code'),
+  false,
+  'not installed yields no claude-code choices',
+);
+
+applyClaudeCodeAgentStatus({
+  installed: true,
+  version: '2.1.260',
+  account: { loggedIn: false, email: null, subscriptionType: null, authMethod: null },
+});
+assert.equal(
+  getAgentModelSnapshot().choices.some((choice) => choice.backend === 'claude-code'),
+  false,
+  'installed but signed out yields no claude-code choices',
+);
+
+applyClaudeCodeAgentStatus(
+  {
+    installed: true,
+    version: '2.1.260',
+    account: { loggedIn: true, email: 'user@example.com', subscriptionType: 'max', authMethod: 'claude.ai' },
+  },
+  '',
+  [{ id: 'sonnet', label: 'Claude Sonnet', isDefault: true }],
+);
+const claudeCodeSnapshot = getAgentModelSnapshot();
+const claudeCodeChoice = claudeCodeSnapshot.choices.find((choice) => choice.backend === 'claude-code');
+assert.ok(claudeCodeChoice, 'installed + signed in with a discovered model yields a claude-code choice');
+assert.equal(claudeCodeChoice!.id, 'claude-code:sonnet');
+assert.equal(claudeCodeChoice!.provider, 'anthropic');
+assert.equal(claudeCodeChoice!.model, 'sonnet');
+assert.equal(claudeCodeSnapshot.activeId, 'claude-code:sonnet',
+  'the sole claude-code choice becomes active when nothing else is configured');
 
 console.log('model-selection.verify: ok');
