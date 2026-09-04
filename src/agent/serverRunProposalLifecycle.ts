@@ -135,7 +135,12 @@ function applyToolActions(
     turn.proposalBaseDoc = replayActions(turn.proposalBaseDoc, persistent);
     turn.persistentOps.push(buildOperation(input.name, input.args, persistent));
   }
-  if (proposed.length) turn.ops.push(buildOperation(input.name, input.args, proposed));
+  if (proposed.length) {
+    // Count tools that contributed proposal operations so the terminal path
+    // can detect a run whose recorded edits failed to survive to settle time.
+    turn.toolCallCount += 1;
+    turn.ops.push(buildOperation(input.name, input.args, proposed));
+  }
   const nextDoc = replayActions(turn.draft.getDoc(), input.actions);
   const next = turnContext(turn.state.ctxRef.current, nextDoc);
   turn.draft = next.draft;
@@ -269,9 +274,14 @@ async function finalizeCompletedTurn(
   try {
     committed = await commitPersistentOperations(turn);
   } catch (error) {
+    const summary = error instanceof Error ? error.message : String(error);
+    turn.state.setMessages((messages) => [
+      ...messages,
+      { role: 'error', text: `Agent 已停止，但素材池改动提交失败：${summary}` },
+    ]);
     await settleServerRun(turn.projectId, input.runId, {
       status: 'failed',
-      summary: error instanceof Error ? error.message : String(error),
+      summary,
     });
     return 'finalized';
   }
@@ -285,6 +295,28 @@ async function finalizeCompletedTurn(
   turn.persistentOps = [];
   turn.persistentBeforeDoc = null;
   if (!turn.ops.length) {
+    // A run may legitimately end with no proposed edits (pure reads, or only
+    // pool imports committed above). toolCallCount counts only tools that
+    // contributed proposal operations, so a non-zero count here means their
+    // ops failed to survive to settle time — surface it instead of showing
+    // the model's success reply while the timeline stays empty.
+    if (turn.toolCallCount > 0) {
+      // Mutating tools executed successfully, but no proposal operations
+      // survived to settle time. Settling "completed" here would show the
+      // model's success reply while the timeline stays empty — surface it.
+      turn.state.setMessages((messages) => [
+        ...messages,
+        {
+          role: 'error',
+          text: 'Agent 已完成运行，但本次编辑未被记录为可应用的操作（提案为空），时间线未改动。请重试，或打开运行检查器查看详情。',
+        },
+      ]);
+      await settleServerRun(turn.projectId, input.runId, {
+        status: 'failed',
+        summary: 'server run completed with no recorded proposal operations',
+      });
+      return 'finalized';
+    }
     await settleServerRun(turn.projectId, input.runId, {
       status: 'completed',
       summary: input.assistantText || 'server run completed',
@@ -295,9 +327,14 @@ async function finalizeCompletedTurn(
   try {
     proposal = await createPendingProposal(turn, undefined, false);
   } catch (error) {
+    const summary = error instanceof Error ? error.message : String(error);
+    turn.state.setMessages((messages) => [
+      ...messages,
+      { role: 'error', text: `Agent 已停止，但提案生成失败，编辑未应用：${summary}` },
+    ]);
     await settleServerRun(turn.projectId, input.runId, {
       status: 'failed',
-      summary: error instanceof Error ? error.message : String(error),
+      summary,
     });
     return 'finalized';
   }
@@ -326,7 +363,12 @@ async function resolveTerminalDisposition(
     });
     return 'waiting_approval';
   }
-  if (input.status === 'awaiting_user') {
+  // A run that ends with a follow-up question still owns its recorded edits:
+  // dropping them here settled "completed" while the model reported success
+  // and the timeline stayed empty. Only question-only runs settle directly;
+  // runs with recorded work go through the same proposal path as completed.
+  const hasPendingWork = turn.ops.length > 0 || turn.persistentOps.length > 0;
+  if (input.status === 'awaiting_user' && !hasPendingWork) {
     turn.completionStatus = 'awaiting_user';
     await settleServerRun(turn.projectId, input.runId, {
       status: 'completed',
@@ -334,7 +376,7 @@ async function resolveTerminalDisposition(
     });
     return 'finalized';
   }
-  if (input.status !== 'completed') {
+  if (input.status !== 'completed' && input.status !== 'awaiting_user') {
     turn.completionStatus = input.status === 'cancelled' ? 'aborted' : 'failed';
     await settleServerRun(turn.projectId, input.runId, {
       status: turn.completionStatus,
