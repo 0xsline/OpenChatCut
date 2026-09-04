@@ -96,6 +96,8 @@ export default {
   '待决定': 'Pending',
   '已允许': 'Allowed',
   '审批': 'Approvals',
+  '真实工具确认': 'Live tool confirmation',
+  '提案审核': 'Proposal review',
   '字节': 'bytes',
   '参数摘要': 'Args digest',
   '已脱敏': 'redacted',

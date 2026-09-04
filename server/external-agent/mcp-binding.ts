@@ -59,6 +59,7 @@ export function validateBrowserBinding(
   session: McpBindingSession,
   allowRevisionDrift = false,
   adoptSameIdentity = true,
+  requireSameRevisionForAdopt = false,
 ): EditorBinding | null {
   if (session.staleReason) throw new ExternalEditorCallError('stale', session.staleReason);
   if (!session.binding) return null;
@@ -75,6 +76,7 @@ export function validateBrowserBinding(
   if (adoptSameIdentity
     && current
     && sameEditorIdentity(current, session.binding)
+    && (!requireSameRevisionForAdopt || current.baseRevision === session.binding.baseRevision)
     && editorBindingMatches(current)) {
     session.binding = current;
     return current;

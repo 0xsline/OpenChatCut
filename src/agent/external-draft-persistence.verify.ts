@@ -120,6 +120,20 @@ const reloaded = new ExternalBridgeRuntime(
 );
 await reloaded.hydrate(persistedDraft);
 const reloadBinding = binding('editor-after-reload');
+const recoveredList = await reloaded.execute('list_edit_sessions', {}, reloadBinding);
+assert(Array.isArray(recoveredList) && recoveredList.some((entry) => (
+  entry && typeof entry === 'object' && 'editSessionId' in entry
+  && entry.editSessionId === editSessionId
+)), 'a refreshed editor can discover its persisted draft');
+const recovered = await reloaded.execute('recover_edit_session', {
+  editSessionId,
+  action: 'resume',
+}, reloadBinding);
+assert.equal(
+  recovered && typeof recovered === 'object' && 'status' in recovered ? recovered.status : undefined,
+  'drafting',
+  'matching revision resumes the persisted draft',
+);
 const freshGuarded = await reloaded.execute('read_export_history', guardedArgs, reloadBinding);
 assert.equal(needsConfirmation(freshGuarded), true, 'reload requires a fresh external approval');
 const freshGuard = reloaded.pendingGuard();

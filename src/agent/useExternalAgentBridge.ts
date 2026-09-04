@@ -18,8 +18,9 @@ import {
   projectStoreRemoteAvailable,
   type BrowserProjectOwnership,
 } from '../persist/projectStoreTransport';
-import { redactTextForAgentRuntime, sanitizeJsonForArtifact } from './runtime-artifact';
-import { TOOL_ARTIFACT_THRESHOLD } from './runtime-ledger';
+import { redactTextForAgentRuntime } from './runtime-artifact';
+import { projectExternalReply } from './external-result-projection';
+export { projectExternalReply } from './external-result-projection';
 import { externalBridgeCanStart, type ExternalBridgeReadinessToken } from './external-bridge-readiness';
 import {
   EditorBridgeRequestError,
@@ -76,23 +77,6 @@ function retryDelay(): Promise<void> {
   return promise;
 }
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
-
-function projectExternalReply(value: unknown): unknown {
-  const sanitized = sanitizeJsonForArtifact(value);
-  if (!sanitized) {
-    throw new ExternalEditSessionOutcomeError(
-      'failed',
-      'The external result could not be serialized safely.',
-    );
-  }
-  if (sanitized.originalChars > TOOL_ARTIFACT_THRESHOLD) {
-    throw new ExternalEditSessionOutcomeError(
-      'failed',
-      'The external result was too large and no recoverable artifact reference was available.',
-    );
-  }
-  return JSON.parse(sanitized.body);
-}
 
 function failedOutcome(
   error: unknown,

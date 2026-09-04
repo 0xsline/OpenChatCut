@@ -23,8 +23,15 @@ project, call `openchatcut_status`, and refresh the MCP tool list.
 
 ## Stale edit session
 
-Discard the stale session and begin a fresh one. An auto session stays auto; it
-does not fall back to manual review.
+Call `list_edit_sessions` before starting another session. For an entry marked
+`orphaned: true`, call `recover_edit_session` with one of its `recoveryActions`:
+
+- `resume` continues a draft only when its checkpoint still matches the project.
+- `discard` removes the abandoned draft without changing the live project.
+
+An online owner must finish or discard its own session. Terminal `stale`,
+`cancelled`, and `failed` sessions cannot be resumed; begin a fresh session.
+An auto session stays auto and does not fall back to manual review.
 
 ## Proposal awaiting review
 
