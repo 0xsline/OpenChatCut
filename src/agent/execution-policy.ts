@@ -150,7 +150,17 @@ export function assertValidAgentToolSchemas(catalog: readonly AgentToolSchema[])
 
 function issueText(issue: ErrorObject): string {
   const path = issue.instancePath || '/';
-  return `${path} ${issue.message ?? issue.keyword}`.trim();
+  // additionalProperties/unevaluatedProperties messages do not name the
+  // offending field — it lives in params. Append it so the model and the
+  // user can see exactly what to remove instead of guessing on retry.
+  const params = issue.params as { additionalProperty?: unknown; unevaluatedProperty?: unknown };
+  const offender = typeof params?.additionalProperty === 'string'
+    ? params.additionalProperty
+    : typeof params?.unevaluatedProperty === 'string'
+      ? params.unevaluatedProperty
+      : '';
+  const detail = offender ? `${issue.message ?? issue.keyword}: "${offender}"` : (issue.message ?? issue.keyword);
+  return `${path} ${detail}`.trim();
 }
 
 /** Runtime authority check shared by built-in, Codex/API, and connected external adapters. */
