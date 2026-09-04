@@ -1,5 +1,6 @@
 import type { CodexAgentModel, CodexAgentStatus } from '../../shared/codex-agent';
 import type { CopilotAgentModel, CopilotAgentStatus } from '../../shared/copilot-agent';
+import type { ClaudeCodeAgentModel, ClaudeCodeAgentStatus } from '../../shared/claude-code-agent';
 import { loadAgentModelPref, saveAgentModelPref } from '../persist/sessionPrefs';
 import {
   LLM_PROVIDER_PRESETS,
@@ -28,7 +29,7 @@ interface KeyStateLike {
 
 export interface AgentModelChoice {
   readonly id: string;
-  readonly backend: 'api' | 'codex' | 'copilot';
+  readonly backend: 'api' | 'codex' | 'copilot' | 'claude-code';
   readonly provider: LlmProvider;
   readonly providerLabel: string;
   readonly model: string;
@@ -47,6 +48,7 @@ export interface AgentModelSnapshot {
 let snapshot: AgentModelSnapshot = { choices: [], activeId: '', loaded: false };
 let apiModelChoices: readonly AgentModelChoice[] = [];
 let codexModelChoices: readonly AgentModelChoice[] = [];
+let claudeCodeModelChoices: readonly AgentModelChoice[] = [];
 let capabilityOverrides: readonly ModelCapabilityOverride[] = [];
 let codexStatus: CodexAgentStatus | null = null;
 let codexSavedModel = '';
@@ -57,6 +59,9 @@ let copilotStatus: CopilotAgentStatus | null = null;
 let copilotSavedModel = '';
 let copilotSavedReasoningEffort = '';
 let copilotDiscoveredModels: readonly CopilotAgentModel[] = [];
+let claudeCodeStatus: ClaudeCodeAgentStatus | null = null;
+let claudeCodeSavedModel = '';
+let claudeCodeDiscoveredModels: readonly ClaudeCodeAgentModel[] = [];
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -125,7 +130,35 @@ function chooseInitialApiId(
 }
 
 function allChoices(): readonly AgentModelChoice[] {
-  return [...apiModelChoices, ...codexModelChoices, ...copilotModelChoices];
+  return [
+    ...apiModelChoices,
+    ...codexModelChoices,
+    ...copilotModelChoices,
+    ...claudeCodeModelChoices,
+  ];
+}
+function rebuildClaudeCodeChoices(): void {
+  if (!claudeCodeStatus?.installed || claudeCodeStatus.account?.loggedIn !== true) {
+    claudeCodeModelChoices = [];
+    return;
+  }
+  const savedModel = claudeCodeSavedModel.trim();
+  const entries = claudeCodeDiscoveredModels.length > 0
+    ? claudeCodeDiscoveredModels
+    : (savedModel ? [{ id: savedModel, label: savedModel, isDefault: false }] : []);
+  claudeCodeModelChoices = entries.map((entry) => {
+    const requested = entry.id === claudeCodeSavedModel;
+    const identity: ModelIdentity = { backend: 'claude-code', provider: 'anthropic', modelId: entry.id };
+    return {
+      id: `claude-code:${entry.id}`,
+      backend: 'claude-code',
+      provider: 'anthropic',
+      providerLabel: 'Claude Code',
+      model: entry.id,
+      ...(requested ? { requestModel: entry.id } : {}),
+      capabilities: modelCapabilities(identity),
+    };
+  });
 }
 function rebuildCodexChoices(): void {
   if (!codexStatus?.installed || codexStatus.account?.type === 'apiKey') {
@@ -214,15 +247,21 @@ export function applyAgentModelStatus(
   codexSavedReasoningEffort = models.CODEX_REASONING_EFFORT?.trim() ?? codexSavedReasoningEffort;
   copilotSavedModel = models.COPILOT_MODEL?.trim() ?? copilotSavedModel;
   copilotSavedReasoningEffort = models.COPILOT_REASONING_EFFORT?.trim() ?? copilotSavedReasoningEffort;
+  claudeCodeSavedModel = models.CLAUDE_CODE_MODEL?.trim() ?? claudeCodeSavedModel;
   rebuildCodexChoices();
   rebuildCopilotChoices();
+  rebuildClaudeCodeChoices();
   const choices = allChoices();
   const initialApiId = chooseInitialApiId(apiModelChoices, models);
   const preferred = loadAgentModelPref();
   const preserved = choices.some((choice) => choice.id === preferred) ? preferred
     : choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
-  commitChoices(choices, preserved || codexModelChoices[0]?.id || initialApiId || choices[0]?.id || '', true,
-    apiModelChoices.find((choice) => choice.id === initialApiId));
+  commitChoices(
+    choices,
+    preserved || codexModelChoices[0]?.id || claudeCodeModelChoices[0]?.id || initialApiId || choices[0]?.id || '',
+    true,
+    apiModelChoices.find((choice) => choice.id === initialApiId),
+  );
 }
 
 function selectedReasoningEffort(requested: string | undefined, capabilities: ModelCapabilities): string {
@@ -270,6 +309,22 @@ export function applyCopilotAgentStatus(
   const preserved = choices.some((choice) => choice.id === preferred) ? preferred
     : choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
   commitChoices(choices, preserved || choices[0]?.id || '', true);
+}
+
+export function applyClaudeCodeAgentStatus(
+  status: ClaudeCodeAgentStatus,
+  savedModel?: string,
+  discoveredModels?: readonly ClaudeCodeAgentModel[],
+): void {
+  claudeCodeStatus = status;
+  claudeCodeSavedModel = savedModel?.trim() ?? claudeCodeSavedModel;
+  if (discoveredModels) claudeCodeDiscoveredModels = discoveredModels;
+  rebuildClaudeCodeChoices();
+  const choices = allChoices();
+  const preferred = loadAgentModelPref();
+  const preserved = choices.some((choice) => choice.id === preferred) ? preferred
+    : choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
+  commitChoices(choices, preserved || claudeCodeModelChoices[0]?.id || choices[0]?.id || '', true);
 }
 
 export function getAgentModelSnapshot(): AgentModelSnapshot {

@@ -106,7 +106,7 @@ export interface ServerRunController {
   readonly stop: () => void;
 }
 
-export type ServerRunBackend = 'api' | 'codex' | 'copilot';
+export type ServerRunBackend = 'api' | 'codex' | 'copilot' | 'claude-code';
 
 export interface ServerRunPayload {
   readonly projectId: string;

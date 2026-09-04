@@ -24,11 +24,13 @@ export function resolveRunExecution(
   const readKey = (name: string): string => getKey(name as KeyName);
   const config = backend === 'codex'
     ? { provider: 'openai', model: '' }
-    : backend === 'copilot'
-      ? { provider: copilotProviderForModel(requestedModel), model: '' }
-      : resolveLlmProviderConfig(requireLlmProvider(
-        provider === undefined || provider === null || provider === '' ? getKey('LLM_PROVIDER') : provider,
-      ), readKey);
+    : backend === 'claude-code'
+      ? { provider: 'anthropic', model: '' }
+      : backend === 'copilot'
+        ? { provider: copilotProviderForModel(requestedModel), model: '' }
+        : resolveLlmProviderConfig(requireLlmProvider(
+          provider === undefined || provider === null || provider === '' ? getKey('LLM_PROVIDER') : provider,
+        ), readKey);
   const effectiveProvider = normalizeLlmProvider(config.provider);
   const effectiveModel = backend === 'copilot'
     ? requestedModel

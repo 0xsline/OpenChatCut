@@ -2,7 +2,7 @@ import modelsDevCatalog from '../assets/model-capabilities/models-dev.json' with
 import { LLM_PROVIDER_PRESETS, type LlmProvider } from './llm-providers.js';
 
 export const MODEL_CAPABILITY_OVERRIDES_KEY = 'AGENT_MODEL_CAPABILITY_OVERRIDES';
-export type ModelBackend = 'api' | 'codex' | 'copilot';
+export type ModelBackend = 'api' | 'codex' | 'copilot' | 'claude-code';
 export type ModelCapabilitySource = 'catalog' | 'provider-fallback' | 'settings-override';
 
 export interface ModelIdentity {
@@ -68,6 +68,21 @@ const PROVIDERS = new Set<string>(LLM_PROVIDER_PRESETS.map((preset) => preset.id
 // override them in the capability editor.
 const UNKNOWN_CONTEXT_TOKENS = 409_600;
 const UNKNOWN_OUTPUT_TOKENS = 65_536;
+// Claude Code CLI caps output below the raw API ceiling the catalog records:
+// a real `claude -p --model sonnet` turn reports maxOutputTokens 64000 in its
+// result event, where the catalog lists 128000 for claude-sonnet-5/opus-5.
+// Everything else (1M context, tools, images, reasoning efforts) is correct in
+// the catalog, so only the output cap is corrected here. User settings
+// overrides still win — these are consulted only when the user has none.
+const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 64_000;
+const CLAUDE_CODE_BUILTIN_OVERRIDES: readonly ModelCapabilityOverride[] = [
+  'claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5',
+].map((modelId) => ({
+  backend: 'claude-code' as const,
+  provider: 'anthropic' as LlmProvider,
+  modelId,
+  maxOutputTokens: CLAUDE_CODE_MAX_OUTPUT_TOKENS,
+}));
 const catalogProviders = modelsDevCatalog.providers as unknown as Partial<
   Record<LlmProvider, Readonly<Record<string, CatalogModel>>>
 >;
@@ -97,11 +112,14 @@ function parseIdentity(value: Record<string, unknown>): ModelIdentity {
   const backend = value.backend;
   const provider = value.provider;
   const modelId = typeof value.modelId === 'string' ? value.modelId.trim() : '';
-  if (backend !== 'api' && backend !== 'codex' && backend !== 'copilot') {
+  if (backend !== 'api' && backend !== 'codex' && backend !== 'copilot' && backend !== 'claude-code') {
     throw new Error('Invalid model capability backend.');
   }
   if (typeof provider !== 'string' || !PROVIDERS.has(provider)) throw new Error('Invalid model capability provider.');
   if (backend === 'codex' && provider !== 'openai') throw new Error('Codex capabilities require the OpenAI provider.');
+  if (backend === 'claude-code' && provider !== 'anthropic') {
+    throw new Error('Claude Code capabilities require the Anthropic provider.');
+  }
   if (!modelId || modelId.length > 256 || [...modelId].some((ch) => {
     const code = ch.charCodeAt(0);
     return code < 0x20 || code === 0x7f;
@@ -245,7 +263,12 @@ export function resolveModelCapabilities(
         .sort((a, b) => b.length - a.length)[0];
       return snapshotBase ? catalog[snapshotBase] : undefined;
     })();
-  const override = findModelCapabilityOverride(records, identity);
+  // User settings override wins; the built-in table only fills gaps.
+  const userOverride = findModelCapabilityOverride(records, identity);
+  const builtinOverride = findModelCapabilityOverride(CLAUDE_CODE_BUILTIN_OVERRIDES, identity);
+  const override = userOverride || builtinOverride
+    ? { ...builtinOverride, ...userOverride } as ModelCapabilityOverride
+    : undefined;
   const context = override?.contextWindowTokens !== undefined
     ? exact(override.contextWindowTokens, 'settings-override')
     : model?.contextWindowTokens

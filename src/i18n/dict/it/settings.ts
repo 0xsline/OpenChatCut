@@ -185,6 +185,30 @@ const overrides: Record<string, string> = {
   'Codex 返回了无效的登录地址。': 'Codex ha restituito un URL di accesso non valido.',
   'Codex 返回了无效的验证地址。': 'Codex ha restituito un URL di verifica non valido.',
 
+  '内置 Agent 可使用 Anthropic API Key，也可以在下方「Anthropic · Claude Code」页用 Claude 订阅登录（无需 API Key）。独立运行的 Claude Code 会话也可以通过「外部 Agent 接入 (MCP)」驱动 OpenChatCut。':
+    'L’Agent integrato puo usare una API Key Anthropic, oppure accedere con un abbonamento Claude nella pagina “Anthropic · Claude Code” qui sotto (senza API Key). Una sessione Claude Code autonoma puo anche pilotare OpenChatCut tramite “Agenti esterni (MCP)”.',
+  '使用 Claude 订阅登录，由官方 Claude Code CLI 管理凭据、续期与退出，OpenChatCut 不会读取或显示 OAuth 凭据。在终端运行 claude auth login（或 claude setup-token 获取长期令牌）完成登录后，点击“重新检测”。':
+    'Accedi con un abbonamento Claude. La CLI ufficiale Claude Code gestisce credenziali, rinnovo e logout; OpenChatCut non legge ne mostra credenziali OAuth. Esegui claude auth login (o claude setup-token per un token a lungo termine) nel terminale, poi fai clic su “Ricontrolla”.',
+  'Claude Code 模型': 'Modello Claude Code',
+  'Claude Code 默认模型': 'Modello Claude Code predefinito',
+  '登录后可从可用模型中选择，也可以手动填写别名（如 sonnet / opus / haiku）。':
+    'Dopo l’accesso puoi scegliere tra i modelli disponibili o inserire manualmente un alias (es. sonnet / opus / haiku).',
+  '正在检查 Claude Code CLI…': 'Controllo Claude Code CLI...',
+  '正在读取本机 Claude Code 运行时状态。': 'Lettura stato runtime Claude Code locale.',
+  '未检测到 Claude Code CLI': 'Claude Code CLI non rilevata',
+  '请先安装官方 Claude Code CLI，然后刷新状态。': 'Installa la Claude Code CLI ufficiale, poi aggiorna lo stato.',
+  '尚未登录 Claude': 'Accesso Claude non effettuato',
+  '在终端完成登录后点击“重新检测”。': 'Dopo aver effettuato l’accesso dal terminale, fai clic su “Ricontrolla”.',
+  '已登录 Claude': 'Accesso Claude effettuato',
+  '凭据与续期均由 Claude Code CLI 管理。': 'Credenziali e rinnovo sono gestiti dalla Claude Code CLI.',
+  'Claude Code 暂时不可用': 'Claude Code temporaneamente non disponibile',
+  '无法连接 Claude Code 服务，请确认开发服务正在运行。':
+    'Impossibile raggiungere il servizio Claude Code. Verifica che il servizio dev sia in esecuzione.',
+  '无法读取 Claude Code 模型，请稍后重试。': 'Impossibile leggere i modelli Claude Code. Riprova piu tardi.',
+  '重新检测': 'Ricontrolla',
+  '登录': 'Accedi',
+  '长期令牌': 'Token a lungo termine',
+
   '已配置': 'Configurato',
   '未配置': 'Non configurato',
   '测试中…': 'Test...',
