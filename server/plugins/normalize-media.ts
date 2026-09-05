@@ -251,7 +251,15 @@ export function normalizeMediaPlugin(options: NormalizeMediaPluginOptions = {}):
           sendJson(res, 405, { error: 'method not allowed — use POST' });
           return;
         }
-        await handleNormalizeRequest(req, res, options, server.config.logger);
+        try {
+          await handleNormalizeRequest(req, res, options, server.config.logger);
+        } catch (error) {
+          // readJson rejects on oversized/invalid bodies before anything was
+          // written; answer 400 instead of leaving the socket hanging.
+          if (!res.writableEnded && !res.socket?.destroyed) {
+            sendJson(res, 400, { error: error instanceof Error ? error.message : 'invalid request' });
+          }
+        }
       });
     },
   };

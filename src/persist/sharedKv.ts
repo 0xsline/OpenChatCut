@@ -59,13 +59,23 @@ export function configureSharedKvBackend(backend: SharedKvBackend | undefined): 
   projectMigrationPending = false;
   readyPromise = undefined;
 }
+// One shared connection per document: opening per read/write leaked IDB
+// connections until the browser refused new ones and persistence silently
+// fell back to the in-memory store (lost on reload).
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => { db.close(); dbPromise = undefined; };
+      db.onclose = () => { dbPromise = undefined; };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error);
   });
+  return dbPromise;
 }
 async function localGet<T>(key: string): Promise<T | undefined> {
   if (injectedBackend) return injectedBackend.get<T>(key);
