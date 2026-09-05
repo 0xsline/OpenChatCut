@@ -18,7 +18,7 @@ import {
 import { updateCaptionSelections } from '../captions/captionSelectionInteraction';
 import { usedMediaAssetIds } from './mediaAssetUsage';
 import { selectedInspectorItems } from './inspectorBatch';
-import { resolveTimelineRenderPlan, sequenceReferenceError } from './sequenceGraph';
+import { sequenceLibraryOptions } from '../library/sequenceOptions';
 import { planSlip, type SlipPreview } from './slip';
 import type { EditorCommands } from './store';
 import type { ProjectDoc, Timeline } from './types';
@@ -204,19 +204,12 @@ function useEditorOptions(state: Timeline, doc: ProjectDoc) {
   const captionTracks = trackOptions
     .filter((option) => option.kind === 'caption')
     .map((option) => ({ ...option, captions: captionsOnTrack(state, option.id) }));
-  const sequenceOptions = useMemo(() => [...doc.timelines]
-    .sort((a, b) => a.order - b.order)
-    .map((timeline) => {
-      const referenceError = sequenceReferenceError(doc, doc.activeTimelineId, timeline.id);
-      return {
-        id: timeline.id,
-        name: timeline.name,
-        durationInFrames: resolveTimelineRenderPlan(doc, timeline.id).durationInFrames,
-        disabledReason: referenceError?.message,
-      };
-    }), [doc]);
+  const getSequenceOptions = useCallback(
+    () => sequenceLibraryOptions({ timelines: doc.timelines, activeTimelineId: doc.activeTimelineId }),
+    [doc.timelines, doc.activeTimelineId],
+  );
   const usedAssetIds = useMemo(() => usedMediaAssetIds(doc), [doc]);
-  return { captionTracks, sequenceOptions, trackOptions, usedAssetIds };
+  return { captionTracks, getSequenceOptions, trackOptions, usedAssetIds };
 }
 
 export function useEditorSelectionState(

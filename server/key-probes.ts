@@ -4,13 +4,10 @@
 // Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
 // The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each vite-plugin-* one by one
 // Real call writing method (beanbao three header / MiniMax base_resp / Gemini x-goog-api-key...).
-import { ProxyAgent } from 'undici';
-import { environmentProxyUrl, proxyDispatcher } from './outbound-proxy.ts';
+import { proxyDispatcher } from './outbound-proxy.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
-import { checkDataDir, readDataDirPointer } from './data-dir.ts';
-import { DATA_DIR_ENV, defaultRootDir, runtimeProfile } from './runtime-profile.ts';
 import {
   AI_SDK_BASE_URL_FORMAT,
   resolveLlmBaseUrl,
@@ -30,7 +27,9 @@ import {
   sanitizeProbeText,
   type ProbeResult,
 } from './key-probe-result.ts';
+import { PROBE_TIMEOUT_MS, runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
 export { classifyStatus, networkMessage, type ProbeResult } from './key-probe-result.ts';
+export { runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
 // Proxy-aware fetch: attaches the configured outbound proxy (keystore
 // PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
@@ -79,59 +78,7 @@ interface ProbeDef {
   readonly models?: (bodyText: string) => string[];
 }
 
-const TIMEOUT_MS = 12_000;
-const t = (): AbortSignal => AbortSignal.timeout(TIMEOUT_MS);
-const PROXY_PROBE_URL = 'https://www.gstatic.com/generate_204';
-
-function proxyProbeUrl(overrides: Record<string, unknown>): string {
-  if (Object.hasOwn(overrides, 'PROXY_URL')) return String(overrides.PROXY_URL ?? '').trim();
-  return getKey('PROXY_URL').trim() || environmentProxyUrl();
-}
-
-/** Storage-root writability check: a local disk probe, never a network request. */
-export async function runDataDirProbe(overrides: Record<string, unknown>): Promise<ProbeResult> {
-  const profile = runtimeProfile();
-  if (process.env[DATA_DIR_ENV]?.trim()) {
-    return { ok: false, message: `目录由 ${DATA_DIR_ENV} 固定，无法在设置中修改` };
-  }
-  const raw = Object.hasOwn(overrides, DATA_DIR_ENV)
-    ? String(overrides[DATA_DIR_ENV] ?? '')
-    : readDataDirPointer() ?? '';
-  const started = Date.now();
-  const body = await checkDataDir(raw, defaultRootDir(profile));
-  const latencyMs = Date.now() - started;
-  return body.ok
-    ? { ok: true, latencyMs, message: body.note ?? '目录可写' }
-    : { ok: false, latencyMs, message: body.error ?? '目录检查失败' };
-}
-
-/** Test the saved proxy or the unsaved value currently shown in the settings field. */
-export async function runProxyProbe(overrides: Record<string, unknown>): Promise<ProbeResult> {
-  const proxyUrl = proxyProbeUrl(overrides);
-  if (!proxyUrl) return { ok: false, message: '尚未填写代理地址，且未检测到系统代理环境变量' };
-  let dispatcher: ProxyAgent;
-  try {
-    dispatcher = new ProxyAgent(proxyUrl);
-  } catch {
-    return { ok: false, message: '代理地址格式无效，请填写 http://host:port 或 https://host:port' };
-  }
-  const started = Date.now();
-  try {
-    const response = await fetch(PROXY_PROBE_URL, { signal: t(), dispatcher } as RequestInit);
-    const latencyMs = Date.now() - started;
-    if (!response.ok) return { ok: false, status: response.status, latencyMs, message: `代理已连接，但外网探测返回 HTTP ${response.status}` };
-    return { ok: true, status: response.status, latencyMs, message: `代理连接成功 · 外网可达 · ${latencyMs}ms` };
-  } catch (error) {
-    return { ok: false, latencyMs: Date.now() - started, message: proxyNetworkMessage(error) };
-  } finally {
-    await dispatcher.close();
-  }
-}
-
-function proxyNetworkMessage(error: unknown): string {
-  const message = networkMessage(error).replace(/，不代表 Key 错误$/, '');
-  return `代理连接失败 · ${message}`;
-}
+const t = (): AbortSignal => AbortSignal.timeout(PROBE_TIMEOUT_MS);
 const base = (get: Get, name: KeyName, def: string): string => (get(name) || def).replace(/\/+$/, '');
 const bearer = (key: string): Record<string, string> => ({ Authorization: `Bearer ${key}` });
 function llmProbe(provider: LlmProvider): ProbeDef {
