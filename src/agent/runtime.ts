@@ -354,6 +354,11 @@ async function runPreparedAgent(
       checkpointState, recorder, opts?.signal,
     ),
   };
+  if (active.backend === 'copilot') {
+    // Server runs are the only Copilot path; this legacy browser loop has no
+    // Copilot turn runner and must not silently fall through to the API agent.
+    throw new Error('Copilot runs server-side only.');
+  }
   if (active.backend !== 'codex') {
     return runApiAgent(
       prepared.messages, ctx, onEvent, active, system,

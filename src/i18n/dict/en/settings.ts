@@ -176,6 +176,12 @@ export default {
 
   // ── OpenAI Codex account ──
   'Codex 模型': 'Codex model',
+  'Copilot 模型': 'Copilot model',
+  'Copilot 默认模型': 'Copilot default model',
+  '使用 GitHub Copilot 订阅：官方 Copilot CLI 管理登录与凭据（终端运行 copilot login），OpenChatCut 通过 Copilot SDK 直接驱动编辑工具，不会读取或显示凭据。会话状态隔离在 ~/.openchatcut/copilot，不影响你自己的 ~/.copilot。':
+    'Use a GitHub Copilot subscription: the official Copilot CLI manages sign-in and credentials (run `copilot login` in a terminal). OpenChatCut drives the editing tools directly through the Copilot SDK and never reads or displays credentials. Session state is isolated in ~/.openchatcut/copilot and does not affect your own ~/.copilot.',
+  '登录后可读取当前订阅可用的模型，也可以手动填写模型 ID。仅支持工具调用的模型可用于编辑。':
+    'After signing in, load the models available to this subscription or enter a model ID manually. Only tool-calling models can be used for editing.',
   'Codex 默认模型': 'Codex default model',
   '推理强度': 'Reasoning effort',
   '模型默认': 'Model default',
@@ -210,6 +216,28 @@ export default {
   '请在登录页面完成授权，完成后会自动刷新。': 'Finish authorization on the sign-in page. This status will refresh automatically.',
   '已登录 ChatGPT': 'Signed in to ChatGPT',
   '凭据与续期均由 Codex CLI 管理。': 'Credentials and renewal are managed by the Codex CLI.',
+  // ── GitHub Copilot ──
+  '版本过低': 'Version too old',
+  '正在检查 Copilot CLI…': 'Checking Copilot CLI…',
+  '正在读取本机 Copilot 运行时状态。': 'Reading the local Copilot runtime status.',
+  '未检测到 Copilot CLI': 'Copilot CLI was not found',
+  '安装后重试：npm i -g @github/copilot（或 brew install copilot）。':
+    'Install it and retry: npm i -g @github/copilot (or brew install copilot).',
+  'Copilot CLI 版本过低': 'Copilot CLI is out of date',
+  '在终端运行 copilot update 后重试。': 'Run `copilot update` in a terminal, then retry.',
+  '尚未登录 Copilot': 'Not signed in to Copilot',
+  '在终端运行 copilot login 完成登录后点击刷新。':
+    'Run `copilot login` in a terminal, then refresh.',
+  '已登录 GitHub Copilot': 'Signed in to GitHub Copilot',
+  '凭据与续期均由 Copilot CLI 管理。': 'Credentials and renewal are managed by the Copilot CLI.',
+  '无法连接 Copilot': 'Could not reach Copilot',
+  '请确认开发服务正在运行后重试。': 'Make sure the development server is running, then retry.',
+  '账号': 'Account',
+  '登录方式': 'Sign-in method',
+  '主机': 'Host',
+  '无法连接 Copilot 服务，请确认开发服务正在运行。':
+    'Could not reach the Copilot service. Make sure the development server is running.',
+  '无法读取 Copilot 模型列表，请稍后重试。': 'Could not load Copilot models. Please try again.',
   'Codex CLI 正在使用 API Key': 'Codex CLI is using an API key',
   '此页面仅启用 ChatGPT 订阅；API Key 请使用 OpenAI 厂商页。':
     'This page enables ChatGPT subscriptions only. Use the OpenAI provider page for API keys.',

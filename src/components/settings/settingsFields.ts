@@ -23,7 +23,7 @@ export interface SettingsVendorPage {
   readonly title: string;
   readonly note?: string;
   readonly icon?: IconName;
-  readonly connection?: 'codex' | 'xai-oauth';
+  readonly connection?: 'codex' | 'xai-oauth' | 'copilot';
   readonly kind?: 'provider' | 'settings' | 'local-models';
   readonly fields: readonly SettingsField[];
   /** Renders as a button under the note, dispatching a global action. The note

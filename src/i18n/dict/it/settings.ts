@@ -104,6 +104,12 @@ const overrides: Record<string, string> = {
   'Key 同时用于音效生成（submit_sound）。': 'La chiave viene usata anche per generare effetti sonori (submit_sound).',
 
   'Codex 模型': 'Modello Codex',
+  'Copilot 模型': 'Modello Copilot',
+  'Copilot 默认模型': 'Modello Copilot predefinito',
+  '使用 GitHub Copilot 订阅：官方 Copilot CLI 管理登录与凭据（终端运行 copilot login），OpenChatCut 通过 Copilot SDK 直接驱动编辑工具，不会读取或显示凭据。会话状态隔离在 ~/.openchatcut/copilot，不影响你自己的 ~/.copilot。':
+    'Usa un abbonamento GitHub Copilot: la CLI Copilot ufficiale gestisce accesso e credenziali (esegui `copilot login` nel terminale). OpenChatCut controlla gli strumenti di editing direttamente tramite il Copilot SDK e non legge né mostra le credenziali. Lo stato della sessione è isolato in ~/.openchatcut/copilot e non influisce sul tuo ~/.copilot.',
+  '登录后可读取当前订阅可用的模型，也可以手动填写模型 ID。仅支持工具调用的模型可用于编辑。':
+    'Dopo l\'accesso puoi caricare i modelli disponibili per questo abbonamento o inserire manualmente un ID modello. Solo i modelli con supporto tool possono essere usati per l\'editing.',
   'Codex 默认模型': 'Modello Codex predefinito',
   '推理强度': 'Intensita ragionamento',
   '读取模型后显示当前模型支持的档位；留空使用该模型的默认值。': 'Carica i modelli per vedere i livelli supportati. Lascia vuoto per usare il valore predefinito.',
@@ -132,6 +138,28 @@ const overrides: Record<string, string> = {
   '请在登录页面完成授权，完成后会自动刷新。': 'Completa l’autorizzazione nella pagina di accesso; lo stato si aggiornera automaticamente.',
   '已登录 ChatGPT': 'Accesso ChatGPT effettuato',
   '凭据与续期均由 Codex CLI 管理。': 'Credenziali e rinnovo sono gestiti da Codex CLI.',
+  // ── GitHub Copilot ──
+  '版本过低': 'Versione troppo vecchia',
+  '正在检查 Copilot CLI…': 'Controllo di Copilot CLI…',
+  '正在读取本机 Copilot 运行时状态。': 'Lettura dello stato del runtime Copilot locale.',
+  '未检测到 Copilot CLI': 'Copilot CLI non trovato',
+  '安装后重试：npm i -g @github/copilot（或 brew install copilot）。':
+    'Installalo e riprova: npm i -g @github/copilot (oppure brew install copilot).',
+  'Copilot CLI 版本过低': 'Copilot CLI non è aggiornato',
+  '在终端运行 copilot update 后重试。': 'Esegui `copilot update` nel terminale, poi riprova.',
+  '尚未登录 Copilot': 'Accesso a Copilot non effettuato',
+  '在终端运行 copilot login 完成登录后点击刷新。':
+    'Esegui `copilot login` nel terminale, poi aggiorna.',
+  '已登录 GitHub Copilot': 'Accesso a GitHub Copilot effettuato',
+  '凭据与续期均由 Copilot CLI 管理。': 'Credenziali e rinnovo sono gestiti da Copilot CLI.',
+  '无法连接 Copilot': 'Impossibile raggiungere Copilot',
+  '请确认开发服务正在运行后重试。': 'Verifica che il server di sviluppo sia in esecuzione, poi riprova.',
+  '账号': 'Account',
+  '登录方式': 'Metodo di accesso',
+  '主机': 'Host',
+  '无法连接 Copilot 服务，请确认开发服务正在运行。':
+    'Impossibile raggiungere il servizio Copilot. Verifica che il server di sviluppo sia in esecuzione.',
+  '无法读取 Copilot 模型列表，请稍后重试。': 'Impossibile caricare i modelli Copilot. Riprova.',
   'Codex CLI 正在使用 API Key': 'Codex CLI sta usando una API Key',
   '此页面仅启用 ChatGPT 订阅；API Key 请使用 OpenAI 厂商页。': 'Questa pagina abilita solo abbonamenti ChatGPT; usa la pagina OpenAI per le API Key.',
   'Codex 暂时不可用': 'Codex temporaneamente non disponibile',

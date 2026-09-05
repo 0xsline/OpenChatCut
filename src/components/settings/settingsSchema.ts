@@ -10,6 +10,7 @@ import {
   llmProviderConfigNames,
 } from '../../../shared/llm-providers';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
+import type { CopilotAgentStatus } from '../../../shared/copilot-agent';
 import type { VendorId } from './vendorIcons';
 import {
   directory,
@@ -313,9 +314,13 @@ export function vendorConfigured(
   status: KeyStatusResponse | null,
   page: SettingsVendorPage,
   codexStatus?: CodexAgentStatus | null,
+  copilotStatus?: CopilotAgentStatus | null,
 ): boolean {
   if (page.connection === 'codex') {
     return Boolean(codexStatus?.installed && codexStatus.account?.type === 'chatgpt');
+  }
+  if (page.connection === 'copilot') {
+    return Boolean(copilotStatus?.installed && copilotStatus.supported && copilotStatus.authenticated);
   }
   if (page.connection === 'xai-oauth') {
     return Boolean(status?.keys?.LLM_XAI_OAUTH_API_KEY?.configured);
@@ -334,9 +339,10 @@ export function groupConfigured(
   status: KeyStatusResponse | null,
   group: SettingsGroup,
   codexStatus?: CodexAgentStatus | null,
+  copilotStatus?: CopilotAgentStatus | null,
 ): boolean {
   if (group.key === 'llm' || group.key === 'proxy') {
-    return group.vendors.some((page) => vendorConfigured(status, page, codexStatus));
+    return group.vendors.some((page) => vendorConfigured(status, page, codexStatus, copilotStatus));
   }
   return status ? Boolean(status.caps[group.key]) : false;
 }
@@ -346,9 +352,11 @@ export function categoryGroupStats(
   status: KeyStatusResponse | null,
   category: SettingsCategory,
   codexStatus?: CodexAgentStatus | null,
+  copilotStatus?: CopilotAgentStatus | null,
 ): { done: number; total: number } {
   return {
-    done: category.groups.filter((group) => groupConfigured(status, group, codexStatus)).length,
+    done: category.groups
+      .filter((group) => groupConfigured(status, group, codexStatus, copilotStatus)).length,
     total: category.groups.length,
   };
 }

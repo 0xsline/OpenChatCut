@@ -10,7 +10,7 @@ export type ComposerPopover =
 
 interface ToolbarProps {
   mode: ChatMode;
-  activeModel?: { providerLabel: string; model: string; backend: 'api' | 'codex' };
+  activeModel?: { providerLabel: string; model: string; backend: 'api' | 'codex' | 'copilot' };
   contextLabel: string;
   contextTitle: string;
   contextNearLimit: boolean;
@@ -76,6 +76,8 @@ export function ComposerToolbar({
           style={{ height: 28, minWidth: 0, maxWidth: 196, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', border: 0, borderRadius: 4, background: pop === 'model' ? theme.panel : 'transparent', color: contextNearLimit ? theme.gold : theme.textDim, cursor: running ? 'default' : 'pointer', fontSize: 11, flexShrink: 1 }}>
           {activeModel?.backend === 'codex' ? (
             <img src={codexPng} alt="" aria-hidden style={{ width: 15, height: 15, borderRadius: 4, objectFit: 'contain', flex: '0 0 auto' }} />
+          ) : activeModel?.backend === 'copilot' ? (
+            <Icon name="github" size={13} />
           ) : (
             <Icon name="cloud" size={13} />
           )}
