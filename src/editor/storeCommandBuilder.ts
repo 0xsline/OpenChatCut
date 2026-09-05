@@ -79,7 +79,18 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       return;
     }
     const doc = getDoc();
-    const state = { ...activeTimeline(doc), assets: doc.assets };
+    let state = { ...activeTimeline(doc), assets: doc.assets };
+    // Fold the staged tracks into the state BEFORE planning: the overwrite plan
+    // commits via setFullState, which would otherwise replace the timeline
+    // without those tracks and leave the new item referencing a ghost track.
+    for (const create of trackCreates) {
+      if (create.type !== 'track.create' || state.tracks?.[create.track.id]) continue;
+      state = {
+        ...state,
+        tracks: { ...state.tracks, [create.track.id]: create.track },
+        trackOrder: [...(state.trackOrder ?? []), create.track.id],
+      };
+    }
     const plan = planOverwrite(state, item, at.startFrame ?? 0, () => uid('item'));
     if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: [...trackCreates, ...before, ...plan.actions] });
   };

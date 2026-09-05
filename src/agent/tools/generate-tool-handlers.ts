@@ -338,7 +338,9 @@ async function exportXml(args: GenerateArgs, state: TimelineState): Promise<unkn
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // Delayed revoke: revoking synchronously after click() can cut the download
+  // off before the browser starts reading the blob (same pattern as exportFiles.ts).
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   void recordExport({ name: filename, format: 'xml', sizeBytes: blob.size, createdAt: Date.now() });
   return { ok: true, format: 'xml', nleFormat, name: filename, sizeBytes: blob.size, motionGraphicRenderKeys: keys };
 }

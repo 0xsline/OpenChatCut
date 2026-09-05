@@ -15,13 +15,22 @@ const PACKS_KEY = 'plugins:packs';
 const API_PATH = '/api/plugins';
 let memoryPacks: unknown[] = [];
 
+// One shared connection per document: opening per read/write leaked IDB
+// connections until the browser refused new ones.
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => { db.close(); dbPromise = undefined; };
+      db.onclose = () => { dbPromise = undefined; };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
+  return dbPromise;
 }
 
 async function idbGet<T>(key: string): Promise<T | undefined> {

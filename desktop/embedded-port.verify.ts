@@ -48,7 +48,10 @@ try {
   const fallback = await listenWithAffinity(first, { canonicalPort: canonical, home, log: silent });
   assert.notEqual(fallback, canonical);
   assert.equal(readRememberedPort({ home }), fallback, 'the fallback is remembered');
-  assert.equal(statSync(embeddedPortPath({ home })).mode & 0o777, 0o600, 'port file is owner-only');
+  // POSIX permission bits: Windows reports no owner-only mode.
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(embeddedPortPath({ home })).mode & 0o777, 0o600, 'port file is owner-only');
+  }
   await close(first);
 
   // Same conflict on the next launch: the SAME fallback comes back. This is the

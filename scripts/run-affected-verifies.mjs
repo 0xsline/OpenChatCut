@@ -20,10 +20,15 @@
 import { exec } from 'node:child_process';
 import { cpus } from 'node:os';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const CONCURRENCY = Math.max(2, Math.min(8, Number(process.env.TEST_CONCURRENCY) || 4));
+
+// Selected paths are reported (and looked up in package.json's canonical
+// commands) with posix separators; platform join() would produce backslash
+// paths on Windows that miss the command map and the suites' own expectations.
+const toPosix = (value) => value.split(sep).join('/');
 
 const gitChanged = () => new Promise((resolve) => {
   exec('git diff --name-only HEAD', (error, stdout) => {
@@ -45,16 +50,16 @@ export function matchingVerifies(changedFiles) {
     } catch {
       continue;
     }
-    const base = file.split('/').pop().replace(/\.(ts|tsx|mjs)$/, '');
+    const base = file.split(/[\\/]/).pop().replace(/\.(ts|tsx|mjs)$/, '');
     const exact = candidates.find((name) => /^(.*)\.verify\.(ts|tsx|mjs)$/.exec(name)?.[1] === base);
     if (exact) {
-      matches.add(join(dir, exact));
+      matches.add(toPosix(join(dir, exact)));
       continue;
     }
     // No per-file verify: the directory suite is the only thing that covers
     // this change, so run all of it. Never skip silently — that reported
     // success for a run that executed nothing.
-    for (const name of candidates) matches.add(join(dir, name));
+    for (const name of candidates) matches.add(toPosix(join(dir, name)));
   }
   return [...matches].sort();
 }

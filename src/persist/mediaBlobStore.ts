@@ -83,16 +83,26 @@ function normalizeRecord(value: MediaBlobRecord): MediaBlobRecord | null {
   };
 }
 
+// One shared connection per document: opening per read/write leaked IDB
+// connections until the browser refused new ones and persistence silently
+// fell back to the in-memory store (lost on reload).
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'src' });
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => { db.close(); dbPromise = undefined; };
+      db.onclose = () => { dbPromise = undefined; };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
+  return dbPromise;
 }
 interface StoredBlobMeta { src: string; bytes: number; lastAccessedAt: number }
 
