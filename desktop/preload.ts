@@ -52,6 +52,7 @@ import {
   type DirectoryWatchStartResult,
 } from '../shared/directory-import.ts';
 import { isTranscriptWindowPayload, TRANSCRIPT_WINDOW_CHANNELS, type TranscriptWindowPayload } from '../shared/transcript-window.ts';
+import { AGENT_LOCAL_MEDIA_CHANNEL, type AgentLocalMediaRequest, type AgentLocalMediaResult } from '../shared/agent-local-media.ts';
 
 export interface DesktopExportDirectoryGrant {
   readonly grantId: string;
@@ -103,6 +104,7 @@ export interface OpenChatCutDesktopApi {
   ): Promise<void>;
   stopImportDirectoryWatch(watchId: string): Promise<void>;
   importAgentPaths(request: AgentPathImportRequest): Promise<AgentPathImportResult>;
+  browseLocalMedia(request: AgentLocalMediaRequest): Promise<AgentLocalMediaResult>;
   subscribeImportDirectory(listener: (event: DirectoryImportEvent) => void): () => void;
   windowAction(action: 'close' | 'minimize' | 'toggle-maximize' | 'apply-ui-scale'): Promise<void>;
   zoomStep(step: number | 'reset'): Promise<void>;
@@ -157,6 +159,8 @@ const api: OpenChatCutDesktopApi = {
     ipcRenderer.invoke(DIRECTORY_IMPORT_CHANNELS.activate, watchId) as Promise<void>,
   importAgentPaths: (request) =>
     ipcRenderer.invoke(AGENT_PATH_IMPORT_CHANNEL, request) as Promise<AgentPathImportResult>,
+  browseLocalMedia: (request) =>
+    ipcRenderer.invoke(AGENT_LOCAL_MEDIA_CHANNEL, request) as Promise<AgentLocalMediaResult>,
   acknowledgeImportDirectoryFile: (watchId, importId, disposition) =>
     ipcRenderer.invoke(
       DIRECTORY_IMPORT_CHANNELS.acknowledge, watchId, importId, disposition,
