@@ -29,6 +29,7 @@ import {
   ProjectIndexCoordinator,
   SaveCoordinator,
   type ProjectFlushResult,
+  type ProjectPersistenceSignal,
   type ProjectIndexMutation,
   type ProjectMeta,
   type ProjectSaveResult,
@@ -345,6 +346,10 @@ export function saveProject(id: string, doc: ProjectDoc): Promise<ProjectSaveRes
 
 export function flushProjectSaves(projectId: string | 'all' = 'all'): Promise<ProjectFlushResult> {
   return projectSaveCoordinator.flush(projectId);
+}
+
+export function projectPersistenceSignal(projectId: string): ProjectPersistenceSignal {
+  return projectSaveCoordinator.persistenceSignal(projectId);
 }
 
 export function hasPendingProjectSaves(projectId?: string): boolean {

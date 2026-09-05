@@ -1,6 +1,8 @@
 import type { DisplayMessage } from './agent-session';
 import type { RecoveredServerTool } from './serverRunToolExecutor';
 import { settleServerRun } from './serverRunSettleClient';
+import { showAppToast } from '../ui/appToast';
+import { t } from '../i18n/locale';
 import type {
   ServerRunSession,
   ServerRunTerminal,
@@ -137,9 +139,30 @@ interface FinishRecoveredRunInput {
   ) => ServerRunTerminalResolution | false | Promise<ServerRunTerminalResolution | false>;
 }
 
+/**
+ * Force the editor's pending project writes to disk before a run is settled —
+ * for failed and cancelled runs too, which is precisely when work used to be
+ * lost. Autosave debounces by 500ms, so a run that ends (or crashes) inside
+ * that window would otherwise leave its last edits only in memory.
+ */
+async function flushProjectBeforeSettle(projectId: string): Promise<void> {
+  try {
+    const { flushProjectSaves } = await import('../persist/projectStore');
+    const result = await flushProjectSaves(projectId);
+    if (result.ok) return;
+    showAppToast(
+      t('智能体的改动未能保存到工程，请检查存储后重试。'),
+      { error: true },
+    );
+  } catch {
+    // Never let a flush problem mask the run's own terminal handling.
+  }
+}
+
 export async function finishRecoveredRun(
   input: FinishRecoveredRunInput,
 ): Promise<ServerRunTerminalDisposition | false> {
+  await flushProjectBeforeSettle(input.projectId);
   const stored = readStoredServerRun(input.projectId);
   const resolution = await input.onTerminal?.({
     runId: input.runId,
