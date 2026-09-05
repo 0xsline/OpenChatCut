@@ -1,11 +1,12 @@
 // Provider marks are vendored from official brand assets where available, plus
-// @lobehub/icons-static-svg v1.93.0 (MIT) and simple-icons (CC0). Static SVGs
+// @lobehub/icons-static-svg v1.93.0 (MIT), simple-icons (CC0) and @primer/octicons (MIT). Static SVGs
 // render inline for consistent sizing; monochrome marks inherit the active skin.
 // Mureka/E2B/local disk remain monograms because they have no suitable provider mark here.
 import type { CSSProperties } from 'react';
 import { theme } from '../../theme';
 import claudeSvg from '../../../assets/vendor-icons/claude-color.svg?raw';
 import openaiSvg from '../../../assets/vendor-icons/openai.svg?raw';
+import copilotSvg from '../../../assets/vendor-icons/copilot.svg?raw';
 import geminiSvg from '../../../assets/vendor-icons/gemini-color.svg?raw';
 import kimiSvg from '../../../assets/vendor-icons/kimi-color.svg?raw';
 import qwenSvg from '../../../assets/vendor-icons/qwen-color.svg?raw';
@@ -56,6 +57,7 @@ const PROXY_ICON = '<svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 
 const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   anthropic: { svg: claudeSvg },                    // Agent brain uses Claude starburst (official orange)
   openai: { svg: openaiSvg, tint: theme.text },     // The official ring is a single color, which will match the skin color (dark skin is nearly white/light skin is nearly black)
+  copilot: { svg: copilotSvg, tint: theme.text },   // Octicon copilot mark (MIT); monochrome, follows the skin
   gemini: { svg: geminiSvg },
   kimi: { svg: kimiSvg },
   qwen: { svg: qwenSvg },
@@ -104,7 +106,6 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   xai: { bg: '#101010', mono: 'x', fg: '#f7f7f8' }, // xAI Grok, no official SVG vendored yet
   'xai-oauth': { bg: '#101010', mono: 'x', fg: '#f7f7f8' }, // xAI subscription login, shares the Grok monogram
   orcarouter: { bg: '#0F172A', mono: 'OR', fg: '#38BDF8' }, // OrcaRouter gateway, no official SVG vendored yet
-  copilot: { bg: '#24292f', mono: 'GH', fg: '#f6f8fa' }, // GitHub Copilot, no official SVG vendored yet
 };
 
 interface VendorIconProps {
