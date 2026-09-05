@@ -12,6 +12,7 @@ const checkoutEnv = join(checkout, '.env.local');
 const profileEnv = join(profileRoot, 'settings.env');
 const previousCwd = process.cwd();
 const previousHome = process.env.HOME;
+const previousUserProfile = process.env.USERPROFILE;
 const previousProfile = process.env.OPENCHATCUT_DEV_PROFILE_ID;
 
 try {
@@ -21,7 +22,9 @@ try {
   ]);
   await writeFile(checkoutEnv, 'OPENAI_API_KEY=checkout-secret\n', 'utf8');
   process.chdir(checkout);
+  // os.homedir() resolves USERPROFILE on Windows; HOME alone only covers POSIX.
   process.env.HOME = home;
+  process.env.USERPROFILE = home;
   process.env.OPENCHATCUT_DEV_PROFILE_ID = profileId;
   // Intentional module-boundary test: cwd, HOME, and profile ID must be set before initialization.
   const { setKeys } = await import('./keystore.ts');
@@ -37,6 +40,8 @@ try {
   process.chdir(previousCwd);
   if (previousHome === undefined) delete process.env.HOME;
   else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
   if (previousProfile === undefined) delete process.env.OPENCHATCUT_DEV_PROFILE_ID;
   else process.env.OPENCHATCUT_DEV_PROFILE_ID = previousProfile;
   await rm(fixture, { recursive: true, force: true });

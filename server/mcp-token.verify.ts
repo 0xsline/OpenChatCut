@@ -19,7 +19,10 @@ try {
   // data dir (which may be a synced folder): HOME-anchored hidden root only.
   const path = mcpTokenPath({ home });
   assert.ok(path.startsWith(join(home, '.openchatcut')), 'token lives under the hidden home root');
-  assert.equal(statSync(path).mode & 0o777, 0o600, 'token file is owner-only');
+  // POSIX permission bits: Windows reports no owner-only mode.
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(path).mode & 0o777, 0o600, 'token file is owner-only');
+  }
   assert.equal(readFileSync(path, 'utf8').trim(), first.token);
 
   // Isolated dev profiles keep their own token so two checkouts never share a
@@ -40,7 +43,10 @@ try {
   assert.match(healed.token, /^[A-Za-z0-9_-]{43}$/);
   assert.notEqual(healed.token, 'pas-un-jeton');
   assert.equal(readFileSync(path, 'utf8').trim(), healed.token, 'the healed token is written back');
-  assert.equal(statSync(path).mode & 0o777, 0o600, 'healing sheds the loose permissions of the old file');
+  // POSIX permission bits: Windows reports no owner-only mode.
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(path).mode & 0o777, 0o600, 'healing sheds the loose permissions of the old file');
+  }
 
   // Losing the first-mint race adopts the winner: the file was created between
   // our failed read and our exclusive write, and both processes must end up
@@ -53,15 +59,19 @@ try {
 
   // A filesystem that refuses writes degrades to the old per-process token
   // instead of refusing to serve: MCP access survives a read-only HOME.
-  const lockedHome = join(home, 'locked');
-  mkdirSync(join(lockedHome, '.openchatcut'), { recursive: true });
-  chmodSync(join(lockedHome, '.openchatcut'), 0o500);
-  try {
-    const volatile = loadOrCreateMcpToken({ home: lockedHome });
-    assert.equal(volatile.persisted, false, 'unwritable home reports non-persistence');
-    assert.match(volatile.token, /^[A-Za-z0-9_-]{43}$/, 'a usable token is still served');
-  } finally {
-    chmodSync(join(lockedHome, '.openchatcut'), 0o700);
+  // Windows ignores POSIX directory mode bits, so chmod cannot simulate an
+  // unwritable directory there.
+  if (process.platform !== 'win32') {
+    const lockedHome = join(home, 'locked');
+    mkdirSync(join(lockedHome, '.openchatcut'), { recursive: true });
+    chmodSync(join(lockedHome, '.openchatcut'), 0o500);
+    try {
+      const volatile = loadOrCreateMcpToken({ home: lockedHome });
+      assert.equal(volatile.persisted, false, 'unwritable home reports non-persistence');
+      assert.match(volatile.token, /^[A-Za-z0-9_-]{43}$/, 'a usable token is still served');
+    } finally {
+      chmodSync(join(lockedHome, '.openchatcut'), 0o700);
+    }
   }
 
   // The environment override wins without touching the filesystem, which is
