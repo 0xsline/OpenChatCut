@@ -39,6 +39,27 @@ function recordTool(activation: ActivationState, schema: AgentToolSchema, args: 
   );
 }
 
+/**
+ * A mutating tool whose edit never reaches disk is a failure, not a success.
+ * Reporting it as success is what let a full run of edits vanish silently: the
+ * agent kept building on state the editor had only in memory. `pending` is fine
+ * — saves are debounced and settle shortly after the tool returns; only a
+ * settled failure (or a blocked queue) means the edit is genuinely lost.
+ */
+export function assertEditorPersisted(
+  run: ServerRun,
+  schema: AgentToolSchema,
+  args: Record<string, unknown>,
+): void {
+  if (run.editorPersistence?.failed !== true) return;
+  if (policyForTool(schema.name, args).effect === 'read') return;
+  throw new Error(
+    `${schema.name} was applied in the editor but the project could not be saved, `
+    + 'so the change is not durable. Stop editing and report this to the user; '
+    + 'retrying will not help until the save error is resolved.',
+  );
+}
+
 export async function executeBrowserTool(
   run: ServerRun,
   schema: AgentToolSchema,
@@ -81,6 +102,7 @@ export async function executeBrowserTool(
     const shaped = activation.current.withToolResult(schema.name, delivered);
     activation.current = shaped.activation;
     if (isFailedToolResult(shaped.result)) throw new Error(toolFailureReason(shaped.result));
+    assertEditorPersisted(run, schema, args);
     activation.toolFailures.record(schema.name, { success: true, result: shaped.result });
     if (!followup) recordTool(activation, schema, args);
     if (cacheablePureTool(schema.name)) {

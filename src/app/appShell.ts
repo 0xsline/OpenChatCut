@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../agent/capabilities';
 import { fetchCodexModels, fetchCodexStatus } from '../agent/codex/client';
-import { applyAgentModelStatus, applyCodexAgentStatus, selectAgentModel, getActiveAgentModelChoice, getAgentModelSnapshot } from '../agent/model-selection';
+import { fetchCopilotModels, fetchCopilotStatus } from '../agent/copilot/client';
+import { applyAgentModelStatus, applyCodexAgentStatus, applyCopilotAgentStatus, selectAgentModel, getActiveAgentModelChoice, getAgentModelSnapshot } from '../agent/model-selection';
 import { loadAgentModelPref } from '../persist/sessionPrefs';
 import type { ProjectDoc, TimelineState } from '../editor/types';
 import {
@@ -46,16 +47,19 @@ export function navigateTo(hash: string): void {
 }
 
 async function syncAgentBackends(isActive: () => boolean): Promise<void> {
-  const [keyResult, codexResult] = await Promise.allSettled([
+  const [keyResult, codexResult, copilotResult] = await Promise.allSettled([
     fetch('/api/keys').then(async (response): Promise<LiveAgentStatus> => {
       if (!response.ok) throw new Error('Agent key status is unavailable.');
       return response.json() as Promise<LiveAgentStatus>;
     }),
     fetchCodexStatus(),
+    fetchCopilotStatus(),
   ]);
   if (!isActive()) return;
   let savedCodexModel: string | undefined;
   let savedCodexReasoningEffort: string | undefined;
+  let savedCopilotModel: string | undefined;
+  let savedCopilotReasoningEffort: string | undefined;
   if (keyResult.status === 'fulfilled') {
     const { caps, keys, models } = keyResult.value;
     if (caps) applyLiveCaps(caps);
@@ -65,7 +69,23 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
       applyAgentModelStatus(keys ?? {}, models);
       savedCodexModel = models.CODEX_MODEL;
       savedCodexReasoningEffort = models.CODEX_REASONING_EFFORT;
+      savedCopilotModel = models.COPILOT_MODEL;
+      savedCopilotReasoningEffort = models.COPILOT_REASONING_EFFORT;
     }
+  }
+  if (copilotResult.status === 'fulfilled') {
+    const copilotModels = copilotResult.value.installed
+      && copilotResult.value.supported
+      && copilotResult.value.authenticated
+      ? await fetchCopilotModels().catch(() => null)
+      : null;
+    if (!isActive()) return;
+    applyCopilotAgentStatus(
+      copilotResult.value,
+      savedCopilotModel,
+      savedCopilotReasoningEffort,
+      copilotModels && !copilotModels.error ? copilotModels.models : [],
+    );
   }
   if (codexResult.status !== 'fulfilled') return;
   const modelResult = codexResult.value.installed && codexResult.value.account?.type !== 'apiKey'

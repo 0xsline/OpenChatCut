@@ -8,7 +8,8 @@ import {
 import { resolveLlmProviderConfig } from '../llm-config';
 import { getKey, type KeyName } from '../keystore';
 import { activateOfflineAgentRuntimeBackend } from '../external-agent/agent-runtime-persistence';
-import { executeRun, type ServerRunInput } from './executor';
+import { executeRun, serverRunBackend, type ServerRunInput } from './executor';
+import { copilotProviderForModel } from '../../shared/model-capabilities';
 import { resolveServerRunToolCatalog } from './tool-policy';
 import {
   cancelRun,
@@ -26,6 +27,7 @@ import {
   type ToolClaimOutcome,
   type ToolResultOutcome,
 } from './store';
+import type { EditorPersistenceSignal } from './store-types';
 import {
   settleServerRun,
   type ProposalRuntimeStatus,
@@ -198,14 +200,25 @@ async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<
   if (!origin) return sendJson(res, 400, { error: 'valid request host is required' });
   const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
   const requestedModel = input.model;
-  const backend = body.backend === 'codex' ? 'codex' : 'api';
+  const backend = serverRunBackend(body.backend);
   const readKey = (name: string): string => getKey(name as KeyName);
-  const codexBackend = backend === 'codex';
-  const config = codexBackend
+  // Codex and Copilot authenticate through their own CLI, so they never
+  // resolve an OpenChatCut provider API key. Copilot serves several vendors
+  // behind one endpoint, so attribute the model to its upstream provider for
+  // capability lookups and vision-model selection.
+  const config = backend === 'codex'
     ? { provider: 'openai', model: '' }
-    : resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
+    : backend === 'copilot'
+      ? { provider: copilotProviderForModel(requestedModel), model: '' }
+      : resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
   const effectiveProvider = normalizeLlmProvider(config.provider);
-  const effectiveModel = requestedModel || config.model || defaultModelForProvider(effectiveProvider);
+  const effectiveModel = backend === 'copilot'
+    ? requestedModel
+    : requestedModel || config.model || defaultModelForProvider(effectiveProvider);
+  const reasoningEffort = typeof body.reasoningEffort === 'string'
+    && /^[A-Za-z0-9_-]{1,64}$/.test(body.reasoningEffort)
+    ? body.reasoningEffort
+    : null;
   const openAiApiMode = normalizeOpenAiApiMode(body.openAiApiMode);
   const tools = resolveServerRunToolCatalog(input.tools, askOnly);
   const existing = getRun(input.runId)
@@ -217,6 +230,7 @@ async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<
     backend,
     provider: effectiveProvider,
     model: effectiveModel,
+    reasoningEffort,
     openAiApiMode,
     cacheMode: input.cacheMode,
     maxOutputTokens: input.maxOutputTokens,
@@ -304,6 +318,17 @@ async function handleToolClaim(req: IncomingMessage, res: ServerResponse, runId:
   });
 }
 
+/** Validate the editor's durability report; anything malformed is simply ignored. */
+function editorPersistenceSignal(value: unknown): EditorPersistenceSignal | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const shaped = value as Record<string, unknown>;
+  if (typeof shaped.pending !== 'boolean' || typeof shaped.failed !== 'boolean') return null;
+  const revision = Number.isSafeInteger(shaped.revision) && Number(shaped.revision) >= 0
+    ? Number(shaped.revision)
+    : 0;
+  return { revision, pending: shaped.pending, failed: shaped.failed };
+}
+
 async function handleToolResult(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
   const body = await readJson(req, MAX_TOOL_RESULT_BODY_BYTES);
   const projectId = requireProjectId(body.projectId);
@@ -316,6 +341,8 @@ async function handleToolResult(req: IncomingMessage, res: ServerResponse, runId
   if (hasResult === hasError || (hasError && error === undefined)) {
     throw new Error('provide exactly one of result or string error');
   }
+  const persistence = editorPersistenceSignal(body.persistence);
+  if (persistence) run.editorPersistence = persistence;
   const outcome = settleToolResult(run, {
     ...binding,
     ...(error === undefined ? { result: body.result } : { error }),

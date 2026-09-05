@@ -20,6 +20,16 @@ export interface ProjectSaveResult {
   error?: unknown;
 }
 
+/** Whether this project's edits are durably on disk, still in flight, or lost. */
+export interface ProjectPersistenceSignal {
+  /** Highest revision confirmed written. */
+  readonly revision: number;
+  /** A save is queued or in flight; absence of a new revision is not a failure. */
+  readonly pending: boolean;
+  /** The last settled save failed, or the queue is blocked. Edits are NOT durable. */
+  readonly failed: boolean;
+}
+
 export interface ProjectFlushEntry {
   projectId: string;
   ok: boolean;
@@ -154,6 +164,26 @@ export class SaveCoordinator {
       };
     }));
     return { ok: projects.every((entry) => entry.ok), projects };
+  }
+
+  /**
+   * Durability signal for one project, reported back to the server alongside
+   * agent tool results. Without it the server cannot distinguish "the editor
+   * applied this edit and saved it" from "the editor applied it in memory and
+   * the write never landed" — which let a whole run's work vanish silently.
+   */
+  persistenceSignal(projectId: string): ProjectPersistenceSignal {
+    const state = this.states.get(projectId);
+    if (!state) return { revision: 0, pending: false, failed: false };
+    const lastSaved = state.lastResult?.status === 'saved'
+      ? state.lastResult.revision
+      : 0;
+    return {
+      revision: lastSaved,
+      pending: state.pending > 0,
+      failed: state.blocked !== undefined
+        || (state.pending === 0 && state.lastResult?.status === 'failed'),
+    };
   }
 
   hasPending(projectId?: string): boolean {

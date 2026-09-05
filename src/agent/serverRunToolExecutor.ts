@@ -28,6 +28,7 @@ import {
   type StoredToolAttempt,
 } from './serverRunSessionStorage';
 import { projectServerRunToolResult } from './serverRunToolResult';
+import { flushProjectSaves, projectPersistenceSignal } from '../persist/projectStore';
 import {
   permanentToolHttpStatus, scheduleServerRunToolResultRetry,
   type BrowserToolRequest, type ToolClaimResponse,
@@ -85,6 +86,9 @@ interface RunSession {
   readonly abort: AbortController;
 }
 
+/** Tool results between unawaited durability checkpoints. */
+const TOOL_RESULTS_PER_FLUSH = 8;
+
 export class ServerRunToolExecutor {
   private readonly projectId: string;
   private readonly requestQueue = new ServerRunToolRequestQueue();
@@ -95,6 +99,7 @@ export class ServerRunToolExecutor {
   private draft: DraftEngine | null = null;
   private baseDoc: ProjectDoc | null = null;
   private session: RunSession | null = null;
+  private resultsSinceFlush = 0;
   private readonly lockManager: ServerRunLockManager | null;
 
   constructor(
@@ -194,6 +199,10 @@ export class ServerRunToolExecutor {
         argsDigest: outcome.argsDigest,
         claimId: session.claimId,
         result: projectServerRunToolResult(outcome.result),
+        // Durability of the edit this tool just made. The server fails mutating
+        // tools whose writes are not landing, instead of letting the agent build
+        // an entire cut on top of state that never reaches disk.
+        persistence: projectPersistenceSignal(this.projectId),
       }
       : {
         projectId: this.projectId,
@@ -220,7 +229,21 @@ export class ServerRunToolExecutor {
       );
       return true;
     }
-    return response?.ok === true;
+    const posted = response?.ok === true;
+    if (posted) this.checkpointProjectSaves();
+    return posted;
+  }
+
+  /**
+   * Periodic durability checkpoint. Autosave already debounces at 500ms, so this
+   * only bounds exposure if that timer is starved; it is deliberately not
+   * awaited so tool throughput is unaffected.
+   */
+  private checkpointProjectSaves(): void {
+    this.resultsSinceFlush += 1;
+    if (this.resultsSinceFlush < TOOL_RESULTS_PER_FLUSH) return;
+    this.resultsSinceFlush = 0;
+    void flushProjectSaves(this.projectId).catch(() => undefined);
   }
 
   private retry(session: RunSession, toolCallId: string): void {

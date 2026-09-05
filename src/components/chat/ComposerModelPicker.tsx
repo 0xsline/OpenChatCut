@@ -5,8 +5,19 @@ import { Icon } from '../icons';
 import { ComposerPopover } from './ComposerPopover';
 import type { ComposerModelView } from './useComposerModelView';
 import codexPng from '../../../assets/vendor-icons/codex-color.png';
+import copilotSvg from '../../../assets/vendor-icons/copilot.svg?raw';
 
-function ChoiceLogo({ backend }: { backend: 'api' | 'codex' }) {
+function ChoiceLogo({ backend }: { backend: 'api' | 'codex' | 'copilot' }) {
+  if (backend === 'copilot') {
+    return (
+      <span
+        aria-hidden
+        // Static codebase asset, non-user input — inlined so it inherits currentColor.
+        dangerouslySetInnerHTML={{ __html: copilotSvg }}
+        style={{ width: 18, height: 18, borderRadius: 5, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.panel, border: `0.5px solid ${theme.borderLight}`, color: theme.text, fontSize: 12 }}
+      />
+    );
+  }
   if (backend !== 'codex') return null;
   return (
     <img
