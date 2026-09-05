@@ -34,6 +34,8 @@ import {
 } from './agent-path-import.ts';
 import { getKey, setKeys } from '../server/keystore.ts';
 import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
+import { AGENT_LOCAL_MEDIA_CHANNEL } from '../shared/agent-local-media.ts';
+import { browseLocalMedia } from './agent-local-media.ts';
 import { modelCachePath } from '../shared/model-cache-path.ts';
 import { isTranscriptWindowPayload, TRANSCRIPT_WINDOW_CHANNELS, type TranscriptWindowPayload } from '../shared/transcript-window.ts';
 import {
@@ -346,6 +348,8 @@ async function boot(): Promise<void> {
     }),
   });
   installDirectoryWatchIpc(origin);
+  ipcMain.handle(AGENT_LOCAL_MEDIA_CHANNEL, trustedDesktopHandler(origin,
+    async (_event, request: unknown) => browseLocalMedia(request)));
   ipcMain.handle(AGENT_PATH_IMPORT_CHANNEL, trustedDesktopHandler(origin, async (event, request: unknown) => {
     const value = request as { paths?: unknown; projectId?: unknown; knownHashes?: unknown };
     const paths = Array.isArray(value?.paths)
@@ -354,7 +358,8 @@ async function boot(): Promise<void> {
     const knownHashes = Array.isArray(value?.knownHashes)
       ? value.knownHashes.filter((entry): entry is string => typeof entry === 'string' && entry.length <= 128)
       : [];
-    if (!paths.length || typeof value?.projectId !== 'string') {
+    if (!paths.length || paths.length > 100 || paths.length !== (value.paths as unknown[]).length
+      || typeof value?.projectId !== 'string') {
       throw new Error('invalid agent path import request');
     }
     return importAgentPathsWithGrant({ paths, projectId: value.projectId, knownHashes }, {

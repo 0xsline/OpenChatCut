@@ -5194,8 +5194,73 @@
       }
     },
     {
+      "name": "browse_local_media",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute directory path; omitted means the user home directory."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Case-insensitive substring of the relative file or directory path."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "video",
+              "audio",
+              "image",
+              "gif",
+              "svg"
+            ]
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Search subdirectories, up to 12 levels and 10000 entries. Default false."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "Page size; default 100."
+          }
+        }
+      }
+    },
+    {
+      "name": "import_assets",
+      "description": "Import selected local media paths into the media pool in one batch. Desktop only. Local access is enabled by default; explicit AGENT_IMPORT_ROOTS restricts access. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Absolute paths of selected media files."
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      }
+    },
+    {
       "name": "import_asset",
-      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; the path must be inside an allowed AGENT_IMPORT_ROOTS directory. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
+      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5211,7 +5276,7 @@
     },
     {
       "name": "import_folder",
-      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; the directory must be inside an allowed AGENT_IMPORT_ROOTS directory. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
+      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -6015,6 +6080,49 @@
           "timing",
           "density"
         ]
+      }
+    },
+    {
+      "name": "browse_local_media",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute directory path; omitted means the user home directory."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Case-insensitive substring of the relative file or directory path."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "video",
+              "audio",
+              "image",
+              "gif",
+              "svg"
+            ]
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Search subdirectories, up to 12 levels and 10000 entries. Default false."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "Page size; default 100."
+          }
+        }
       }
     },
     {
