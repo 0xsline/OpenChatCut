@@ -23,6 +23,7 @@ import {
   storedClaimIdentity,
   type StoredToolAttempt,
 } from './serverRunSessionStorage';
+import { flushProjectSaves } from '../persist/projectStore';
 import {
   scheduleServerRunToolResultRetry, type BrowserToolRequest, type ToolClaimResponse,
 } from './serverRunToolTransport';
@@ -73,6 +74,9 @@ export interface ServerToolExecutorStart {
  * run started read the NEW run's capability, posted a foreign-authority
  * /tool-result (HTTP 403), and triggered stale-recovery against the new run.
  */
+/** Tool results between unawaited durability checkpoints. */
+const TOOL_RESULTS_PER_FLUSH = 8;
+
 export class ServerRunToolExecutor {
   private readonly projectId: string;
   private readonly requestQueue = new ServerRunToolRequestQueue();
@@ -83,6 +87,7 @@ export class ServerRunToolExecutor {
   private draft: DraftEngine | null = null;
   private baseDoc: ProjectDoc | null = null;
   private session: RunSession | null = null;
+  private resultsSinceFlush = 0;
   private readonly lockManager: ServerRunLockManager | null;
 
   constructor(
@@ -148,8 +153,22 @@ export class ServerRunToolExecutor {
     toolCallId: string,
     outcome: RecoveredServerTool,
   ): Promise<boolean> {
-    return postServerRunToolResult(this.projectId, session, toolCallId, outcome,
+    const posted = await postServerRunToolResult(this.projectId, session, toolCallId, outcome,
       (runId, error) => this.callbacks.abandonRecovery(runId, error));
+    if (posted) this.checkpointProjectSaves();
+    return posted;
+  }
+
+  /**
+   * Periodic durability checkpoint. Autosave already debounces at 500ms, so this
+   * only bounds exposure if that timer is starved; it is deliberately not
+   * awaited so tool throughput is unaffected.
+   */
+  private checkpointProjectSaves(): void {
+    this.resultsSinceFlush += 1;
+    if (this.resultsSinceFlush < TOOL_RESULTS_PER_FLUSH) return;
+    this.resultsSinceFlush = 0;
+    void flushProjectSaves(this.projectId).catch(() => undefined);
   }
 
   private retry(session: RunSession, toolCallId: string): void {

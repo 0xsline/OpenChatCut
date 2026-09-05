@@ -36,6 +36,8 @@ export default {
     'Using template "{name}" as a style reference, generate a similar animation with create_motion_graphic: @{name} ',
   '工程保存失败。请重试；在保存成功前不会关闭或切换工程。':
     'Project save failed. Retry before closing or switching projects.',
+  '智能体的改动未能保存到工程，请检查存储后重试。':
+    'The agent\'s changes could not be saved to the project. Check storage and try again.',
   '工程仍未保存，已阻止离开。请继续编辑以重试保存。':
     'The project is still unsaved, so navigation was blocked. Keep editing to retry.',
 
