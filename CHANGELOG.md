@@ -26,6 +26,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed / 修复
 
+- **`probe_media` now runs the ffprobe bundled with the app instead of the e2b cloud sandbox** — on a machine without an E2B key the tool used to fail with "e2b sandbox is not configured" even though import, previews and export QA were already probing locally. Uploads and bundled assets are read in place; a public URL is fetched through the SSRF-safe transport into a temp file first.  
+  **`probe_media` 改用应用自带的 ffprobe，不再依赖 e2b 云沙箱**——没有配置 E2B key 的机器上，这个工具之前会报「e2b sandbox is not configured」，而导入、预览、导出质检其实早就在本地跑 ffprobe 了。上传文件和内置素材直接就地读取；公开 URL 先经过防 SSRF 的抓取落到临时文件再探测。
+
 - **Media-pool ratio badges snap to the ratio people actually name** — a 427×240 trailer read "427:240" because the badge reduced the exact pixel fraction; encoders round to codec-friendly sizes, so a frame within 2% of 16:9, 4:3, 1:1, 3:2, 5:4 or 21:9 (and their portrait forms) now shows that name, a small exact fraction such as 7:5 stays, and anything else shows a proportion like 2.40:1. Canvas sizes are exact and unchanged.  
   **素材池比例角标按人们常说的比例显示**——427×240 的预告片之前显示「427:240」，因为角标直接约分了像素分数；编码器会把尺寸凑成编码友好的数值，所以现在与 16:9、4:3、1:1、3:2、5:4、21:9（及其竖版）偏差在 2% 内的都显示该名称，7:5 这类小分数保留，其余显示为 2.40:1 这样的比例。画布尺寸精确，不受影响。
 

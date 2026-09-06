@@ -4515,7 +4515,7 @@
     },
     {
       "name": "probe_media",
-      "description": "Probe a media file with ffprobe in an isolated sandbox. Returns measured duration, dimensions, average fps, stream presence/codecs, plus explicit qualityRisks (low resolution, mono, very short, variable/low frame rate). Accepts a media-pool assetId/prefix, local /media/… path, or public https URL. Use before finalize_uploaded_asset to pass hasAudioTrack and measured fps/duration. The call can fail when the source is unreachable or the e2b sandbox is unavailable; finalize may proceed without it, using ingest defaults.",
+      "description": "Probe a media file with the ffprobe bundled in the app (no sandbox or API key needed). Returns measured duration, dimensions, average fps, stream presence/codecs, plus explicit qualityRisks (low resolution, mono, very short, variable/low frame rate). Accepts a media-pool assetId/prefix, local /media/… path, or public https URL. Use before finalize_uploaded_asset to pass hasAudioTrack and measured fps/duration. It fails only when the source cannot be read; finalize may then proceed with ingest defaults.",
       "input_schema": {
         "type": "object",
         "properties": {
