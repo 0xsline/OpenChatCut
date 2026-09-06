@@ -15,6 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed / 变更
 
+- **Media pool: remove every offline asset in one click, and one notice instead of a per-card "models not installed" badge** — the missing-media banner gains "Remove all offline media" (with the usual confirmation), and when the local music-analysis packs are not installed the pool shows a single line pointing at Settings → Local AI rather than repeating the same badge under every audio and video card.  
+  **素材池：一键移除全部失效素材，「模型未安装」只提示一次**——丢失素材横幅新增「移除全部失效素材」（沿用原有确认框）；本地音乐分析模型包未安装时，素材池只显示一行指向 设置 → 本地 AI 的提示，不再在每张音视频卡片下重复同一个角标。
+
 - **In auto-apply mode, timeline edits now land as each tool call finishes** — the tracks change while the agent works instead of all at once when the run ends, the agent continues from the live project (including anything you changed meanwhile), and the run's edits share one change-log row for rollback. Manual approval mode still collects edits into a proposal.  
   **自动应用模式下，时间线编辑现在随每个工具调用实时落地**——轨道在 Agent 工作时就在变化，而不是整轮结束后一次性出现；Agent 从真实工程继续（包括你中途做的改动）；整轮编辑共用一条修改记录，可一键回滚。人工审批模式仍然汇总成提案。
 

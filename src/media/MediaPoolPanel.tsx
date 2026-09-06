@@ -11,7 +11,7 @@ import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
 import { MobileUploadDialog } from './MobileUploadDialog';
 import type { MobileUploadRecord } from './mobileUploadApi';
-import { MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
+import { MissingMediaBanner, MusicModelsNotice, RelinkAllDialog } from './MediaPoolOverlays';
 import {
   MediaPoolDialogs,
   type MediaAssetDeleteState,
@@ -380,7 +380,8 @@ export function MediaPoolPanel({
         onFavoritesChange={() => setFavoritesOnly((value) => !value)}
       />
 
-      <MissingMediaBanner count={missingList.length} onOpen={() => setShowRelinkAll(true)} />
+      <MissingMediaBanner count={missingList.length} onOpen={() => setShowRelinkAll(true)} onRemoveAll={onRemoveAsset || onRemoveAssets ? () => requestRemoveAssets(missingList) : undefined} />
+      <MusicModelsNotice cards={musicAnalysis} />
 
       {(currentFolder || favoritesOnly || childFolders.length > 0) && <div className="cc-media-breadcrumb">
         <button aria-label={t('返回上级文件夹')} disabled={!currentFolder && !favoritesOnly} onClick={() => {
