@@ -60,12 +60,17 @@ interface ImportUrlResponse {
   contentType?: string;
   filename?: string;
   error?: string;
+  code?: string;
 }
 
-/** Server-side fetch → /media/uploads; falls back to remote URL on any failure. */
+/**
+ * Server-side fetch → /media/uploads; falls back to the remote URL on most failures
+ * (Chromium may still play it), but an unreachable host is reported as such: the
+ * preview could not load it either, and export would fail on a missing source.
+ */
 async function materializeUrl(
   url: string,
-): Promise<{ src: string; filename?: string; local: boolean; note?: string }> {
+): Promise<{ src: string; filename?: string; local: boolean; note?: string; unreachable?: boolean }> {
   try {
     const res = await fetch('/api/import-url', {
       method: 'POST',
@@ -77,6 +82,7 @@ async function materializeUrl(
       return { src: body.path, filename: body.filename, local: true };
     }
     const err = body.error ?? `import-url status ${res.status}`;
+    if (body.code === 'upstream_unreachable') return { src: url, local: false, note: err, unreachable: true };
     return { src: url, local: false, note: `remote src (import-url: ${err})` };
   } catch (e) {
     return {
@@ -134,6 +140,7 @@ async function registerMediaUrl(
 
   if (kind !== 'motion-graphic' && !opts.forceRemote) {
     const mat = await materializeUrl(url);
+    if (mat.unreachable) return { success: false, error: mat.note ?? `无法连接到 ${url}`, url };
     src = mat.src;
     local = mat.local;
     note = mat.note;

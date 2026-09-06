@@ -10,6 +10,7 @@ import {
 } from '../r2.ts';
 import { enqueueUploadMutation, uploadDir } from '../media-dir.ts';
 import { safePublicFetch, UnsafePublicUrlError } from '../safe-public-fetch.ts';
+import { ImportUnreachableError, unreachableImportError } from './import-url-errors.ts';
 import { streamUploadToFile } from './upload-stream.ts';
 import { sha256File } from '../../shared/node-content-hash.ts';
 import { externalUploadMediaType } from '../../src/media/uploadMediaType.ts';
@@ -332,7 +333,9 @@ async function fetchRemoteImport(
       sendError(res, 400, error.message);
       return null;
     }
-    throw error;
+    // A blocked or blackholed host is its own outcome: named host, the remedy, and a
+    // code the tool turns into a failure row instead of a dead remote src.
+    throw unreachableImportError(error, remote) ?? error;
   }
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
@@ -400,7 +403,10 @@ async function handleImportUrl(req: IncomingMessage, res: ServerResponse, logger
     logger.error(`[import-url] ${message}`);
     if (!res.headersSent) {
       if (error instanceof UploadTooLargeError) sendError(res, 413, message);
-      else sendJson(res, 200, { ok: false, error: message });
+      else sendJson(res, 200, {
+        ok: false, error: message,
+        ...(error instanceof ImportUnreachableError ? { code: error.code } : {}),
+      });
     } else res.end();
   }
 }

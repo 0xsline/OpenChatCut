@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { Agent as HttpAgent } from 'node:http';
+import { Socket } from 'node:net';
 import {
+  PublicConnectTimeoutError,
   safePublicFetch,
   UnsafePublicUrlError,
   type PublicUrlResolver,
   type PublicUrlTransport,
 } from './safe-public-fetch';
+import { outboundProxyUrl } from './outbound-proxy.ts';
 
 const PUBLIC_IPV4 = '93.184.216.34';
 const publicResolver: PublicUrlResolver = async () => [{ address: PUBLIC_IPV4, family: 4 }];
@@ -101,5 +105,52 @@ assert.equal(pinnedAddress, PUBLIC_IPV4);
 assert.equal(observedHost, 'media.example');
 assert.equal(observedServerName, 'media.example');
 assert.equal(observedRange, 'bytes=0-0');
+
+// The connect phase is bounded on its own. An agent that hands back a socket which never
+// connects and never errors is exactly a blackholed host; without the bound this request
+// would sit in the OS TCP connect timeout (~75s on macOS) and, in a batch, serially.
+{
+  class StallAgent extends HttpAgent {
+    override createConnection(): Socket {
+      // A handshake that never completes. While `connecting`, net.Socket queues writes
+      // instead of failing them, so the request head sits in the buffer forever — the
+      // exact shape of a SYN into a blackhole. (A bare Socket would fail the write with
+      // ERR_SOCKET_CLOSED and prove nothing about the bound.)
+      const socket = new Socket();
+      (socket as { connecting: boolean }).connecting = true;
+      return socket;
+    }
+  }
+  const started = performance.now();
+  await assert.rejects(
+    () => safePublicFetch('http://93.184.216.34/media.mp4', { agent: new StallAgent(), connectTimeoutMs: 200 }),
+    (error: unknown) => error instanceof PublicConnectTimeoutError
+      && error.timeoutMs === 200 && error.address === '93.184.216.34' && error.host === '93.184.216.34',
+  );
+  assert.ok(performance.now() - started < 3000, 'the connect bound must fire, not the OS default');
+}
+
+// The default transport honors the user's outbound proxy like every other server path. With
+// HTTPS_PROXY pointing at a closed loopback port, the failure must be the proxy refusing —
+// proof the request went to the proxy rather than dialing the target directly.
+{
+  const names = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'] as const;
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  for (const name of names) delete process.env[name];
+  process.env.HTTPS_PROXY = 'http://127.0.0.1:1';
+  try {
+    assert.equal(outboundProxyUrl(), 'http://127.0.0.1:1', 'the env proxy must be what resolves in this process');
+    await assert.rejects(
+      () => safePublicFetch('https://93.184.216.34/media.mp4', { connectTimeoutMs: 5_000 }),
+      (error: unknown) => (error as { code?: string }).code === 'ECONNREFUSED'
+        && String((error as Error).message).includes('127.0.0.1:1'),
+    );
+  } finally {
+    for (const name of names) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  }
+}
 
 console.log('safe public fetch verification passed');

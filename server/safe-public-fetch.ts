@@ -1,7 +1,8 @@
 import { lookup } from 'node:dns/promises';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { isIP } from 'node:net';
+import type { Agent as HttpAgent } from 'node:http';
+import { isIP, Socket } from 'node:net';
 import { Readable } from 'node:stream';
 
 export interface PublicAddress {
@@ -20,6 +21,10 @@ export interface PinnedPublicRequest {
   method: 'GET' | 'HEAD';
   headers: Headers;
   signal?: AbortSignal;
+  /** Bound on the connect phase only; a healthy download is never cut off by it. */
+  connectTimeoutMs: number;
+  /** Explicit agent for tests; production resolves the user's outbound proxy. */
+  agent?: HttpAgent;
 }
 
 export type PublicUrlTransport = (request: PinnedPublicRequest) => Promise<Response>;
@@ -32,6 +37,8 @@ export interface SafePublicFetchInit {
   resolver?: PublicUrlResolver;
   transport?: PublicUrlTransport;
   maxRedirects?: number;
+  connectTimeoutMs?: number;
+  agent?: HttpAgent;
 }
 
 export class UnsafePublicUrlError extends Error {
@@ -40,6 +47,31 @@ export class UnsafePublicUrlError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'UnsafePublicUrlError';
+  }
+}
+
+/**
+ * The connect phase alone gets a short bound. Every other outbound path in server/ goes
+ * through the user's proxy via outbound-proxy.ts; this one dialed the resolved address
+ * directly with no connect timeout, so a host that is blocked or blackholed — Google-hosted
+ * sample media from inside China is the everyday case — sat in the OS TCP connect timeout
+ * (~75s on macOS) per URL, serially across a batch, under a 30-minute overall abort. The
+ * agent's download_media call looked frozen the entire time.
+ */
+export const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+
+export class PublicConnectTimeoutError extends Error {
+  readonly code = 'connect_timeout';
+  readonly host: string;
+  readonly address: string;
+  readonly timeoutMs: number;
+
+  constructor(host: string, address: string, timeoutMs: number) {
+    super(`connect to ${host} (${address}) timed out after ${timeoutMs}ms`);
+    this.name = 'PublicConnectTimeoutError';
+    this.host = host;
+    this.address = address;
+    this.timeoutMs = timeoutMs;
   }
 }
 
@@ -218,12 +250,29 @@ async function resolvePublicTarget(
   return { address: selected.address, family: isIP(selected.address) === 6 ? 6 : 4 };
 }
 
-const defaultTransport: PublicUrlTransport = (request) => {
+const defaultTransport: PublicUrlTransport = async (request) => {
+  // Resolved at request time, not import time: the proxy can change from Settings while
+  // the server runs, and pulling keystore in statically here would make this module's
+  // import order matter for anything that isolates HOME or the data dir before loading.
+  const { outboundHttpAgent } = await import('./outbound-proxy.ts');
   const { promise, resolve, reject } = createDeferred<Response>();
   const headers: Record<string, string> = {};
   request.headers.forEach((value, name) => { headers[name] = value; });
   headers.host = request.hostHeader;
   const send = request.url.protocol === 'https:' ? httpsRequest : httpRequest;
+  // The address stays pinned (SSRF: DNS rebinding cannot move the connection after the
+  // public-address check). With a proxy the CONNECT tunnel targets that same pinned
+  // address, so the check still governs where the bytes come from.
+  const agent = request.agent ?? outboundHttpAgent();
+  let connected = false;
+  const connectTimer = setTimeout(() => {
+    if (connected) return;
+    outgoing.destroy(new PublicConnectTimeoutError(request.hostHeader, request.address, request.connectTimeoutMs));
+  }, request.connectTimeoutMs);
+  const markConnected = () => {
+    connected = true;
+    clearTimeout(connectTimer);
+  };
   const outgoing = send({
     protocol: request.url.protocol,
     hostname: request.address,
@@ -233,8 +282,10 @@ const defaultTransport: PublicUrlTransport = (request) => {
     path: `${request.url.pathname}${request.url.search}`,
     headers,
     signal: request.signal,
+    ...(agent ? { agent } : {}),
     ...(request.serverName ? { servername: request.serverName } : {}),
   }, (incoming) => {
+    markConnected();
     const status = incoming.statusCode ?? 502;
     if (status < 200 || status > 599) {
       incoming.destroy();
@@ -259,7 +310,13 @@ const defaultTransport: PublicUrlTransport = (request) => {
       reject(error);
     }
   });
-  outgoing.on('error', reject);
+  outgoing.once('socket', (socket: unknown) => {
+    // A pooled keep-alive socket is already up; a fresh one reports 'connect'. Anything
+    // that is not a real socket (a stalled test agent) only counts once it says so.
+    if (socket instanceof Socket && !socket.connecting && !socket.pending) { markConnected(); return; }
+    (socket as { once: (event: string, handler: () => void) => void }).once('connect', markConnected);
+  });
+  outgoing.on('error', (error) => { clearTimeout(connectTimer); reject(error); });
   outgoing.end();
   return promise;
 };
@@ -275,6 +332,8 @@ function requestFor(url: URL, target: PublicAddress, init: SafePublicFetchInit):
     method: init.method ?? 'GET',
     headers: new Headers(init.headers),
     signal: init.signal,
+    connectTimeoutMs: init.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+    ...(init.agent ? { agent: init.agent } : {}),
   };
 }
 
