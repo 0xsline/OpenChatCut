@@ -31,8 +31,10 @@ export interface AgentTurn {
   ops: Operation[];
   persistentOps: Operation[];
   persistentBeforeDoc: ProjectDoc | null;
-  /** The run's single change-log row for pool imports; extended by every landing after the first. */
-  persistentSessionId: string | null;
+  /** The run's single change-log row; every landing (imports and, in auto mode, edits) extends it. */
+  runSessionId: string | null;
+  /** Auto-apply: timeline edits land after each tool call instead of becoming a proposal. */
+  liveEdits: boolean;
   persistentSnapshot: Promise<void>;
   persistentSaveError: unknown;
   draftInvalidated: boolean;
@@ -90,46 +92,80 @@ export async function commitPersistentOperations(
   }
   turn.state.llmProviderRef.current = PROVIDER;
   if (!turn.persistentOps.length) return true;
-  const actions = turn.persistentOps.flatMap((operation) => operation.actions);
   // Pool imports are additive, so they land on whatever the project is now — called after
-  // every tool that imported something, not once at the end of the run — and a user edit
-  // made while the agent was downloading neither blocks them nor gets overwritten. The save
-  // is the fence: if the project moved during it, the saved copy lacks that edit, so the
-  // live document is put back and the imports are replayed on top of it.
+  // every tool that imported something, not once at the end of the run.
+  const landed = await landOperations(turn, turn.persistentOps, persist);
+  if (!landed) return false;
+  turn.persistentOps = [];
+  return true;
+}
+
+/**
+ * Auto-apply mode: the timeline edits recorded so far land now, the way a proposal would
+ * have been applied at the end of the run, so the user watches the tracks change as the
+ * agent works. The returned document is the new base for the draft and the proposal.
+ */
+export async function landProposedOperations(
+  turn: AgentTurn,
+  persist: typeof saveProject = saveProject,
+): Promise<ProjectDoc | null> {
+  if (!turn.ops.length || turn.abortController.signal.aborted) return null;
+  const operations = turn.ops;
+  const landed = await landOperations(turn, operations, persist);
+  if (!landed) return null;
+  turn.ops = [];
+  // Each operation came from one tool call; those calls are settled, not pending.
+  turn.toolCallCount = Math.max(0, turn.toolCallCount - operations.length);
+  turn.proposalBaseDoc = landed;
+  return landed;
+}
+
+/**
+ * Replay `operations` onto the live project and save. A user edit made while the agent was
+ * working neither blocks the landing nor gets overwritten: the save is the fence, and if
+ * the project moved during it the saved copy lacks that edit, so the live document is put
+ * back and the operations are replayed on top of it.
+ */
+async function landOperations(
+  turn: AgentTurn,
+  operations: readonly Operation[],
+  persist: typeof saveProject,
+): Promise<ProjectDoc | null> {
+  const actions = operations.flatMap((operation) => operation.actions);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const currentDoc = turn.state.ctxRef.current.getDoc();
     const afterDoc = replayActions(currentDoc, actions);
-    if (afterDoc === currentDoc) {
-      // Everything is already in the pool (a resumed run replaying its own landings).
-      turn.persistentOps = [];
-      return true;
-    }
+    // Everything is already there (a resumed run replaying its own landings).
+    if (afterDoc === currentDoc) return currentDoc;
     const saved = await persist(turn.projectId, afterDoc).catch(() => null);
     if (!saved?.saved) {
       showRunError(turn, '无法保存工程，Agent 改动未应用。请检查本地存储后重试。');
-      return false;
+      return null;
     }
     const liveDoc = turn.state.ctxRef.current.getDoc();
     if (turn.abortController.signal.aborted || liveDoc !== currentDoc) {
       const restored = await persist(turn.projectId, liveDoc).catch(() => null);
       if (turn.abortController.signal.aborted) {
         if (!restored?.saved) showRunError(turn, 'Agent 已停止，但无法恢复工程存储。请重新打开工程并检查内容。');
-        return false;
+        return null;
       }
       continue;
     }
     turn.state.ctxRef.current.commands.applyDoc(afterDoc);
-    recordPersistentSession(turn, currentDoc, afterDoc);
-    turn.persistentOps = [];
-    return true;
+    recordRunSession(turn, operations, currentDoc, afterDoc);
+    return afterDoc;
   }
-  showRunError(turn, '保存期间工程持续发生其他修改，素材暂未入池；请稍后重试。');
-  return false;
+  showRunError(turn, '保存期间工程持续发生其他修改，Agent 改动暂未应用；请稍后重试。');
+  return null;
 }
 
-function recordPersistentSession(turn: AgentTurn, beforeDoc: ProjectDoc, afterDoc: ProjectDoc): void {
-  const operations = turn.persistentOps;
-  const id = turn.persistentSessionId;
+function recordRunSession(
+  turn: AgentTurn,
+  operations: readonly Operation[],
+  beforeDoc: ProjectDoc,
+  afterDoc: ProjectDoc,
+): void {
+  const id = turn.runSessionId;
   if (id) {
     turn.state.setChangeLog((current) => current.map((session) => (
       session.id === id ? extendAgentChangeSession(session, operations, afterDoc) : session
@@ -137,10 +173,22 @@ function recordPersistentSession(turn: AgentTurn, beforeDoc: ProjectDoc, afterDo
     return;
   }
   const session = createAgentChangeSession(
-    turn.assistantText || '素材已加入媒体池', operations, beforeDoc, afterDoc, true,
+    turn.assistantText || RUN_SESSION_PLACEHOLDER, operations, beforeDoc, afterDoc, true,
   );
-  turn.persistentSessionId = session.id;
+  turn.runSessionId = session.id;
   turn.state.setChangeLog((current) => appendAgentChange(current, session));
+}
+
+const RUN_SESSION_PLACEHOLDER = 'Agent 修改（进行中）';
+
+/** The run is over: the row it grew during the run gets the model's own summary. */
+export function finalizeRunSession(turn: AgentTurn): void {
+  const id = turn.runSessionId;
+  const summary = turn.assistantText.trim();
+  if (!id || !summary) return;
+  turn.state.setChangeLog((current) => current.map((session) => (
+    session.id === id && session.summary === RUN_SESSION_PLACEHOLDER ? { ...session, summary } : session
+  )));
 }
 
 export async function discardUnexposedProposal(projectId: string, proposal: Proposal): Promise<void> {

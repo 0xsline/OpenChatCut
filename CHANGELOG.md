@@ -15,6 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed / 变更
 
+- **In auto-apply mode, timeline edits now land as each tool call finishes** — the tracks change while the agent works instead of all at once when the run ends, the agent continues from the live project (including anything you changed meanwhile), and the run's edits share one change-log row for rollback. Manual approval mode still collects edits into a proposal.  
+  **自动应用模式下，时间线编辑现在随每个工具调用实时落地**——轨道在 Agent 工作时就在变化，而不是整轮结束后一次性出现；Agent 从真实工程继续（包括你中途做的改动）；整轮编辑共用一条修改记录，可一键回滚。人工审批模式仍然汇总成提案。
+
 - **Downloaded media now appears in the media pool as soon as each download finishes** — pool imports land after every tool call instead of when the whole run ends, and a user edit made while the agent was downloading is neither blocked nor overwritten; one change-log row per run collects all of them for rollback.  
   **素材下载完立即出现在媒体池**——每个工具调用结束就入池，不再等整轮 Agent 结束；你在它下载期间做的手动编辑既不会被拦住也不会被覆盖；一轮的所有入池记在同一条修改记录里，可一键回滚。
 

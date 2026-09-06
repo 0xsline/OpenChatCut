@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import {
   loadAgentArtifact,
   loadAgentRuntimeSidecar,
@@ -6,7 +7,7 @@ import {
   storeAgentArtifact,
 } from '../persist/agentRuntimeStore.ts';
 import { startAgentRun } from './runtime-ledger.ts';
-import { saveServerRunDraftTool } from './serverRunDraftStore.ts';
+import { loadServerRunDraft, saveServerRunDraftBase, saveServerRunDraftTool } from './serverRunDraftStore.ts';
 
 // The draft endpoint is server-side; emulate it with a local artifact write.
 const originalFetch = globalThis.fetch;
@@ -89,6 +90,36 @@ assert.match(body.args.url, /X-Amz-Signature=\[REDACTED\]/);
 assert.match(body.args.azure, /sig=\[REDACTED\]/);
 assert.match(body.args.gcs, /X-Goog-Signature=\[REDACTED\]/);
 assert.match(body.error, /\[REDACTED\]/);
+// Auto-apply marks a call as landed by re-saving it; the reload sees one record per call,
+// with the flag, so the edits are not applied a second time.
+await saveServerRunDraftBase(projectId, recorder.runId, {
+  text: 'edit', content: 'edit', askOnly: false, references: [],
+  baseDoc: {
+    version: CURRENT_PROJECT_VERSION,
+    assets: [],
+    mediaFolders: [],
+    timelines: [{ id: 'tl-1', name: 'Timeline', order: 0, fps: 30, width: 1920, height: 1080, items: [], selectedId: null }],
+    activeTimelineId: 'tl-1',
+  } as unknown as import('../editor/types').ProjectDoc,
+});
+for (const landed of [false, true]) {
+  await saveServerRunDraftTool(projectId, recorder.runId, {
+    toolCallId: 'call-landed-edit',
+    argsDigest: 'digest-landed-edit',
+    name: 'edit_item',
+    args: { itemId: 'clip' },
+    result: { ok: true },
+    actions: [],
+    ...(landed ? { landed: true } : {}),
+  });
+}
+const draft = await loadServerRunDraft(projectId, recorder.runId);
+assert(draft, 'the draft loads once a base is recorded');
+const landedTools = draft.tools.filter((tool) => tool.toolCallId === 'call-landed-edit');
+assert.equal(landedTools.length, 1, 'the re-save replaces the record');
+assert.equal(landedTools[0]?.landed, true, 'the landed flag survives the round trip');
+assert.equal(draft.tools.find((tool) => tool.toolCallId === 'call-private-download')?.landed, undefined, 'unlanded calls carry no flag');
+
 await recorder.finalize('interrupted', 'privacy verifier complete');
 
 // Error hints carry the real reason (the bare 'could not be persisted' hid

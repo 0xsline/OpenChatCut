@@ -13,8 +13,11 @@ import {
   createPendingProposal,
   discardUnexposedProposal,
   exposePendingProposal,
+  finalizeRunSession,
+  landProposedOperations,
   type AgentTurn,
 } from './useAgentRun';
+import { agentAutoApply } from './approval-mode';
 import { settleServerRun } from './serverRunSettleClient';
 import type { AgentHookState, MutableValue } from './useAgentState';
 import { isFailedToolResult } from './toolFailure';
@@ -103,7 +106,11 @@ function createTurn(
     ops: [],
     persistentOps: [],
     persistentBeforeDoc: null,
-    persistentSessionId: null,
+    runSessionId: null,
+    // Auto-apply is what the composer would do with the proposal anyway; landing the edits
+    // as they happen just stops the user from waiting for the end of the run to see them.
+    liveEdits: !input.askOnly
+      && (ctx.getApprovalMode?.() ?? (agentAutoApply() ? 'auto' : 'manual')) === 'auto',
     persistentSnapshot: Promise.resolve(),
     persistentSaveError: undefined,
     draftInvalidated: false,
@@ -198,8 +205,12 @@ function restoreToolActions(
   ref: ProposalRunRef,
   projectId: string,
 ): void {
+  // Calls whose edits already landed are in the live project; the ones after them are
+  // replayed on top of it rather than on the run's original base.
+  if (tools.some((tool) => tool.landed)) rebaseTurn(turn, turn.state.ctxRef.current.getDoc());
   for (const tool of tools) {
     ref.current.seenToolCalls.add(tool.toolCallId);
+    if (tool.landed) continue;
     applyToolActions(turn, {
       runId: input.runId,
       toolCallId: tool.toolCallId,
@@ -264,6 +275,38 @@ async function persistToolAction(
   // Pool imports land now, not when the run ends: the file is already on disk and the
   // model reads the pool back on its next step, so the user sees it at the same time.
   if (turn.persistentOps.length) await commitPersistentOperations(turn);
+  if (turn.liveEdits && turn.ops.length) await landLiveEdits(turn, input, projectId);
+}
+
+/**
+ * Auto-apply: land this call's timeline edits and continue from the live project, so the
+ * next tool sees what the user sees (including anything they changed meanwhile). The
+ * draft record marks the call as landed so a resumed run does not apply it twice.
+ */
+async function landLiveEdits(
+  turn: AgentTurn,
+  input: ServerRunToolAction,
+  projectId: string,
+): Promise<void> {
+  const landed = await landProposedOperations(turn);
+  if (!landed) return;
+  rebaseTurn(turn, landed);
+  await saveServerRunDraftTool(projectId, input.runId, {
+    toolCallId: input.toolCallId,
+    argsDigest: input.argsDigest,
+    name: input.name,
+    args: input.args,
+    ...(input.error === undefined ? { result: input.result } : { error: input.error }),
+    actions: input.actions,
+    landed: true,
+  }).catch(() => undefined);
+}
+
+function rebaseTurn(turn: AgentTurn, doc: ProjectDoc): void {
+  const next = turnContext(turn.state.ctxRef.current, doc);
+  turn.draft = next.draft;
+  turn.draftCtx = next.draftCtx;
+  turn.proposalBaseDoc = doc;
 }
 
 function beginTerminal(turn: AgentTurn, input: ServerRunTerminal): void {
@@ -301,6 +344,8 @@ async function finalizeCompletedTurn(
   }
   turn.persistentOps = [];
   turn.persistentBeforeDoc = null;
+  if (turn.liveEdits && turn.ops.length) await landProposedOperations(turn);
+  finalizeRunSession(turn);
   if (!turn.ops.length) {
     // A run may legitimately end with no proposed edits (pure reads, or only
     // pool imports committed above). toolCallCount counts only tools that
