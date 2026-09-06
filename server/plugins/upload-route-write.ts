@@ -11,6 +11,7 @@ import {
 import { enqueueUploadMutation, uploadDir } from '../media-dir.ts';
 import { safePublicFetch, UnsafePublicUrlError } from '../safe-public-fetch.ts';
 import { ImportUnreachableError, unreachableImportError } from './import-url-errors.ts';
+import { probeImportedFile } from './import-probe.ts';
 import { streamUploadToFile } from './upload-stream.ts';
 import { sha256File } from '../../shared/node-content-hash.ts';
 import { externalUploadMediaType } from '../../src/media/uploadMediaType.ts';
@@ -372,9 +373,16 @@ async function saveRemoteImport(imported: RemoteImport, maxBytes: number, logger
     await unlink(partPath).catch(() => {});
     sendError(res, 400, 'upstream empty body'); return null;
   }
+  // Judge the bytes before anything (the pool, R2) can hold on to them: an error page
+  // saved as .mp4 is a failure now, not a dead asset the agent discovers later.
+  const probed = await probeImportedFile(partPath, name);
+  if ('error' in probed) {
+    await unlink(partPath).catch(() => {});
+    sendJson(res, 200, { ok: false, error: probed.error, code: 'not_media' }); return null;
+  }
   await rename(partPath, finalPath);
   await mirrorUpload(name, finalPath, imported.contentType ?? undefined, logger, 'import-url→R2');
-  return { name, bytes, contentHash };
+  return { name, bytes, contentHash, probe: probed.probe ?? undefined };
 }
 
 function importedFilename(imported: RemoteImport, fallback: string): string {
@@ -399,6 +407,8 @@ async function handleImportUrl(req: IncomingMessage, res: ServerResponse, logger
       ok: true, path: `/media/uploads/${saved.name}`, bytes: saved.bytes, contentHash: saved.contentHash,
       contentType: imported.contentType ?? undefined,
       filename: importedFilename(imported, saved.name), sourceUrl: imported.remote,
+      // Measured by the local ffprobe, so the agent need not probe (or re-download) the file.
+      probe: saved.probe,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

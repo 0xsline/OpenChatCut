@@ -15,6 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed / 变更
 
+- **Downloads are probed at import time** — `download_media` / `push_asset` rows now carry duration, dimensions, fps, audio/video tracks, codecs and quality risks measured by the bundled ffprobe, so the agent no longer spends a `probe_media` call (and, for a URL, a second download) on a file it just imported. An HTML page or truncated file saved under a media extension fails as `not_media` and never enters the pool.  
+  **下载即探测**——`download_media` / `push_asset` 的结果行现在自带应用内 ffprobe 测得的时长、宽高、fps、音视频轨、编码和质量风险，Agent 不必再对刚导入的文件调一次 `probe_media`（远程地址还省掉一次重复下载）。以媒体扩展名保存下来的 HTML 页面或截断文件会以 `not_media` 失败，不会入池。
+
 - **Media pool: remove every offline asset in one click, and one notice instead of a per-card "models not installed" badge** — the missing-media banner gains "Remove all offline media" (with the usual confirmation), and when the local music-analysis packs are not installed the pool shows a single line pointing at Settings → Local AI rather than repeating the same badge under every audio and video card.  
   **素材池：一键移除全部失效素材，「模型未安装」只提示一次**——丢失素材横幅新增「移除全部失效素材」（沿用原有确认框）；本地音乐分析模型包未安装时，素材池只显示一行指向 设置 → 本地 AI 的提示，不再在每张音视频卡片下重复同一个角标。
 

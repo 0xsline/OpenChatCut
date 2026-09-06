@@ -3,6 +3,7 @@ import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 import { safeSourceFilename } from '../../media/sourceFilename';
 import { fallbackDuration, isHttpUrl, nameFromUrl, probeUrl, sniffKind, type PoolKind } from './stock-url-utils';
+import type { ProbeResult } from '../../../shared/media-probe';
 
 // Stock and URL ingest tools:
 // - download_media — url | url[] → local uploads + media pool
@@ -61,7 +62,19 @@ interface ImportUrlResponse {
   filename?: string;
   error?: string;
   code?: string;
+  /** Measured by the server's ffprobe at import time; absent for files ffprobe does not judge (svg, …). */
+  probe?: ProbeResult;
 }
+
+type Materialized = {
+  src: string;
+  filename?: string;
+  local: boolean;
+  note?: string;
+  /** The URL can never become a playable asset: unreachable host, 4xx/5xx, or bytes that are not media. */
+  failed?: boolean;
+  probe?: ProbeResult;
+};
 
 /**
  * Server-side fetch → /media/uploads; falls back to the remote URL when the file could
@@ -69,9 +82,7 @@ interface ImportUrlResponse {
  * still play it. An unreachable host or an origin that answered 4xx/5xx is a failure:
  * the preview could not load it either, and export would fail on a missing source.
  */
-async function materializeUrl(
-  url: string,
-): Promise<{ src: string; filename?: string; local: boolean; note?: string; unreachable?: boolean }> {
+async function materializeUrl(url: string): Promise<Materialized> {
   try {
     const res = await fetch('/api/import-url', {
       method: 'POST',
@@ -80,12 +91,14 @@ async function materializeUrl(
     });
     const body = (await res.json().catch(() => ({}))) as ImportUrlResponse;
     if (body.ok && typeof body.path === 'string' && body.path.startsWith('/media/')) {
-      return { src: body.path, filename: body.filename, local: true };
+      return { src: body.path, filename: body.filename, local: true, probe: body.probe };
     }
     const err = body.error ?? `import-url status ${res.status}`;
-    if (body.code === 'upstream_unreachable') return { src: url, local: false, note: err, unreachable: true };
+    if (body.code === 'upstream_unreachable' || body.code === 'not_media') {
+      return { src: url, local: false, note: err, failed: true };
+    }
     if (body.code === 'upstream_http') {
-      return { src: url, local: false, note: `该地址不可下载（${err}），请换一个可直接访问的素材地址`, unreachable: true };
+      return { src: url, local: false, note: `该地址不可下载（${err}），请换一个可直接访问的素材地址`, failed: true };
     }
     return { src: url, local: false, note: `remote src (import-url: ${err})` };
   } catch (e) {
@@ -98,7 +111,11 @@ async function materializeUrl(
 }
 
 type BatchRow =
-  | { success: true; assetId: string; name: string; type: string; src: string; local: boolean; note?: string }
+  | {
+    success: true; assetId: string; name: string; type: string; src: string; local: boolean; note?: string;
+    /** Measured by the local ffprobe at import time — the agent does not need a probe_media call for this file. */
+    probe?: ProbeResult;
+  }
   | { success: false; error: string; url?: string };
 
 function batchEnvelope(results: BatchRow[]) {
@@ -167,14 +184,20 @@ async function registerMediaUrl(
   let local = false;
   let note: string | undefined;
   let filename: string | undefined;
+  let probe: ProbeResult | undefined;
 
   if (kind !== 'motion-graphic' && !opts.forceRemote) {
     const mat = await materializeUrl(url);
-    if (mat.unreachable) return { success: false, error: mat.note ?? `无法连接到 ${url}`, url };
+    if (mat.failed) return { success: false, error: mat.note ?? `无法连接到 ${url}`, url };
     src = mat.src;
     local = mat.local;
     note = mat.note;
     filename = mat.filename;
+    probe = mat.probe;
+  }
+  if (probe) {
+    if (opts.width == null && probe.width) opts.width = probe.width;
+    if (opts.height == null && probe.height) opts.height = probe.height;
   }
 
   let durationInFrames: number;
@@ -184,6 +207,10 @@ async function registerMediaUrl(
     durationInFrames = Math.max(1, Math.round(opts.duration * fps));
   } else if (kind === 'motion-graphic') {
     durationInFrames = Math.round(5 * fps);
+  } else if (probe?.durationSeconds) {
+    durationInFrames = Math.max(1, Math.round(probe.durationSeconds * fps));
+  } else if (probe && kind === 'image') {
+    durationInFrames = fallbackDuration(kind, fps);
   } else {
     try {
       const meta = await probeUrl(src, kind, fps);
@@ -229,6 +256,7 @@ async function registerMediaUrl(
     src: asset.src,
     local,
     note,
+    probe,
   };
 }
 
