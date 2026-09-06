@@ -26,6 +26,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed / 修复
 
+- **Bundled product files now resolve inside the packaged app** — probe, sandbox and export looked for `/voice-samples/...`-style paths under the working directory, which is the user-data folder once packaged; the embedded server registers `resources/dist` as a product-asset root, so those paths resolve exactly as in the dev server.  
+  **打包版现在能找到内置资源文件**——探测、沙箱和导出之前按启动目录去找 `/voice-samples/...` 这类路径，而打包后启动目录是用户数据目录；内嵌服务现在把 `resources/dist` 注册为内置资源根目录，解析结果与开发服务一致。
+
 - **`probe_media` now runs the ffprobe bundled with the app instead of the e2b cloud sandbox** — on a machine without an E2B key the tool used to fail with "e2b sandbox is not configured" even though import, previews and export QA were already probing locally. Uploads and bundled assets are read in place; a public URL is fetched through the SSRF-safe transport into a temp file first.  
   **`probe_media` 改用应用自带的 ffprobe，不再依赖 e2b 云沙箱**——没有配置 E2B key 的机器上，这个工具之前会报「e2b sandbox is not configured」，而导入、预览、导出质检其实早就在本地跑 ffprobe 了。上传文件和内置素材直接就地读取；公开 URL 先经过防 SSRF 的抓取落到临时文件再探测。
 
