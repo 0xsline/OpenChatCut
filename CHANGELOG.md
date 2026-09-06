@@ -15,6 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed / 变更
 
+- **Downloaded media now appears in the media pool as soon as each download finishes** — pool imports land after every tool call instead of when the whole run ends, and a user edit made while the agent was downloading is neither blocked nor overwritten; one change-log row per run collects all of them for rollback.  
+  **素材下载完立即出现在媒体池**——每个工具调用结束就入池，不再等整轮 Agent 结束；你在它下载期间做的手动编辑既不会被拦住也不会被覆盖；一轮的所有入池记在同一条修改记录里，可一键回滚。
+
 - **The desktop now ships at the density that used to be the "110%" setting** — Settings → Interface → UI scale reads 100% for it. A scale you had saved is converted once at startup so your window keeps its size after updating (110% → 100%, 100% → 90%).  
   **桌面端默认密度改为原来的「110%」**——设置 → 界面 → 界面缩放 里它现在显示为 100%。你之前保存过的缩放会在启动时换算一次（110% → 100%、100% → 90%），更新后窗口内容大小不变。
 

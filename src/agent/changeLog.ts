@@ -39,6 +39,23 @@ export function createAgentChangeSession(
   };
 }
 
+/**
+ * Grow a session that is still being written: pool imports land one tool call at a time,
+ * and each landing extends the run's single session instead of adding a new row. The
+ * rollback target stays the document from before the first landing.
+ */
+export function extendAgentChangeSession(
+  session: AgentChangeSession,
+  operations: readonly Pick<Operation, 'action' | 'target' | 'impact'>[],
+  afterDoc: ProjectDoc,
+): AgentChangeSession {
+  return {
+    ...session,
+    operations: [...session.operations, ...operations.map(({ action, target, impact }) => ({ action, target, impact }))],
+    afterRevision: revisionOf(afterDoc),
+  };
+}
+
 export function appendAgentChange(
   sessions: readonly AgentChangeSession[],
   session: AgentChangeSession,

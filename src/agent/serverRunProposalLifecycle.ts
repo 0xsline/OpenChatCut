@@ -103,6 +103,7 @@ function createTurn(
     ops: [],
     persistentOps: [],
     persistentBeforeDoc: null,
+    persistentSessionId: null,
     persistentSnapshot: Promise.resolve(),
     persistentSaveError: undefined,
     draftInvalidated: false,
@@ -131,7 +132,10 @@ function applyToolActions(
         (error) => { turn.persistentSaveError = error; },
       );
     }
-    if (serverRunDraftBaseChanged(turn.baseDoc, observed)) turn.draftInvalidated = true;
+    // The proposal base already carries every import that has landed, so the live project
+    // matching it means nobody else edited; comparing against the run's original base would
+    // read the run's own landings as a foreign change and refuse its timeline edits.
+    if (serverRunDraftBaseChanged(turn.proposalBaseDoc, observed)) turn.draftInvalidated = true;
     turn.proposalBaseDoc = replayActions(turn.proposalBaseDoc, persistent);
     turn.persistentOps.push(buildOperation(input.name, input.args, persistent));
   }
@@ -257,6 +261,9 @@ async function persistToolAction(
   });
   ref.current.seenToolCalls.add(input.toolCallId);
   applyToolActions(turn, input, projectId);
+  // Pool imports land now, not when the run ends: the file is already on disk and the
+  // model reads the pool back on its next step, so the user sees it at the same time.
+  if (turn.persistentOps.length) await commitPersistentOperations(turn);
 }
 
 function beginTerminal(turn: AgentTurn, input: ServerRunTerminal): void {
