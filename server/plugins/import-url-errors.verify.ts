@@ -13,6 +13,7 @@ for (const name of PROXY_NAMES) delete process.env[name];
 
 const { PublicConnectTimeoutError, PublicResponseTimeoutError } = await import('../safe-public-fetch.ts');
 const { ImportUnreachableError, unreachableImportError } = await import('./import-url-errors.ts');
+const { setKeys } = await import('../keystore.ts');
 
 const REMOTE = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 const withCode = (code: string): Error => Object.assign(new Error(`connect ${code} 159.106.121.75:443`), { code });
@@ -64,6 +65,27 @@ try {
   assert.doesNotMatch(proxied.message, /配置 PROXY_URL/);
 } finally {
   delete process.env.HTTPS_PROXY;
+}
+
+// The message follows the interface language the browser mirrored into UI_LOCALE; unset
+// keeps the original Chinese, so nothing changes for existing installs.
+await setKeys({ UI_LOCALE: 'en' });
+try {
+  const english = unreachableImportError(withCode('ETIMEDOUT'), REMOTE);
+  assert.ok(english);
+  assert.match(english.message, /Could not connect to commondatastorage\.googleapis\.com \(ETIMEDOUT\)/);
+  assert.match(english.message, /Settings → Agent model/);
+  assert.doesNotMatch(english.message, /[一-龥]/, 'no Chinese leaks into the English message');
+  process.env.HTTPS_PROXY = 'http://127.0.0.1:7890';
+  const englishProxied = unreachableImportError(withCode('ECONNRESET'), REMOTE);
+  delete process.env.HTTPS_PROXY;
+  assert.match(englishProxied!.message, /proxy could not reach this host/);
+  await setKeys({ UI_LOCALE: 'it' });
+  assert.match(unreachableImportError(withCode('ENOTFOUND'), REMOTE)!.message, /Impossibile connettersi/);
+  await setKeys({ UI_LOCALE: 'nonsense' });
+  assert.match(unreachableImportError(withCode('ENOTFOUND'), REMOTE)!.message, /无法连接到/, 'an unknown locale falls back to Chinese');
+} finally {
+  await setKeys({ UI_LOCALE: '' });
 }
 
 // Anything that is not a connectivity failure is left to the caller's existing handling —

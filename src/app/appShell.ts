@@ -1,3 +1,4 @@
+import { startUiLocaleSync } from '../i18n/localeSync';
 import { useCallback, useEffect, useState } from 'react';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../agent/capabilities';
 import { fetchCodexModels, fetchCodexStatus } from '../agent/codex/client';
@@ -66,6 +67,7 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
       savedCodexModel = models.CODEX_MODEL;
       savedCodexReasoningEffort = models.CODEX_REASONING_EFFORT;
     }
+    startUiLocaleSync(models?.UI_LOCALE);
   }
   if (codexResult.status !== 'fulfilled') return;
   const modelResult = codexResult.value.installed && codexResult.value.account?.type !== 'apiKey'

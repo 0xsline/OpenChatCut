@@ -13,6 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **OrcaRouter is now a named LLM provider preset** — configure its Base URL and API key under Settings → Agent model like any other provider and select it as the chat model (contributed in #130).
   **OrcaRouter 现在是具名 LLM 厂商预设**——在 设置 → Agent 模型 里像其他厂商一样配置 Base URL 与 API Key，并可作为聊天模型选择（#130 贡献）。
 
+- **The server now knows the interface language** — the language switch is mirrored into the non-secret `UI_LOCALE` setting, and server-authored text the user reads directly (starting with the remedy on a failed media import) follows it instead of being fixed Chinese.  
+  **服务端现在知道界面语言**——语言切换会同步到非敏感设置 `UI_LOCALE`，服务端直接给用户看的文案（先从素材导入失败的补救提示开始）跟随界面语言，不再固定为中文。
+
 ### Changed / 变更
 
 - **Downloads are probed at import time** — `download_media` / `push_asset` rows now carry duration, dimensions, fps, audio/video tracks, codecs and quality risks measured by the bundled ffprobe, so the agent no longer spends a `probe_media` call (and, for a URL, a second download) on a file it just imported. An HTML page or truncated file saved under a media extension fails as `not_media` and never enters the pool.  

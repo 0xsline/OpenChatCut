@@ -189,6 +189,7 @@ export const KEY_NAMES = [
   "AUTO_TRANSCRIBE_INGEST",
   "UI_SCALE",
   "UI_SCALE_BASE",
+  "UI_LOCALE",
   "OPENCHATCUT_SKILLS_DIR",
 ] as const;
 export type KeyName = (typeof KEY_NAMES)[number];
@@ -226,6 +227,7 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "AUTO_TRANSCRIBE_INGEST",
   "UI_SCALE",
   "UI_SCALE_BASE",
+  "UI_LOCALE",
   "ELEVENLABS_SOUND_MODEL",
   "DOUBAO_TTS_RESOURCE_ID",
   "SEEDANCE_VIDEO_MODEL",
