@@ -26,6 +26,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed / 修复
 
+- **Media-pool ratio badges snap to the ratio people actually name** — a 427×240 trailer read "427:240" because the badge reduced the exact pixel fraction; encoders round to codec-friendly sizes, so a frame within 2% of 16:9, 4:3, 1:1, 3:2, 5:4 or 21:9 (and their portrait forms) now shows that name, a small exact fraction such as 7:5 stays, and anything else shows a proportion like 2.40:1. Canvas sizes are exact and unchanged.  
+  **素材池比例角标按人们常说的比例显示**——427×240 的预告片之前显示「427:240」，因为角标直接约分了像素分数；编码器会把尺寸凑成编码友好的数值，所以现在与 16:9、4:3、1:1、3:2、5:4、21:9（及其竖版）偏差在 2% 内的都显示该名称，7:5 这类小分数保留，其余显示为 2.40:1 这样的比例。画布尺寸精确，不受影响。
+
 - **A blocked or blackholed media host no longer freezes `download_media`, with or without a proxy** — remote imports are bounded at the connect phase (10s, covering a proxy tunnel and the TLS handshake) and until response headers arrive (30s), then fail as `upstream_unreachable` with a remedy that matches whether a proxy is configured; a batch stops starting new URLs after 75s so it stays inside the run's stream watchdog instead of dying with "Chunk timeout exceeded". Retry now rewinds the failed turn out of both the chat and the model history and re-sends it, rather than stacking a second copy of the message under the error.  
   **被墙或黑洞的素材主机不再让 `download_media` 挂死，有无代理都一样**——远程导入在连接阶段（10s，覆盖代理隧道与 TLS 握手）和收到响应头之前（30s）都有上限，超时以 `upstream_unreachable` 失败并按是否配置了代理给出对应提示；批量下载 75s 后不再开始新地址，避免撞上运行流看门狗而整轮以「Chunk timeout exceeded」失败。「重试」现在会把失败那轮从聊天与模型历史中回卷后原样重发，而不是在错误下面再叠一条同样的消息。
 

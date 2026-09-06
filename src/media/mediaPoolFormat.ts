@@ -25,6 +25,8 @@ const NAMED_RATIOS: ReadonlyArray<readonly [number, number]> = [
 ];
 /** Encoders round to a codec-friendly size, so a 16:9 source often lands a pixel off. */
 const RATIO_TOLERANCE = 0.02;
+/** "7:5" still reads as a ratio; "12:5" or "111:60" does not, so those become a decimal. */
+const SMALL_FRACTION_MAX = 10;
 
 /**
  * Ratio badge for a source file. Canvas sizes are exact, so ratioLabel's reduced fraction
@@ -41,5 +43,5 @@ export function mediaRatioLabel(width?: number, height?: number): string | null 
   if (named) return `${named[0]}:${named[1]}`;
   const exact = ratioLabel(w, h);
   const [a, b] = exact.split(':').map(Number);
-  return a <= 32 && b <= 32 ? exact : `${ratio.toFixed(2)}:1`;
+  return a <= SMALL_FRACTION_MAX && b <= SMALL_FRACTION_MAX ? exact : `${ratio.toFixed(2)}:1`;
 }
