@@ -13,6 +13,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **OrcaRouter is now a named LLM provider preset** — configure its Base URL and API key under Settings → Agent model like any other provider and select it as the chat model (contributed in #130).
   **OrcaRouter 现在是具名 LLM 厂商预设**——在 设置 → Agent 模型 里像其他厂商一样配置 Base URL 与 API Key，并可作为聊天模型选择（#130 贡献）。
 
+### Changed / 变更
+
+- **The desktop now ships at the density that used to be the "110%" setting** — Settings → Interface → UI scale reads 100% for it. A scale you had saved is converted once at startup so your window keeps its size after updating (110% → 100%, 100% → 90%).  
+  **桌面端默认密度改为原来的「110%」**——设置 → 界面 → 界面缩放 里它现在显示为 100%。你之前保存过的缩放会在启动时换算一次（110% → 100%、100% → 90%），更新后窗口内容大小不变。
+
 ### Fixed / 修复
 
 - **A blocked or blackholed media host no longer freezes `download_media`, with or without a proxy** — remote imports are bounded at the connect phase (10s, covering a proxy tunnel and the TLS handshake) and until response headers arrive (30s), then fail as `upstream_unreachable` with a remedy that matches whether a proxy is configured; a batch stops starting new URLs after 75s so it stays inside the run's stream watchdog instead of dying with "Chunk timeout exceeded". Retry now rewinds the failed turn out of both the chat and the model history and re-sends it, rather than stacking a second copy of the message under the error.  

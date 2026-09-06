@@ -46,6 +46,7 @@ import { focusExistingWindow } from './single-instance.ts';
 import { requestProfileScopedSingleInstanceLock } from './runtime-profile.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
 import { applyResponsiveWindowScale, DESKTOP_UI_SCALE_MAX, DESKTOP_UI_SCALE_MIN, installResponsiveWindowScale, parseUserUiScale } from './window-scale.ts';
+import { migrateUiScaleBase } from './ui-scale-migration.ts';
 import { resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import {
   createExportDirectoryGrant,
@@ -382,6 +383,15 @@ async function boot(): Promise<void> {
   );
   app.once('before-quit', () => desktopInference.dispose());
   console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);
+
+  // A UI_SCALE saved before the shipped base changed is rebased once, so the window
+  // keeps its size after the update (window-scale.ts explains the base).
+  try {
+    const rebased = await migrateUiScaleBase({ getKey: (name) => getKey(name as never), setKeys });
+    if (rebased) console.log(`[desktop] UI scale rebased: ${rebased.from} → ${rebased.to}`);
+  } catch (error) {
+    console.warn('[desktop] UI scale rebase skipped:', error);
+  }
 
   const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);
   const win = new BrowserWindow({
