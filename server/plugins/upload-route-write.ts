@@ -339,7 +339,9 @@ async function fetchRemoteImport(
   }
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
-    sendError(res, 200, `upstream HTTP ${response.status}`);
+    // A 403/404 from the origin is final: nothing will ever play from that URL, so the
+    // tool must not register it as a remote source and call the import a success.
+    sendJson(res, 200, { ok: false, error: `upstream HTTP ${response.status}`, code: 'upstream_http' });
     return null;
   }
   const contentType = response.headers.get('content-type');

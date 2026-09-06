@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { Agent as HttpAgent } from 'node:http';
-import { Socket } from 'node:net';
+import { type AddressInfo, connect, createServer, Socket } from 'node:net';
+import { connect as tlsConnect } from 'node:tls';
 import {
   PublicConnectTimeoutError,
+  PublicResponseTimeoutError,
   safePublicFetch,
   UnsafePublicUrlError,
   type PublicUrlResolver,
@@ -150,6 +152,67 @@ assert.equal(observedRange, 'bytes=0-0');
       if (saved[name] === undefined) delete process.env[name];
       else process.env[name] = saved[name];
     }
+  }
+}
+
+// A proxy CONNECT that never completes leaves the request with no socket at all. Node holds
+// the request's 'error' back until the agent produces one, so destroying the request cannot
+// enforce the bound on its own; the transport has to settle the promise itself.
+{
+  class NeverConnectAgent extends HttpAgent {
+    override createConnection(): Socket {
+      // Neither hands back a socket nor calls back: the agent's connect is pending forever.
+      return undefined as unknown as Socket;
+    }
+  }
+  const started = performance.now();
+  await assert.rejects(
+    () => safePublicFetch('http://93.184.216.34/media.mp4', { agent: new NeverConnectAgent(), connectTimeoutMs: 200 }),
+    (error: unknown) => error instanceof PublicConnectTimeoutError && error.timeoutMs === 200,
+  );
+  assert.ok(performance.now() - started < 3000, 'a pending agent connect must not defer the bound');
+}
+
+// A server that accepts and never says anything stands in for two real shapes: a proxy that
+// answers CONNECT before it has reached the upstream, and a host that takes the request and
+// stalls. The plain socket connects at once, so the connect bound is satisfied; https must
+// still wait for the TLS handshake, and the header bound covers whatever remains.
+{
+  const silent = createServer(() => { /* accept, never respond */ });
+  const held = new Set<Socket>();
+  silent.on('connection', (socket) => { held.add(socket); });
+  await new Promise<void>((resolveListen) => silent.listen(0, '127.0.0.1', resolveListen));
+  const port = (silent.address() as AddressInfo).port;
+  class SilentAgent extends HttpAgent {
+    override createConnection(): Socket { return connect(port, '127.0.0.1'); }
+  }
+  class StalledTlsAgent extends HttpAgent {
+    override createConnection(): Socket {
+      return tlsConnect({ socket: connect(port, '127.0.0.1'), rejectUnauthorized: false });
+    }
+  }
+  try {
+    let started = performance.now();
+    await assert.rejects(
+      () => safePublicFetch('http://93.184.216.34/media.mp4', {
+        agent: new SilentAgent(), connectTimeoutMs: 5_000, headersTimeoutMs: 300,
+      }),
+      (error: unknown) => error instanceof PublicResponseTimeoutError
+        && error.timeoutMs === 300 && error.address === '93.184.216.34',
+    );
+    assert.ok(performance.now() - started < 3000, 'a connected socket that never answers hits the header bound');
+
+    started = performance.now();
+    await assert.rejects(
+      () => safePublicFetch('http://93.184.216.34/media.mp4', {
+        agent: new StalledTlsAgent(), connectTimeoutMs: 200, headersTimeoutMs: 5_000,
+      }),
+      (error: unknown) => error instanceof PublicConnectTimeoutError && error.timeoutMs === 200,
+    );
+    assert.ok(performance.now() - started < 3000, 'a stalled TLS handshake is a connect failure, not a connected socket');
+  } finally {
+    for (const socket of held) socket.destroy();
+    await new Promise<void>((resolveClose) => silent.close(() => resolveClose()));
   }
 }
 

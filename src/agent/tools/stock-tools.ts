@@ -64,9 +64,10 @@ interface ImportUrlResponse {
 }
 
 /**
- * Server-side fetch → /media/uploads; falls back to the remote URL on most failures
- * (Chromium may still play it), but an unreachable host is reported as such: the
- * preview could not load it either, and export would fail on a missing source.
+ * Server-side fetch → /media/uploads; falls back to the remote URL when the file could
+ * not be cached but may still stream (a size limit, a disk error), because Chromium may
+ * still play it. An unreachable host or an origin that answered 4xx/5xx is a failure:
+ * the preview could not load it either, and export would fail on a missing source.
  */
 async function materializeUrl(
   url: string,
@@ -83,6 +84,9 @@ async function materializeUrl(
     }
     const err = body.error ?? `import-url status ${res.status}`;
     if (body.code === 'upstream_unreachable') return { src: url, local: false, note: err, unreachable: true };
+    if (body.code === 'upstream_http') {
+      return { src: url, local: false, note: `该地址不可下载（${err}），请换一个可直接访问的素材地址`, unreachable: true };
+    }
     return { src: url, local: false, note: `remote src (import-url: ${err})` };
   } catch (e) {
     return {
@@ -101,6 +105,32 @@ function batchEnvelope(results: BatchRow[]) {
   const succeeded = results.filter((r) => r.success).length;
   const failed = results.length - succeeded;
   return { failed, succeeded, results };
+}
+
+/**
+ * Serial batches share one wall-clock window for starting URLs. The run's stream watchdog
+ * (SERVER_RUN_AI_TIMEOUT.chunkMs, 120s) keeps counting while a tool executes, so a batch
+ * that outlives it kills the whole run with "Chunk timeout exceeded" instead of returning
+ * per-URL results. An unreachable URL costs up to ~40s (connect + response-header bounds
+ * behind a proxy), so no new URL starts once the window has passed; the ones left over are
+ * reported as rows, not silently dropped.
+ */
+export const BATCH_START_WINDOW_MS = 75_000;
+const BATCH_WINDOW_ERROR = '本批次已超过 75s 时间窗口，该地址未开始下载；请再次调用，每次最多传 3 个地址';
+
+export async function serialBatch(
+  urls: readonly string[],
+  task: (url: string) => Promise<BatchRow>,
+  now: () => number = Date.now,
+): Promise<BatchRow[]> {
+  const startedAt = now();
+  const results: BatchRow[] = [];
+  for (const url of urls) {
+    results.push(results.length && now() - startedAt >= BATCH_START_WINDOW_MS
+      ? { success: false, error: BATCH_WINDOW_ERROR, url }
+      : await task(url));
+  }
+  return results;
 }
 
 async function registerMediaUrl(
@@ -209,11 +239,7 @@ async function execDownloadMedia(args: Args, ctx: AgentContext): Promise<unknown
   const batchName = urls.length === 1 && typeof args.name === 'string' ? args.name : undefined;
   const type = typeof args.type === 'string' ? args.type : undefined;
 
-  const results: BatchRow[] = [];
-  for (const url of urls) {
-    results.push(await registerMediaUrl(url, { name: batchName, type }, ctx));
-  }
-  return batchEnvelope(results);
+  return batchEnvelope(await serialBatch(urls, (url) => registerMediaUrl(url, { name: batchName, type }, ctx)));
 }
 
 async function execPushAsset(args: Args, ctx: AgentContext): Promise<unknown> {
@@ -228,19 +254,15 @@ async function execPushAsset(args: Args, ctx: AgentContext): Promise<unknown> {
   const height = typeof args.height === 'number' ? args.height : undefined;
   const properties = Array.isArray(args.properties) ? args.properties : undefined;
 
-  const results: BatchRow[] = [];
-  for (const url of urls) {
-    results.push(await registerMediaUrl(url, {
-      name: batchName,
-      type,
-      duration,
-      durationInFrames,
-      width,
-      height,
-      properties,
-    }, ctx));
-  }
-  return batchEnvelope(results);
+  return batchEnvelope(await serialBatch(urls, (url) => registerMediaUrl(url, {
+    name: batchName,
+    type,
+    duration,
+    durationInFrames,
+    width,
+    height,
+    properties,
+  }, ctx)));
 }
 
 async function execImportUrlAsset(args: Args, ctx: AgentContext): Promise<unknown> {
