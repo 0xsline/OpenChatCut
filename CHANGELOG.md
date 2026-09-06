@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed / 变更
 
+- **A completed agent run tells you which tool calls failed** — a quiet line under the reply and an entry in the run inspector list the failed calls, replacing the failure banner that used to override the model's answer.  
+  **Agent 运行完成后会列出失败的工具调用**——回复下方一行灰色提示和运行检查器里的一条记录列出失败的调用，取代之前覆盖模型回复的失败横幅。
+
 - **Downloads are probed at import time** — `download_media` / `push_asset` rows now carry duration, dimensions, fps, audio/video tracks, codecs and quality risks measured by the bundled ffprobe, so the agent no longer spends a `probe_media` call (and, for a URL, a second download) on a file it just imported. An HTML page or truncated file saved under a media extension fails as `not_media` and never enters the pool.  
   **下载即探测**——`download_media` / `push_asset` 的结果行现在自带应用内 ffprobe 测得的时长、宽高、fps、音视频轨、编码和质量风险，Agent 不必再对刚导入的文件调一次 `probe_media`（远程地址还省掉一次重复下载）。以媒体扩展名保存下来的 HTML 页面或截断文件会以 `not_media` 失败，不会入池。
 

@@ -335,10 +335,14 @@ assert.equal(turnDisposition(true, false), 'max-tokens');
 // could not run, then a complete answer, then "I couldn't complete the requested
 // operation"), and made the documented probe→finalize fallback impossible to complete.
 assert.equal(turnDisposition.length, 2, 'the disposition takes no failure flag');
-assert.doesNotMatch(
-  readFileSync(new URL('./executor.ts', import.meta.url), 'utf8'),
-  /toolFailures\.report\(\)/,
-  'the executor never surfaces the failure-report template',
+const executorSource = readFileSync(new URL('./executor.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(executorSource, /toolFailures\.report\(\)/, 'the executor never surfaces the failure-report template');
+// What the user gets instead: a tool-failures event ahead of finish, so the chat shows a
+// quiet note and the inspector lists the calls, while the run still completes.
+assert.match(
+  executorSource,
+  /toolFailures\.hasUnresolved\)\s*\{[^}]*pushRunEvent\(run, 'tool-failures', \{ failures: plan\.activation\.toolFailures\.snapshot\(\) \}\);[\s\S]{0,200}pushRunEvent\(run, 'finish'/,
+  'unresolved tool failures are pushed as a tool-failures event right before finish',
 );
 
 console.log('server executor turn-disposition checks passed');

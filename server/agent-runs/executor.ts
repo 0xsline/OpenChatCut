@@ -382,6 +382,11 @@ async function executeRunTurns(
         });
       }
     }
+    if (plan.activation.toolFailures.hasUnresolved) {
+      // The model answered with the failed result in its context, so the run completes;
+      // this tells the user and the inspector which calls failed, without a failure banner.
+      pushRunEvent(run, 'tool-failures', { failures: plan.activation.toolFailures.snapshot() });
+    }
     pushRunEvent(run, 'finish', {
       ...serverRunTextMetadata(outcome.text),
       ...(plan.activation.repeatGuardNote
