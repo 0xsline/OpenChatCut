@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed / 变更
 
+- **The desktop app now ships as an asar archive** — startup maps one archive instead of tens of thousands of small files. ffmpeg, ffprobe, the ONNX runtime and the sqlite-vec extension stay unpacked as real files (they are spawned or dlopen'ed by path), and the Remotion compositor is mirrored into the user-data folder on first launch on every platform, as Windows already did, so exports keep working.  
+  **桌面端现在以 asar 归档发布**——启动时只需映射一个归档，而不是成千上万个小文件。ffmpeg、ffprobe、ONNX 运行时和 sqlite-vec 扩展保持解包的真实文件（它们要按路径被拉起或动态加载）；Remotion 合成器在首次启动时镜像到用户数据目录（之前只有 Windows 这样做），导出照常工作。
+
 - **A completed agent run tells you which tool calls failed** — a quiet line under the reply and an entry in the run inspector list the failed calls, replacing the failure banner that used to override the model's answer.  
   **Agent 运行完成后会列出失败的工具调用**——回复下方一行灰色提示和运行检查器里的一条记录列出失败的调用，取代之前覆盖模型回复的失败横幅。
 
