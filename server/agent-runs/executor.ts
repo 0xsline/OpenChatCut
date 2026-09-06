@@ -348,17 +348,10 @@ async function executeRunTurns(
       return;
     }
     messages = outcome.messages;
-    const disposition = turnDisposition(
-      outcome.hitMaxTokens,
-      outcome.continued,
-      plan.activation.toolFailures.hasUnresolved,
-    );
+    const disposition = turnDisposition(outcome.hitMaxTokens, outcome.continued);
     if (disposition === 'continue') continue;
     if (disposition === 'max-tokens') {
       pushRunEvent(run, 'max-tokens', { turn: turn + 1 });
-    }
-    if (disposition === 'failed') {
-      throw new Error(plan.activation.toolFailures.report());
     }
     if (disposition === 'completed') {
       const acceptance = decideAcceptanceAfterTurn(plan.activation.acceptance);

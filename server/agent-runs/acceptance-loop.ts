@@ -86,13 +86,19 @@ export function acceptanceInstructions(enabled: boolean): string {
     : '';
 }
 
-export type TurnDisposition = 'continue' | 'completed' | 'failed' | 'max-tokens';
-export function turnDisposition(
-  hitMaxTokens: boolean,
-  continued: boolean,
-  hasUnresolvedFailure = false,
-): TurnDisposition {
-  if (hitMaxTokens) return hasUnresolvedFailure ? 'failed' : 'max-tokens';
-  if (continued) return 'continue';
-  return hasUnresolvedFailure ? 'failed' : 'completed';
+export type TurnDisposition = 'continue' | 'completed' | 'max-tokens';
+/**
+ * A turn that ends without tool calls is complete even when a tool failed earlier in
+ * the run. The model saw the failed result in its own context and replied to it, so
+ * its reply — in the interface language — is the outcome; the failed call stays
+ * visible on its own tool card. This used to return 'failed' and the executor then
+ * threw the tracker's English "I couldn't complete the requested operation" template
+ * underneath the model's reply, which is exactly what the browser runtimes stopped
+ * doing (66af696b). It also broke every documented fallback: probe_media failing and
+ * finalize_uploaded_asset proceeding with ingest defaults could never complete, since
+ * only a successful retry of the same tool resolves a failure.
+ */
+export function turnDisposition(hitMaxTokens: boolean, continued: boolean): TurnDisposition {
+  if (hitMaxTokens) return 'max-tokens';
+  return continued ? 'continue' : 'completed';
 }
