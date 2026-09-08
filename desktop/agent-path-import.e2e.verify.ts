@@ -47,14 +47,16 @@ await writeFile(join(importRoot, '剪辑说明.md'), '# 文稿');
 const uploadDir = await canonicalCurrentUploadDirectory();
 const cleanup = new Set<string>();
 try {
-  // ── Unconfigured roots fail loudly (checked first: seeding never clears) ──
+  // Local paths are available without a folder grant by default.
+  seedKeystore({ AGENT_IMPORT_ROOTS: '' });
   const unconfigured = await importAgentPaths({
     paths: [sourcePath],
     projectId: 'verify-project',
     knownHashes: [],
   });
-  assert.equal(unconfigured.errors[0]?.code, 'IMPORT_ROOTS_NOT_CONFIGURED');
-  assert.match(unconfigured.errors[0]?.error ?? '', /系统窗口.*文件夹/, 'unconfigured roots explain the next action');
+  assert.equal(unconfigured.errors.length, 0);
+  assert.equal(unconfigured.imported.length, 1, 'default access imports without a folder picker');
+  for (const file of unconfigured.imported) cleanup.add(mediaReferenceManifestPath(uploadDir, file.storedName));
 
   seedKeystore({ AGENT_IMPORT_ROOTS: importRoot });
 
@@ -100,6 +102,11 @@ try {
   assert.equal(duplicate.imported.length, 0, 'duplicate is not re-imported');
   assert.equal(duplicate.errors.length, 0, 'duplicate is not an error');
   assert.equal(duplicate.duplicateCount, 1, 'duplicate count is explicit');
+
+  const batch = await importAgentPaths({ paths: [sourcePath, sourcePath], projectId: 'verify-project', knownHashes: [] });
+  assert.equal(batch.imported.length, 1, 'same-batch duplicate content lands once');
+  assert.equal(batch.duplicateCount, 1);
+  for (const file of batch.imported) cleanup.add(mediaReferenceManifestPath(uploadDir, file.storedName));
 
   // ── Unsupported documents are reported instead of looking like duplicates ──
   const folder = await importAgentPaths({

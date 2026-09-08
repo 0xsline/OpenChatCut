@@ -24,6 +24,10 @@ const KIND_BY_EXTENSION: Record<string, DirectoryImportMediaKind> = {
   '.gif': 'gif', '.svg': 'svg',
 };
 
+export function directoryMediaKind(name: string): DirectoryImportMediaKind | undefined {
+  return KIND_BY_EXTENSION[extname(name).toLowerCase()];
+}
+
 export interface DirectoryFileFingerprint {
   readonly size: number;
   readonly mtimeMs: number;
@@ -461,7 +465,7 @@ export async function importDirectoryCandidate(
   if (request.knownFingerprint && sameFingerprint(request.knownFingerprint, stable.fingerprint)) {
     return { status: 'unchanged', fingerprint: stable.fingerprint };
   }
-  const kind = KIND_BY_EXTENSION[extname(request.name).toLowerCase()];
+  const kind = directoryMediaKind(request.name);
   if (!kind) return { status: 'unsupported', fingerprint: stable.fingerprint };
   try {
     return await finishImportedCandidate(request, dependencies, stable, kind);
