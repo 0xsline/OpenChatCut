@@ -99,6 +99,18 @@ assert.equal(byteplusVideo.refImages, undefined, 'blank reference defaults are r
 assert.equal(byteplusVideo.promptOptimizer, undefined, 'BytePlus must not receive MiniMax controls');
 assert.equal(byteplusVideo.mode, undefined, 'BytePlus must not receive Kling mode');
 
+const ofoxVideo = buildSubmitVideoArgs({
+  model: 'ofox', prompt: 'paper airplane', durationSeconds: 20, ratio: '9:16',
+  refImages: ['asset-a'], generateAudio: false, seed: 7,
+});
+assert.equal(ofoxVideo.model, 'ofox', 'OFox must never fall back to a different paid provider');
+assert.equal(ofoxVideo.durationSeconds, 20);
+assert.equal(ofoxVideo.ratio, '9:16');
+assert.deepEqual(ofoxVideo.refImages, ['asset-a']);
+assert.equal(ofoxVideo.generateAudio, false);
+assert.equal(ofoxVideo.seed, 7);
+assert.equal(buildSubmitVideoArgs({ prompt: 'legacy default' }).model, 'seedance2');
+
 const minimaxMusic = buildSubmitMusicArgs({
   provider: 'minimax', mode: 't2m', prompt: 'ambient', isInstrumental: true,
   count: 2, stream: false, styles: ['ambient'], referenceAssetId: '', coverFeatureId: '',

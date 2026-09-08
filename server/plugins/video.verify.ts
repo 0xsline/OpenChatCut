@@ -329,4 +329,54 @@ assert.throws(
   /supported by seedance2\/byteplus only/,
 );
 
+const ofox = validateVideoRequest({ model: 'ofox', prompt: 'a paper airplane gliding through a sunlit room', durationSeconds: 4, ratio: '9:16', resolution: '720p' });
+assert.equal(ofox.model, 'ofox');
+assert.equal(ofox.durationSeconds, 4);
+assert.equal(ofox.ratio, '9:16');
+assert.equal(ofox.resolution, '720p');
+assert.equal(validateVideoRequest({ model: 'ofox', prompt: 'x', ratio: '21:9' }).ratio, '21:9');
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', durationSeconds: 40 }),
+  /durationSeconds must be between 2 and 30/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', resolution: '4k' }),
+  /resolution must be 480p, 720p, or 1080p/,
+);
+const ofoxI2v = validateVideoRequest({ model: 'ofox', prompt: 'x', firstFramePath: '/media/uploads/a.jpg', lastFramePath: '/media/uploads/b.jpg', generateAudio: false, seed: 7 });
+assert.equal(ofoxI2v.firstFramePath, '/media/uploads/a.jpg');
+assert.equal(ofoxI2v.lastFramePath, '/media/uploads/b.jpg');
+assert.equal(ofoxI2v.generateAudio, false);
+assert.equal(ofoxI2v.seed, 7);
+const ofoxRefs = validateVideoRequest({ model: 'ofox', prompt: 'x', refImagePaths: Array.from({ length: 9 }, (_, i) => `/media/uploads/r${i}.jpg`) });
+assert.equal(ofoxRefs.refImagePaths.length, 9);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', lastFramePath: '/media/uploads/b.jpg' }),
+  /lastFrame requires firstFrame/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', firstFramePath: '/media/uploads/a.jpg', refImagePaths: ['/media/uploads/r.jpg'] }),
+  /cannot be combined with refImages/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', refImagePaths: Array.from({ length: 10 }, (_, i) => `/media/uploads/r${i}.jpg`) }),
+  /at most 9 refImages/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', refVideoPaths: ['/media/uploads/v.mp4'] }),
+  /refVideos\/refAudios are not wired/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', watermark: true }),
+  /supported by seedance2\/byteplus only/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', promptOptimizer: true }),
+  /supported by hailuo only/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'ofox', prompt: 'x', shotType: 'customize', multiPrompts: [{ prompt: 'a', duration: 2, index: 1 }, { prompt: 'b', duration: 2, index: 2 }] }),
+  /multi-shot and editing options are not supported by ofox/,
+);
+
 console.log('video.check: ok (seedance 480p + kling base/feature + hailuo)');

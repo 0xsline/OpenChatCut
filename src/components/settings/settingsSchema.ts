@@ -126,6 +126,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'hailuo', label: 'MiniMax 海螺' },
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
+          { value: 'ofox', label: 'OFox · 多模型' },
         ]),
         vendors: [
           { key: 'video/seedance', vendor: 'seedance', title: 'Seedance · 火山', fields: [
@@ -146,6 +147,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             note: '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成视频。文生视频：1–15 秒，自带音轨，480p / 720p / 1080p。',
             fields: [
               modelText('XAI_VIDEO_MODEL', '视频模型', 'grok-imagine-video-1.5',
+                '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
+            ] },
+          { key: 'video/ofox', vendor: 'ofox', title: 'OFox · 多模型网关',
+            note: '使用 LLM_OFOX_API_KEY（在 Agent 供应商里配置 OFox）生成视频。一个 Key 覆盖 Seedance、Wan 等视频模型；支持文生视频、首帧/首尾帧图生视频与图片参考（最多 9 张）；时长/分辨率按模型由 API 校验，2–30 秒。',
+            fields: [
+              modelText('OFOX_VIDEO_MODEL', '视频模型', 'bytedance/seedance-2.0-fast',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
             ] },
         ] },
