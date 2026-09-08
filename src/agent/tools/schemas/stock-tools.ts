@@ -12,6 +12,8 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
       'Download a media file from a public URL into the project media pool.',
       'Accepts a single url or array of urls. Type inferred from extension / Content-Type; pass type to override.',
       'Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset.',
+      'Serial: each call has a 75s window to start URLs, so pass at most 3 urls per call and call again for the rest. An unreachable host is a failed row, never a remote fallback.',
+      'Each successful row carries probe (duration, dimensions, fps, audio/video tracks, codecs, qualityRisks) measured by the local ffprobe at import time — do not call probe_media for a file you just downloaded. Bytes that are not readable media fail as not_media and never enter the pool.',
     ].join(' '),
     input_schema: {
       type: 'object',

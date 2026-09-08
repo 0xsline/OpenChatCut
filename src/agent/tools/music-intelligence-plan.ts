@@ -133,6 +133,10 @@ export function resolveMusicTarget(args: Args, ctx: AgentContext): ResolvedMusic
   throw new Error('pass assetId (media pool) or itemId (timeline clip)');
 }
 
+export const MISSING_MODEL_PACKS_ACTION = 'missing-model-packs' as const;
+export const MODEL_PACK_SETTINGS_ROUTE = 'local/music/packs' as const;
+export const BEAT_FALLBACK_TOOL = 'detect_beats' as const;
+
 export async function unavailableAnalysis(asset: MediaAsset): Promise<Record<string, unknown>> {
   const status = musicAnalysisStatus(asset.id);
   if (status.state === 'queued') {
@@ -156,6 +160,9 @@ export async function unavailableAnalysis(asset: MediaAsset): Promise<Record<str
         error: `music analysis is unavailable until the model pack(s) are installed. ${modelPackInstallGuidance(missing)}`,
         assetId: asset.id,
         modelPacks: missing,
+        action: MISSING_MODEL_PACKS_ACTION,
+        settingsRoute: MODEL_PACK_SETTINGS_ROUTE,
+        fallback: BEAT_FALLBACK_TOOL,
       };
     }
   } catch {
@@ -165,6 +172,8 @@ export async function unavailableAnalysis(asset: MediaAsset): Promise<Record<str
     error: 'music has not been analyzed yet; call analyze_music for this asset, then retry',
     assetId: asset.id,
     requiredModelPacks: required,
+    action: MISSING_MODEL_PACKS_ACTION,
+    settingsRoute: MODEL_PACK_SETTINGS_ROUTE,
   };
 }
 

@@ -1,5 +1,28 @@
 import assert from 'node:assert/strict';
-import { whisperTokensToChunks, whisperWordsToChunks } from './native-asr-utils';
+import {
+  nativeGgmlFileName,
+  whisperTokensToChunks,
+  whisperWordsToChunks,
+} from './native-asr-utils';
+
+assert.deepEqual(
+  [
+    'Xenova/whisper-tiny',
+    'onnx-community/whisper-base_timestamped',
+    'Xenova/whisper-small',
+    'Xenova/whisper-medium',
+    'onnx-community/whisper-large-v3-turbo_timestamped',
+  ].map(nativeGgmlFileName),
+  [
+    'ggml-tiny-q5_1.bin',
+    'ggml-base-q5_1.bin',
+    'ggml-small-q5_1.bin',
+    'ggml-medium-q5_1.bin',
+    'ggml-large-v3-turbo-q5_0.bin',
+  ],
+  'desktop-native GGML resolution covers every supported tier',
+);
+assert.equal(nativeGgmlFileName('unknown/model'), undefined, 'unknown models stay unsupported');
 
 // Language mapping and token->chunk projection are pure; the real whisper-cli
 // invocation is exercised by the desktop smoke (native-asr-service).

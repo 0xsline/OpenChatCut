@@ -53,7 +53,7 @@ function skillIndexIntro(totalSkills: number): string {
   return [
     '',
     `# Skill library (load_skill on demand · ${totalSkills} OpenChatCut SKILL.md files)`,
-    'Each entry below describes when a skill applies. Call load_skill(name=…) before acting. SKILL.md is returned first. Load omittedFiles whole with files=[…]; if a file remains omitted, page it with file=…, offset=nextOffset until nextOffset is null. Load only relevant skills.',
+    'Each entry below describes when a skill applies. Call load_skill(name=…) before acting. SKILL.md is returned first. Use exactly one selector per call: files=[…] loads omittedFiles whole, or file=… with offset=nextOffset pages one file until nextOffset is null. Never send file and files in the same call. Load only relevant skills.',
     'When a skill needs scripts, ffmpeg, node, or python, use run_code in the isolated sandbox: write files, run a command, then read outputs. The sandbox cannot access the timeline; use local editor tools to place resulting assets. For real media, pass a local /media/… or public https:// URL in files so the sandbox can fetch it for ffprobe/ffmpeg. Public URLs may also be passed directly to ffprobe.',
     'The custom sandbox image includes ffmpeg. If an environment lacks it, install it first with: `which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)`.',
   ].join('\n');

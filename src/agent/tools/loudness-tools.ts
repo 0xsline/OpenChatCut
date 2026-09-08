@@ -1,6 +1,7 @@
 export { LOUDNESS_TOOL_SCHEMAS, LOUDNESS_TOOL_NAMES } from './schemas/loudness-tools';
 import type { AgentContext } from '../context';
-import { analyzeClipLoudness, gainForTarget } from '../../audio/loudness';
+import { analyzeLoudnessBatch, gainForTarget } from '../../audio/loudness';
+import { captureTimelineItemSource, validateTimelineItemSourceResult } from '../../editor/mediaSourceRevision';
 
 // normalize_loudness - Normalize loudness (target default -14 LUFS, streaming platform standard).
 // The naming style is the same as isolate_voice/edit_captions(verb_noun).
@@ -34,19 +35,28 @@ export async function execLoudnessTool(name: string, args: Args, ctx: AgentConte
 
   const normalized: { itemId: string; measuredLufs: number; gain: number }[] = [];
   const skipped: { itemId: string; note: string }[] = [];
-
-  for (const item of items) {
-    if (!item.src) {
-      skipped.push({ itemId: item.id, note: 'no src' }); // Passive source cannot be analyzed, skipping will not throw an error
+  const doc = ctx.getDoc();
+  const snapshots = items.map((item) => captureTimelineItemSource(item, doc.assets));
+  const analyses = await analyzeLoudnessBatch(snapshots.map((snapshot) => snapshot.src).filter(Boolean));
+  for (const snapshot of snapshots) {
+    if (!snapshot.src) {
+      skipped.push({ itemId: snapshot.itemId, note: 'no src' });
       continue;
     }
     try {
-      const measuredLufs = await analyzeClipLoudness(item.src);
+      const analysis = analyses.get(snapshot.src)!;
+      if (analysis.status === 'rejected') throw analysis.reason;
+      const current = ctx.getState().items.find((item) => item.id === snapshot.itemId);
+      if (ctx.getDoc().activeTimelineId !== doc.activeTimelineId || validateTimelineItemSourceResult(snapshot, current, ctx.getDoc().assets, snapshot.sourceRevision).status === 'stale') {
+        skipped.push({ itemId: snapshot.itemId, note: '源素材已变化，请重试' });
+        continue;
+      }
+      const measuredLufs = analysis.value;
       const gain = gainForTarget(measuredLufs, target);
-      ctx.commands.setItemVolume(item.id, gain); // Reuse existing commands without adding reducer actions
-      normalized.push({ itemId: item.id, measuredLufs, gain });
+      ctx.commands.setItemVolume(snapshot.itemId, gain);
+      normalized.push({ itemId: snapshot.itemId, measuredLufs, gain });
     } catch (e) {
-      skipped.push({ itemId: item.id, note: `解码失败: ${e instanceof Error ? e.message : String(e)}` });
+      skipped.push({ itemId: snapshot.itemId, note: `解码失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   }
 

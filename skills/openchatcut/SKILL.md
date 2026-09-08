@@ -30,15 +30,19 @@ running editor and is loaded on demand with `load_skill`.
    tools and emits `tools/list_changed`; refresh the list before continuing.
 4. Before project reads or edits, call `begin_edit_session`. Keep its
    `editSessionId` and pass it to every draft-safe editor tool.
-5. Use `approvalMode: "manual"` unless the user explicitly asks for unattended
+5. If `begin_edit_session` reports an active session, call `list_edit_sessions`.
+   An orphaned session may be resumed or discarded with `recover_edit_session`
+   using an action listed in `recoveryActions`; an online owner must finish or
+   discard its own session.
+6. Use `approvalMode: "manual"` unless the user explicitly asks for unattended
    application. In manual mode, the user approves the complete proposal in
    OpenChatCut. In auto mode, `review_edit_session` applies the complete draft.
-6. Finish with `review_edit_session`. Report success only after
+7. Finish with `review_edit_session`. Report success only after
    `get_edit_session` returns `applied`.
 
 ## Skill version
 
-`2026-08-10.1`
+`2026-09-04.1`
 
 The OpenChatCut MCP server announces its required skill baseline. If the server
 baseline is newer, run:

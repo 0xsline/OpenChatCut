@@ -109,7 +109,9 @@ export async function withAbortableCompositionSelection({
 
 function directHardwareRenderer(directBinaries, abortSignal) {
   if (!directBinaries) return renderMedia;
-  return (attempt) => attempt.binariesDirectory
+  // The custom ffmpeg override marks the hardware attempt; the software retry drops it
+  // but keeps binariesDirectory, which every attempt needs once the app ships as an asar.
+  return (attempt) => attempt.ffmpegOverride
     ? renderDirectHardware({ render: renderMedia, options: attempt, binariesDirectory: directBinaries, signal: abortSignal })
     : renderMedia(attempt);
 }
@@ -137,7 +139,9 @@ async function renderMediaOptimized(options) {
     offthreadVideoThreads: offthreadVideoThreads(),
     hardwareAcceleration,
     ...(customOverride ? { ffmpegOverride: customOverride } : {}),
-    ...(directBinaries ? { binariesDirectory: directBinaries } : {}),
+    // The packaged app cannot chmod or spawn the compositor inside app.asar, so every
+    // attempt renders from the mirrored directory (CC_REMOTION_BINARIES_DIR); dev keeps null.
+    binariesDirectory: binariesDirectory(),
     ...(automaticBitrate ? { videoBitrate: automaticBitrate } : {}),
   };
   const render = directHardwareRenderer(directBinaries, abortSignal);
@@ -148,7 +152,6 @@ async function renderMediaOptimized(options) {
     softwareOptions: {
       ...hardwareOptions,
       hardwareAcceleration: 'disable',
-      binariesDirectory: undefined,
       ffmpegOverride: undefined,
       ...(automaticBitrate ? { videoBitrate: null } : {}),
     },
@@ -313,6 +316,7 @@ export async function renderTimeline({
       serveUrl,
       id: COMPOSITION_ID,
       inputProps,
+      binariesDirectory: binariesDirectory(),
       browserExecutable: browserExecutable(),
       timeoutInMilliseconds: renderTimeoutInMilliseconds(),
     },
@@ -386,6 +390,7 @@ export async function renderClip({
       serveUrl,
       id: COMPOSITION_ID,
       inputProps,
+      binariesDirectory: binariesDirectory(),
       browserExecutable: browserExecutable(),
       timeoutInMilliseconds: renderTimeoutInMilliseconds(),
     },
@@ -458,6 +463,7 @@ export async function renderTimelineStills({
       serveUrl, id: COMPOSITION_ID, inputProps,
       puppeteerInstance: browser,
       browserExecutable: browserExecutable(),
+      binariesDirectory: binariesDirectory(),
       timeoutInMilliseconds: renderTimeoutInMilliseconds(),
     });
     signal?.throwIfAborted();
@@ -473,6 +479,7 @@ export async function renderTimelineStills({
         scale: (list.length > 6 ? 480 : 640) / composition.width,
         chromiumOptions: { gl: resolveRenderGlBackend() },
         browserExecutable: browserExecutable(),
+        binariesDirectory: binariesDirectory(),
         offthreadVideoThreads: offthreadVideoThreads(),
         output: null,
         puppeteerInstance: browser,

@@ -62,3 +62,27 @@ export async function analyzeClipLoudness(src: string): Promise<number> {
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
   return integratedLoudnessFromSamples(mixToMono(audioBuffer), audioBuffer.sampleRate);
 }
+
+const LOUDNESS_DECODE_CONCURRENCY = 2;
+
+/** Share whole-source analysis only within this operation; never retain decoded audio. */
+export async function analyzeLoudnessBatch(
+  sources: readonly string[],
+  analyze: (src: string) => Promise<number> = analyzeClipLoudness,
+): Promise<Map<string, PromiseSettledResult<number>>> {
+  const pending = [...new Set(sources)];
+  const results = new Map<string, PromiseSettledResult<number>>();
+  let next = 0;
+  const worker = async () => {
+    while (next < pending.length) {
+      const src = pending[next++];
+      try {
+        results.set(src, { status: 'fulfilled', value: await analyze(src) });
+      } catch (reason) {
+        results.set(src, { status: 'rejected', reason });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(pending.length, LOUDNESS_DECODE_CONCURRENCY) }, worker));
+  return results;
+}

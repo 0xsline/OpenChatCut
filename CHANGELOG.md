@@ -6,7 +6,73 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.2.14] - 2026-09-04
+
+### Added / 新增
+
+- **OrcaRouter is now a named LLM provider preset** — configure its Base URL and API key under Settings → Agent model like any other provider and select it as the chat model (contributed in #130).
+  **OrcaRouter 现在是具名 LLM 厂商预设**——在 设置 → Agent 模型 里像其他厂商一样配置 Base URL 与 API Key，并可作为聊天模型选择（#130 贡献）。
+
+- **The server now knows the interface language** — the language switch is mirrored into the non-secret `UI_LOCALE` setting, and server-authored text the user reads directly (starting with the remedy on a failed media import) follows it instead of being fixed Chinese.  
+  **服务端现在知道界面语言**——语言切换会同步到非敏感设置 `UI_LOCALE`，服务端直接给用户看的文案（先从素材导入失败的补救提示开始）跟随界面语言，不再固定为中文。
+
+### Changed / 变更
+
+- **The desktop app now ships as an asar archive** — startup maps one archive instead of tens of thousands of small files. ffmpeg, ffprobe, the ONNX runtime and the sqlite-vec extension stay unpacked as real files (they are spawned or dlopen'ed by path), and the Remotion compositor is mirrored into the user-data folder on first launch on every platform, as Windows already did, so exports keep working.  
+  **桌面端现在以 asar 归档发布**——启动时只需映射一个归档，而不是成千上万个小文件。ffmpeg、ffprobe、ONNX 运行时和 sqlite-vec 扩展保持解包的真实文件（它们要按路径被拉起或动态加载）；Remotion 合成器在首次启动时镜像到用户数据目录（之前只有 Windows 这样做），导出照常工作。
+
+- **A completed agent run tells you which tool calls failed** — a quiet line under the reply and an entry in the run inspector list the failed calls, replacing the failure banner that used to override the model's answer.  
+  **Agent 运行完成后会列出失败的工具调用**——回复下方一行灰色提示和运行检查器里的一条记录列出失败的调用，取代之前覆盖模型回复的失败横幅。
+
+- **Downloads are probed at import time** — `download_media` / `push_asset` rows now carry duration, dimensions, fps, audio/video tracks, codecs and quality risks measured by the bundled ffprobe, so the agent no longer spends a `probe_media` call (and, for a URL, a second download) on a file it just imported. An HTML page or truncated file saved under a media extension fails as `not_media` and never enters the pool.  
+  **下载即探测**——`download_media` / `push_asset` 的结果行现在自带应用内 ffprobe 测得的时长、宽高、fps、音视频轨、编码和质量风险，Agent 不必再对刚导入的文件调一次 `probe_media`（远程地址还省掉一次重复下载）。以媒体扩展名保存下来的 HTML 页面或截断文件会以 `not_media` 失败，不会入池。
+
+- **Media pool: remove every offline asset in one click, and one notice instead of a per-card "models not installed" badge** — the missing-media banner gains "Remove all offline media" (with the usual confirmation), and when the local music-analysis packs are not installed the pool shows a single line pointing at Settings → Local AI rather than repeating the same badge under every audio and video card.  
+  **素材池：一键移除全部失效素材，「模型未安装」只提示一次**——丢失素材横幅新增「移除全部失效素材」（沿用原有确认框）；本地音乐分析模型包未安装时，素材池只显示一行指向 设置 → 本地 AI 的提示，不再在每张音视频卡片下重复同一个角标。
+
+- **In auto-apply mode, timeline edits now land as each tool call finishes** — the tracks change while the agent works instead of all at once when the run ends, the agent continues from the live project (including anything you changed meanwhile), and the run's edits share one change-log row for rollback. Manual approval mode still collects edits into a proposal.  
+  **自动应用模式下，时间线编辑现在随每个工具调用实时落地**——轨道在 Agent 工作时就在变化，而不是整轮结束后一次性出现；Agent 从真实工程继续（包括你中途做的改动）；整轮编辑共用一条修改记录，可一键回滚。人工审批模式仍然汇总成提案。
+
+- **Downloaded media now appears in the media pool as soon as each download finishes** — pool imports land after every tool call instead of when the whole run ends, and a user edit made while the agent was downloading is neither blocked nor overwritten; one change-log row per run collects all of them for rollback.  
+  **素材下载完立即出现在媒体池**——每个工具调用结束就入池，不再等整轮 Agent 结束；你在它下载期间做的手动编辑既不会被拦住也不会被覆盖；一轮的所有入池记在同一条修改记录里，可一键回滚。
+
+- **The desktop now ships at the density that used to be the "110%" setting** — Settings → Interface → UI scale reads 100% for it. A scale you had saved is converted once at startup so your window keeps its size after updating (110% → 100%, 100% → 90%).  
+  **桌面端默认密度改为原来的「110%」**——设置 → 界面 → 界面缩放 里它现在显示为 100%。你之前保存过的缩放会在启动时换算一次（110% → 100%、100% → 90%），更新后窗口内容大小不变。
+
+### Fixed / 修复
+
+- **Bundled product files now resolve inside the packaged app** — probe, sandbox and export looked for `/voice-samples/...`-style paths under the working directory, which is the user-data folder once packaged; the embedded server registers `resources/dist` as a product-asset root, so those paths resolve exactly as in the dev server.  
+  **打包版现在能找到内置资源文件**——探测、沙箱和导出之前按启动目录去找 `/voice-samples/...` 这类路径，而打包后启动目录是用户数据目录；内嵌服务现在把 `resources/dist` 注册为内置资源根目录，解析结果与开发服务一致。
+
+- **`probe_media` now runs the ffprobe bundled with the app instead of the e2b cloud sandbox** — on a machine without an E2B key the tool used to fail with "e2b sandbox is not configured" even though import, previews and export QA were already probing locally. Uploads and bundled assets are read in place; a public URL is fetched through the SSRF-safe transport into a temp file first.  
+  **`probe_media` 改用应用自带的 ffprobe，不再依赖 e2b 云沙箱**——没有配置 E2B key 的机器上，这个工具之前会报「e2b sandbox is not configured」，而导入、预览、导出质检其实早就在本地跑 ffprobe 了。上传文件和内置素材直接就地读取；公开 URL 先经过防 SSRF 的抓取落到临时文件再探测。
+
+- **A server-side agent run no longer ends with "I couldn't complete the requested operation" under the model's own reply** — when a tool failed and the model then answered, the run was still marked failed and an English template was appended beneath a Chinese answer. The reply is the outcome; the failed call stays visible on its tool card, matching the in-browser runtime. This also lets the documented fallbacks (probe fails → finalize with ingest defaults) complete.  
+  **服务端 Agent 运行不再在模型回复下方追加「I couldn't complete the requested operation」**——工具失败后模型已经作答，整轮却仍被判为失败，并在中文回复下面贴一段英文模板。现在以模型的回复为准，失败的调用仍在其工具卡片上可见，与浏览器端运行时一致；也让文档约定的降级路径（探测失败 → 用导入默认值 finalize）能正常完成。
+
+- **Media-pool ratio badges snap to the ratio people actually name** — a 427×240 trailer read "427:240" because the badge reduced the exact pixel fraction; encoders round to codec-friendly sizes, so a frame within 2% of 16:9, 4:3, 1:1, 3:2, 5:4 or 21:9 (and their portrait forms) now shows that name, a small exact fraction such as 7:5 stays, and anything else shows a proportion like 2.40:1. Canvas sizes are exact and unchanged.  
+  **素材池比例角标按人们常说的比例显示**——427×240 的预告片之前显示「427:240」，因为角标直接约分了像素分数；编码器会把尺寸凑成编码友好的数值，所以现在与 16:9、4:3、1:1、3:2、5:4、21:9（及其竖版）偏差在 2% 内的都显示该名称，7:5 这类小分数保留，其余显示为 2.40:1 这样的比例。画布尺寸精确，不受影响。
+
+- **A blocked or blackholed media host no longer freezes `download_media`, with or without a proxy** — remote imports are bounded at the connect phase (10s, covering a proxy tunnel and the TLS handshake) and until response headers arrive (30s), then fail as `upstream_unreachable` with a remedy that matches whether a proxy is configured; a batch stops starting new URLs after 75s so it stays inside the run's stream watchdog instead of dying with "Chunk timeout exceeded". Retry now rewinds the failed turn out of both the chat and the model history and re-sends it, rather than stacking a second copy of the message under the error.  
+  **被墙或黑洞的素材主机不再让 `download_media` 挂死，有无代理都一样**——远程导入在连接阶段（10s，覆盖代理隧道与 TLS 握手）和收到响应头之前（30s）都有上限，超时以 `upstream_unreachable` 失败并按是否配置了代理给出对应提示；批量下载 75s 后不再开始新地址，避免撞上运行流看门狗而整轮以「Chunk timeout exceeded」失败。「重试」现在会把失败那轮从聊天与模型历史中回卷后原样重发，而不是在错误下面再叠一条同样的消息。
+
+- **Context-window overflows now recover silently instead of failing the turn (#131)** — the server retries an overflowing turn by compacting the history, then shrinks the output reservation, before surfacing anything. The output reservation is request-aware from the start: a huge-output model (e.g. a 500k-output Grok) no longer starves the input budget on short requests, and stale large tool results are mechanically replaced with one-line stubs only when the conversation is actually under pressure — healthy sessions keep their full history. Oversized tool-call inputs in the recent tail are rescued by replacing their input instead of dead-ending in a retry loop, and when every stage still fails, the overflow guidance now follows the UI language instead of always rendering Chinese.
+  **上下文窗口溢出现在静默自愈，不再直接失败本轮（#131）**——服务端先压缩历史重试，再缩小输出预留，都不行才向用户报错。输出预留从一开始就按请求量计算：超大输出模型（如 500k 输出的 Grok）不会再在短请求上挤占输入预算；陈旧的大型工具结果只在会话真正吃紧时才机械替换为一行 stub——健康会话的历史保持原样。近期窗口里超大的工具调用参数会替换其 input 而不是陷入重试死循环；全部手段用尽后的溢出引导也跟随界面语言，不再永远显示中文。
+
+- **Music analysis failures now carry an actionable next step (#134)** — when the required model packs are missing, the tool result names the missing packs and the settings route, and the failed tool row in chat shows an install button that opens the model-pack page directly; the music skill guides the `detect_beats` fallback (BPM + beat frames only) while the packs stay uninstalled.
+  **音乐分析失败现在自带可操作的下一步（#134）**——所需模型包缺失时，工具结果会列出缺失包与设置路径，聊天里的失败工具行会出现「去设置安装」按钮，直接打开模型包页面；技能指引在模型包未安装时引导 `detect_beats` 降级方案（仅 BPM 与节拍帧）。
+
+- **Schema validation errors now name the offending field** — a rejected `edit_item` call used to say only "/ must NOT have additional properties" with no hint about which field was extra, so the agent retried the same shape and the edit never landed (#135). The error now reads `/ must NOT have additional properties: "itemId"`, letting the model self-correct on the next attempt.
+  **Schema 校验错误现在点名违规字段**——被拒的 `edit_item` 调用过去只说「/ must NOT have additional properties」而不提示多出来的是哪个字段，模型只能原样重试，编辑永远落不了轨（#135）。现在错误会显示 `/ must NOT have additional properties: "itemId"`，模型下一次尝试即可自我修正。
+
+- **Large v3 native transcription resolves its models from the shared catalog (#133)** — desktop native ASR for the large-v3 tier now loads through the same catalog path as the other tiers instead of a hardcoded resolution.
+  **Large v3 本地转写从共享模型目录解析模型（#133）**——桌面端 large-v3 档位的本地 ASR 现在与其他档位一样走共享目录解析，不再使用硬编码路径。
+
+- `load_skill` no longer rejects a recoverable call with "Pass either file or files, not both." before the skill is ever read. Models routinely emit both selectors at once — a blank `file` beside a real `files` array, `files: []` beside a real `file`, or paging numbers with no `file` — and every such call died in argument validation, stalling bundled and custom skills alike. The arguments are now normalized before the shared invocation boundary validates them against the tool schema — the schema's `files.minItems`, `file: string` and `offset: integer` rules would otherwise reject `files: []`, `file: null` or `offset: "0"` before any tool code ran. Blank and null selectors are dropped, empty or all-blank `files` arrays fall back to the initial load, a bare string on `files` becomes a one-file batch, integer-looking strings become integers, and paging numbers are discarded when no `file` remains. When both selectors survive, only a non-zero `offset` keeps the paged file (a continuation worth preserving); `offset: 0` on SKILL.md repeats what the initial load already returned, so the batch wins. The prompts that taught the merged shape are fixed with it — the tool description, the skill-library index, and the result notes now state one selector per call instead of naming both paths in a single sentence — and each remaining rejection carries a concrete corrected call, so the same arguments are never the obvious thing to re-send.
+  `load_skill` 不再在读取技能之前就以「Pass either file or files, not both.」拒绝一个本可恢复的调用。模型经常同时给出两个选择器——空字符串 `file` 与真实 `files` 数组并存、`files: []` 与真实 `file` 并存，或只有分页参数而没有 `file`——这些调用全部死在参数校验里，内置技能和自定义技能一样中招。现在参数会在共享调用边界按工具 schema 校验**之前**先归一化——否则 schema 的 `files.minItems`、`file: string`、`offset: integer` 会在任何工具代码运行前就拒掉 `files: []`、`file: null` 或 `offset: "0"`。空值与 null 选择器被删除，空数组或全空字符串的 `files` 回退为初次加载，`files` 上的裸字符串视为单文件批量，形如整数的字符串转为整数，没有 `file` 时分页参数被丢弃。两个选择器同时存活时，只有非零 `offset` 才保留分页文件（那是值得保留的续读）；`offset: 0` 打在 SKILL.md 上只是重复首轮加载，所以批量胜出。诱发该形状的提示词一并修正——工具描述、技能库索引与返回 note 改为「每次调用只用一个选择器」，不再把两条路径写进同一句话——并且每个仍然失败的请求都会带上明确的修正调用，避免原样重发同一组错误参数。
+
+- Agent failures no longer hide behind "No output generated. Check the stream for errors." The server turn read the model stream but dropped its `error` chunks, so the provider's real `APICallError` — status code, response body, and the proxy's actionable message ("认证失败，请检查 API Key" / "额度不足" / "接口或模型不存在") — was discarded, and the turn died on the AI SDK's generic fallback instead. Retrying could only reproduce it. The real error now reaches the chat. Two failures it was masking are fixed with it: failure classification compared with `instanceof` against a class from a second copy of `@ai-sdk/provider`, so every provider error fell through to UNKNOWN and was never retried; and a genuinely empty model stream is now classified `EMPTY_RESPONSE` and retried instead of surfacing that same opaque sentence.
+  Agent 报错不再被「No output generated. Check the stream for errors.」挡住。服务端读取模型流时丢弃了其中的 `error` 分片，厂商真正的 `APICallError`——状态码、响应体，以及代理生成的可操作提示（「认证失败，请检查 API Key」/「额度不足」/「接口或模型不存在」）——被一并扔掉，这一轮改为死在 AI SDK 的兜底文案上，重试只能复现同样一句。现在真实报错会直接显示在对话里。同时修掉它掩盖的两个问题：失败分类用 `instanceof` 比对了来自第二份 `@ai-sdk/provider` 的类，导致所有厂商错误落入 UNKNOWN 且从不重试；模型确实返回空流时现在归类为 `EMPTY_RESPONSE` 并自动重试，而不是抛出同一句看不懂的话。
 
 ## [0.2.13] - 2026-08-31
 

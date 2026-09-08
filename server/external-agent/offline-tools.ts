@@ -22,6 +22,13 @@ const OFFLINE_TOOL_DESCRIPTIONS: Record<string, string> = {
   edit_captions: 'Edit built-in caption template, style, layout, text, source, and language data. preset_* actions require the browser editor.',
 };
 
+const OFFLINE_SESSION_TOOL_NAMES = new Set([
+  'begin_edit_session',
+  'get_edit_session',
+  'review_edit_session',
+  'discard_edit_session',
+]);
+
 const OFFLINE_SCHEMA_GROUPS = [
   AGENT_RUNTIME_TOOL_SCHEMAS,
   CORE_TOOL_SCHEMAS,
@@ -48,7 +55,8 @@ function serverDirectSchemas(): ExternalRegisteredTool[] {
 
 /** Lifecycle controls plus the reviewed, dependency-closed pure-data editor subset. */
 export function offlineExternalToolSchemas(): ExternalRegisteredTool[] {
-  return [...EXTERNAL_SESSION_TOOLS, ...serverDirectSchemas()].map((tool) => (
+  const sessionTools = EXTERNAL_SESSION_TOOLS.filter((tool) => OFFLINE_SESSION_TOOL_NAMES.has(tool.name));
+  return [...sessionTools, ...serverDirectSchemas()].map((tool) => (
     OFFLINE_TOOL_DESCRIPTIONS[tool.name]
       ? { ...tool, description: OFFLINE_TOOL_DESCRIPTIONS[tool.name] }
       : tool

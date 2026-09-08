@@ -26,7 +26,12 @@ function embeddedImages(result: unknown): EmbeddedImage[] {
 }
 
 export function projectMcpReply(value: unknown): unknown {
-  const sanitized = sanitizeJsonForArtifact(value);
+  const images = embeddedImages(value);
+  const source = images.length && value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== '__images'))
+    : value;
+  const sanitized = sanitizeJsonForArtifact(source);
   if (!sanitized) {
     throw new ExternalEditorCallError(
       'failed',
@@ -39,7 +44,10 @@ export function projectMcpReply(value: unknown): unknown {
       'The external result was too large and no recoverable artifact reference was available.',
     );
   }
-  return JSON.parse(sanitized.body);
+  const projected = JSON.parse(sanitized.body) as unknown;
+  return images.length && projected && typeof projected === 'object' && !Array.isArray(projected)
+    ? { ...projected as Record<string, unknown>, __images: images }
+    : projected;
 }
 
 export function mcpToolError(error: unknown): {

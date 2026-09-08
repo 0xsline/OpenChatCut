@@ -100,6 +100,65 @@ function verifyPoliciesAndSchemas(): void {
   } as unknown as AgentToolSchema]), /Malformed JSON schema/);
 }
 
+// The load_skill schema declares files.minItems=1, file:string and offset:integer, so a
+// model's filler (`files: []`, `file: null`, `offset: "0"`) would be rejected by Ajv before
+// the executor's own normalization ever ran. The boundary normalizes first.
+function verifySkillInvocationValidation(): void {
+  const loadSkill = TOOL_SCHEMAS.find((schema) => schema.name === 'load_skill')!;
+  const check = (args: Record<string, unknown>) => (
+    validateAgentToolInvocation(loadSkill, args, [loadSkill])
+  );
+  const accepted = (args: Record<string, unknown>): Record<string, unknown> => {
+    const validation = check(args);
+    assert.equal(validation.ok, true, `expected ${JSON.stringify(args)} to validate`);
+    return validation.ok ? validation.args : {};
+  };
+  assert.deepEqual(accepted({ name: 's', files: [] }), { name: 's' }, 'files: [] is filler, not a violation');
+  assert.deepEqual(accepted({ name: 's', file: null, files: ['a.md'] }), { name: 's', files: ['a.md'] });
+  assert.deepEqual(accepted({ name: 's', files: 'a.md' }), { name: 's', files: ['a.md'] }, 'a bare string is a one-file batch');
+  assert.deepEqual(accepted({ name: 's', file: ['a.md'] }), { name: 's', file: 'a.md' }, 'a one-element array is one file');
+  assert.deepEqual(
+    accepted({ name: 's', file: 'a.md', offset: '5', limit: '100' }),
+    { name: 's', file: 'a.md', offset: 5, limit: 100 },
+    'integer-looking strings become integers before the schema sees them',
+  );
+  assert.deepEqual(accepted({ name: 's', offset: 0, limit: 48_000 }), { name: 's' }, 'paging without a file is dropped');
+  // Genuine violations still fail at the boundary.
+  assert.equal(check({ name: 's', files: 123 }).ok, false);
+  assert.equal(check({ name: 's', file: 'a.md', offset: -1 }).ok, false);
+  assert.equal(check({ name: 's', file: 'a.md', limit: 999_999 }).ok, false);
+  assert.equal(check({ files: ['a.md'] }).ok, false, 'name stays required');
+}
+
+// End to end through the shared boundary: the executor receives the normalized arguments,
+// and they are what gets recorded.
+async function verifySkillBoundaryNormalization(): Promise<void> {
+  const loadSkill = TOOL_SCHEMAS.find((schema) => schema.name === 'load_skill')!;
+  const received: Record<string, unknown>[] = [];
+  const events: unknown[] = [];
+  const run = (args: Record<string, unknown>) => executeOpenChatCutTool(loadSkill, args, {
+    ctx, settings, toolCallId: crypto.randomUUID(),
+    toolCatalog: TOOL_SCHEMAS, activeToolCatalog: [loadSkill],
+    onEvent: (event) => { if (event.type === 'tool') events.push(event.args); },
+    executeTool: async (_name, args) => {
+      received.push(args);
+      return { skill: 's', files: ['SKILL.md'] };
+    },
+  });
+  const reported = await run({ name: 's', file: '', files: [], offset: 0, limit: 48_000 });
+  assert.equal(reported.success, true, 'the reported merged shape crosses the boundary');
+  assert.deepEqual(received.at(-1), { name: 's' });
+  assert.deepEqual(events.at(-1), { name: 's' }, 'the tool event carries the normalized arguments');
+  await run({ name: 's', file: 'SKILL.md', files: ['references/a.md'], offset: 0, limit: 48_000 });
+  assert.deepEqual(received.at(-1), { name: 's', files: ['references/a.md'] }, 'offset 0 does not outrank the batch');
+  await run({ name: 's', file: 'SKILL.md', files: ['references/a.md'], offset: 5_000 });
+  assert.deepEqual(received.at(-1), { name: 's', file: 'SKILL.md', offset: 5_000 }, 'a real continuation keeps the page');
+  const rejected = await run({ name: 's', files: 123 });
+  assert.equal(rejected.success, false);
+  assert.match(String((rejected.result as { error?: string }).error ?? ''), /Invalid arguments for tool load_skill/);
+  assert.equal(received.length, 3, 'a genuine violation never reaches the executor');
+}
+
 function verifySecretProjectionFixtures(): void {
   const secrets = [
     'userinfo-name', 'userinfo-password', 'oauth-access-secret', 'oauth-refresh-secret',
@@ -372,6 +431,8 @@ async function verifyYoloSkipsAllGuards(): Promise<void> {
 
 resetAgentRuntimeStoreMemory();
 verifyPoliciesAndSchemas();
+verifySkillInvocationValidation();
+await verifySkillBoundaryNormalization();
 verifySecretProjectionFixtures();
 assert.equal(sanitizeJsonForArtifact({ tokenCount: 4, accessToken: 'secret' })?.redacted, true);
 await verifyDurableBoundary();

@@ -12,7 +12,7 @@ user-invocable: false
 2. Call `inspect_music` when only the existing cache is needed.
 3. Before cutting video, call `music_edit_plan` and show its bounded cut/target summary. Before placing photos, call `music_image_plan` and show its bounded placement summary. Prefer `timing:auto`; choose sparse, medium, or dense from the requested pace.
 4. Only after the plan is accepted, call `sync_cuts_to_music` or `sync_images_to_music` with the returned `analysisRef`. Each tool recomputes the plan, rejects stale analysis, and applies its changes as one undo step.
-5. If required model packs are missing, report the returned install guidance, then retry `analyze_music` after installation.
+5. If required model packs are missing, report the returned install guidance (Settings path + missing pack names), then ask whether to proceed with a `detect_beats` fallback for pure beat timing (BPM + beat frames only, no CLAP tags/sections/energy), or wait until the user installs the packs and retry `analyze_music` after installation.
 6. Never request, return, quote, summarize, or place the CLAP embedding in model context. Use tags, sections, confidence, and the opaque `analysisRef` only.
 
 ## Preconditions

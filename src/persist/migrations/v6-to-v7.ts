@@ -1,6 +1,5 @@
 import type { TimelineItem } from '../../editor/types.js';
 import { isProjectShape, type LooseProjectShape } from './normalize.js';
-import type { ProjectMigrationStep } from './types.js';
 
 const LEGACY_STRENGTH = {
   soft: 25,
@@ -23,7 +22,15 @@ function migrateItem(item: TimelineItem): TimelineItem {
   return strength === 50 ? rest : { ...rest, backgroundFillStrength: strength };
 }
 
-/** Remove unreleased preset fields while preserving every other project field. */
+/**
+ * V4-V7 were development-only project versions that never shipped. They collapse
+ * straight back to CURRENT_PROJECT_VERSION in collapseDevelopmentVersion rather than
+ * stepping through an ordered migration, so this module exports the field normalizer
+ * only — there is deliberately no v6ToV7 ProjectMigrationStep. Adding one would be
+ * dead code: the runner's migrationByVersion map is built from released steps alone.
+ *
+ * Remove unreleased preset fields while preserving every other project field.
+ */
 export function normalizeDevelopmentBackgroundFillPresets(value: unknown): LooseProjectShape {
   if (!isProjectShape(value)) throw new Error('invalid development ProjectDoc');
   return {
@@ -34,13 +41,3 @@ export function normalizeDevelopmentBackgroundFillPresets(value: unknown): Loose
     })),
   };
 }
-
-/** V7 replaces four stored blur presets with an exact 0..100 percentage. */
-export const v6ToV7: ProjectMigrationStep = {
-  id: 'v6-to-v7',
-  fromVersion: 6,
-  toVersion: 7,
-  migrate(value: unknown): unknown {
-    return { ...normalizeDevelopmentBackgroundFillPresets(value), version: 7 };
-  },
-};

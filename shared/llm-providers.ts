@@ -129,6 +129,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'deepseek/deepseek-v3.2',
   },
   {
+    id: 'orcarouter',
+    label: 'OrcaRouter',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.orcarouter.ai/v1',
+    defaultModel: 'orcarouter/auto',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',

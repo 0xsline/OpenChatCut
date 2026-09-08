@@ -4,6 +4,7 @@ import { flushChatWrites } from '../persist/projectStore';
 import { clearAgentSessionContext } from '../persist/agentRuntimeStore';
 import { loadProposalRecord } from '../persist/proposalStore';
 import { initialAgentMessages } from './agent-session';
+import { planRetryRewind } from './retry-rewind';
 import { PROVIDER } from './providerConfig';
 import { canRollbackAgentChange, rollbackAgentChange } from './changeLog';
 import type { AgentHookState } from './useAgentState';
@@ -66,6 +67,22 @@ export async function clearAgentHistory(state: AgentHookState, projectId: string
   state.setHydrated(true);
 }
 
+/**
+ * Rewind both histories to just before the user turn at `index` so it can be sent again
+ * from a clean state. Nothing else moves: timeline edits stay (the change log rolls them
+ * back), and a pending proposal blocks the rewind instead of being orphaned. False means
+ * the histories are untouched, and the caller's plain re-send is still correct.
+ */
+export function rewindAgentHistory(state: AgentHookState, index: number): boolean {
+  if (state.runningRef.current || state.proposalRef.current) return false;
+  const plan = planRetryRewind(state.messages, state.llmRef.current, index);
+  if (!plan) return false;
+  state.llmRef.current = state.llmRef.current.slice(0, plan.llm);
+  state.setMessages((current) => current.slice(0, plan.messages));
+  state.refreshEstimatedContextUsage();
+  return true;
+}
+
 function rollbackSession(state: AgentHookState, id: string, force: boolean): boolean {
   const session = state.changeLogRef.current.find((item) => item.id === id);
   if (!session) return false;
@@ -95,5 +112,9 @@ export function useAgentHistoryActions(state: AgentHookState, projectId: string)
     (id: string) => canRollbackSession(stateRef.current, id),
     [],
   );
-  return { clearHistory, rollbackChangeSession, canRollbackChangeSession };
+  const rewindTurn = useCallback(
+    (index: number) => rewindAgentHistory(stateRef.current, index),
+    [],
+  );
+  return { clearHistory, rollbackChangeSession, canRollbackChangeSession, rewindTurn };
 }

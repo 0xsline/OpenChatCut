@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { cp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureWindowsRemotionBinaries } from './remotion-binaries.ts';
+import { ensureRemotionBinaries } from './remotion-binaries.ts';
 
 /** Find the chrome-headless-shell executable file in the distribution directory (the level varies with the platform, small-scale recursion). */
 export function findBundledBrowser(root: string, depth = 4): string | null {
@@ -51,10 +51,10 @@ export async function preparePackagedRuntime(paths: PackagedPaths): Promise<void
   const browser = findBundledBrowser(join(paths.resourcesPath, 'chrome-headless-shell'));
   if (browser) process.env.CC_BROWSER_EXECUTABLE = browser;
   if (!process.env.CC_REMOTION_BINARIES_DIR) {
-    const binaries = await ensureWindowsRemotionBinaries({
+    // A real, writable copy of the compositor: the archive cannot be chmod'ed or spawned.
+    process.env.CC_REMOTION_BINARIES_DIR = await ensureRemotionBinaries({
       userDataPath: paths.userDataPath,
       version: paths.version,
     });
-    if (binaries) process.env.CC_REMOTION_BINARIES_DIR = binaries;
   }
 }

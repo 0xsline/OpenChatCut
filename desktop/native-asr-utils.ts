@@ -1,8 +1,21 @@
 // Pure helpers shared between the native-ASR worker and its verification.
 import type { DesktopAsrChunk } from '../shared/desktop-inference.ts';
 import { ASR_INFERENCE_CONTRACT } from '../shared/asr-inference-contract.ts';
+import { ASR_MODELS } from '../shared/asr-models.ts';
 
 export const NATIVE_ASR_SAMPLE_RATE = ASR_INFERENCE_CONTRACT.sampleRate;
+
+// Preserve the desktop-native filenames supported before GGML companions were
+// recorded in the shared catalog. New companions should come from the catalog.
+const LEGACY_GGML_MODEL_FILES: Readonly<Record<string, string>> = {
+  'Xenova/whisper-small': 'ggml-small-q5_1.bin',
+  'Xenova/whisper-medium': 'ggml-medium-q5_1.bin',
+};
+
+export function nativeGgmlFileName(modelId: string): string | undefined {
+  return ASR_MODELS.find((model) => model.modelId === modelId)?.ggmlFile?.fileName
+    ?? LEGACY_GGML_MODEL_FILES[modelId];
+}
 
 export interface WhisperWordToken {
   readonly text?: string;

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { APICallError } from 'ai';
+import { APICallError, NoOutputGeneratedError } from 'ai';
+import { APICallError as ProviderApiCallError } from '@ai-sdk/provider';
 import {
   classifyLlmFailure,
   isRetryableLlmFailure,
@@ -54,6 +55,15 @@ assert.equal(
   'TIMEOUT',
 );
 assert.equal(classifyLlmFailure(new (class extends Error {})('x')).code, 'UNKNOWN');
+// A stream that closed without a single recorded step is transient, not a
+// dead end: the AI SDK reports it as NoOutputGeneratedError once the real
+// provider error (if any) has already been rethrown by collectServerText.
+assert.equal(
+  classifyLlmFailure(new NoOutputGeneratedError({
+    message: 'No output generated. Check the stream for errors.',
+  })).code,
+  'EMPTY_RESPONSE',
+);
 // Retryable set matches the classification above.
 for (const code of ['RATE_LIMIT', 'TIMEOUT', 'SERVER', 'TRANSPORT', 'EMPTY_RESPONSE']) {
   assert.equal(isRetryableLlmFailure(code as never), true, code);
@@ -61,6 +71,23 @@ for (const code of ['RATE_LIMIT', 'TIMEOUT', 'SERVER', 'TRANSPORT', 'EMPTY_RESPO
 for (const code of ['AUTH', 'INVALID_REQUEST', 'QUOTA', 'CONTEXT_WINDOW_EXCEEDED', 'UNKNOWN']) {
   assert.equal(isRetryableLlmFailure(code as never), false, code);
 }
+
+// Provider packages resolve their own @ai-sdk/provider copy, so the error they
+// throw is a different class object from the one `ai` re-exports. Classifying
+// with `instanceof` misses it and drops every provider failure into UNKNOWN,
+// where the retry ladder never touches it. Marker-based detection must hold for
+// an error built from the provider copy too.
+const foreignCopyError = new ProviderApiCallError({
+  message: 'call failed',
+  url: 'https://example.invalid/v1/chat',
+  requestBodyValues: {},
+  statusCode: 429,
+  responseBody: '',
+  responseHeaders: { 'retry-after': '2' },
+  isRetryable: false,
+});
+assert.equal(classifyLlmFailure(foreignCopyError).code, 'RATE_LIMIT');
+assert.equal(classifyLlmFailure(foreignCopyError).retryAfterMs, 2000);
 
 // Rate-limit retries honor Retry-After within the max cap.
 const rateLimited = { code: 'RATE_LIMIT' as const, message: '', retryAfterMs: 3000 };

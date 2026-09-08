@@ -3,6 +3,7 @@ import addFormats from 'ajv-formats';
 import type { AgentToolSchema } from './tool-schema';
 import { isExternalGlobalReadTool, isExternalReadTool } from './external-tool-policy';
 import { effectiveTranscriptionProvider } from './settings/agentSettings';
+import { normalizeSkillArgs } from './tools/skill-args';
 
 export type ToolEffect =
   | 'read'
@@ -16,8 +17,25 @@ export interface ToolExecutionPolicy {
   readonly recovery: ToolRecoveryPolicy;
 }
 export type ToolInvocationValidation =
-  | { readonly ok: true }
+  | { readonly ok: true; readonly args: Record<string, unknown> }
   | { readonly ok: false; readonly error: string; readonly issues: readonly string[] };
+
+type InvocationNormalizer = (args: Record<string, unknown>) => Record<string, unknown>;
+// Per-tool filler cleanup that runs BEFORE schema validation. Ajv enforces shapes like
+// files.minItems=1 and offset:integer, so a model's `files: []` or `offset: "0"` would
+// otherwise be rejected here and never reach the executor's own normalization.
+const INVOCATION_NORMALIZERS: ReadonlyMap<string, InvocationNormalizer> = new Map([
+  ['load_skill', normalizeSkillArgs],
+]);
+
+/** Filler-only cleanup, idempotent, applied by every adapter before validating an invocation. */
+export function normalizeAgentToolInvocationArgs(
+  name: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalize = INVOCATION_NORMALIZERS.get(name);
+  return normalize ? normalize(args) : args;
+}
 
 const READ_TOOLS = new Set([
   'read_agent_artifact', 'ToolSearch', 'track_progress', 'track_export',
@@ -132,7 +150,17 @@ export function assertValidAgentToolSchemas(catalog: readonly AgentToolSchema[])
 
 function issueText(issue: ErrorObject): string {
   const path = issue.instancePath || '/';
-  return `${path} ${issue.message ?? issue.keyword}`.trim();
+  // additionalProperties/unevaluatedProperties messages do not name the
+  // offending field — it lives in params. Append it so the model and the
+  // user can see exactly what to remove instead of guessing on retry.
+  const params = issue.params as { additionalProperty?: unknown; unevaluatedProperty?: unknown };
+  const offender = typeof params?.additionalProperty === 'string'
+    ? params.additionalProperty
+    : typeof params?.unevaluatedProperty === 'string'
+      ? params.unevaluatedProperty
+      : '';
+  const detail = offender ? `${issue.message ?? issue.keyword}: "${offender}"` : (issue.message ?? issue.keyword);
+  return `${path} ${detail}`.trim();
 }
 
 /** Runtime authority check shared by built-in, Codex/API, and connected external adapters. */
@@ -148,8 +176,9 @@ export function validateAgentToolInvocation(
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
     return { ok: false, error: `Invalid arguments for tool ${schema.name}`, issues: ['arguments must be an object'] };
   }
+  const normalized = normalizeAgentToolInvocationArgs(schema.name, args);
   const validate = schemaValidator(active);
-  if (validate(args)) return { ok: true };
+  if (validate(normalized)) return { ok: true, args: normalized };
   const issues = (validate.errors ?? []).slice(0, 20).map(issueText);
   return {
     ok: false,

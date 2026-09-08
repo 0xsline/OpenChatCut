@@ -251,6 +251,13 @@ try {
     serializedCommit.revision!,
   );
   assert.equal(browserTakeover.status, 'claimed');
+  const competingBrowser = await claimBrowserProjectOwnership(
+    projectId,
+    'browser-competing-owner',
+    serializedCommit.revision!,
+  );
+  assert.equal(competingBrowser.status, 'claimed',
+    'a current browser revision can replace a stale browser registration without a window lock');
   // A browser window re-claiming its OWN project (same ownerId, same revision)
   // recovers (claimed) even without a capability, because the route-level
   // capability check (broker capabilityMatches) already rejects forged/mismatched

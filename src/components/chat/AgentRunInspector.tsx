@@ -25,7 +25,9 @@ import {
   serverEventsForRun,
   serverRunAcceptance,
   serverRunTerminalReason,
+  serverRunToolFailures,
 } from './serverRunInspector';
+import { toolFailureNoteText } from '../../agent/toolFailureNote';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 
@@ -315,6 +317,7 @@ function InspectorContent({ sidecar, loading, failed, t }: {
   const serverEvents = serverRun ? serverEventsForRun(run) : [];
   const terminalReason = serverRun ? serverRunTerminalReason(run, serverEvents) : undefined;
   const acceptance = serverRun ? serverRunAcceptance(serverEvents) : undefined;
+  const toolFailureNote = serverRun ? toolFailureNoteText(serverRunToolFailures(serverEvents)) : '';
   return <>
     <div style={runSummary}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -334,6 +337,7 @@ function InspectorContent({ sidecar, loading, failed, t }: {
       iteration: acceptance.iteration,
       max: acceptance.maxIterations,
     })}</div>}
+    {toolFailureNote && <div role="note" style={serverReason}>{toolFailureNote}</div>}
     <ContextSection run={run} t={t} />
     <CheckpointSection checkpoint={checkpoint} t={t} />
     <ToolOutcomeSection events={run.events} t={t} />

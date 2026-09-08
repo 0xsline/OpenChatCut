@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, type CSSProperties, type RefObject } from 'react';
 import type { MediaAsset, MediaFolder } from '../editor/types';
+import type { MusicAnalysisCardState } from '../audio/intelligence/useMusicAnalysisCards';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
 import { AssetExportButton } from './AssetExportButton';
@@ -201,7 +202,19 @@ function AssetMenuActions(props: AssetMenuPortalProps & { asset: MediaAsset }) {
   );
 }
 
-export function MissingMediaBanner({ count, onOpen }: { count: number; onOpen: () => void }) {
+const bannerButton: CSSProperties = {
+  background: theme.hover, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 3,
+  padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+};
+
+interface MissingMediaBannerProps {
+  count: number;
+  onOpen: () => void;
+  /** Remove every offline asset at once (rows left behind by dead remote sources); absent when the pool is read-only. */
+  onRemoveAll?: () => void;
+}
+
+export function MissingMediaBanner({ count, onOpen, onRemoveAll }: MissingMediaBannerProps) {
   const t = useT();
   if (count === 0) return null;
   return (
@@ -214,12 +227,31 @@ export function MissingMediaBanner({ count, onOpen }: { count: number; onOpen: (
       <span style={{ flex: 1, minWidth: 140 }}>
         {t('有 {n} 个素材丢失或无法加载。选择文件夹搜索，或从行内重新链接。', { n: count })}
       </span>
-      <button type="button" onClick={onOpen} style={{
-        background: theme.hover, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 3,
-        padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-      }}>
-        {t('重新链接离线素材')}
-      </button>
+      <button type="button" onClick={onOpen} style={bannerButton}>{t('重新链接离线素材')}</button>
+      {onRemoveAll && (
+        <button type="button" onClick={onRemoveAll} style={{ ...bannerButton, color: theme.danger }}>
+          {t('移除全部失效素材')}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One line for the whole pool instead of a "models not installed" badge on every audio and
+ * video card: the badge only ever said the same thing, and repeated per card it read like
+ * a problem with each asset.
+ */
+export function MusicModelsNotice({ cards }: { cards: ReadonlyMap<string, MusicAnalysisCardState> }) {
+  const t = useT();
+  let unavailable = false;
+  for (const state of cards.values()) {
+    if (state.state === 'unavailable') { unavailable = true; break; }
+  }
+  if (!unavailable) return null;
+  return (
+    <div className="cc-media-export-guide" role="note">
+      {t('本地音乐分析模型未安装，素材卡片暂不显示分析入口。在 设置 → 本地 AI 中安装「节拍」与「音乐语义」模型包后即可分析。')}
     </div>
   );
 }

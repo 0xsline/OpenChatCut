@@ -162,13 +162,13 @@ function useHover(): [boolean, { onMouseEnter: () => void; onMouseLeave: () => v
 }
 
 /** The left tree capability is selected + the middle column provider is selected; when changing capabilities, the middle column is reset to the first provider with the capability. */
-function useTreeSelection(): {
+function useTreeSelection(initialVendor?: string): {
   group: SettingsGroup; page: SettingsVendorPage;
   selectGroup: (key: string) => void; selectVendor: (key: string) => void;
 } {
-  const first = SETTINGS_CATEGORIES[0].groups[0];
-  const [groupKey, setGroupKey] = useState<string>(first.key);
-  const [vendorKey, setVendorKey] = useState<string>(first.vendors[0].key);
+  const seeded = seedSelection(initialVendor);
+  const [groupKey, setGroupKey] = useState<string>(seeded.group.key);
+  const [vendorKey, setVendorKey] = useState<string>(seeded.vendor.key);
   const group = findGroup(groupKey);
   const page = group.vendors.find((v) => v.key === vendorKey) ?? group.vendors[0];
   const selectGroup = (key: string): void => {
@@ -177,6 +177,18 @@ function useTreeSelection(): {
     setVendorKey(nextGroup.vendors[0].key);
   };
   return { group, page, selectGroup, selectVendor: setVendorKey };
+}
+
+/** Open on a specific vendor page when the caller routed here (e.g. the chat's missing-model-pack button). */
+function seedSelection(initialVendor?: string): { group: SettingsGroup; vendor: SettingsVendorPage } {
+  for (const category of SETTINGS_CATEGORIES) {
+    for (const group of category.groups) {
+      const vendor = group.vendors.find((v) => v.key === initialVendor);
+      if (vendor) return { group, vendor };
+    }
+  }
+  const first = SETTINGS_CATEGORIES[0].groups[0];
+  return { group: first, vendor: first.vendors[0] };
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
@@ -230,7 +242,7 @@ function useFieldContext(
   };
 }
 
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ onClose, initialVendor }: { onClose: () => void; initialVendor?: string }) {
   const t = useT();
   const updateState = useSyncExternalStore(
     subscribeUpstreamUpdate,
@@ -239,7 +251,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
-  const { group, page, selectGroup, selectVendor } = useTreeSelection();
+  const { group, page, selectGroup, selectVendor } = useTreeSelection(initialVendor);
   const [reveal, setReveal] = useState(false);
   const refreshStatus = async (): Promise<void> => {
     try {

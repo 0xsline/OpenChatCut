@@ -66,8 +66,8 @@ export interface ChatPanelProps {
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
   onImportMedia: ChatMediaImporter;
-  /** Open the settings dialog (used by the capability-gap banner). */
-  onOpenSettings?: () => void;
+  /** Open the settings dialog, optionally on a specific vendor page (capability-gap banner, missing-pack button). */
+  onOpenSettings?: (route?: string) => void;
 }
 
 export interface ChatComposerController {

@@ -27,6 +27,7 @@ import { autoGradePlugin } from "./auto-grade.ts";
 import { mediaPreviewPlugin } from "./media-preview.ts";
 import { isolateVoicePlugin } from "./isolate-voice.ts";
 import { normalizeMediaPlugin } from "./normalize-media.ts";
+import { probeMediaPlugin } from "./probe-media.ts";
 import { imageGenerationPlugin } from "./image.ts";
 import { voiceGenerationPlugin } from "./voice.ts";
 import { aiVoiceOptions, transcriptionOptions } from "./media-provider-config.ts";
@@ -94,6 +95,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     mediaPreviewPlugin(),
     isolateVoicePlugin(),
     normalizeMediaPlugin(),
+    probeMediaPlugin(),
     imageGenerationPlugin({
       get baseUrl() {
         return getKey("IMAGE_BASE_URL") || "https://api.openai.com";

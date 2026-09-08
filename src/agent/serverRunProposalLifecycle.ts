@@ -13,8 +13,11 @@ import {
   createPendingProposal,
   discardUnexposedProposal,
   exposePendingProposal,
+  finalizeRunSession,
+  landProposedOperations,
   type AgentTurn,
 } from './useAgentRun';
+import { agentAutoApply } from './approval-mode';
 import { settleServerRun } from './serverRunSettleClient';
 import type { AgentHookState, MutableValue } from './useAgentState';
 import { isFailedToolResult } from './toolFailure';
@@ -103,6 +106,11 @@ function createTurn(
     ops: [],
     persistentOps: [],
     persistentBeforeDoc: null,
+    runSessionId: null,
+    // Auto-apply is what the composer would do with the proposal anyway; landing the edits
+    // as they happen just stops the user from waiting for the end of the run to see them.
+    liveEdits: !input.askOnly
+      && (ctx.getApprovalMode?.() ?? (agentAutoApply() ? 'auto' : 'manual')) === 'auto',
     persistentSnapshot: Promise.resolve(),
     persistentSaveError: undefined,
     draftInvalidated: false,
@@ -131,11 +139,19 @@ function applyToolActions(
         (error) => { turn.persistentSaveError = error; },
       );
     }
-    if (serverRunDraftBaseChanged(turn.baseDoc, observed)) turn.draftInvalidated = true;
+    // The proposal base already carries every import that has landed, so the live project
+    // matching it means nobody else edited; comparing against the run's original base would
+    // read the run's own landings as a foreign change and refuse its timeline edits.
+    if (serverRunDraftBaseChanged(turn.proposalBaseDoc, observed)) turn.draftInvalidated = true;
     turn.proposalBaseDoc = replayActions(turn.proposalBaseDoc, persistent);
     turn.persistentOps.push(buildOperation(input.name, input.args, persistent));
   }
-  if (proposed.length) turn.ops.push(buildOperation(input.name, input.args, proposed));
+  if (proposed.length) {
+    // Count tools that contributed proposal operations so the terminal path
+    // can detect a run whose recorded edits failed to survive to settle time.
+    turn.toolCallCount += 1;
+    turn.ops.push(buildOperation(input.name, input.args, proposed));
+  }
   const nextDoc = replayActions(turn.draft.getDoc(), input.actions);
   const next = turnContext(turn.state.ctxRef.current, nextDoc);
   turn.draft = next.draft;
@@ -189,8 +205,12 @@ function restoreToolActions(
   ref: ProposalRunRef,
   projectId: string,
 ): void {
+  // Calls whose edits already landed are in the live project; the ones after them are
+  // replayed on top of it rather than on the run's original base.
+  if (tools.some((tool) => tool.landed)) rebaseTurn(turn, turn.state.ctxRef.current.getDoc());
   for (const tool of tools) {
     ref.current.seenToolCalls.add(tool.toolCallId);
+    if (tool.landed) continue;
     applyToolActions(turn, {
       runId: input.runId,
       toolCallId: tool.toolCallId,
@@ -252,6 +272,41 @@ async function persistToolAction(
   });
   ref.current.seenToolCalls.add(input.toolCallId);
   applyToolActions(turn, input, projectId);
+  // Pool imports land now, not when the run ends: the file is already on disk and the
+  // model reads the pool back on its next step, so the user sees it at the same time.
+  if (turn.persistentOps.length) await commitPersistentOperations(turn);
+  if (turn.liveEdits && turn.ops.length) await landLiveEdits(turn, input, projectId);
+}
+
+/**
+ * Auto-apply: land this call's timeline edits and continue from the live project, so the
+ * next tool sees what the user sees (including anything they changed meanwhile). The
+ * draft record marks the call as landed so a resumed run does not apply it twice.
+ */
+async function landLiveEdits(
+  turn: AgentTurn,
+  input: ServerRunToolAction,
+  projectId: string,
+): Promise<void> {
+  const landed = await landProposedOperations(turn);
+  if (!landed) return;
+  rebaseTurn(turn, landed);
+  await saveServerRunDraftTool(projectId, input.runId, {
+    toolCallId: input.toolCallId,
+    argsDigest: input.argsDigest,
+    name: input.name,
+    args: input.args,
+    ...(input.error === undefined ? { result: input.result } : { error: input.error }),
+    actions: input.actions,
+    landed: true,
+  }).catch(() => undefined);
+}
+
+function rebaseTurn(turn: AgentTurn, doc: ProjectDoc): void {
+  const next = turnContext(turn.state.ctxRef.current, doc);
+  turn.draft = next.draft;
+  turn.draftCtx = next.draftCtx;
+  turn.proposalBaseDoc = doc;
 }
 
 function beginTerminal(turn: AgentTurn, input: ServerRunTerminal): void {
@@ -269,9 +324,14 @@ async function finalizeCompletedTurn(
   try {
     committed = await commitPersistentOperations(turn);
   } catch (error) {
+    const summary = error instanceof Error ? error.message : String(error);
+    turn.state.setMessages((messages) => [
+      ...messages,
+      { role: 'error', text: `Agent 已停止，但素材池改动提交失败：${summary}` },
+    ]);
     await settleServerRun(turn.projectId, input.runId, {
       status: 'failed',
-      summary: error instanceof Error ? error.message : String(error),
+      summary,
     });
     return 'finalized';
   }
@@ -284,7 +344,31 @@ async function finalizeCompletedTurn(
   }
   turn.persistentOps = [];
   turn.persistentBeforeDoc = null;
+  if (turn.liveEdits && turn.ops.length) await landProposedOperations(turn);
+  finalizeRunSession(turn);
   if (!turn.ops.length) {
+    // A run may legitimately end with no proposed edits (pure reads, or only
+    // pool imports committed above). toolCallCount counts only tools that
+    // contributed proposal operations, so a non-zero count here means their
+    // ops failed to survive to settle time — surface it instead of showing
+    // the model's success reply while the timeline stays empty.
+    if (turn.toolCallCount > 0) {
+      // Mutating tools executed successfully, but no proposal operations
+      // survived to settle time. Settling "completed" here would show the
+      // model's success reply while the timeline stays empty — surface it.
+      turn.state.setMessages((messages) => [
+        ...messages,
+        {
+          role: 'error',
+          text: 'Agent 已完成运行，但本次编辑未被记录为可应用的操作（提案为空），时间线未改动。请重试，或打开运行检查器查看详情。',
+        },
+      ]);
+      await settleServerRun(turn.projectId, input.runId, {
+        status: 'failed',
+        summary: 'server run completed with no recorded proposal operations',
+      });
+      return 'finalized';
+    }
     await settleServerRun(turn.projectId, input.runId, {
       status: 'completed',
       summary: input.assistantText || 'server run completed',
@@ -295,9 +379,14 @@ async function finalizeCompletedTurn(
   try {
     proposal = await createPendingProposal(turn, undefined, false);
   } catch (error) {
+    const summary = error instanceof Error ? error.message : String(error);
+    turn.state.setMessages((messages) => [
+      ...messages,
+      { role: 'error', text: `Agent 已停止，但提案生成失败，编辑未应用：${summary}` },
+    ]);
     await settleServerRun(turn.projectId, input.runId, {
       status: 'failed',
-      summary: error instanceof Error ? error.message : String(error),
+      summary,
     });
     return 'finalized';
   }
@@ -326,7 +415,12 @@ async function resolveTerminalDisposition(
     });
     return 'waiting_approval';
   }
-  if (input.status === 'awaiting_user') {
+  // A run that ends with a follow-up question still owns its recorded edits:
+  // dropping them here settled "completed" while the model reported success
+  // and the timeline stayed empty. Only question-only runs settle directly;
+  // runs with recorded work go through the same proposal path as completed.
+  const hasPendingWork = turn.ops.length > 0 || turn.persistentOps.length > 0;
+  if (input.status === 'awaiting_user' && !hasPendingWork) {
     turn.completionStatus = 'awaiting_user';
     await settleServerRun(turn.projectId, input.runId, {
       status: 'completed',
@@ -334,7 +428,7 @@ async function resolveTerminalDisposition(
     });
     return 'finalized';
   }
-  if (input.status !== 'completed') {
+  if (input.status !== 'completed' && input.status !== 'awaiting_user') {
     turn.completionStatus = input.status === 'cancelled' ? 'aborted' : 'failed';
     await settleServerRun(turn.projectId, input.runId, {
       status: turn.completionStatus,

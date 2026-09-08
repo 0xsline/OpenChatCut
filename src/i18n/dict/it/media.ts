@@ -19,6 +19,8 @@ export default {
   '音频': 'Audio',
   '收藏': 'Preferiti',
   '重新链接离线素材': 'Ricollega media offline',
+  '移除全部失效素材': 'Rimuovi tutti i media offline',
+  '本地音乐分析模型未安装，素材卡片暂不显示分析入口。在 设置 → 本地 AI 中安装「节拍」与「音乐语义」模型包后即可分析。': 'I modelli locali di analisi musicale non sono installati, quindi le schede non mostrano la voce di analisi. Installa i pacchetti Ritmo e Semantica musicale in Impostazioni → IA locale per analizzare.',
   '重新链接文件': 'Ricollega file',
   '正在按文件名匹配…': 'Ricerca per nome file...',
   '选择文件夹批量重链（按文件名匹配）': 'Scegli una cartella per ricollegare in blocco per nome file',

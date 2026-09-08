@@ -48,7 +48,7 @@ export function validateExternalInvocation(
   if (!validation.ok) {
     throw new ExternalEditSessionOutcomeError('rejected', validation.error);
   }
-  return args;
+  return validation.args;
 }
 
 export type { ExternalRegisteredTool } from './external-tool-shape.js';

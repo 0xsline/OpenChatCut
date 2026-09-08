@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
+import { Agent as HttpAgent } from 'node:http';
+import { type AddressInfo, connect, createServer, Socket } from 'node:net';
+import { connect as tlsConnect } from 'node:tls';
 import {
+  PublicConnectTimeoutError,
+  PublicResponseTimeoutError,
   safePublicFetch,
   UnsafePublicUrlError,
   type PublicUrlResolver,
   type PublicUrlTransport,
 } from './safe-public-fetch';
+import { outboundProxyUrl } from './outbound-proxy.ts';
 
 const PUBLIC_IPV4 = '93.184.216.34';
 const publicResolver: PublicUrlResolver = async () => [{ address: PUBLIC_IPV4, family: 4 }];
@@ -101,5 +107,113 @@ assert.equal(pinnedAddress, PUBLIC_IPV4);
 assert.equal(observedHost, 'media.example');
 assert.equal(observedServerName, 'media.example');
 assert.equal(observedRange, 'bytes=0-0');
+
+// The connect phase is bounded on its own. An agent that hands back a socket which never
+// connects and never errors is exactly a blackholed host; without the bound this request
+// would sit in the OS TCP connect timeout (~75s on macOS) and, in a batch, serially.
+{
+  class StallAgent extends HttpAgent {
+    override createConnection(): Socket {
+      // A handshake that never completes. While `connecting`, net.Socket queues writes
+      // instead of failing them, so the request head sits in the buffer forever — the
+      // exact shape of a SYN into a blackhole. (A bare Socket would fail the write with
+      // ERR_SOCKET_CLOSED and prove nothing about the bound.)
+      const socket = new Socket();
+      (socket as { connecting: boolean }).connecting = true;
+      return socket;
+    }
+  }
+  const started = performance.now();
+  await assert.rejects(
+    () => safePublicFetch('http://93.184.216.34/media.mp4', { agent: new StallAgent(), connectTimeoutMs: 200 }),
+    (error: unknown) => error instanceof PublicConnectTimeoutError
+      && error.timeoutMs === 200 && error.address === '93.184.216.34' && error.host === '93.184.216.34',
+  );
+  assert.ok(performance.now() - started < 3000, 'the connect bound must fire, not the OS default');
+}
+
+// The default transport honors the user's outbound proxy like every other server path. With
+// HTTPS_PROXY pointing at a closed loopback port, the failure must be the proxy refusing —
+// proof the request went to the proxy rather than dialing the target directly.
+{
+  const names = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'] as const;
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  for (const name of names) delete process.env[name];
+  process.env.HTTPS_PROXY = 'http://127.0.0.1:1';
+  try {
+    assert.equal(outboundProxyUrl(), 'http://127.0.0.1:1', 'the env proxy must be what resolves in this process');
+    await assert.rejects(
+      () => safePublicFetch('https://93.184.216.34/media.mp4', { connectTimeoutMs: 5_000 }),
+      (error: unknown) => (error as { code?: string }).code === 'ECONNREFUSED'
+        && String((error as Error).message).includes('127.0.0.1:1'),
+    );
+  } finally {
+    for (const name of names) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  }
+}
+
+// A proxy CONNECT that never completes leaves the request with no socket at all. Node holds
+// the request's 'error' back until the agent produces one, so destroying the request cannot
+// enforce the bound on its own; the transport has to settle the promise itself.
+{
+  class NeverConnectAgent extends HttpAgent {
+    override createConnection(): Socket {
+      // Neither hands back a socket nor calls back: the agent's connect is pending forever.
+      return undefined as unknown as Socket;
+    }
+  }
+  const started = performance.now();
+  await assert.rejects(
+    () => safePublicFetch('http://93.184.216.34/media.mp4', { agent: new NeverConnectAgent(), connectTimeoutMs: 200 }),
+    (error: unknown) => error instanceof PublicConnectTimeoutError && error.timeoutMs === 200,
+  );
+  assert.ok(performance.now() - started < 3000, 'a pending agent connect must not defer the bound');
+}
+
+// A server that accepts and never says anything stands in for two real shapes: a proxy that
+// answers CONNECT before it has reached the upstream, and a host that takes the request and
+// stalls. The plain socket connects at once, so the connect bound is satisfied; https must
+// still wait for the TLS handshake, and the header bound covers whatever remains.
+{
+  const silent = createServer(() => { /* accept, never respond */ });
+  const held = new Set<Socket>();
+  silent.on('connection', (socket) => { held.add(socket); });
+  await new Promise<void>((resolveListen) => silent.listen(0, '127.0.0.1', resolveListen));
+  const port = (silent.address() as AddressInfo).port;
+  class SilentAgent extends HttpAgent {
+    override createConnection(): Socket { return connect(port, '127.0.0.1'); }
+  }
+  class StalledTlsAgent extends HttpAgent {
+    override createConnection(): Socket {
+      return tlsConnect({ socket: connect(port, '127.0.0.1'), rejectUnauthorized: false });
+    }
+  }
+  try {
+    let started = performance.now();
+    await assert.rejects(
+      () => safePublicFetch('http://93.184.216.34/media.mp4', {
+        agent: new SilentAgent(), connectTimeoutMs: 5_000, headersTimeoutMs: 300,
+      }),
+      (error: unknown) => error instanceof PublicResponseTimeoutError
+        && error.timeoutMs === 300 && error.address === '93.184.216.34',
+    );
+    assert.ok(performance.now() - started < 3000, 'a connected socket that never answers hits the header bound');
+
+    started = performance.now();
+    await assert.rejects(
+      () => safePublicFetch('http://93.184.216.34/media.mp4', {
+        agent: new StalledTlsAgent(), connectTimeoutMs: 200, headersTimeoutMs: 5_000,
+      }),
+      (error: unknown) => error instanceof PublicConnectTimeoutError && error.timeoutMs === 200,
+    );
+    assert.ok(performance.now() - started < 3000, 'a stalled TLS handshake is a connect failure, not a connected socket');
+  } finally {
+    for (const socket of held) socket.destroy();
+    await new Promise<void>((resolveClose) => silent.close(() => resolveClose()));
+  }
+}
 
 console.log('safe public fetch verification passed');
