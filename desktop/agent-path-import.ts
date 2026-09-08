@@ -1,8 +1,8 @@
 // Agent-initiated local-path import (issue #84 Feature B). Unlike directory
 // watches, which wait passively for files to appear, this runs a one-shot
-// scan/import of explicitly requested paths — bounded by the user-configured
-// AGENT_IMPORT_ROOTS whitelist so an agent can never read arbitrary disks.
-import { basename, dirname } from 'node:path';
+// scan/import of explicitly requested paths. Local access is enabled by default;
+// an explicit AGENT_IMPORT_ROOTS value optionally restricts it.
+import { basename, dirname, isAbsolute } from 'node:path';
 import { realpath, stat, readdir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { getKey } from '../server/keystore.ts';
@@ -59,6 +59,22 @@ function outsideRootsError(path: string, roots: readonly string[]): AgentPathImp
   };
 }
 
+export async function resolveAgentMediaPath(path: string): Promise<string> {
+  if (!isAbsolute(path) || path.includes('\0')) throw new Error('path must be an absolute local path');
+  const configuredRoots = authorizedRoots();
+  const roots = configuredRoots.length ? await canonicalRoots(configuredRoots) : [];
+  if (configuredRoots.length && !pathAllowedByRoots(configuredRoots, path) && !pathAllowedByRoots(roots, path)) {
+    const error = outsideRootsError(path, configuredRoots);
+    throw Object.assign(new Error(error.error), { code: error.code });
+  }
+  const canonicalPath = await realpath(path);
+  if (configuredRoots.length && !pathAllowedByRoots(roots, canonicalPath)) {
+    const error = outsideRootsError(path, configuredRoots);
+    throw Object.assign(new Error(error.error), { code: error.code });
+  }
+  return canonicalPath;
+}
+
 interface CandidatePlan {
   readonly path: string;
   readonly name: string;
@@ -71,30 +87,19 @@ async function planCandidates(paths: readonly string[]): Promise<{
 }> {
   const candidates: CandidatePlan[] = [];
   const errors: AgentPathImportError[] = [];
-  const configuredRoots = authorizedRoots();
-  const roots = await canonicalRoots(configuredRoots);
-  if (!configuredRoots.length) return {
-    candidates,
-    errors: paths.map((path) => ({ path, code: 'IMPORT_ROOTS_NOT_CONFIGURED',
-      error: '尚未添加本地素材目录。请在弹出的系统窗口中选择允许 Agent 访问的文件夹。' })),
-  };
   for (const path of paths) {
-    if (!pathAllowedByRoots(configuredRoots, path)) {
-      errors.push(outsideRootsError(path, configuredRoots));
-      continue;
-    }
     let canonicalPath: string;
+    let info;
     try {
-      canonicalPath = await realpath(path);
+      canonicalPath = await resolveAgentMediaPath(path);
+      info = await stat(canonicalPath);
     } catch (error) {
-      errors.push({ path, error: error instanceof Error ? error.message : String(error) });
+      errors.push({ path, error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof Error && 'code' in error && error.code === 'PATH_OUTSIDE_IMPORT_ROOTS'
+          ? { code: 'PATH_OUTSIDE_IMPORT_ROOTS' as const } : {}),
+      });
       continue;
     }
-    if (!pathAllowedByRoots(roots, canonicalPath)) {
-      errors.push(outsideRootsError(path, configuredRoots));
-      continue;
-    }
-    const info = await stat(canonicalPath);
     if (info.isDirectory()) {
       try {
         const scanned = await scanImportDirectory(canonicalPath, {
@@ -124,6 +129,7 @@ export async function importAgentPaths(
   const imported: Array<Omit<DirectoryImportedFile, 'importId'>> = [];
   const unsupportedFiles: string[] = [];
   let duplicateCount = 0;
+  const knownHashes = new Set(request.knownHashes);
   const pinnedUploadDirectory = await canonicalCurrentUploadDirectory();
   for (const candidate of candidates) {
     const candidateRequest: DirectoryCandidateRequest = {
@@ -131,7 +137,7 @@ export async function importAgentPaths(
       root: candidate.root,
       name: candidate.name,
       pinnedUploadDirectory,
-      knownHashes: new Set(request.knownHashes),
+      knownHashes,
       cancelled: () => false,
       signal: new AbortController().signal,
     };
@@ -139,6 +145,7 @@ export async function importAgentPaths(
       const result = await importDirectoryCandidate(candidateRequest);
       if (result.status === 'imported') {
         imported.push(result.prepared.file);
+        knownHashes.add(result.prepared.file.contentHash);
       } else if (result.status === 'retry') {
         errors.push({ path: candidate.path, error: 'import failed and can be retried' });
       } else if (result.status === 'unsupported') {
