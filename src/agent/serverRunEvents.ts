@@ -2,6 +2,7 @@ import type { DisplayMessage } from './agent-session';
 import type { AgentContextUsage } from './context-compaction';
 import { contextOverflowGuidance } from './context-overflow-guidance';
 import type { ServerRunEventStream } from './serverRunFetchEventStream';
+import { parseToolFailures, toolFailureNoteText } from './toolFailureNote';
 
 export type ServerRunTerminalStatus = 'awaiting_user' | 'completed' | 'failed' | 'cancelled';
 export type ServerRunEventCommit = 'committed' | 'replayed' | 'ignored' | 'failed';
@@ -179,6 +180,15 @@ function bindCompletionEvents(
     if (!objectRecord(data) || typeof data.turns !== 'number') return;
     handleCommit(commitEvent(event, handlers), runId, handlers, () => {
       handlers.appendMessage({ role: 'continue', text: String(data.turns) });
+    });
+  });
+  source.addEventListener('tool-failures', (event) => {
+    const data = eventData(event);
+    if (!objectRecord(data)) return;
+    const text = toolFailureNoteText(parseToolFailures(data.failures));
+    if (!text) return;
+    handleCommit(commitEvent(event, handlers), runId, handlers, () => {
+      handlers.appendMessage({ role: 'note', text });
     });
   });
 }

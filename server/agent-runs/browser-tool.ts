@@ -22,6 +22,7 @@ export interface ActivationState {
   current: ToolActivation;
   tail: Promise<void>;
   followupText: string | null;
+  /** Records tool outcomes for the run; it never decides the terminal status (see turnDisposition). */
   toolFailures: ToolFailureTracker;
   acceptance: AcceptanceLoopState;
   repeatGuardNote?: string;

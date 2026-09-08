@@ -1,4 +1,6 @@
 import type { AgentRunEvent, AgentRunRecord } from '../../persist/agentRuntimeTypes';
+import type { PersistedToolFailure } from '../../agent/toolFailure';
+import { parseToolFailures } from '../../agent/toolFailureNote';
 
 export interface ServerRunInspectorEvent {
   readonly id: number;
@@ -68,8 +70,15 @@ export function serverRunAcceptance(
   return { status, iteration: Number(iteration), maxIterations: Number(maxIterations) };
 }
 
+/** The calls that failed in a run that still completed (the last tool-failures event). */
+export function serverRunToolFailures(events: readonly ServerRunInspectorEvent[]): PersistedToolFailure[] {
+  const event = [...events].reverse().find((candidate) => candidate.type === 'tool-failures');
+  return event ? parseToolFailures(event.data.failures) : [];
+}
+
 export function serverEventDetail(event: ServerRunInspectorEvent): string | undefined {
   const data = event.data;
+  if (event.type === 'tool-failures') return parseToolFailures(data.failures).map((failure) => failure.name).join(', ') || undefined;
   if (typeof data.name === 'string') return data.name;
   if (typeof data.toolCallId === 'string' && typeof data.status === 'string') {
     return `${data.toolCallId}: ${data.status}`;

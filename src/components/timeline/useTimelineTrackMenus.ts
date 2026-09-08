@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { EditorCommands } from '../../editor/store';
 import { captionsOnTrack, trackKind, type TimelineState, type TrackId } from '../../editor/types';
-import type { CaptionCueMove } from '../../captions/CaptionTrackLane';
+import type { CaptionCueMove } from '../../captions/useCaptionCueGestures';
 import {
   appendManualCueToFirstLane,
   isManualCaptionEntry,

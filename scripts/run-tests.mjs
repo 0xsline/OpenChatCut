@@ -19,11 +19,11 @@ if (typeof testScript !== 'string' || !testScript.trim()) {
   throw new Error('package.json is missing a test:serial script');
 }
 const segments = testScript.split('&&').map((s) => s.trim()).filter(Boolean);
-const CONCURRENCY = Math.max(2, Math.min(8, Number(process.env.TEST_CONCURRENCY) || 4));
+const CONCURRENCY = Math.max(1, Math.min(8, Math.floor(Number(process.env.TEST_CONCURRENCY)) || 4));
 
 const run = (command) => new Promise((resolve) => {
   exec(command, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
-    resolve({ command, error, output: (stderr || stdout).slice(-1200) });
+    resolve({ command, error, output: [stdout.slice(-1200), stderr.slice(-1200)].filter(Boolean).join('\n') });
   });
 });
 

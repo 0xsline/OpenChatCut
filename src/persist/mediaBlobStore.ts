@@ -1,46 +1,18 @@
-// Browser fallback durability for /media/uploads/* blobs. A local server can
-// explicitly advertise that its filesystem path is authoritative; otherwise a
-// bounded IndexedDB copy preserves pure-web/offline restore behavior. Paths stay
-// stable so persisted projects can re-publish missing media after reopening.
-
-const DB_NAME = 'openchatcut-media';
-const STORE = 'blobs';
-const DB_VERSION = 1;
-const MAX_FILE_CACHE_BYTES = 200 * 1024 * 1024;
-const MAX_TOTAL_CACHE_BYTES = 1024 * 1024 * 1024;
-const MEDIA_AUTHORITY_HEADER = 'x-openchatcut-media-authority';
+import {
+  MAX_FILE_CACHE_BYTES, MAX_TOTAL_CACHE_BYTES, idbMetadata, enqueueSourceWrite, enqueueCapacityWrite,
+  idbPut, idbGet, idbDel, idbDelPrefix,
+  type MediaBlobRecord, type MediaBlobWriteMeta,
+} from './mediaBlobDatabase';
+import {
+  serverPathIsAuthoritative, sha256Blob, mediaExtension, serverMediaHash,
+  isSpaFallback, uploadPathForRecord, uploadMediaBlob,
+} from './mediaBlobUpload';
+export { resetMediaBlobMemory } from './mediaBlobDatabase';
+export type { MediaBlobRecord, MediaBlobWriteMeta } from './mediaBlobDatabase';
+export { uploadAssetIdFromSrc } from './mediaBlobUpload';
 
 const MEDIA_IMPORT_PREFIX = 'openchatcut-media-import:';
 let mediaImportCounter = 0;
-export interface MediaBlobRecord {
-  src: string;
-  blob: Blob;
-  name: string;
-  mime: string;
-  bytes: number;
-  savedAt: number;
-  lastAccessedAt?: number;
-  sourceRevision?: string;
-  sourceSize?: number;
-  sourceModifiedAt?: number;
-  /** Internal CAS identity for one in-flight project-import publication. */
-  importPublicationId?: string;
-}
-
-const memory = new Map<string, MediaBlobRecord>();
-const hasIdb = (): boolean => typeof indexedDB !== 'undefined';
-const writeQueues = new Map<string, Promise<void>>();
-let capacityQueue: Promise<void> = Promise.resolve();
-
-export interface MediaBlobWriteMeta {
-  name?: string;
-  mime?: string;
-  sourceRevision?: string;
-  sourceSize?: number;
-  sourceModifiedAt?: number;
-  /** Final guard supplied by a live asset owner for delayed cache commits. */
-  isSourceRevisionCurrent?: (revision: string) => boolean;
-}
 export interface StagedMediaBlobImportEntry {
   /** Safe destination allocated from the decoded bytes, never from the package src. */
   src: string;
@@ -60,161 +32,6 @@ export interface MediaBlobImportPublication {
   namespace: string;
   entries: readonly PublishedMediaBlobImportEntry[];
   createdServerMedia: readonly CreatedServerMediaPublication[];
-}
-
-function normalizeRecord(value: MediaBlobRecord): MediaBlobRecord | null {
-  if (!value || typeof value.src !== 'string' || !(value.blob instanceof Blob)
-    || typeof value.name !== 'string' || typeof value.mime !== 'string') return null;
-  const savedAt = Number.isFinite(value.savedAt) ? value.savedAt : Date.now();
-  const {
-    sourceRevision,
-    sourceSize,
-    sourceModifiedAt,
-    ...rest
-  } = value;
-  return {
-    ...rest,
-    bytes: value.blob.size,
-    savedAt,
-    lastAccessedAt: typeof value.lastAccessedAt === 'number' && Number.isFinite(value.lastAccessedAt) ? value.lastAccessedAt : savedAt,
-    ...(typeof sourceRevision === 'string' && sourceRevision ? { sourceRevision } : {}),
-    ...(typeof sourceSize === 'number' && Number.isFinite(sourceSize) ? { sourceSize } : {}),
-    ...(typeof sourceModifiedAt === 'number' && Number.isFinite(sourceModifiedAt) ? { sourceModifiedAt } : {}),
-  };
-}
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'src' });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-interface StoredBlobMeta { src: string; bytes: number; lastAccessedAt: number }
-
-async function idbMetadata(): Promise<StoredBlobMeta[]> {
-  const metaOf = (value: MediaBlobRecord): StoredBlobMeta | null => {
-    const record = normalizeRecord(value);
-    return record ? {
-      src: record.src,
-      bytes: record.blob.size,
-      lastAccessedAt: record.lastAccessedAt ?? record.savedAt,
-    } : null;
-  };
-  if (!hasIdb()) {
-    return [...memory.values()].map(metaOf).filter((value): value is StoredBlobMeta => value !== null);
-  }
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const values: StoredBlobMeta[] = [];
-    const request = db.transaction(STORE, 'readonly').objectStore(STORE).openCursor();
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) { resolve(values); return; }
-      const meta = metaOf(cursor.value as MediaBlobRecord);
-      if (meta) values.push(meta);
-      cursor.continue();
-    };
-    request.onerror = () => reject(request.error);
-  });
-}
-function enqueueSourceWrite<T>(src: string, work: () => Promise<T>): Promise<T> {
-  const previous = writeQueues.get(src) ?? Promise.resolve();
-  const run = previous.catch(() => undefined).then(work);
-  const settled = run.then(() => undefined, () => undefined);
-  writeQueues.set(src, settled);
-  void settled.finally(() => {
-    if (writeQueues.get(src) === settled) writeQueues.delete(src);
-  });
-  return run;
-}
-
-function enqueueCapacityWrite<T>(work: () => Promise<T>): Promise<T> {
-  const run = capacityQueue.catch(() => undefined).then(work);
-  capacityQueue = run.then(() => undefined, () => undefined);
-  return run;
-}
-
-async function serverPathIsAuthoritative(src: string): Promise<boolean> {
-  try {
-    const response = await fetch(src, { method: 'HEAD', cache: 'no-store' });
-    return response.ok && response.headers.get(MEDIA_AUTHORITY_HEADER) === 'server';
-  } catch {
-    return false;
-  }
-}
-
-async function idbPut(rec: MediaBlobRecord): Promise<void> {
-  if (!hasIdb()) {
-    memory.set(rec.src, rec);
-    return;
-  }
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(rec);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function idbGet(src: string): Promise<MediaBlobRecord | undefined> {
-  if (!hasIdb()) return normalizeRecord(memory.get(src) as MediaBlobRecord) ?? undefined;
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(src);
-    req.onsuccess = () => {
-      resolve(normalizeRecord(req.result as MediaBlobRecord) ?? undefined);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function idbDel(src: string): Promise<void> {
-  if (!hasIdb()) {
-    memory.delete(src);
-    return;
-  }
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(src);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function idbDelPrefix(prefix: string): Promise<void> {
-  if (!hasIdb()) {
-    for (const src of memory.keys()) {
-      if (src.startsWith(prefix)) memory.delete(src);
-    }
-    return;
-  }
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    const request = tx.objectStore(STORE).openCursor();
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) return;
-      if (typeof cursor.key === 'string' && cursor.key.startsWith(prefix)) cursor.delete();
-      cursor.continue();
-    };
-    request.onerror = () => reject(request.error);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-/** Test helper. */
-export function resetMediaBlobMemory(): void {
-  memory.clear();
-  writeQueues.clear();
-  capacityQueue = Promise.resolve();
 }
 
 /** Cache a source blob when no authoritative local server copy is advertised. */
@@ -290,40 +107,6 @@ function assertMediaImportNamespace(namespace: string): void {
 function mediaImportKey(namespace: string, src: string): string {
   assertMediaImportNamespace(namespace);
   return `${namespace}staged/${encodeURIComponent(src)}`;
-}
-
-async function sha256Blob(blob: Blob): Promise<string> {
-  if (!globalThis.crypto?.subtle) throw new Error('当前环境不支持安全的媒体哈希');
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-function mediaExtension(name: string): string {
-  const baseName = name.slice(name.lastIndexOf('/') + 1);
-  const dotIndex = baseName.lastIndexOf('.');
-  const normalized = dotIndex > 0 ? baseName.slice(dotIndex).toLowerCase() : '';
-  return /^\.[a-z0-9]{1,16}$/.test(normalized) ? normalized : '.bin';
-}
-
-async function serverMediaHash(src: string): Promise<string | null> {
-  let response: Response;
-  try {
-    response = await fetch(src, { cache: 'no-store' });
-  } catch {
-    throw new Error(`无法确认媒体目标是否已存在: ${src}`);
-  }
-  if (response.status === 404
-    || (isSpaFallback(response) && response.headers.get(MEDIA_AUTHORITY_HEADER) !== 'server')) return null;
-  if (!response.ok) throw new Error(`无法确认媒体目标是否已存在 (${response.status}): ${src}`);
-  const declaredBytes = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declaredBytes) && declaredBytes > MAX_TOTAL_CACHE_BYTES) {
-    throw new Error(`现有媒体目标大小无效: ${src}`);
-  }
-  const blob = await response.blob();
-  if (blob.size <= 0 || blob.size > MAX_TOTAL_CACHE_BYTES) {
-    throw new Error(`现有媒体目标大小无效: ${src}`);
-  }
-  return sha256Blob(blob);
 }
 
 async function mediaIdentityState(src: string, sha256: string): Promise<'absent' | 'matching' | 'conflict'> {
@@ -609,12 +392,6 @@ export async function mediaBlobStoreUsage(): Promise<MediaBlobStoreUsage> {
   };
 }
 
-/** Vite dev's history fallback will return 200 + index.html for any missing paths - for media paths,
- * The "successful" response of text/html is equal to the file not existing (2026-07-17 e2e disk deletion actual measurement captured: false 200
- * By cheating detection, self-healing will never be triggered). */
-const isSpaFallback = (res: Response): boolean =>
-  (res.headers.get('content-type') ?? '').includes('text/html');
-
 /** True when the same-origin path responds OK (file present on dev disk). */
 export async function isMediaSrcReachable(src: string): Promise<boolean> {
   if (!src || src.startsWith('data:')) return true;
@@ -644,52 +421,10 @@ export async function isMediaSrcReachable(src: string): Promise<boolean> {
   }
 }
 
-/** Parse `/media/uploads/<id>.ext` → assetId (filename stem) for deterministic re-upload. */
-export function uploadAssetIdFromSrc(src: string): string | null {
-  const m = src.match(/\/media\/uploads\/([^/]+?)(\.[A-Za-z0-9]+)?$/);
-  if (!m) return null;
-  return m[1].replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || null;
-}
-
 function createMediaRollbackToken(): string {
   mediaImportCounter += 1;
   return globalThis.crypto?.randomUUID?.()
     ?? `import-${Date.now().toString(36)}-${mediaImportCounter.toString(36)}`;
-}
-
-function uploadPathForRecord(rec: MediaBlobRecord): string {
-  const assetId = uploadAssetIdFromSrc(rec.src);
-  if (!assetId) throw new Error(`工程包媒体 src 无法生成 server 路径: ${rec.src}`);
-  return `/media/uploads/${assetId}${mediaExtension(rec.name)}`;
-}
-
-interface MediaBlobUploadResult {
-  path: string;
-  created: boolean;
-  rollbackToken?: string;
-}
-
-async function uploadMediaBlob(
-  rec: MediaBlobRecord,
-  options?: { ifAbsent?: boolean; rollbackToken?: string },
-): Promise<MediaBlobUploadResult> {
-  const assetId = uploadAssetIdFromSrc(rec.src);
-  const uploadName = options?.ifAbsent ? `file${mediaExtension(rec.name)}` : rec.name || 'file';
-  const q = new URLSearchParams({ name: uploadName });
-  if (assetId) q.set('assetId', assetId);
-  if (options?.ifAbsent) q.set('ifAbsent', '1');
-  if (options?.rollbackToken) q.set('rollbackToken', options.rollbackToken);
-  const res = await fetch(`/upload?${q.toString()}`, {
-    method: 'POST',
-    headers: { 'Content-Type': rec.mime || 'application/octet-stream' },
-    body: rec.blob,
-  });
-  if (!res.ok) {
-    const info = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(info?.error ?? `reupload failed (${res.status})`);
-  }
-  const result = await res.json() as { path: string; created?: boolean; rollbackToken?: string };
-  return { path: result.path, created: result.created !== false, rollbackToken: result.rollbackToken };
 }
 
 /**

@@ -2,7 +2,15 @@ import type { BrowserWindow } from 'electron';
 import { getKey } from '../server/keystore.ts';
 
 export const DESKTOP_MIN_SCALE = 2 / 3;
-/** User-set UI scale bounds (issue #85). 1 = the pre-feature behavior. */
+/**
+ * The density the desktop ships with. The editor was authored at Chromium's 100% and read
+ * as too small in daily use; 110% was the setting people reached for, so it is now the
+ * default: "100%" in Settings means this base, and the user scale composes on top of it.
+ * A UI_SCALE saved before the change is relative to the old base of 1 and is rebased once
+ * at startup (ui-scale-migration.ts) so nobody's window jumps after updating.
+ */
+export const DESKTOP_UI_SCALE_BASE = 1.1;
+/** User-set UI scale bounds (issue #85), relative to the base. 1 = the shipped density. */
 export const DESKTOP_UI_SCALE_MIN = 0.8;
 export const DESKTOP_UI_SCALE_MAX = 1.5;
 export const DESKTOP_UI_SCALE_KEY = 'UI_SCALE';
@@ -38,8 +46,10 @@ interface DesktopWindowScaleInput {
   contentHeight: number;
   frameWidth?: number;
   frameHeight?: number;
-  /** User-set UI scale multiplier (default 1 preserves existing behavior). */
+  /** User-set UI scale multiplier, relative to the base (default 1 = the shipped density). */
   userScale?: number;
+  /** The shipped density; tests pass 1 to see the pre-base numbers. */
+  baseScale?: number;
 }
 
 interface DesktopWorkArea {
@@ -87,6 +97,7 @@ export function resolveDesktopWindowScale({
   frameWidth = 0,
   frameHeight = 0,
   userScale = 1,
+  baseScale = DESKTOP_UI_SCALE_BASE,
 }: DesktopWindowScaleInput): DesktopWindowScaleResolution {
   const baselineWidth = validDimension(baselineContentWidth);
   const baselineHeight = validDimension(baselineContentHeight);
@@ -96,12 +107,15 @@ export function resolveDesktopWindowScale({
     validDimension(contentHeight) / baselineHeight,
   );
   const clampedFitted = fittedScale <= DESKTOP_MIN_SCALE ? DESKTOP_MIN_SCALE : fittedScale;
-  // The user scale composes on top of shrink-to-fit: enlarging the window
-  // never passes 100% fitted, so a >1 user scale is the only way to grow.
-  // Keep the exact floor value at the default scale (pre-feature behavior).
+  // Base and user scale compose on top of shrink-to-fit: enlarging the window
+  // never passes 100% fitted, so a >1 user scale is the only way to grow. The
+  // minimum window size below stays in the authored canvas's own units: the base
+  // makes the layout see a proportionally narrower canvas at every size, which is
+  // exactly what a saved 110% did before it became the default.
+  // Keep the exact floor value at the default scale.
   const zoomFactor = userScale === 1 && clampedFitted === DESKTOP_MIN_SCALE
-    ? DESKTOP_MIN_SCALE
-    : Math.round(userScale * clampedFitted * 1_000) / 1_000;
+    ? baseScale * DESKTOP_MIN_SCALE
+    : Math.round(baseScale * userScale * clampedFitted * 1_000) / 1_000;
 
   const portraitPreviewWidth = baselineWidth * DESKTOP_PREVIEW_WIDTH_RATIO;
   const portraitMinimumContentHeight = DESKTOP_EDITOR_HEADER_HEIGHT

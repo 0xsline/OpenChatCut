@@ -10,6 +10,8 @@ import {
 } from '../r2.ts';
 import { enqueueUploadMutation, uploadDir } from '../media-dir.ts';
 import { safePublicFetch, UnsafePublicUrlError } from '../safe-public-fetch.ts';
+import { ImportUnreachableError, unreachableImportError } from './import-url-errors.ts';
+import { probeImportedFile } from './import-probe.ts';
 import { streamUploadToFile } from './upload-stream.ts';
 import { sha256File } from '../../shared/node-content-hash.ts';
 import { externalUploadMediaType } from '../../src/media/uploadMediaType.ts';
@@ -332,11 +334,15 @@ async function fetchRemoteImport(
       sendError(res, 400, error.message);
       return null;
     }
-    throw error;
+    // A blocked or blackholed host is its own outcome: named host, the remedy, and a
+    // code the tool turns into a failure row instead of a dead remote src.
+    throw unreachableImportError(error, remote) ?? error;
   }
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
-    sendError(res, 200, `upstream HTTP ${response.status}`);
+    // A 403/404 from the origin is final: nothing will ever play from that URL, so the
+    // tool must not register it as a remote source and call the import a success.
+    sendJson(res, 200, { ok: false, error: `upstream HTTP ${response.status}`, code: 'upstream_http' });
     return null;
   }
   const contentType = response.headers.get('content-type');
@@ -367,9 +373,16 @@ async function saveRemoteImport(imported: RemoteImport, maxBytes: number, logger
     await unlink(partPath).catch(() => {});
     sendError(res, 400, 'upstream empty body'); return null;
   }
+  // Judge the bytes before anything (the pool, R2) can hold on to them: an error page
+  // saved as .mp4 is a failure now, not a dead asset the agent discovers later.
+  const probed = await probeImportedFile(partPath, name);
+  if ('error' in probed) {
+    await unlink(partPath).catch(() => {});
+    sendJson(res, 200, { ok: false, error: probed.error, code: 'not_media' }); return null;
+  }
   await rename(partPath, finalPath);
   await mirrorUpload(name, finalPath, imported.contentType ?? undefined, logger, 'import-url→R2');
-  return { name, bytes, contentHash };
+  return { name, bytes, contentHash, probe: probed.probe ?? undefined };
 }
 
 function importedFilename(imported: RemoteImport, fallback: string): string {
@@ -394,13 +407,18 @@ async function handleImportUrl(req: IncomingMessage, res: ServerResponse, logger
       ok: true, path: `/media/uploads/${saved.name}`, bytes: saved.bytes, contentHash: saved.contentHash,
       contentType: imported.contentType ?? undefined,
       filename: importedFilename(imported, saved.name), sourceUrl: imported.remote,
+      // Measured by the local ffprobe, so the agent need not probe (or re-download) the file.
+      probe: saved.probe,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`[import-url] ${message}`);
     if (!res.headersSent) {
       if (error instanceof UploadTooLargeError) sendError(res, 413, message);
-      else sendJson(res, 200, { ok: false, error: message });
+      else sendJson(res, 200, {
+        ok: false, error: message,
+        ...(error instanceof ImportUnreachableError ? { code: error.code } : {}),
+      });
     } else res.end();
   }
 }

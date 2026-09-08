@@ -42,6 +42,8 @@ export interface ServerRunDraftToolBody {
   readonly result?: unknown;
   readonly error?: string;
   readonly actions: readonly AnyAction[];
+  /** Auto-apply: this call's timeline edits already landed in the live project. */
+  readonly landed?: boolean;
 }
 
 export interface ServerRunDraft {
@@ -103,6 +105,7 @@ function parseTool(value: unknown): ServerRunDraftToolBody | null {
     args: item.args as Record<string, unknown>,
     ...(item.error === undefined ? { result: item.result } : { error: item.error }),
     actions: item.actions,
+    ...(item.landed === true ? { landed: true } : {}),
   };
 }
 

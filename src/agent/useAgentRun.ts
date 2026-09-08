@@ -10,7 +10,7 @@ import {
   type Operation,
   type Proposal,
 } from './proposal';
-import { appendAgentChange, createAgentChangeSession } from './changeLog';
+import { appendAgentChange, createAgentChangeSession, extendAgentChangeSession } from './changeLog';
 import { settleServerRun } from './serverRunSettleClient';
 import type { AgentRunStatus } from '../persist/agentRuntimeStore';
 import type { AgentHookState } from './useAgentState';
@@ -31,6 +31,10 @@ export interface AgentTurn {
   ops: Operation[];
   persistentOps: Operation[];
   persistentBeforeDoc: ProjectDoc | null;
+  /** The run's single change-log row; every landing (imports and, in auto mode, edits) extends it. */
+  runSessionId: string | null;
+  /** Auto-apply: timeline edits land after each tool call instead of becoming a proposal. */
+  liveEdits: boolean;
   persistentSnapshot: Promise<void>;
   persistentSaveError: unknown;
   draftInvalidated: boolean;
@@ -75,21 +79,6 @@ function showRunError(turn: AgentTurn, text: string): void {
 }
 
 
-async function restoreUncommittedSave(
-  turn: AgentTurn,
-  expectedDoc: ProjectDoc,
-  persist: typeof saveProject,
-): Promise<boolean> {
-  const latestDoc = turn.state.ctxRef.current.getDoc();
-  if (!turn.abortController.signal.aborted && latestDoc === expectedDoc) return false;
-  const restored = await persist(turn.projectId, latestDoc).catch(() => null);
-  if (!restored?.saved) {
-    showRunError(turn, 'Agent 已停止，但无法恢复工程存储。请重新打开工程并检查内容。');
-  } else if (!turn.abortController.signal.aborted) {
-    showRunError(turn, '保存期间工程发生了其他修改；Agent 改动未应用，请重新发送请求。');
-  }
-  return true;
-}
 export async function commitPersistentOperations(
   turn: AgentTurn,
   persist: typeof saveProject = saveProject,
@@ -102,28 +91,104 @@ export async function commitPersistentOperations(
     return false;
   }
   turn.state.llmProviderRef.current = PROVIDER;
-  if (!turn.persistentBeforeDoc || !turn.persistentOps.length) return true;
-  const currentDoc = turn.state.ctxRef.current.getDoc();
-  if (turn.draftInvalidated || currentDoc !== turn.persistentBeforeDoc) {
-    showRunError(turn, '生成期间工程发生了其他修改；Agent 改动未应用，请重新发送请求。');
-    return false;
-  }
-  const actions = turn.persistentOps.flatMap((operation) => operation.actions);
-  const afterDoc = replayActions(currentDoc, actions);
-  if (turn.abortController.signal.aborted) return false;
-  const saved = await persist(turn.projectId, afterDoc).catch(() => null);
-  if (!saved?.saved) {
-    showRunError(turn, '无法保存工程，Agent 改动未应用。请检查本地存储后重试。');
-    return false;
-  }
-  if (await restoreUncommittedSave(turn, currentDoc, persist)) return false;
-  if (turn.abortController.signal.aborted) return false;
-  turn.state.ctxRef.current.commands.applyDoc(afterDoc);
-  const session = createAgentChangeSession(
-    turn.assistantText, turn.persistentOps, turn.persistentBeforeDoc, afterDoc, true,
-  );
-  turn.state.setChangeLog((current) => appendAgentChange(current, session));
+  if (!turn.persistentOps.length) return true;
+  // Pool imports are additive, so they land on whatever the project is now — called after
+  // every tool that imported something, not once at the end of the run.
+  const landed = await landOperations(turn, turn.persistentOps, persist);
+  if (!landed) return false;
+  turn.persistentOps = [];
   return true;
+}
+
+/**
+ * Auto-apply mode: the timeline edits recorded so far land now, the way a proposal would
+ * have been applied at the end of the run, so the user watches the tracks change as the
+ * agent works. The returned document is the new base for the draft and the proposal.
+ */
+export async function landProposedOperations(
+  turn: AgentTurn,
+  persist: typeof saveProject = saveProject,
+): Promise<ProjectDoc | null> {
+  if (!turn.ops.length || turn.abortController.signal.aborted) return null;
+  const operations = turn.ops;
+  const landed = await landOperations(turn, operations, persist);
+  if (!landed) return null;
+  turn.ops = [];
+  // Each operation came from one tool call; those calls are settled, not pending.
+  turn.toolCallCount = Math.max(0, turn.toolCallCount - operations.length);
+  turn.proposalBaseDoc = landed;
+  return landed;
+}
+
+/**
+ * Replay `operations` onto the live project and save. A user edit made while the agent was
+ * working neither blocks the landing nor gets overwritten: the save is the fence, and if
+ * the project moved during it the saved copy lacks that edit, so the live document is put
+ * back and the operations are replayed on top of it.
+ */
+async function landOperations(
+  turn: AgentTurn,
+  operations: readonly Operation[],
+  persist: typeof saveProject,
+): Promise<ProjectDoc | null> {
+  const actions = operations.flatMap((operation) => operation.actions);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const currentDoc = turn.state.ctxRef.current.getDoc();
+    const afterDoc = replayActions(currentDoc, actions);
+    // Everything is already there (a resumed run replaying its own landings).
+    if (afterDoc === currentDoc) return currentDoc;
+    const saved = await persist(turn.projectId, afterDoc).catch(() => null);
+    if (!saved?.saved) {
+      showRunError(turn, '无法保存工程，Agent 改动未应用。请检查本地存储后重试。');
+      return null;
+    }
+    const liveDoc = turn.state.ctxRef.current.getDoc();
+    if (turn.abortController.signal.aborted || liveDoc !== currentDoc) {
+      const restored = await persist(turn.projectId, liveDoc).catch(() => null);
+      if (turn.abortController.signal.aborted) {
+        if (!restored?.saved) showRunError(turn, 'Agent 已停止，但无法恢复工程存储。请重新打开工程并检查内容。');
+        return null;
+      }
+      continue;
+    }
+    turn.state.ctxRef.current.commands.applyDoc(afterDoc);
+    recordRunSession(turn, operations, currentDoc, afterDoc);
+    return afterDoc;
+  }
+  showRunError(turn, '保存期间工程持续发生其他修改，Agent 改动暂未应用；请稍后重试。');
+  return null;
+}
+
+function recordRunSession(
+  turn: AgentTurn,
+  operations: readonly Operation[],
+  beforeDoc: ProjectDoc,
+  afterDoc: ProjectDoc,
+): void {
+  const id = turn.runSessionId;
+  if (id) {
+    turn.state.setChangeLog((current) => current.map((session) => (
+      session.id === id ? extendAgentChangeSession(session, operations, afterDoc) : session
+    )));
+    return;
+  }
+  const session = createAgentChangeSession(
+    turn.assistantText || RUN_SESSION_PLACEHOLDER, operations, beforeDoc, afterDoc, true,
+  );
+  turn.runSessionId = session.id;
+  turn.state.setChangeLog((current) => appendAgentChange(current, session));
+}
+
+const RUN_SESSION_PLACEHOLDER = 'Agent 修改（进行中）';
+
+/** The run is over: the row it grew during the run gets the model's own summary. */
+export function finalizeRunSession(turn: AgentTurn): void {
+  const id = turn.runSessionId;
+  const summary = turn.assistantText.trim();
+  if (!id || !summary) return;
+  turn.state.setChangeLog((current) => current.map((session) => (
+    session.id === id && session.summary === RUN_SESSION_PLACEHOLDER ? { ...session, summary } : session
+  )));
 }
 
 export async function discardUnexposedProposal(projectId: string, proposal: Proposal): Promise<void> {

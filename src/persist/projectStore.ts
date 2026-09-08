@@ -1,3 +1,4 @@
+export { loadProjectThumb, saveProjectThumb } from './projectThumbStore';
 import type { ProjectDoc, TimelineState } from '../editor/types';
 import type { LlmProvider } from '../../shared/llm-providers';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
@@ -416,21 +417,6 @@ export async function duplicateProject(id: string, name?: string): Promise<Proje
 }
 
 /** Soft-delete: hide from dashboard/list; data kept for restore_project. */
-// ── Project card poster frame cache (key=updatedAt, re-rendering will be invalidated as soon as the project changes) ──────────────────
-interface ProjectThumb {
-  key: number;
-  dataUrl: string;
-}
-
-export async function loadProjectThumb(id: string): Promise<ProjectThumb | null> {
-  const v = await idbGet<ProjectThumb>(`thumb:${id}`);
-  return v && typeof v.dataUrl === 'string' && typeof v.key === 'number' ? v : null;
-}
-
-export async function saveProjectThumb(id: string, key: number, dataUrl: string): Promise<void> {
-  await idbSet(`thumb:${id}`, { key, dataUrl });
-}
-
 export async function deleteProject(id: string): Promise<void> {
   await mutateProjectIndex((index) => {
     if (!index.some((meta) => meta.id === id)) return { next: null, value: undefined };

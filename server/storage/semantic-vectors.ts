@@ -7,7 +7,8 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { load as sqliteVecLoad } from 'sqlite-vec';
+import { getLoadablePath as sqliteVecPath } from 'sqlite-vec';
+import { unpackedPath } from '../media-binaries.ts';
 import { SEMANTIC_INFERENCE_CONTRACT } from '../../shared/vector-inference-contract.ts';
 import { sqliteStoreEnabled, storePath } from './sqlite-store.ts';
 
@@ -56,7 +57,8 @@ function openConnection(): DatabaseSync | null {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(path, { allowExtension: true });
     db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
-    sqliteVecLoad(db);
+    // SQLite dlopens the extension itself; inside the packaged archive that needs the unpacked twin.
+    db.loadExtension(unpackedPath(sqliteVecPath()));
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${VEC_TABLE} USING vec0(
       embedding float[${VEC_DIMENSION}], scope_id text, asset_id text, sample_time float,
       source_revision text, scene_id text, scene_start float, scene_end float, model_version text
