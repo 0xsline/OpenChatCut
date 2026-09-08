@@ -34,7 +34,7 @@ Rules of thumb:
 
 ## 3. Minimum separation budget
 
-For a batch of N cuts, every pair should clear this bar:
+For distinct-cut batches, use these as planning targets agreed with the user, not platform detection rules. Controlled hook tests and platform adaptations use the mode-specific checks below instead.
 
 | Dimension | Minimum separation between any two cuts |
 |---|---|
@@ -44,32 +44,24 @@ For a batch of N cuts, every pair should clear this bar:
 | Duration | At least 15% difference, unless platform rules force a fixed length |
 | Music | Distinct track, or explicitly shared by user request |
 
-When a pair cannot clear the bar, cut one of them — do not ship both and hope.
+When a distinct-cut pair misses the agreed targets, revise the plan or report the shortfall before cutting.
 
 ## 4. Choosing the dominant variable
 
 Pick one dimension to carry the batch and let the others support it:
 
-- **Hook testing**: order and packaging stay fixed; only the opening changes. This is a controlled experiment, and the shared body is intentional. Say so in the report.
+- **Hook testing**: only the opening changes; body, order after the hook, duration, rhythm, music and packaging stay fixed. Do not apply distinct-cut overlap, order, rhythm or duration thresholds. Report `controlled-hook-test` and identify the intentional shared body.
 - **Matrix accounts / 多账号分发**: hook, order, and rhythm all change. Packaging may stay consistent as a brand signature.
-- **Platform variants**: content structure stays fixed; duration, aspect ratio, caption placement, and safe-area treatment adapt to each platform.
+- **Platform variants**: content structure stays fixed; duration, aspect ratio, caption placement, and safe-area treatment adapt to each platform. Shared openings and bodies are allowed. Report `platform-adaptation`; do not apply distinct-cut separation thresholds.
 
 A batch with no dominant variable reads as noise. State which mode you are in
 before cutting.
 
 ## 5. Capacity check
 
-Estimate the honest maximum before promising N:
+Check whether the actual source ranges can support N cuts under the selected mode and agreed separation targets. Distinct cuts and hook tests need enough usable openings; hook tests may intentionally reuse the full body. Platform adaptations can reuse the same edit. Do not infer a numeric capacity from total footage duration alone.
 
-```
-usable_hook_assets   = count of single-use + positional assets that can open a cut
-max_distinct_cuts    = usable_hook_assets, capped by (flexible_seconds / min_cut_seconds)
-```
-
-If the requested N exceeds `max_distinct_cuts`, report the shortfall and offer
-the options: reduce N, extend the pool with more source media, or accept
-packaging-only variants with an explicit warning that they will likely be
-treated as duplicates.
+If the pool cannot support the requested plan, report the specific shortage and offer fewer cuts or more source media. Switching to controlled tests or platform adaptations changes the batch contract and must be explicit.
 
 ## 6. Naming
 

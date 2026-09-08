@@ -1,38 +1,36 @@
 # Dedup Rules and Batch QA
 
-Batch output fails in a specific way: every individual cut passes review, and
-the batch as a set still gets flagged as duplicate content. These checks run on
-the set, not on each timeline.
+These editorial checks compare the batch as a set. They do not guarantee a platform's duplicate-detection outcome. Select the batch mode before applying them.
 
 ## 1. Why structural dedup, not decorative dedup
 
-Platform duplicate detection compares content, not styling. Mirror, speed
-change, color grade, caption restyle, and music swap are the classic
-"伪去重" tricks — they change the bytes and not the video. What actually
-separates two cuts:
+For distinct-cut batches, mirror, speed change, color grade, caption restyle and music swap alone do not establish structural differentiation. Compare:
 
 - Different source footage in the opening and in the majority of shots
 - Different event order — the sequence of what happens, not how it is dressed
 - Different edit rhythm, which changes the perceived pacing signature
 - Different duration at a meaningful scale
 
-Treat any differentiation plan built only from decorative changes as invalid.
+Treat a distinct-cut plan built only from decorative changes as insufficient. Controlled hook tests and platform adaptations intentionally preserve content and follow their own contract.
 
 ## 2. Pairwise checks
 
-Run these on every pair in the batch. N cuts means N*(N-1)/2 pairs; for large
+For `controlled-hook-test`, verify different openings and an otherwise unchanged body, order, duration, rhythm, music and packaging. Record the intentional shared content; high overlap is expected and is not a failure.
+
+For `platform-adaptation`, verify the approved content is preserved and each target's aspect ratio, safe areas, captions and duration requirements are met. Shared openings and bodies are allowed.
+
+For distinct cuts, run these on every pair in the batch. N cuts means N*(N-1)/2 pairs; for large
 batches, at minimum check every cut against the cut it most resembles.
 
-For each pair, verify:
+Use the following as editorial planning targets, subject to the approved matrix:
 
 1. **Opening** — no shared source frames in the first 3 seconds.
-2. **Overlap budget** — shared source seconds divided by the shorter cut's duration stays under **40%**. Above that, the pair is a near-duplicate.
+2. **Overlap budget** — target shared source seconds divided by the shorter cut's duration under **40%**. Higher overlap needs review against the agreed contract; it is not a platform classification.
 3. **Order signature** — the first 5 shots differ in at least 2 adjacent pairs.
 4. **Rhythm** — average shot length differs by 1.5x, or the shape inverts.
 5. **Duration** — differs by at least 15%, unless the platform fixes length.
 
-Record the result as a similarity verdict: `distinct`, `borderline`, or
-`near-duplicate`.
+Record the distinct-cut result as an editorial similarity verdict: `distinct`, `borderline`, or `near-duplicate`. For the other modes, report `controlled-hook-test` or `platform-adaptation` and whether its contract passed; do not apply the distinct-cut thresholds.
 
 ## 3. What to do with each verdict
 

@@ -23,13 +23,13 @@ Tell the user when you switch, and say why.
 
 1. Read the project state before editing. Inventory the source pool: clip count, usable duration, aspect ratio, visual subjects, motion/energy, audio quality, and duplicates.
 2. Confirm the batch is real: the user wants more than one finished cut, and the pool can support it. A pool that only supports one honest cut should be reported as such rather than padded into N near-duplicates.
-3. Fix the batch contract before cutting — count, target duration, platform, audience, language, and whether cuts share a music bed or get distinct beds. If more than one is missing, ask in one `<widget>` after loading `widget-forms`.
-4. Score every source asset for reuse headroom before planning. See [references/variation-matrix.md](references/variation-matrix.md). Assets that only work in one position (a logo end card, a single spoken punchline) are single-use; do not plan three variants that all depend on them.
-5. Build the **variation matrix** before editing: for each planned cut, assign a distinct hook asset, a distinct shot order, a distinct rhythm shape, and a distinct packaging treatment. See [references/variation-matrix.md](references/variation-matrix.md).
+3. Fix the batch contract before cutting — mode (distinct cuts, controlled hook test, or platform adaptations), count, target duration, platform, audience, language, and music bed. If more than one is missing, ask in one `<widget>` after loading `widget-forms`.
+4. Score every source asset for reuse headroom before planning. See [references/variation-matrix.md](references/variation-matrix.md). Reserve distinct hooks where the mode requires them; shared end cards and intentional shared bodies are allowed.
+5. Build the **variation matrix** before editing. For distinct cuts, plan different hooks and structural changes. For controlled hook tests, change only the hook and keep the body fixed. For platform adaptations, retain the approved content and adapt presentation. See [references/variation-matrix.md](references/variation-matrix.md).
 6. Plan the dedup budget with [references/dedup-rules.md](references/dedup-rules.md). Decide up front which dimensions carry the differentiation, and record the minimum separation each pair of cuts must clear.
 7. Get the matrix approved before cutting the whole batch. Show the plan as a table: cut number, hook, order signature, rhythm, duration, packaging, and the dimension that makes it different from every other cut in the batch.
 8. Cut the first variant end to end and verify it renders and exports before batching the rest. Do not generate eight timelines that share one unverified mistake.
-9. Cut remaining variants from the approved matrix. Reuse picks and trims where genuinely appropriate; never reuse the same opening three seconds.
+9. Cut remaining variants from the approved matrix. Reuse picks and trims according to the approved mode; distinct cuts and hook tests need different openings, while platform adaptations may share them.
 10. Name timelines so the batch is auditable: `<topic>-v<NN>-<hook-label>`, consistent across the batch.
 11. QA each cut individually **and** the batch as a set. See [references/dedup-rules.md](references/dedup-rules.md) for the pairwise checks.
 12. Report per-cut timeline names, durations, the differentiation dimension for each, and which pair is the most similar — that is the pair the user should review first.
@@ -50,8 +50,8 @@ Present the batch as one table, not prose:
 
 ## Rules
 
-- Every cut needs a different opening three seconds. This is the single most important rule; if two cuts share an opening, they are not distinct variants.
-- Differentiate on **structure** before decoration. Changing only captions, color, or music produces variants that platforms and viewers treat as duplicates.
+- Distinct cuts and hook tests need different opening three seconds. Platform adaptations may share an opening and must be labeled as adaptations, not distinct edits.
+- For distinct cuts, differentiate on **structure** before decoration. Styling changes alone do not establish structural differentiation; these checks do not guarantee a platform's duplicate-detection outcome.
 - Do not pad a thin pool into N cuts. Report the honest maximum and ask.
 - Do not reuse a single-use asset as the hook of more than one cut.
 - Keep one variable dominant per cut. When everything differs slightly, nothing reads as different.
