@@ -43,4 +43,4 @@ with a different proof, which is also how you A/B test what actually converts.
 - Proof is a block of three-plus clips with no interrupt between them.
 - The only proof is generic praise with no specifics.
 - The CTA contradicts the proof (proof says "results vary," CTA says "guaranteed").
-- Offer text appears nowhere on screen, only in voiceover no one replays.
+- Offer text appears nowhere on screen, only in spoken audio no one replays.
