@@ -110,6 +110,7 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
       'search_media', 'manage_media_pool', 'download_media', 'push_asset', 'import_url_asset',
       'search_stock_media', 'edit_asset', 'import_media', 'finalize_uploaded_asset',
       'request_asset_download', 'probe_media',
+      'browse_local_media', 'import_asset', 'import_assets', 'import_folder',
     ],
   },
   {
