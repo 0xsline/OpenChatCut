@@ -2,7 +2,8 @@ import { startUiLocaleSync } from '../i18n/localeSync';
 import { useCallback, useEffect, useState } from 'react';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../agent/capabilities';
 import { fetchCodexModels, fetchCodexStatus } from '../agent/codex/client';
-import { applyAgentModelStatus, applyCodexAgentStatus, selectAgentModel, getActiveAgentModelChoice, getAgentModelSnapshot } from '../agent/model-selection';
+import { fetchCopilotModels, fetchCopilotStatus } from '../agent/copilot/client';
+import { applyAgentModelStatus, applyCodexAgentStatus, applyCopilotAgentStatus, selectAgentModel, getActiveAgentModelChoice, getAgentModelSnapshot } from '../agent/model-selection';
 import { loadAgentModelPref } from '../persist/sessionPrefs';
 import type { ProjectDoc, TimelineState } from '../editor/types';
 import {
@@ -46,7 +47,26 @@ export function navigateTo(hash: string): void {
   window.location.hash = hash;
 }
 
-async function syncAgentBackends(isActive: () => boolean): Promise<void> {
+async function syncCopilotBackend(
+  isActive: () => boolean,
+  savedModel?: string,
+  savedReasoningEffort?: string,
+): Promise<void> {
+  try {
+    const status = await fetchCopilotStatus();
+    if (!isActive()) return;
+    const models = status.installed && status.supported && status.authenticated
+      ? await fetchCopilotModels().catch(() => null)
+      : null;
+    if (isActive()) applyCopilotAgentStatus(
+      status, savedModel, savedReasoningEffort, models && !models.error ? models.models : [],
+    );
+  } catch {
+    // An optional backend must not prevent configured API/Codex models from loading.
+  }
+}
+
+export async function syncAgentBackends(isActive: () => boolean): Promise<void> {
   const [keyResult, codexResult] = await Promise.allSettled([
     fetch('/api/keys').then(async (response): Promise<LiveAgentStatus> => {
       if (!response.ok) throw new Error('Agent key status is unavailable.');
@@ -66,6 +86,9 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
       applyAgentModelStatus(keys ?? {}, models);
       savedCodexModel = models.CODEX_MODEL;
       savedCodexReasoningEffort = models.CODEX_REASONING_EFFORT;
+      if (models.COPILOT_MODEL || loadAgentModelPref()?.startsWith('copilot:')) {
+        void syncCopilotBackend(isActive, models.COPILOT_MODEL, models.COPILOT_REASONING_EFFORT);
+      }
     }
     startUiLocaleSync(models?.UI_LOCALE);
   }

@@ -68,6 +68,28 @@ const CODEX_PAGE: SettingsVendorPage = {
   ],
 };
 
+const COPILOT_PAGE: SettingsVendorPage = {
+  key: 'llm/copilot',
+  vendor: 'copilot',
+  title: 'GitHub Copilot',
+  connection: 'copilot',
+  note: '使用 GitHub Copilot 订阅：官方 Copilot CLI 管理登录与凭据（终端运行 copilot login），'
+    + 'OpenChatCut 通过 Copilot SDK 直接驱动编辑工具，不会读取或显示凭据。'
+    + '会话状态隔离在 ~/.openchatcut/copilot，不影响你自己的 ~/.copilot。',
+  fields: [
+    {
+      name: 'COPILOT_MODEL', label: 'Copilot 模型', kind: 'text',
+      defaultLabel: 'Copilot 默认模型', discoverableModel: true,
+      note: '登录后可读取当前订阅可用的模型，也可以手动填写模型 ID。仅支持工具调用的模型可用于编辑。',
+    },
+    {
+      name: 'COPILOT_REASONING_EFFORT', label: '推理强度', kind: 'select',
+      options: [{ value: '', label: '模型默认' }],
+      note: '读取模型后显示当前模型支持的档位；留空使用该模型的默认值。',
+    },
+  ],
+};
+
 const XAI_OAUTH_PAGE: SettingsVendorPage = {
   key: 'llm/xai-oauth', vendor: 'xai-oauth', title: 'xAI · Grok (订阅登录)',
   connection: 'xai-oauth',
@@ -83,7 +105,7 @@ const XAI_OAUTH_PAGE: SettingsVendorPage = {
 const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.flatMap((preset) => {
   if (preset.id === 'xai-oauth') return [XAI_OAUTH_PAGE];
   const page = llmPage(preset);
-  return preset.id === 'openai' ? [page, CODEX_PAGE] : [page];
+  return preset.id === 'openai' ? [page, CODEX_PAGE, COPILOT_PAGE] : [page];
 });
 
 const VISION_PAGE: SettingsVendorPage = {

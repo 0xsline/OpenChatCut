@@ -5,7 +5,8 @@ import {
 } from '../../shared/llm-providers';
 import { resolveLlmProviderConfig } from '../llm-config';
 import { getKey, type KeyName } from '../keystore';
-import type { ServerRunInput } from './executor';
+import { copilotProviderForModel } from '../../shared/model-capabilities';
+import { serverRunBackend, type ServerRunInput } from './executor';
 import type { ValidatedCreateInput } from './request';
 import { digestValue } from './store-values';
 import { resolveServerRunToolCatalog } from './tool-policy';
@@ -18,14 +19,17 @@ export function resolveRunExecution(
 ): ServerRunInput {
   const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
   const requestedModel = input.model;
-  const backend = body.backend === 'codex' ? 'codex' : 'api';
+  const backend = serverRunBackend(body.backend);
   const readKey = (name: string): string => getKey(name as KeyName);
-  const codexBackend = backend === 'codex';
-  const config = codexBackend
+  const config = backend === 'codex'
     ? { provider: 'openai', model: '' }
-    : resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
+    : backend === 'copilot'
+      ? { provider: copilotProviderForModel(requestedModel), model: '' }
+      : resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
   const effectiveProvider = normalizeLlmProvider(config.provider);
-  const effectiveModel = requestedModel || config.model || defaultModelForProvider(effectiveProvider);
+  const effectiveModel = backend === 'copilot'
+    ? requestedModel
+    : requestedModel || config.model || defaultModelForProvider(effectiveProvider);
   const openAiApiMode = normalizeOpenAiApiMode(body.openAiApiMode);
   const tools = resolveServerRunToolCatalog(input.tools, askOnly);
   return {
@@ -33,6 +37,9 @@ export function resolveRunExecution(
     backend,
     provider: effectiveProvider,
     model: effectiveModel,
+    ...(backend === 'copilot' && typeof body.reasoningEffort === 'string'
+      && /^[A-Za-z0-9_-]{1,64}$/.test(body.reasoningEffort)
+      ? { reasoningEffort: body.reasoningEffort } : {}),
     openAiApiMode,
     cacheMode: input.cacheMode,
     maxOutputTokens: input.maxOutputTokens,
@@ -63,6 +70,8 @@ export function runRequestDigests(
       context: input.context,
       provider: execution.provider,
       model: execution.model,
+      ...(execution.backend === 'copilot'
+        ? { backend: execution.backend, reasoningEffort: execution.reasoningEffort ?? null } : {}),
       openAiApiMode: execution.openAiApiMode,
       cacheMode: execution.cacheMode,
       maxOutputTokens: execution.maxOutputTokens,

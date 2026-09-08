@@ -103,6 +103,8 @@ export default {
     'node_modules/@remotion/compositor-*/**',
     'node_modules/onnxruntime-node/**',
     'node_modules/sqlite-vec-*/**',
+    'node_modules/@github/copilot-*/**',
+    'node_modules/koffi/**',
   ],
   extraResources: [
     // Exclude media/uploads because Vite copies all of public/ into dist, which would embed gigabytes of user assets.

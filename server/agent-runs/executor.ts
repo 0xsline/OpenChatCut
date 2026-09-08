@@ -12,7 +12,9 @@ import {
 import {
   MODEL_CAPABILITY_OVERRIDES_KEY,
   parseModelCapabilityOverrides,
+  resolveCopilotModelCapabilities,
   resolveModelCapabilities,
+  type ModelBackend,
   type ModelCapabilities,
 } from '../../shared/model-capabilities';
 import { getKey } from '../keystore';
@@ -75,6 +77,7 @@ export interface ServerRunInput {
   readonly backend?: string;
   readonly provider: string;
   readonly model: string;
+  readonly reasoningEffort?: string | null;
   readonly openAiApiMode: OpenAiApiMode;
   readonly cacheMode: 'short' | 'long';
   readonly maxOutputTokens: number;
@@ -83,6 +86,11 @@ export interface ServerRunInput {
   readonly origin: string;
   readonly tools: readonly AgentToolSchema[];
   readonly instructions?: string;
+}
+
+/** Narrow a persisted or request-supplied backend string to the known set. */
+export function serverRunBackend(value: unknown): ModelBackend {
+  return value === 'codex' || value === 'copilot' ? value : 'api';
 }
 
 type ServerTurnInput = Omit<ServerContextInput, 'schemas'> & {
@@ -214,7 +222,7 @@ async function runServerTurnOnce(
  */
 export function resolveServerRunCapabilities(
   provider: LlmProvider,
-  backend: 'codex' | 'api',
+  backend: ModelBackend,
   modelId: string,
 ): ModelCapabilities {
   return resolveModelCapabilities(
@@ -223,12 +231,40 @@ export function resolveServerRunCapabilities(
   );
 }
 
-function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
+/**
+ * Copilot publishes exact per-model limits, so prefer them over the bundled
+ * catalog; fall back to the catalog path when the runtime is unreachable.
+ */
+async function resolveCopilotRunCapabilities(
+  provider: LlmProvider,
+  modelId: string,
+): Promise<ModelCapabilities> {
+  const overrides = parseModelCapabilityOverrides(getKey(MODEL_CAPABILITY_OVERRIDES_KEY));
+  const facts = await (await import('../copilot/client')).copilotModelFacts(modelId)
+    .catch(() => null);
+  if (!facts) return resolveServerRunCapabilities(provider, 'copilot', modelId);
+  return resolveCopilotModelCapabilities(
+    { backend: 'copilot', provider, modelId },
+    {
+      contextWindowTokens: facts.contextWindowTokens,
+      maxInputTokens: facts.maxInputTokens,
+      maxOutputTokens: facts.maxOutputTokens,
+      supportsTools: facts.supportsTools,
+      supportsVision: facts.supportsVision,
+      reasoningEfforts: facts.supportedReasoningEfforts,
+    },
+    overrides,
+  );
+}
+
+async function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   const provider = normalizeLlmProvider(input.provider);
   const apiMode = normalizeOpenAiApiMode(input.openAiApiMode);
-  const backend = input.backend === 'codex' ? 'codex' : 'api';
+  const backend = serverRunBackend(input.backend);
   const requested = resolveServerRunToolCatalog(input.tools, run.askOnly);
-  const capabilities = resolveServerRunCapabilities(provider, backend, input.model);
+  const capabilities = backend === 'copilot'
+    ? await resolveCopilotRunCapabilities(provider, input.model)
+    : resolveServerRunCapabilities(provider, backend, input.model);
   const basePrompt = buildServerRunPrompt({
     ...input,
     projectId: run.projectId,
@@ -276,7 +312,7 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
     maxInputTokens,
     activation,
     prompt,
-    model: backend === 'codex'
+    model: backend === 'codex' || backend === 'copilot'
       ? undefined
       : createServerLanguageModel(
           provider,
@@ -292,46 +328,53 @@ async function executeRunTurns(
   input: ServerRunInput,
   signal: AbortSignal,
 ): Promise<void> {
-  const plan = createExecutionPlan(run, input);
+  const plan = await createExecutionPlan(run, input);
   let messages = plan.prompt.messages;
   // No turn cap: the model decides when the task is done. The only automatic
   // stop beside "no more tool calls" is an output-token cutoff, which would
   // otherwise feed truncated text back into the loop.
   for (let turn = 0; ; turn += 1) {
+    const subprocessTurnInput = {
+      run,
+      messages,
+      instructions: plan.prompt.instructions,
+      schemas: plan.activation.current.schemas(),
+      model: input.model,
+      askOnly: run.askOnly,
+      projectId: run.projectId,
+      maxInputTokens: plan.maxInputTokens,
+      maxOutputTokens: plan.maxOutputTokens,
+      contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+      contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+      signal,
+      activation: plan.activation,
+      requestIndex: turn + 1,
+    };
     const outcome = await runServerTurnWithRetry(run, turn + 1, signal, () =>
       plan.backend === 'codex'
-        ? (async () => (await import('./codex-turn')).executeServerCodexTurn({
-          run,
-          messages,
-          instructions: plan.prompt.instructions,
-          schemas: plan.activation.current.schemas(),
-          model: input.model,
-          askOnly: run.askOnly,
-          projectId: run.projectId,
-          maxInputTokens: plan.maxInputTokens,
-          maxOutputTokens: plan.maxOutputTokens,
-          contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-          contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-          signal,
-          activation: plan.activation,
-          requestIndex: turn + 1,
-        }))()
-        : executeServerTurn({
-          run,
-          messages,
-          instructions: plan.prompt.instructions,
-          model: plan.model!,
-          provider: plan.provider,
-          apiMode: plan.apiMode,
-          cacheMode: input.cacheMode,
-          contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-          contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-          maxInputTokens: plan.maxInputTokens,
-          maxOutputTokens: plan.maxOutputTokens,
-          signal,
-          activation: plan.activation,
-          requestIndex: turn + 1,
-        }),
+        ? (async () => (await import('./codex-turn'))
+          .executeServerCodexTurn(subprocessTurnInput))()
+        : plan.backend === 'copilot'
+          ? (async () => (await import('./copilot-turn')).executeServerCopilotTurn({
+            ...subprocessTurnInput,
+            reasoningEffort: input.reasoningEffort ?? null,
+          }))()
+          : executeServerTurn({
+            run,
+            messages,
+            instructions: plan.prompt.instructions,
+            model: plan.model!,
+            provider: plan.provider,
+            apiMode: plan.apiMode,
+            cacheMode: input.cacheMode,
+            contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+            contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+            maxInputTokens: plan.maxInputTokens,
+            maxOutputTokens: plan.maxOutputTokens,
+            signal,
+            activation: plan.activation,
+            requestIndex: turn + 1,
+          }),
     );
     if (outcome.followupText) {
       if (plan.activation.acceptance.phase === 'checking') {

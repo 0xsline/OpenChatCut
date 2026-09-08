@@ -45,6 +45,7 @@ import { skillInstallPlugin } from "./skill-install.ts";
 import { skillExecPlugin } from "./skill-exec.ts";
 import { externalAgentPlugin } from "./external-agent.ts";
 import { codexAgentPlugin } from "./codex-agent.ts";
+import { copilotAgentPlugin } from "./copilot-agent.ts";
 import { xaiOauthPlugin } from "./xai-oauth.ts";
 import { llmProxyPlugin } from "./llm-proxy.ts";
 import { agentRunsPlugin } from "../agent-runs/routes.ts";
@@ -75,6 +76,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     extensionStorePlugin(),
     externalAgentPlugin(),
     codexAgentPlugin(),
+    copilotAgentPlugin(),
     settingsPlugin(),
     exportStagePlugin(),
     exportPlugin(),

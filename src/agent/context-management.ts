@@ -70,11 +70,13 @@ export function contextWindowForPreparation(
   previous?: AgentContextUsage,
 ): { readonly tokens: number; readonly estimated: boolean } {
   const resolved = choice.capabilities.contextWindowTokens;
-  const reportedCodexWindow = choice.backend === 'codex'
+  // Codex and Copilot both report the model's real context window with their
+  // usage events, so a measured value outranks the catalog estimate.
+  const reportedRuntimeWindow = (choice.backend === 'codex' || choice.backend === 'copilot')
     && resolved.source !== 'settings-override'
     && previous?.modelId === choice.id
     && previous.contextWindowEstimated === false;
-  return reportedCodexWindow
+  return reportedRuntimeWindow
     ? { tokens: previous.contextWindowTokens, estimated: false }
     : { tokens: resolved.value, estimated: resolved.estimated };
 }
@@ -90,9 +92,15 @@ async function summarizeForPreparation(
     contextWindowTokens,
     maxInputTokens,
     maxOutputTokens,
-    (prompt, outputTokens) => options.choice.backend === 'codex'
-      ? summarizeWithCodex(prompt, outputTokens, options)
-      : summarizeWithApi(prompt, outputTokens, options.choice, options.signal),
+    (prompt, outputTokens) => {
+      if (options.choice.backend === 'copilot') {
+        // The browser loop has no Copilot turn runner; server runs own that path.
+        throw new Error('Copilot summarization runs server-side only.');
+      }
+      return options.choice.backend === 'codex'
+        ? summarizeWithCodex(prompt, outputTokens, options)
+        : summarizeWithApi(prompt, outputTokens, options.choice, options.signal);
+    },
   );
   return summary;
 }

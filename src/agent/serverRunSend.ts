@@ -109,8 +109,8 @@ async function prepareServerRunPayload(
     || !trimmed
     || refs.running.current) return null;
   const choice = getActiveAgentModelChoice();
-  if (!choice || (choice.backend !== 'api' && choice.backend !== 'codex')) {
-    environment.appendMessage({ role: 'error', text: '服务端运行仅支持已配置的 API / Codex 模型。' });
+  if (!choice || (choice.backend !== 'api' && choice.backend !== 'codex' && choice.backend !== 'copilot')) {
+    environment.appendMessage({ role: 'error', text: '服务端运行仅支持已配置的 API / Codex / Copilot 模型。' });
     return null;
   }
   return buildPreparedServerRun({

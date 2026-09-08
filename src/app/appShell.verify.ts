@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { loadInitialProjects, type ProjectStartupSource } from './appShell';
+import { loadInitialProjects, syncAgentBackends, type ProjectStartupSource } from './appShell';
+import { getActiveAgentModelChoice } from '../agent/model-selection';
 import type { ProjectMeta } from '../persist/projectStoreCoordinators';
 import { syncDesktopNativeInferenceEnabled } from '../transcript/desktop-inference-preference';
 
@@ -87,4 +88,38 @@ try {
   }
 }
 
-console.log('appShell.verify: project startup authority semantics passed');
+const originalFetch = globalThis.fetch;
+const pendingCopilot = Promise.withResolvers<Response>();
+const requestedPaths: string[] = [];
+let copilotSaved = '';
+let startupTimeout: ReturnType<typeof setTimeout> | undefined;
+try {
+  globalThis.fetch = async (input) => {
+    const path = String(input);
+    requestedPaths.push(path);
+    if (path === '/api/copilot/status') return pendingCopilot.promise;
+    return Response.json(path === '/api/codex/status' ? { installed: false } : {
+      keys: { LLM_OPENAI_API_KEY: { configured: true } },
+      models: { LLM_PROVIDER: 'openai', LLM_OPENAI_MODEL: 'gpt-5.5', COPILOT_MODEL: copilotSaved },
+    });
+  };
+  await syncAgentBackends(() => true);
+  assert.equal(requestedPaths.includes('/api/copilot/status'), false,
+    'an unconfigured optional backend must not start on app launch');
+  copilotSaved = 'auto';
+  await Promise.race([
+    syncAgentBackends(() => true),
+    new Promise<never>((_, reject) => {
+      startupTimeout = setTimeout(() => reject(new Error('API startup waited for Copilot')), 500);
+    }),
+  ]);
+  assert.equal(requestedPaths.includes('/api/copilot/status'), true);
+  assert.equal(getActiveAgentModelChoice()?.backend, 'api',
+    'configured API models are usable while a Copilot status request remains unresolved');
+} finally {
+  clearTimeout(startupTimeout);
+  pendingCopilot.resolve(Response.json({ installed: false }));
+  globalThis.fetch = originalFetch;
+}
+
+console.log('appShell.verify: project startup and optional-backend isolation passed');

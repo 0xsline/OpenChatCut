@@ -106,7 +106,7 @@ export interface ServerRunController {
   readonly stop: () => void;
 }
 
-export type ServerRunBackend = 'api' | 'codex';
+export type ServerRunBackend = 'api' | 'codex' | 'copilot';
 
 export interface ServerRunPayload {
   readonly projectId: string;
@@ -120,6 +120,7 @@ export interface ServerRunPayload {
   readonly provider?: string;
   readonly model?: string;
   readonly backend?: ServerRunBackend;
+  readonly reasoningEffort?: string;
   readonly cacheMode: AgentCacheMode;
   readonly maxOutputTokens: number;
   readonly autonomousAcceptance: boolean;
@@ -134,6 +135,7 @@ interface ServerRunTransportContext {
   readonly provider?: string;
   readonly model?: string;
   readonly backend?: ServerRunBackend;
+  readonly reasoningEffort?: string;
   readonly cacheMode: AgentCacheMode;
   readonly maxOutputTokens: number;
   readonly autonomousAcceptance?: boolean;
@@ -316,6 +318,7 @@ export function buildServerRunPayload(
     ...(transport.provider ? { provider: transport.provider } : {}),
     ...(transport.model ? { model: transport.model } : {}),
     ...(transport.backend ? { backend: transport.backend } : {}),
+    ...(transport.reasoningEffort ? { reasoningEffort: transport.reasoningEffort } : {}),
     cacheMode: transport.cacheMode,
     maxOutputTokens: transport.maxOutputTokens,
     autonomousAcceptance: transport.autonomousAcceptance === true,

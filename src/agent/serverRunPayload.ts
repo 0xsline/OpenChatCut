@@ -61,6 +61,8 @@ export async function buildPreparedServerRun(input: PrepareServerRunInput): Prom
     provider: choice.provider,
     model: choice.model,
     backend: choice.backend,
+    ...(choice.backend === 'copilot' && choice.reasoningEffort
+      ? { reasoningEffort: choice.reasoningEffort } : {}),
     cacheMode: settings.cacheMode,
     autonomousAcceptance: settings.autonomousAcceptance,
     maxAcceptanceIterations: settings.maxAcceptanceIterations,
