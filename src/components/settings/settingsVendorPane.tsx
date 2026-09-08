@@ -7,12 +7,12 @@ import { Icon } from '../icons';
 import { CodexAccountCard } from './CodexAccountCard';
 import type { CodexAgentModel } from '../../../shared/codex-agent';
 import type { CodexSettingsController } from './useCodexSettings';
-import type { CopilotAgentModel } from '../../../shared/copilot-agent';
+import { copilotReasoningOptions } from './copilotReasoning';
 import type { CopilotSettingsController } from './useCopilotSettings';
 import { shouldRenderModelPicker } from './codexReasoning';
 import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
-import { MODEL_CAPABILITY_OVERRIDES_KEY, copilotProviderForModel } from '../../../shared/model-capabilities';
-import { CopilotAccountCard } from './CopilotAccountCard';
+import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
+import { CopilotVendorPane } from './CopilotVendorPane';
 import { ModelCapabilityEditor } from './ModelCapabilityEditor';
 import { XaiOauthVendorPane } from './XaiOauthVendorPane';
 import { VisionModelPane } from './VisionModelPane';
@@ -67,7 +67,12 @@ export function VendorPane({ page, hint, ctx }: {
 }) {
   const t = useT();
   if (page.connection === 'codex') return <CodexVendorPane page={page} hint={hint} ctx={ctx} />;
-  if (page.connection === 'copilot') return <CopilotVendorPane page={page} hint={hint} ctx={ctx} />;
+  if (page.connection === 'copilot') return (
+    <CopilotVendorPane page={page} hint={hint} ctx={ctx} rawOverrides={capabilityOverridesValue(ctx)}
+      onOverridesChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)}>
+      {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
+    </CopilotVendorPane>
+  );
   if (page.connection === 'xai-oauth') return <XaiOauthVendorPane page={page} hint={hint} ctx={ctx} />;
   if (page.key === 'llm/vision') return <VisionModelPane />;
   if (page.kind === 'local-models') return <LocalModelsPane page={page} fields={page.fields} ctx={ctx} />;
@@ -133,51 +138,6 @@ function CodexVendorPane({ page, hint, ctx }: {
         </div>
         {capabilityModelId && (
           <ModelCapabilityEditor backend="codex" provider="openai"
-            modelId={capabilityModelId}
-            rawOverrides={capabilityOverridesValue(ctx)}
-            onChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)} />
-        )}
-      </section>
-    </div>
-  );
-}
-
-function CopilotVendorPane({ page, hint, ctx }: {
-  page: SettingsVendorPage; hint: string; ctx: FieldCtx;
-}) {
-  const t = useT();
-  const status = ctx.copilot.status;
-  const statusLabel = !status ? t('状态未知')
-    : !status.installed ? t('CLI 未安装')
-      : !status.supported ? t('版本过低')
-        : status.authenticated ? t('已登录')
-          : status.error || ctx.copilot.error ? t('连接异常') : t('未登录');
-  const on = vendorConfigured(ctx.status, page, ctx.codex.status, status);
-  const capabilityModelId = (ctx.values.COPILOT_MODEL ?? modelValue(ctx.status, 'COPILOT_MODEL'))
-    || ctx.copilot.models.find((model) => model.isDefault)?.id
-    || '';
-  const capabilityProvider = capabilityModelId
-    ? copilotProviderForModel(capabilityModelId)
-    : 'openai';
-  return (
-    <div style={pane}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <VendorIcon vendor={page.vendor} size={18} />
-          <b style={{ fontSize: 13 }}>{t(page.title)}</b>
-          <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{statusLabel}</span>
-        </div>
-        <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 3, paddingLeft: 26 }}>{t(hint)}</div>
-      </div>
-      <CopilotAccountCard controller={ctx.copilot} />
-      <section style={fieldCardBox}>
-        {page.note && <div style={pageNote}>{t(page.note)}</div>}
-        {page.noteAction && <SettingsNoteAction config={page.noteAction} />}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
-          {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
-        </div>
-        {capabilityModelId && (
-          <ModelCapabilityEditor backend="copilot" provider={capabilityProvider}
             modelId={capabilityModelId}
             rawOverrides={capabilityOverridesValue(ctx)}
             onChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)} />
@@ -317,21 +277,6 @@ function codexReasoningOptions(
   ];
 }
 
-
-function selectedCopilotModel(ctx: FieldCtx): CopilotAgentModel | undefined {
-  const selectedId = ctx.values.COPILOT_MODEL ?? modelValue(ctx.status, 'COPILOT_MODEL');
-  return ctx.copilot.models.find((model) => model.id === selectedId)
-    ?? (selectedId ? undefined : ctx.copilot.models.find((model) => model.isDefault));
-}
-
-/** Copilot reports a flat list of supported efforts and no per-model default. */
-function copilotReasoningOptions(ctx: FieldCtx, defaultLabel: string): readonly SelectOption[] {
-  const model = selectedCopilotModel(ctx);
-  return [
-    { value: '', label: defaultLabel },
-    ...(model?.supportedReasoningEfforts.map((effort) => ({ value: effort, label: effort })) ?? []),
-  ];
-}
 
 export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }) {
   const t = useT();
