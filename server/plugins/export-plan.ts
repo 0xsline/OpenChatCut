@@ -190,10 +190,8 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     frameRange,
     totalFrames: frames,
     filename: exportFilename(body?.name, media.ext),
-    // A retime pass keeps the frame count and changes the container fps, so
-    // the produced file's duration follows the OUTPUT fps. Reporting the
-    // timeline fps here made every resampled export fail its own duration QA.
-    durationSeconds: frames / (retimeFps ?? fps),
+    // The fps filter drops or duplicates frames while preserving duration.
+    durationSeconds: frames / fps,
     scale: exportScale(state, body?.resolution),
     retimeFps,
     videoBitrate: format === 'video' && codec !== 'prores' ? body?.videoBitrate : undefined,

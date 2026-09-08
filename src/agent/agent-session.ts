@@ -12,7 +12,8 @@ export interface AgentRetry extends AgentRetryOptions {
 }
 
 export interface DisplayMessage {
-  role: 'user' | 'assistant' | 'tool' | 'error' | 'continue';
+  /** `note`: a muted system line (e.g. which tool calls failed in a completed run); never sent to the model. */
+  role: 'user' | 'assistant' | 'tool' | 'error' | 'continue' | 'note';
   text: string;
   thinking?: string;
   retry?: AgentRetry;

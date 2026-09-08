@@ -44,4 +44,20 @@ for (let index = 0; index < 25; index += 1) {
 }
 assert.equal(capped.length, 20);
 
+// A session extended by later landings keeps its identity and rollback target, grows its
+// operations, and only the latest document can roll it back.
+{
+  const { extendAgentChangeSession, canRollbackAgentChange } = await import('./changeLog');
+  const first = createAgentChangeSession('素材入池', [{ action: 'download_media', target: 'a.mp4', impact: 'asset' }], session.beforeDoc, session.beforeDoc);
+  const grown = { ...session.beforeDoc, activeTimelineId: `${session.beforeDoc.activeTimelineId}-grown` };
+  const extended = extendAgentChangeSession(first, [{ action: 'download_media', target: 'b.mp4', impact: 'asset' }], grown);
+  assert.equal(extended.id, first.id, 'the session keeps its id');
+  assert.equal(extended.createdAt, first.createdAt);
+  assert.equal(extended.beforeDoc, first.beforeDoc, 'the rollback target is the document before the first landing');
+  assert.deepEqual(extended.operations.map((operation) => operation.target), ['a.mp4', 'b.mp4']);
+  assert.equal(canRollbackAgentChange(extended, grown), true, 'the latest landing is what rolls back');
+  assert.equal(canRollbackAgentChange(extended, session.beforeDoc), false, 'an older document no longer matches');
+  assert.equal(first.operations.length, 1, 'the original session is untouched');
+}
+
 console.log('changeLog.verify: ok');

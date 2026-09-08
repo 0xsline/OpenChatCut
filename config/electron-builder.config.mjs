@@ -5,9 +5,12 @@
 // - files includes only the main-process bundle; electron-builder collects production node_modules automatically.
 //   @remotion/renderer is required at runtime, while @remotion/bundler is used only during prebuild.
 //   Keep only the CC_EB_TARGET compositor package because each one is about 180 MB.
-// - asar stays disabled because @remotion/renderer chmods and spawns the compositor at its resolved path.
-//   Even when unpacked, an asar path still points inside the archive and chmod fails with ENOTDIR.
-//   Expanding real files avoids that failure at the cost of extra small-file I/O during startup.
+// - The app ships as an asar archive (one file to map instead of tens of thousands of small
+//   files at startup). Anything that must be spawned or dlopen'ed stays a real file via
+//   asarUnpack, and code resolves it through server/media-binaries.ts unpackedPath(). The
+//   Remotion compositor is the exception: @remotion/renderer chmods and spawns it at the path
+//   it resolved, which names the archive even when unpacked, so desktop/remotion-binaries.ts
+//   mirrors it into userData and CC_REMOTION_BINARIES_DIR points the renderer there.
 // - dist and the prebuilt Remotion bundle use extraResources. prepare-target populates the
 //   chrome-headless-shell staging directory, main.ts locates it through process.resourcesPath,
 //   and the bundle is copied into writable userData on first launch.
@@ -70,7 +73,7 @@ export default {
   // 7z LZMA maximum compression for the distributable installers (dmg/zip/nsis/AppImage).
   // Trade-off: noticeably slower packaging time in exchange for a smaller final download.
   // The app.asar content itself is handled by the `compression` setting; native binaries
-  // (onnxruntime-node, ffmpeg-static, @remotion/compositor) remain unpacked per their filters.
+  // (onnxruntime-node, ffmpeg-static, @remotion/compositor, sqlite-vec) stay unpacked per asarUnpack.
   compression: 'maximum',
   publish: [{
     provider: 'github',
@@ -90,7 +93,17 @@ export default {
     // sqlite-vec (semantic vectors): ship only the target platform's vec0 extension.
     ...sqliteVecFilters,
   ],
-  asar: false,
+  asar: true,
+  // Real files next to the archive (app.asar.unpacked): executables and shared libraries
+  // that a child process or SQLite must open by path. Node's own require of a .node binding
+  // is redirected here by Electron; spawn/dlopen paths go through unpackedPath().
+  asarUnpack: [
+    'node_modules/ffmpeg-static/**',
+    'node_modules/@ffprobe-installer/**',
+    'node_modules/@remotion/compositor-*/**',
+    'node_modules/onnxruntime-node/**',
+    'node_modules/sqlite-vec-*/**',
+  ],
   extraResources: [
     // Exclude media/uploads because Vite copies all of public/ into dist, which would embed gigabytes of user assets.
     // uploadsMiddleware serves /media/uploads directly from the asset directory (userData in packaged builds),

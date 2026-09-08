@@ -1,10 +1,29 @@
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 
 const require = createRequire(import.meta.url);
 const ffmpegStatic = require('ffmpeg-static') as string | null;
 const ffprobeInstaller = require('@ffprobe-installer/ffprobe') as { path?: string };
+
+const ASAR_SEGMENT = `${sep}app.asar${sep}`;
+const UNPACKED_SEGMENT = `${sep}app.asar.unpacked${sep}`;
+
+/**
+ * The on-disk twin of a path inside the packaged app archive.
+ *
+ * Electron's fs shim reads files inside app.asar transparently, but nothing can be
+ * executed or dlopen'ed from there: spawn needs a real file. electron-builder keeps the
+ * modules listed in asarUnpack as real files under app.asar.unpacked with the same
+ * layout, so a resolved path is rewritten to that twin when it exists. Dev builds and
+ * paths outside the archive come back unchanged.
+ */
+export function unpackedPath(path: string): string {
+  const index = path.indexOf(ASAR_SEGMENT);
+  if (index < 0) return path;
+  const twin = `${path.slice(0, index)}${UNPACKED_SEGMENT}${path.slice(index + ASAR_SEGMENT.length)}`;
+  return existsSync(twin) ? twin : path;
+}
 
 /**
  * Prefer explicit overrides for developers who need a custom FFmpeg build.
@@ -14,14 +33,14 @@ const ffprobeInstaller = require('@ffprobe-installer/ffprobe') as { path?: strin
 export function ffmpegBin(): string {
   return process.env.OPENCHATCUT_FFMPEG
     ?? process.env.FFMPEG_PATH
-    ?? ffmpegStatic
+    ?? (ffmpegStatic ? unpackedPath(ffmpegStatic) : null)
     ?? 'ffmpeg';
 }
 
 export function ffprobeBin(): string {
   return process.env.OPENCHATCUT_FFPROBE
     ?? process.env.FFPROBE_PATH
-    ?? ffprobeInstaller.path
+    ?? (ffprobeInstaller.path ? unpackedPath(ffprobeInstaller.path) : null)
     ?? 'ffprobe';
 }
 

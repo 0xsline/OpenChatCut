@@ -78,19 +78,10 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       dispatch(actions.length > 1 ? { type: 'batch', label: 'Add media', actions } : add);
       return;
     }
-    const doc = getDoc();
-    let state = { ...activeTimeline(doc), assets: doc.assets };
-    // Fold the staged tracks into the state BEFORE planning: the overwrite plan
-    // commits via setFullState, which would otherwise replace the timeline
-    // without those tracks and leave the new item referencing a ghost track.
-    for (const create of trackCreates) {
-      if (create.type !== 'track.create' || state.tracks?.[create.track.id]) continue;
-      state = {
-        ...state,
-        tracks: { ...state.tracks, [create.track.id]: create.track },
-        trackOrder: [...(state.trackOrder ?? []), create.track.id],
-      };
-    }
+    // Planning replaces the full state, so include staged tracks and assets
+    // through the same reducer used by the eventual atomic commit.
+    const doc = [...trackCreates, ...before].reduce(projectReduce, getDoc());
+    const state = { ...activeTimeline(doc), assets: doc.assets };
     const plan = planOverwrite(state, item, at.startFrame ?? 0, () => uid('item'));
     if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: [...trackCreates, ...before, ...plan.actions] });
   };

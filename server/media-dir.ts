@@ -7,6 +7,7 @@ import { copyFile, mkdir, readdir, rename, stat, unlink, writeFile } from 'node:
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { getKey, type KeyName } from './keystore.ts';
 import { getUploadObjectToFile, r2Config } from './r2.ts';
 import {
@@ -296,8 +297,8 @@ export async function serveDiskFile(req: IncomingMessage, res: ServerResponse, f
   }
   if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${info.size}`;
   res.writeHead(status, headers);
-  if (req.method === 'HEAD') { res.end(); return; }
-  createReadStream(file, { start, end }).pipe(res);
+  if (req.method === 'HEAD' || info.size === 0) { res.end(); return; }
+  await pipeline(createReadStream(file, { start, end }), res);
 }
 
 // ── Start synchronization ────────────────────────────────────────────────────────

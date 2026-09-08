@@ -9,6 +9,33 @@ import { mimeFor } from './media-dir.ts';
 
 export const PRODUCT_ASSETS_DIR = resolve(process.cwd(), 'assets');
 
+// The packaged desktop app runs with process.cwd() in userData, so the checkout-relative
+// root above does not exist there; the same files ship inside resources/dist (copied at
+// build time). The embedded server registers that directory so probe, sandbox and export
+// resolve `/voice-samples/...`-style paths the same way the dev server does.
+const extraRoots: string[] = [];
+
+export function registerProductAssetRoot(dir: string): void {
+  const root = resolve(dir);
+  if (root !== PRODUCT_ASSETS_DIR && !extraRoots.includes(root)) extraRoots.push(root);
+}
+
+export function productAssetRoots(): readonly string[] {
+  return [PRODUCT_ASSETS_DIR, ...extraRoots];
+}
+
+function fileWithin(root: string, clean: string): string | null {
+  const file = resolve(root, clean);
+  const prefix = root.endsWith(sep) ? root : root + sep;
+  if (file === root || !file.startsWith(prefix)) return null;
+  if (!existsSync(file)) return null;
+  try {
+    return statSync(file).isFile() ? file : null;
+  } catch {
+    return null;
+  }
+}
+
 const EXTRA_MIME: Record<string, string> = {
   html: 'text/html; charset=utf-8',
   js: 'text/javascript',
@@ -32,23 +59,22 @@ function contentType(file: string): string {
   return EXTRA_MIME[ext] ?? 'application/octet-stream';
 }
 
-/** Resolve a URL path to a file under assets/. Rejects path traversal. */
+/** Resolve a URL path to a file under assets/ (or a registered root). Rejects path traversal. */
 export function resolveProductAsset(urlPath: string): string | null {
-  const clean = decodeURIComponent((urlPath.split('?')[0] ?? '').replace(/^\/+/, ''));
-  if (!clean || clean.includes('\0')) return null;
-  // User uploads are never product assets
-  if (clean === 'media/uploads' || clean.startsWith('media/uploads/')) return null;
-  const root = PRODUCT_ASSETS_DIR;
-  const file = resolve(root, clean);
-  const prefix = root.endsWith(sep) ? root : root + sep;
-  if (file !== root && !file.startsWith(prefix)) return null;
-  if (!existsSync(file)) return null;
+  let clean: string;
   try {
-    if (!statSync(file).isFile()) return null;
+    clean = decodeURIComponent((urlPath.split('?')[0] ?? '').replace(/^\/+/, ''));
   } catch {
     return null;
   }
-  return file;
+  if (!clean || clean.includes('\0')) return null;
+  // User uploads are never product assets
+  if (clean === 'media/uploads' || clean.startsWith('media/uploads/')) return null;
+  for (const root of productAssetRoots()) {
+    const file = fileWithin(root, clean);
+    if (file) return file;
+  }
+  return null;
 }
 
 export async function sendProductAsset(

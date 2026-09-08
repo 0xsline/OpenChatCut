@@ -346,6 +346,7 @@ export default {
   '拖动调整输入框高度': 'Drag to resize the composer',
   '上下拖动调整输入框高度': 'Drag up/down to resize the composer',
   '已连续执行 {n} 轮工具，先停一下确认方向。': 'Ran {n} consecutive tool turns — pausing to confirm direction.',
+  '本轮有 {n} 个工具调用失败，模型已据此作答：{details}': 'In this run {n} tool call(s) failed and the model answered with that in mind: {details}',
   '继续': 'Continue',
   'AI 请求运行生成技能：{name}': 'The AI wants to run a generation skill: {name}',
     '本工程不再询问': 'Always allow in this project',

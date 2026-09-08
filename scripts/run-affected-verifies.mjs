@@ -2,66 +2,77 @@
 // in the working tree (or an explicit file list). Full `npm test` stays for
 // release gates; this covers the daily loop in seconds.
 //
-// Matching rule: a changed `X.ts` runs `X.verify.*` when present; otherwise
-// every `*.verify.*` in the same directory is a candidate (directory-level
-// suites).
-//
-// The directory fallback used to give up silently when a directory held more
-// than 8 verifies, and print "no affected verifies" — success. That skipped 16
-// directories covering 433 of the repo's 547 verify files, and they are the
-// busiest ones: src/agent/tools (71), server/plugins (52), src/agent (45),
-// src/editor (37), src/persist (25). Editing anything in them reported a clean
-// run having executed nothing. Coverage now never shrinks quietly: a large
-// selection is announced with its size, and the caller can interrupt it.
+// Exact suites win, otherwise select the nearest directory with suites.
+// This is a heuristic, not an import graph. Shared/configuration/assets and
+// unmapped changes require the full gate instead of claiming affected coverage.
 //
 // Usage:
 //   npm run verify:affected            — all working-tree changes vs HEAD
 //   npm run verify:affected -- <file>… — explicit files
-import { exec } from 'node:child_process';
-import { cpus } from 'node:os';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+//   npm run verify:affected -- --list <file>… — inspect without executing tests
+import { exec, execFile } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 
-const CONCURRENCY = Math.max(2, Math.min(8, Number(process.env.TEST_CONCURRENCY) || 4));
-
-// Selected paths are reported (and looked up in package.json's canonical
-// commands) with posix separators; platform join() would produce backslash
-// paths on Windows that miss the command map and the suites' own expectations.
+const CONCURRENCY = Math.max(1, Math.min(8, Math.floor(Number(process.env.TEST_CONCURRENCY)) || 4));
+const SOURCE_EXTENSION = /\.(?:tsx|mts|cjs|mjs|ts|js|frag|vert|glsl)$/;
+const VERIFY_EXTENSION = /\.verify\.(?:tsx|mts|cjs|mjs|ts|js)$/;
+const FULL_GATE = /^(?:package(?:-lock)?\.json$|npm-shrinkwrap\.json$|tsconfig(?:\.[^/]+)?\.json$|config\/|shared\/|assets\/|public\/|\.github\/)/;
+const DOCUMENTATION = /^(?:docs\/|README(?:_[A-Z]+)?\.md$|CHANGELOG\.md$|LICENSE$|AGENTS\.md$|CLAUDE\.md$)/;
 const toPosix = (value) => value.split(sep).join('/');
 
-const gitChanged = () => new Promise((resolve) => {
-  exec('git diff --name-only HEAD', (error, stdout) => {
-    if (error) return resolve([]);
-    resolve(stdout.split('\n').map((s) => s.trim()).filter(Boolean));
-  });
-});
+export async function gitChanged(cwd = process.cwd()) {
+  const run = promisify(execFile);
+  const outputs = await Promise.all([
+    run('git', ['diff', '--name-only', '--no-renames', '-z', 'HEAD'], { cwd }),
+    run('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd }),
+  ]);
+  return [...new Set(outputs.flatMap(({ stdout }) => stdout.split('\0').filter(Boolean)))];
+}
 
-export function matchingVerifies(changedFiles) {
+function directoryVerifies(dir, cwd) {
+  try {
+    return readdirSync(resolve(cwd, dir)).filter((name) => VERIFY_EXTENSION.test(name));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+export function affectedSelection(changedFiles, cwd = process.cwd()) {
   const matches = new Set();
-  for (const file of changedFiles) {
-    if (!/\.(ts|tsx|mjs)$/.test(file)) continue;
-    const dir = dirname(file);
-    let candidates;
-    try {
-      // .tsx and .mjs verifies count too — matching only `.verify.ts` left 20
-      // of them permanently unreachable, including every remotion/ suite.
-      candidates = readdirSync(dir).filter((name) => /\.verify\.(ts|tsx|mjs)$/.test(name));
-    } catch {
+  const requiresFullGate = new Set();
+  for (const changed of changedFiles) {
+    const file = toPosix(relative(cwd, resolve(cwd, changed)));
+    if (DOCUMENTATION.test(file)) continue;
+    if (FULL_GATE.test(file) && !VERIFY_EXTENSION.test(file)) requiresFullGate.add(file);
+    if (!SOURCE_EXTENSION.test(file) || file.startsWith('../')) {
+      requiresFullGate.add(file);
       continue;
     }
-    const base = file.split(/[\\/]/).pop().replace(/\.(ts|tsx|mjs)$/, '');
-    const exact = candidates.find((name) => /^(.*)\.verify\.(ts|tsx|mjs)$/.exec(name)?.[1] === base);
-    if (exact) {
-      matches.add(toPosix(join(dir, exact)));
-      continue;
+    if (/^src\/gl\/.*\.(?:frag|vert|glsl)$/.test(file)) {
+      for (const name of directoryVerifies('src/gl', cwd)) matches.add(toPosix(join('src/gl', name)));
     }
-    // No per-file verify: the directory suite is the only thing that covers
-    // this change, so run all of it. Never skip silently — that reported
-    // success for a run that executed nothing.
+    let dir = dirname(file);
+    let candidates = directoryVerifies(dir, cwd);
+    const base = file.split('/').pop().replace(SOURCE_EXTENSION, '');
+    const exact = candidates.filter((name) => name.replace(VERIFY_EXTENSION, '') === base
+      || toPosix(join(dir, name)) === file);
+    if (exact.length) candidates = exact;
+    while (!candidates.length && dir !== '.') {
+      dir = dirname(dir);
+      candidates = directoryVerifies(dir, cwd);
+    }
+    if (!candidates.length) requiresFullGate.add(file);
     for (const name of candidates) matches.add(toPosix(join(dir, name)));
   }
-  return [...matches].sort();
+  return { verifies: [...matches].sort(), requiresFullGate: [...requiresFullGate].sort() };
+}
+
+export function matchingVerifies(changedFiles) {
+  return affectedSelection(changedFiles).verifies;
 }
 
 // How each verify is invoked is already decided in package.json, and not every
@@ -77,7 +88,7 @@ const CANONICAL_COMMANDS = (() => {
   for (const script of Object.values(scripts)) {
     if (typeof script !== 'string') continue;
     for (const segment of script.split('&&').map((s) => s.trim())) {
-      const path = /(\S+\.verify\.(?:ts|tsx|mjs))\s*$/.exec(segment)?.[1];
+      const path = /(\S+\.verify\.(?:tsx|mts|cjs|mjs|ts|js))\s*$/.exec(segment)?.[1];
       if (path && !byFile.has(path)) byFile.set(path, segment);
     }
   }
@@ -87,18 +98,30 @@ const CANONICAL_COMMANDS = (() => {
 /** The command the suite itself uses, falling back to the usual runner. */
 export function verifyCommand(file) {
   return CANONICAL_COMMANDS.get(file)
-    ?? (file.endsWith('.mjs') ? `node ${file}` : `npx tsx ${file}`);
+    ?? (/\.(?:mjs|cjs|js)$/.test(file) ? `node ${file}` : `npx tsx ${file}`);
 }
 
 async function main() {
   const explicit = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
   const changed = explicit.length > 0 ? explicit : await gitChanged();
-  const verifies = matchingVerifies(changed);
+  const { verifies, requiresFullGate } = affectedSelection(changed);
+  if (process.argv.includes('--list')) console.log(verifies.join('\n'));
+  if (requiresFullGate.length) {
+    console.error(`Affected selection cannot establish coverage for:\n  ${requiresFullGate.join('\n  ')}`);
+    console.error('Run the broader gate: npm run lint && npm test && npm run build');
+    process.exitCode = 2;
+    return;
+  }
+  if (process.argv.includes('--list')) return;
   if (verifies.length === 0) {
-    console.log('✓ no affected verifies (changed files have no verify suites)');
+    console.log('✓ no affected verifies (no changes or documentation only)');
     console.log(`  changed: ${changed.slice(0, 6).join(', ') || '(none)'}`);
     return;
   }
+  await runSelected(verifies);
+}
+
+async function runSelected(verifies) {
   console.log(`Running ${verifies.length} affected verifies (${CONCURRENCY} parallel):`);
   if (verifies.length > 40) {
     // Say so rather than trimming the selection: the caller can interrupt, and
@@ -113,8 +136,8 @@ async function main() {
       const file = verifies[cursor];
       cursor += 1;
       const result = await new Promise((resolve) => {
-        exec(verifyCommand(file), { maxBuffer: 8 * 1024 * 1024 }, (error, _stdout, stderr) => {
-          resolve({ file, error, output: stderr.slice(-600) });
+        exec(verifyCommand(file), { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+          resolve({ file, error, output: [stdout.slice(-1200), stderr.slice(-1200)].filter(Boolean).join('\n') });
         });
       });
       process.stdout.write(`${result.error ? '❌' : '✅'} ${result.file}\n`);
@@ -137,4 +160,6 @@ async function main() {
 }
 
 // Only run when invoked directly, so the verify can import the matcher.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => { console.error(error); process.exitCode = 1; });
+}
