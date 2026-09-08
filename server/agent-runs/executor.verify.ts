@@ -8,6 +8,8 @@ import { resolveServerRunToolCatalog } from './tool-policy.ts';
 import { serverToolCatalogForGeneration } from './tool-catalog-generation.ts';
 import { serverProviderOptions } from './model.ts';
 import { validateCreateInput } from './request.ts';
+import { resolveRunExecution } from './execution-input.ts';
+import { LLM_PROVIDER_PRESETS, normalizeLlmProvider } from '../../shared/llm-providers.ts';
 import {
   collectServerText,
   executeBrowserTool,
@@ -20,7 +22,7 @@ import {
 import { ToolActivation } from '../../src/agent/tool-activation.ts';
 import { ToolFailureTracker } from '../../src/agent/toolFailure.ts';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../shared/model-capabilities';
-import { seedKeystore } from '../keystore';
+import { getKey, seedKeystore } from '../keystore';
 import {
   createRun,
   claimToolRequest,
@@ -92,6 +94,21 @@ const validRequest = {
   externalSessionId: '  browser-session-1  ',
 };
 const validatedRequest = validateCreateInput(validRequest);
+const configuredProvider = normalizeLlmProvider(getKey('LLM_PROVIDER'));
+for (const provider of ['retired-provider', 42, false, {}]) {
+  assert.throws(() => resolveRunExecution({ provider }, validatedRequest, 'http://localhost:5199', false),
+    /Unsupported LLM provider/, 'invalid API providers must fail before a run can start');
+}
+for (const provider of [undefined, null, '', '  ']) {
+  assert.equal(resolveRunExecution({ provider }, validatedRequest, 'http://localhost:5199', false).provider,
+    configuredProvider, 'omitted and empty providers preserve the configured default');
+}
+for (const preset of LLM_PROVIDER_PRESETS) {
+  assert.equal(resolveRunExecution({ provider: preset.id }, validatedRequest, 'http://localhost:5199', false).provider,
+    preset.id);
+}
+assert.equal(resolveRunExecution({ backend: 'codex', provider: 'retired-provider' }, validatedRequest,
+  'http://localhost:5199', false).provider, 'openai', 'Codex keeps its own provider attribution');
 assert.equal(validatedRequest.runId, validRequest.runId);
 assert.equal(validatedRequest.capability, validRequest.capability);
 assert.equal(validatedRequest.cacheMode, 'long');

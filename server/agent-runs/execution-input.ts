@@ -2,6 +2,7 @@ import {
   defaultModelForProvider,
   normalizeLlmProvider,
   normalizeOpenAiApiMode,
+  requireLlmProvider,
 } from '../../shared/llm-providers';
 import { resolveLlmProviderConfig } from '../llm-config';
 import { getKey, type KeyName } from '../keystore';
@@ -17,7 +18,7 @@ export function resolveRunExecution(
   origin: string,
   askOnly: boolean,
 ): ServerRunInput {
-  const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
+  const provider = typeof body.provider === 'string' ? body.provider.trim() : body.provider;
   const requestedModel = input.model;
   const backend = serverRunBackend(body.backend);
   const readKey = (name: string): string => getKey(name as KeyName);
@@ -25,7 +26,9 @@ export function resolveRunExecution(
     ? { provider: 'openai', model: '' }
     : backend === 'copilot'
       ? { provider: copilotProviderForModel(requestedModel), model: '' }
-      : resolveLlmProviderConfig(provider || getKey('LLM_PROVIDER'), readKey);
+      : resolveLlmProviderConfig(requireLlmProvider(
+        provider === undefined || provider === null || provider === '' ? getKey('LLM_PROVIDER') : provider,
+      ), readKey);
   const effectiveProvider = normalizeLlmProvider(config.provider);
   const effectiveModel = backend === 'copilot'
     ? requestedModel

@@ -7,6 +7,8 @@ import {
   resolveLlmBaseUrl,
 } from './llm-config.ts';
 import { proxyMiddleware } from './proxy.ts';
+import { llmProxyPlugin, llmProviderForRequest } from './plugins/llm-proxy.ts';
+import { LLM_PROVIDER_PRESETS, normalizeLlmProvider } from '../shared/llm-providers.ts';
 
 async function listen(server: Server): Promise<number> {
   await new Promise<void>((resolve, reject) => {
@@ -49,6 +51,13 @@ assert.equal(llmOperationPath('orcarouter'), '/chat/completions');
     LLM_API_KEY: 'ak-1',
   } as Record<string, string>);
   const reqFor = (provider: string) => ({ headers: { 'x-openchatcut-provider': provider } } as never);
+  assert.throws(() => llmProviderForRequest(reqFor('retired-provider')), /Unsupported LLM provider/);
+  for (const preset of LLM_PROVIDER_PRESETS) {
+    assert.equal(llmProviderForRequest(reqFor(` ${preset.id.toUpperCase()} `)), preset.id);
+  }
+  assert.equal(llmProviderForRequest(), 'anthropic');
+  assert.equal(llmProviderForRequest(reqFor('')), 'anthropic');
+  assert.equal(normalizeLlmProvider('retired-provider'), 'anthropic', 'settings fallback stays compatible');
   assert.deepEqual(llmHeaders(reqFor('gemini')), { 'x-goog-api-key': 'gk-1' }, 'gemini 原生协议注入 x-goog-api-key');
   assert.deepEqual(llmHeaders(reqFor('minimax')), { authorization: 'Bearer mk-1' }, 'openai-compatible 厂商 Bearer');
   assert.deepEqual(llmHeaders(reqFor('orcarouter')), { authorization: 'Bearer ork-1' },
@@ -106,8 +115,26 @@ app.use('/llm', proxyMiddleware({
 }));
 const proxy = createServer(app.handle);
 const proxyPort = await listen(proxy);
+const providerApp = createMiniConnect((error) => { throw error; });
+const configureProvider = llmProxyPlugin().configureServer;
+assert.equal(typeof configureProvider, 'function');
+if (typeof configureProvider === 'function') {
+  await configureProvider.call({} as never, { middlewares: providerApp } as never);
+}
+const providerProxy = createServer(providerApp.handle);
+const providerProxyPort = await listen(providerProxy);
 
 try {
+  const { seedKeystore } = await import('./keystore.ts');
+  seedKeystore({ LLM_ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}/v1` });
+  const unsupported = await fetch(`http://127.0.0.1:${providerProxyPort}/llm/messages`, {
+    method: 'POST',
+    headers: { 'x-openchatcut-provider': 'retired-provider' },
+    body: '{}',
+  });
+  assert.equal(unsupported.status, 400);
+  assert.deepEqual(await unsupported.json(), { error: { message: 'Unsupported LLM provider' } });
+  assert.equal(seen.length, 0, 'unsupported provider must not reach the configured fallback upstream');
   const first = await fetch(`http://127.0.0.1:${proxyPort}/llm/chat/completions?stream=true`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-openchatcut-provider': 'kimi' },
@@ -160,6 +187,7 @@ try {
     error: { message: 'Friendly provider error (401). Check Agent settings.' },
   }, 'raw provider JSON is replaced with one actionable message');
 } finally {
+  await close(providerProxy);
   await close(proxy);
   await close(upstream);
 }

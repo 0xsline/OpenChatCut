@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Plugin } from 'vite';
 import { getKey, type KeyName } from '../keystore.ts';
 import {
-  normalizeLlmProvider,
+  requireLlmProvider,
   llmProviderPreset,
   protocolForProvider,
   type LlmProvider,
@@ -17,7 +17,7 @@ function keyReader(name: string): string {
 
 export function llmProviderForRequest(req?: IncomingMessage): LlmProvider {
   const requested = req?.headers['x-openchatcut-provider'];
-  return normalizeLlmProvider(typeof requested === 'string' ? requested : getKey('LLM_PROVIDER'));
+  return requireLlmProvider(requested === undefined ? getKey('LLM_PROVIDER') : requested);
 }
 
 export function llmTarget(req?: IncomingMessage): string {
@@ -67,6 +67,16 @@ export function llmProxyPlugin(): Plugin {
   return {
     name: 'openchatcut-llm-proxy',
     configureServer(server) {
+      server.middlewares.use('/llm', (req, res, next) => {
+        try {
+          llmProviderForRequest(req);
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'Unsupported LLM provider' } }));
+          return;
+        }
+        next();
+      });
       server.middlewares.use('/llm', proxyMiddleware({
         target: llmTarget,
         headers: llmHeaders,

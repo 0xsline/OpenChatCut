@@ -170,13 +170,17 @@ function identityKey(identity: ModelIdentity): string {
   return JSON.stringify([identity.backend, identity.provider, identity.modelId]);
 }
 
-export function parseModelCapabilityOverrides(raw: unknown): readonly ModelCapabilityOverride[] {
+export function parseModelCapabilityOverrides(
+  raw: unknown,
+  { ignoreUnavailableProviders = false }: { ignoreUnavailableProviders?: boolean } = {},
+): readonly ModelCapabilityOverride[] {
   if (raw === undefined || raw === null || raw === '') return [];
   if (typeof raw !== 'string' || new TextEncoder().encode(raw).byteLength > MAX_OVERRIDE_BYTES) throw new Error('Model capability overrides are too large.');
   let decoded: unknown;
   try { decoded = JSON.parse(raw); } catch { throw new Error('Model capability overrides must be valid JSON.'); }
   if (!Array.isArray(decoded) || decoded.length > MAX_OVERRIDE_RECORDS) throw new Error('Invalid model capability override list.');
-  const records = decoded.map(parseOverride);
+  const records = decoded.filter((record) => !ignoreUnavailableProviders
+    || typeof record?.provider !== 'string' || PROVIDERS.has(record.provider)).map(parseOverride);
   const keys = records.map(identityKey);
   if (new Set(keys).size !== keys.length) throw new Error('Duplicate model capability override.');
   return records.sort((a, b) => identityKey(a).localeCompare(identityKey(b)));

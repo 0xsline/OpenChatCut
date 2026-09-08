@@ -196,8 +196,8 @@ const videoBase = (args: GenerateArgs, model: SubmitVideoArgs['model']): SubmitV
   resolution: args.resolution as SubmitVideoArgs['resolution'], firstFrame: str(args.firstFrame), lastFrame: str(args.lastFrame),
 });
 
-// OFox shares these input fields; its server validator rejects unsupported Ark options.
-const seedanceStyleVideo = (model: 'seedance2' | 'byteplus' | 'ofox') => (args: GenerateArgs): SubmitVideoArgs => ({
+// seedance2 (Volcengine) and byteplus (BytePlus ModelArk) are the same Ark Seedance API/fields.
+const seedanceStyleVideo = (model: 'seedance2' | 'byteplus') => (args: GenerateArgs): SubmitVideoArgs => ({
   ...videoBase(args, model), ratio: str(args.ratio), refImages: list(args.refImages), refVideos: list(args.refVideos),
   refAudios: list(args.refAudios), generateAudio: bool(args.generateAudio), seed: num(args.seed),
   cameraFixed: bool(args.cameraFixed), watermark: bool(args.watermark), returnLastFrame: bool(args.returnLastFrame),
@@ -205,7 +205,6 @@ const seedanceStyleVideo = (model: 'seedance2' | 'byteplus' | 'ofox') => (args: 
 });
 const seedanceVideo = seedanceStyleVideo('seedance2');
 const byteplusVideo = seedanceStyleVideo('byteplus');
-const ofoxVideo = seedanceStyleVideo('ofox');
 const klingVideo = (args: GenerateArgs): SubmitVideoArgs => ({
   ...videoBase(args, 'kling'), ratio: str(args.ratio), mode: args.mode as SubmitVideoArgs['mode'],
   refImages: list(args.refImages), refVideos: list(args.refVideos),
@@ -219,9 +218,12 @@ const hailuoVideo = (args: GenerateArgs): SubmitVideoArgs => ({
 // xAI Grok Imagine Video: text-to-video only — the base fields are the whole surface.
 const grokVideo = (args: GenerateArgs): SubmitVideoArgs => videoBase(args, 'grok-imagine-video');
 
-const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo } as const;
+const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
-  const model = args.model === 'kling' || args.model === 'hailuo' || args.model === 'byteplus' || args.model === 'grok-imagine-video' || args.model === 'ofox' ? args.model : 'seedance2';
+  const model = args.model === undefined ? 'seedance2' : args.model;
+  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video') {
+    throw new Error('Unsupported video model; select an available provider before submitting or rerunning.');
+  }
   return VIDEO_STRATEGIES[model](args);
 }
 

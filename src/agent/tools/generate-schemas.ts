@@ -146,27 +146,27 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_video',
-    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
+    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, or xAI Grok Imagine video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet.' }, // minimax: hailuo enum
+        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames.' }, // minimax: hailuo enum
         prompt: { type: 'string', description: 'Required for normal generation and Kling intelligence; omit for Kling customize.' },
         name: { type: 'string' },
-        durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API).' }, // minimax: hailuo durations
-        ratio: { type: 'string', description: 'Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1. grok-imagine-video: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3. ofox: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9, 9:21. Do not send for hailuo.' },
-        resolution: { type: 'string', enum: ['480p', '512p', '720p', '1080p', '4k'], description: 'Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p. ofox: 480p/720p(default)/1080p, per-model support enforced by the API.' },
+        durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video.' }, // minimax: hailuo durations
+        ratio: { type: 'string', description: 'Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1. grok-imagine-video: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3. Do not send for hailuo.' },
+        resolution: { type: 'string', enum: ['480p', '512p', '720p', '1080p', '4k'], description: 'Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p.' },
         mode: { type: 'string', enum: ['std', 'pro'], description: 'Kling only; std=720p, pro=1080p.' },
         firstFrame: { type: 'string', description: 'Project image asset ID, asset:// ID, short unique ID prefix, or same-project asset path.' },
-        lastFrame: { type: 'string', description: 'Project image asset reference; requires firstFrame. Supported on seedance2, kling, hailuo, and ofox (not with multi-ref on seedance2/ofox).' },
+        lastFrame: { type: 'string', description: 'Project image asset reference; requires firstFrame. Supported on seedance2, kling, and hailuo (not with multi-ref on seedance2).' },
         refImages: { type: 'array', items: { type: 'string' } },
         refVideos: { type: 'array', items: { type: 'string' } },
         refAudios: { type: 'array', items: { type: 'string' } },
         refVideoMode: { type: 'string', enum: ['feature', 'base'], description: 'Kling only with refVideos. feature (default)=motion/camera/style guide; base=edit that source clip (keep_original_sound).' },
         promptOptimizer: { type: 'boolean', description: 'Hailuo only. MiniMax prompt_optimizer; default true. Set false for more literal prompts.' },
         fastPretreatment: { type: 'boolean', description: 'Hailuo only. MiniMax fast_pretreatment when promptOptimizer is true; default false.' },
-        generateAudio: { type: 'boolean', description: 'Seedance/BytePlus/OFox. Generate synchronized audio; default true for models that support audio.' },
-        seed: { type: 'integer', description: 'Seedance/BytePlus/OFox. Random seed; determinism depends on the model.' },
+        generateAudio: { type: 'boolean', description: 'Seedance/BytePlus only. Generate synchronized audio; official default true.' },
+        seed: { type: 'integer', description: 'Seedance/BytePlus only. Deterministic random seed.' },
         cameraFixed: { type: 'boolean', description: 'Seedance/BytePlus only. Lock camera motion; default false.' },
         watermark: { type: 'boolean', description: 'Seedance/BytePlus only. Add provider watermark; default false.' },
         returnLastFrame: { type: 'boolean', description: 'Seedance/BytePlus only. Save the returned last frame as an additional image asset.' },
