@@ -52,6 +52,12 @@ export function getLocale(): Locale {
   return current;
 }
 
+/** Subscribe to locale switches; returns the unsubscribe function. */
+export function subscribeLocale(onChange: () => void): () => void {
+  subscribers.add(onChange);
+  return () => { subscribers.delete(onChange); };
+}
+
 export function localeLanguageName(locale: Locale): 'Chinese' | 'English' | 'Italian' | 'Russian' {
   if (locale === 'zh') return 'Chinese';
   if (locale === 'it') return 'Italian';

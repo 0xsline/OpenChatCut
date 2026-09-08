@@ -7,6 +7,7 @@ import {
   parseStoredProposalRecord,
 } from '../persist/proposalStore';
 import type { ProjectDoc, Timeline } from '../editor/types';
+import { canRollbackAgentChange, rollbackAgentChange, type AgentChangeSession } from './changeLog';
 import { buildOperation, buildProposal, compactOperations, type Proposal } from './proposal';
 import {
   applySelectedProposal,
@@ -15,6 +16,8 @@ import {
 } from './useAgentProposalActions';
 import {
   commitPersistentOperations,
+  finalizeRunSession,
+  landProposedOperations,
   createPendingProposal,
   statusAfterMaxToolTurns,
   type AgentTurn,
@@ -425,10 +428,194 @@ assert.equal(statusAfterMaxToolTurns('awaiting_user'), 'completed');
 assert.equal(statusAfterMaxToolTurns('completed'), 'completed');
 assert.equal(projectReduce(doc, { type: 'tl.switch', id: timeline.id }), doc);
 
+// Pool imports land per tool call, on whatever the project is at that moment.
+async function verifyPersistentLandingFence(): Promise<void> {
+  const asset = (id: string) => ({ id, name: `${id}.mp4`, kind: 'video', src: `/media/uploads/${id}.mp4` }) as unknown as ProjectDoc['assets'][number];
+  const importOp = (id: string) => buildOperation('download_media', { url: id }, [{ type: 'addAsset', asset: asset(id) }]);
+  function landingTurn(startDoc: ProjectDoc, ops: ReturnType<typeof importOp>[], order: string[]) {
+    let currentDoc = startDoc;
+    let changeLog: AgentChangeSession[] = [];
+    const turn = {
+      state: {
+        llmProviderRef: { current: '' },
+        ctxRef: {
+          current: {
+            getDoc: () => currentDoc,
+            commands: { applyDoc: (next: ProjectDoc) => { order.push('apply'); currentDoc = next; } },
+          },
+        },
+        setMessages: () => undefined,
+        setChangeLog: (update: (current: AgentChangeSession[]) => AgentChangeSession[]) => { changeLog = update(changeLog); },
+      },
+      projectId: 'proposal-persistence-verify',
+      persistentSnapshot: Promise.resolve(),
+      persistentSaveError: undefined,
+      persistentBeforeDoc: startDoc,
+      runSessionId: null,
+      persistentOps: ops,
+      draftInvalidated: false,
+      abortController: new AbortController(),
+      assistantText: '',
+      completionStatus: 'completed',
+    };
+    return {
+      turn: turn as unknown as AgentTurn,
+      doc: () => currentDoc,
+      edit: (next: ProjectDoc) => { currentDoc = next; },
+      changeLog: () => changeLog,
+    };
+  }
+
+  // An import already in the pool (a resumed run replaying its landings) touches nothing.
+  {
+    const order: string[] = [];
+    const present = landingTurn({ ...doc, assets: [asset('a')] }, [importOp('a')], order);
+    assert.equal(await commitPersistentOperations(present.turn, async () => { order.push('save'); return saveResult(true); }), true);
+    assert.deepEqual(order, [], 'nothing to save or apply');
+    assert.equal(present.turn.persistentOps.length, 0, 'the landed ops are cleared');
+  }
+
+  // The user renames the timeline while the import is being saved: the saved copy lacks that
+  // edit, so the live document is put back and the import replayed on top of it. Both survive.
+  {
+    const order: string[] = [];
+    const moving = landingTurn(doc, [importOp('a')], order);
+    let saves = 0;
+    const committed = await commitPersistentOperations(moving.turn, async (_projectId, saved) => {
+      saves += 1;
+      order.push(`save-${saves}:${saved.timelines[0]?.name}/${saved.assets.map((item) => item.id).join(',') || '-'}`);
+      if (saves === 1) moving.edit({ ...moving.doc(), timelines: [{ ...timeline, name: 'Renamed' }] });
+      return saveResult(true);
+    });
+    assert.equal(committed, true);
+    assert.deepEqual(order, [
+      'save-1:Timeline/a',
+      'save-2:Renamed/-',
+      'save-3:Renamed/a',
+      'apply',
+    ], 'the user edit is restored, then the import is replayed on top');
+    assert.equal(moving.doc().timelines[0]?.name, 'Renamed');
+    assert.deepEqual(moving.doc().assets.map((item) => item.id), ['a']);
+  }
+
+  // Two landings in one run share one change-log row; the second extends the first.
+  {
+    const order: string[] = [];
+    const twice = landingTurn(doc, [importOp('a')], order);
+    const persist = async () => { order.push('save'); return saveResult(true); };
+    assert.equal(await commitPersistentOperations(twice.turn, persist), true);
+    assert.equal(twice.changeLog().length, 1);
+    const firstId = twice.changeLog()[0]?.id;
+    assert.ok(firstId);
+    assert.equal(twice.turn.runSessionId, firstId);
+    twice.turn.persistentOps = [importOp('b')];
+    assert.equal(await commitPersistentOperations(twice.turn, persist), true);
+    assert.equal(twice.changeLog().length, 1, 'still one row');
+    assert.equal(twice.changeLog()[0]?.id, firstId);
+    assert.deepEqual(twice.changeLog()[0]?.operations.map((operation) => operation.target), [importOp('a').target, importOp('b').target]);
+    assert.deepEqual(twice.doc().assets.map((item) => item.id), ['a', 'b']);
+    assert.equal(canRollbackAgentChange(twice.changeLog()[0]!, twice.doc()), true, 'the row rolls back from the latest landing');
+    assert.equal(rollbackAgentChange(twice.changeLog()[0]!, twice.doc())?.assets.length, 0, 'rolling back removes every landing of the run');
+  }
+}
+
+// Auto-apply: timeline edits land per tool call, share the run's row with pool imports,
+// and the run is left with nothing pending for the terminal proposal.
+async function verifyLiveEditLandingFence(): Promise<void> {
+  const renameOp = (name: string) => buildOperation('rename_timeline', { name }, [{ type: 'tl.rename', id: timeline.id, name }]);
+  function liveTurn(startDoc: ProjectDoc, order: string[]) {
+    let currentDoc = startDoc;
+    let changeLog: AgentChangeSession[] = [];
+    const turn = {
+      state: {
+        llmProviderRef: { current: '' },
+        ctxRef: {
+          current: {
+            getDoc: () => currentDoc,
+            commands: { applyDoc: (next: ProjectDoc) => { order.push('apply'); currentDoc = next; } },
+          },
+        },
+        setMessages: () => undefined,
+        setChangeLog: (update: (current: AgentChangeSession[]) => AgentChangeSession[]) => { changeLog = update(changeLog); },
+      },
+      projectId: 'proposal-persistence-verify',
+      persistentSnapshot: Promise.resolve(),
+      persistentSaveError: undefined,
+      persistentBeforeDoc: null,
+      runSessionId: null,
+      liveEdits: true,
+      persistentOps: [],
+      ops: [] as ReturnType<typeof renameOp>[],
+      toolCallCount: 0,
+      draftInvalidated: false,
+      abortController: new AbortController(),
+      assistantText: '',
+      completionStatus: 'completed',
+    };
+    return { turn: turn as unknown as AgentTurn, doc: () => currentDoc, changeLog: () => changeLog };
+  }
+  const persistOk = async () => saveResult(true);
+
+  // Two tool calls land one after the other; each clears the pending ops and settles its call.
+  {
+    const order: string[] = [];
+    const live = liveTurn(doc, order);
+    live.turn.ops = [renameOp('First')]; live.turn.toolCallCount = 1;
+    const first = await landProposedOperations(live.turn, persistOk);
+    assert.ok(first, 'the first landing returns the landed document');
+    assert.equal(live.doc().timelines[0]?.name, 'First');
+    assert.equal(live.turn.ops.length, 0, 'landed ops are no longer pending');
+    assert.equal(live.turn.toolCallCount, 0, 'the landed call no longer counts as pending');
+    assert.equal(live.turn.proposalBaseDoc, first, 'the landed document is the new proposal base');
+    live.turn.ops = [renameOp('Second')]; live.turn.toolCallCount = 1;
+    assert.ok(await landProposedOperations(live.turn, persistOk));
+    assert.equal(live.doc().timelines[0]?.name, 'Second');
+    assert.equal(live.changeLog().length, 1, 'both landings share one change-log row');
+    assert.deepEqual(live.changeLog()[0]?.operations.map((operation) => operation.target), [renameOp('First').target, renameOp('Second').target]);
+    assert.equal(live.changeLog()[0]?.summary, 'Agent 修改（进行中）');
+    assert.equal(rollbackAgentChange(live.changeLog()[0]!, live.doc())?.timelines[0]?.name, 'Timeline', 'rollback returns to before the first landing');
+    // The finished run names the row after the model's own summary.
+    live.turn.assistantText = '已把时间线改名为 Second';
+    finalizeRunSession(live.turn);
+    assert.equal(live.changeLog()[0]?.summary, '已把时间线改名为 Second');
+    finalizeRunSession(live.turn);
+    assert.equal(live.changeLog()[0]?.summary, '已把时间线改名为 Second', 'renaming is idempotent');
+  }
+
+  // Nothing pending is a no-op; a failed save leaves the ops pending for the terminal proposal.
+  {
+    const order: string[] = [];
+    const idle = liveTurn(doc, order);
+    assert.equal(await landProposedOperations(idle.turn, persistOk), null);
+    idle.turn.ops = [renameOp('Lost')]; idle.turn.toolCallCount = 1;
+    assert.equal(await landProposedOperations(idle.turn, async () => saveResult(false)), null);
+    assert.equal(idle.turn.ops.length, 1, 'ops stay pending after a failed save');
+    assert.equal(idle.turn.toolCallCount, 1);
+    assert.deepEqual(order, [], 'nothing was applied');
+  }
+
+  // A pool import and a timeline edit in the same run extend the same row.
+  {
+    const order: string[] = [];
+    const mixed = liveTurn(doc, order);
+    const asset = { id: 'clip', name: 'clip.mp4', kind: 'video', src: '/media/uploads/clip.mp4' } as unknown as ProjectDoc['assets'][number];
+    mixed.turn.persistentOps = [buildOperation('download_media', { url: 'clip' }, [{ type: 'addAsset', asset }])];
+    assert.equal(await commitPersistentOperations(mixed.turn, persistOk), true);
+    mixed.turn.ops = [renameOp('With clip')]; mixed.turn.toolCallCount = 1;
+    assert.ok(await landProposedOperations(mixed.turn, persistOk));
+    assert.equal(mixed.changeLog().length, 1);
+    assert.equal(mixed.changeLog()[0]?.operations.length, 2);
+    assert.deepEqual(mixed.doc().assets.map((item) => item.id), ['clip']);
+    assert.equal(mixed.doc().timelines[0]?.name, 'With clip');
+  }
+}
+
 await verifyProposalPersistenceFence();
 await verifyConcurrentRestoreFailureFence();
 await verifyCommittedRecoveryFence();
 await verifyProposalOwnershipFence();
 await verifyPersistentAutoApplyFence();
+await verifyPersistentLandingFence();
+await verifyLiveEditLandingFence();
 await verifyPendingProposalDurabilityFence();
 console.log('proposal compaction checks passed');

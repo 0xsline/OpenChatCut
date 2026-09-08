@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { APICallError } from 'ai';
 import { ASK_MODE_TOOL_SCHEMAS } from '../../src/agent/ask-mode-tools';
 import { TOOL_SCHEMAS } from '../../src/agent/tools';
@@ -326,14 +327,23 @@ console.log('server agent executor message verification passed');
 // instead of feeding truncated text back into the next turn.
 assert.equal(turnDisposition(false, true), 'continue');
 assert.equal(turnDisposition(false, false), 'completed');
-assert.equal(turnDisposition(false, true, true), 'continue',
-  'an unresolved tool failure may continue only while the model is retrying');
-assert.equal(turnDisposition(false, false, true), 'failed',
-  'completion is rejected while a tool failure remains unresolved');
-assert.equal(turnDisposition(true, true, true), 'failed',
-  'a token cutoff cannot turn an unresolved tool failure into completion');
 assert.equal(turnDisposition(true, true), 'max-tokens', 'output cutoff wins over pending tool calls');
 assert.equal(turnDisposition(true, false), 'max-tokens');
+// An unresolved tool failure is not a disposition input: the model already saw the
+// failed result and replied to it, and that reply is the run's outcome. Failing the run
+// here put the tracker's English template under a Chinese reply (a probe_media that
+// could not run, then a complete answer, then "I couldn't complete the requested
+// operation"), and made the documented probe→finalize fallback impossible to complete.
+assert.equal(turnDisposition.length, 2, 'the disposition takes no failure flag');
+const executorSource = readFileSync(new URL('./executor.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(executorSource, /toolFailures\.report\(\)/, 'the executor never surfaces the failure-report template');
+// What the user gets instead: a tool-failures event ahead of finish, so the chat shows a
+// quiet note and the inspector lists the calls, while the run still completes.
+assert.match(
+  executorSource,
+  /toolFailures\.hasUnresolved\)\s*\{[^}]*pushRunEvent\(run, 'tool-failures', \{ failures: plan\.activation\.toolFailures\.snapshot\(\) \}\);[\s\S]{0,200}pushRunEvent\(run, 'finish'/,
+  'unresolved tool failures are pushed as a tool-failures event right before finish',
+);
 
 console.log('server executor turn-disposition checks passed');
 

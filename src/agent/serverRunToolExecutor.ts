@@ -9,11 +9,7 @@ import type { ProjectDoc } from '../editor/types';
 import type { DisplayMessage, LiveTool } from './agent-session';
 
 import type { AgentEvent } from './runtime';
-import {
-  SERVER_RUN_CAPABILITY_HEADER,
-  type ServerRunToolAction,
-} from './serverRunProtocol';
-import { permanentServerRunRecoveryError } from './serverRunRecovery';
+import type { ServerRunToolAction } from './serverRunProtocol';
 import { ServerRunToolRequestQueue } from './serverRunEvents';
 import { toolExecutionMode } from './tools/execution-modes';
 import { environmentFailureHint } from './serverRunToolEnvironment';
@@ -27,12 +23,10 @@ import {
   storedClaimIdentity,
   type StoredToolAttempt,
 } from './serverRunSessionStorage';
-import { projectServerRunToolResult } from './serverRunToolResult';
-import { flushProjectSaves, projectPersistenceSignal } from '../persist/projectStore';
 import {
-  permanentToolHttpStatus, scheduleServerRunToolResultRetry,
-  type BrowserToolRequest, type ToolClaimResponse,
+  scheduleServerRunToolResultRetry, type BrowserToolRequest, type ToolClaimResponse,
 } from './serverRunToolTransport';
+import { claimServerRunTool, postServerRunToolResult, type ServerRunToolSession as RunSession } from './serverRunToolHttp';
 import {
   browserServerRunLockManager,
   withServerRunToolLock,
@@ -79,16 +73,6 @@ export interface ServerToolExecutorStart {
  * run started read the NEW run's capability, posted a foreign-authority
  * /tool-result (HTTP 403), and triggered stale-recovery against the new run.
  */
-interface RunSession {
-  readonly runId: string;
-  readonly capability: string;
-  readonly claimId: string | null;
-  readonly abort: AbortController;
-}
-
-/** Tool results between unawaited durability checkpoints. */
-const TOOL_RESULTS_PER_FLUSH = 8;
-
 export class ServerRunToolExecutor {
   private readonly projectId: string;
   private readonly requestQueue = new ServerRunToolRequestQueue();
@@ -99,7 +83,6 @@ export class ServerRunToolExecutor {
   private draft: DraftEngine | null = null;
   private baseDoc: ProjectDoc | null = null;
   private session: RunSession | null = null;
-  private resultsSinceFlush = 0;
   private readonly lockManager: ServerRunLockManager | null;
 
   constructor(
@@ -156,34 +139,8 @@ export class ServerRunToolExecutor {
     toolCallId: string,
     argsDigest: string,
   ): Promise<ToolClaimResponse | null> {
-    if (!session.claimId) return null;
-    const response = await fetch(`/api/agent-runs/${session.runId}/tool-claim`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        [SERVER_RUN_CAPABILITY_HEADER]: session.capability,
-      },
-      body: JSON.stringify({
-        projectId: this.projectId,
-        toolCallId,
-        argsDigest,
-        claimId: session.claimId,
-      }),
-      signal: session.abort.signal,
-    }).catch(() => null);
-    if (response && (response.status === 403
-      || response.status === 404
-      || response.status === 410)) {
-      this.callbacks.abandonRecovery(
-        session.runId,
-        permanentServerRunRecoveryError(
-          `Server tool claim is permanently unavailable: HTTP ${response.status}`,
-        ),
-      );
-      return { claimed: false, outcome: 'run-stale' };
-    }
-    if (!response || (response.status !== 200 && response.status !== 409)) return null;
-    return response.json().catch(() => null) as Promise<ToolClaimResponse | null>;
+    return claimServerRunTool(this.projectId, session, toolCallId, argsDigest,
+      (runId, error) => this.callbacks.abandonRecovery(runId, error));
   }
 
   private async postResult(
@@ -191,59 +148,8 @@ export class ServerRunToolExecutor {
     toolCallId: string,
     outcome: RecoveredServerTool,
   ): Promise<boolean> {
-    if (!session.claimId) return false;
-    const body = outcome.error === undefined
-      ? {
-        projectId: this.projectId,
-        toolCallId,
-        argsDigest: outcome.argsDigest,
-        claimId: session.claimId,
-        result: projectServerRunToolResult(outcome.result),
-        // Durability of the edit this tool just made. The server fails mutating
-        // tools whose writes are not landing, instead of letting the agent build
-        // an entire cut on top of state that never reaches disk.
-        persistence: projectPersistenceSignal(this.projectId),
-      }
-      : {
-        projectId: this.projectId,
-        toolCallId,
-        argsDigest: outcome.argsDigest,
-        claimId: session.claimId,
-        error: outcome.error,
-      };
-    const response = await fetch(`/api/agent-runs/${session.runId}/tool-result`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        [SERVER_RUN_CAPABILITY_HEADER]: session.capability,
-      },
-      body: JSON.stringify(body),
-      signal: session.abort.signal,
-    }).catch(() => null);
-    if (response && permanentToolHttpStatus(response.status)) {
-      this.callbacks.abandonRecovery(
-        session.runId,
-        permanentServerRunRecoveryError(
-          `Server tool result is permanently unavailable: HTTP ${response.status}`,
-        ),
-      );
-      return true;
-    }
-    const posted = response?.ok === true;
-    if (posted) this.checkpointProjectSaves();
-    return posted;
-  }
-
-  /**
-   * Periodic durability checkpoint. Autosave already debounces at 500ms, so this
-   * only bounds exposure if that timer is starved; it is deliberately not
-   * awaited so tool throughput is unaffected.
-   */
-  private checkpointProjectSaves(): void {
-    this.resultsSinceFlush += 1;
-    if (this.resultsSinceFlush < TOOL_RESULTS_PER_FLUSH) return;
-    this.resultsSinceFlush = 0;
-    void flushProjectSaves(this.projectId).catch(() => undefined);
+    return postServerRunToolResult(this.projectId, session, toolCallId, outcome,
+      (runId, error) => this.callbacks.abandonRecovery(runId, error));
   }
 
   private retry(session: RunSession, toolCallId: string): void {

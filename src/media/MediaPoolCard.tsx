@@ -188,7 +188,7 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
     >
       <AssetThumbArea {...props} />
       <button className="cc-asset-name" title={asset.name} tabIndex={-1}>{asset.name}</button>
-      {!missing && props.musicAnalysis && <MusicAnalysisBadge asset={asset} state={props.musicAnalysis} />}
+      {!missing && props.musicAnalysis && props.musicAnalysis.state !== 'unavailable' && <MusicAnalysisBadge asset={asset} state={props.musicAnalysis} />}
     </div>
   );
 });

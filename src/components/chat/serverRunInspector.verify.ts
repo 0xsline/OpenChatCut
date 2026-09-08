@@ -7,6 +7,7 @@ import {
   serverEventsForRun,
   serverRunAcceptance,
   serverRunTerminalReason,
+  serverRunToolFailures,
 } from './serverRunInspector';
 
 const projectId = 'server-run-inspector-verify';
@@ -26,9 +27,10 @@ const events = [
   envelope(3, 'tool-result', { toolCallId: 'call-1', result: { ok: true } }),
   envelope(4, 'done', { status: 'failed', reason: 'server-restart' }),
   envelope(5, 'acceptance', { status: 'passed', iteration: 2, maxIterations: 3 }),
+  envelope(6, 'tool-failures', { failures: [{ name: 'probe_media', reason: 'no unique asset' }, { name: 'bad' }] }),
 ];
 const projected = serverEventsForRun(run(events));
-assert.deepEqual(projected.map((event) => event.id), [1, 2, 3, 4, 5]);
+assert.deepEqual(projected.map((event) => event.id), [1, 2, 3, 4, 5, 6]);
 assert.equal(serverEventFromAgentEvent(events[0])?.data.name, 'inspect_timeline');
 assert.equal(serverEventDetail(projected[1]), 'inspect_timeline');
 assert.equal(serverRunTerminalReason(run(events)), 'server-restart');
@@ -38,4 +40,7 @@ assert.equal(isServerRunRecord(run([{ ...events[0], projectId: 'other', summary:
 assert.equal(serverEventFromAgentEvent({ ...events[0], summary: '{"serverEvent":{"id":1,"type":"status","data":[] ,"at":1}}' }), null);
 assert.equal(serverRunTerminalReason(run(events, 'failed', 'provider failed')), 'provider failed');
 assert.deepEqual(serverRunAcceptance(projected), { status: 'passed', iteration: 2, maxIterations: 3 });
+assert.deepEqual(serverRunToolFailures(projected), [{ name: 'probe_media', reason: 'no unique asset' }], 'a completed run still lists the calls that failed');
+assert.equal(serverEventDetail(projected[5]), 'probe_media');
+assert.deepEqual(serverRunToolFailures(projected.slice(0, 5)), []);
 console.log('serverRunInspector.verify: projection and terminal reason checks passed');

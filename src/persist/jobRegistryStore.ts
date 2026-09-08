@@ -1,8 +1,20 @@
+import {
+  normalizeTrackedJob, resultAssetIdsOf, isRecoverableJob, resolveTrackedJob,
+  type TrackedJobKind, type TrackedJob, type TrackedJobPatch, type GenerationOperationReservation, type TrackedJobResolution,
+  type GenerationRetryClass, type GenerationOperationTimestamps,
+} from './jobRegistryModel';
+import { reconcileJobReports } from './jobRegistryReports';
+export { resolveTrackedJob } from './jobRegistryModel';
+export type {
+  TrackedJobKind, GenerationRetryClass, GenerationOperationTimestamps, TrackedJob, TrackedJobPatch,
+  GenerationOperationReservation, TrackedJobCandidate, TrackedJobResolution,
+} from './jobRegistryModel';
+
 // Durable client registry for asynchronous generation operations. The backend owns
 // provider execution; this store keeps the complete, secret-free submission snapshot
 // so refresh/restart recovery and explicit reruns do not have to reconstruct args.
 
-import { isTerminal, normalizeStatus } from '../agent/progress/job-model';
+import { normalizeStatus } from '../agent/progress/job-model';
 import type { MediaAsset, TimelineState } from '../editor/types';
 import {
   trackGenerationProgress,
@@ -15,83 +27,6 @@ import { kvGet as idbGet, kvSet as idbSet, resetSharedKvMemory } from './sharedK
 
 const jobsKey = (projectId: string) => `jobs:${projectId}`;
 const MAX_HISTORY = 80;
-
-export type TrackedJobKind = 'generation';
-export type GenerationRetryClass =
-  | 'none'
-  | 'provider-retryable'
-  | 'provider-terminal'
-  | 'download-retryable'
-  | 'restart-recoverable'
-  | 'legacy-unknown';
-
-export interface GenerationOperationTimestamps {
-  createdAt: number;
-  submittedAt?: number;
-  acceptedAt?: number;
-  startedAt?: number;
-  succeededAt?: number;
-  failedAt?: number;
-  updatedAt: number;
-}
-
-export interface TrackedJob {
-  /** Stable OpenChatCut operation identity. Legacy rows normalize this from jobId. */
-  operationId: string;
-  /** Backend polling handle. Kept separately from a provider task id. */
-  jobId: string;
-  projectId: string;
-  kind: TrackedJobKind;
-  label?: string;
-  status: string;
-  /** Versioned full tool args. This is the only rerunnable snapshot. */
-  submitArgsVersion?: 1;
-  submitArgs?: Record<string, unknown>;
-  toolName?: string;
-  provider?: string;
-  model?: string;
-  providerTaskId?: string;
-  sourceRevisions?: string[];
-  /** Canonical semantic request key held from pre-submit reservation through the accepted duplicate window. */
-  idempotencyKey?: string;
-  resultUrls?: string[];
-  resultPath?: string;
-  resultAssetId?: string;
-  /** Every generated asset returned by this operation, including multi-result jobs. */
-  resultAssetIds?: string[];
-  /** Set only after a project snapshot containing every result asset is durably saved. */
-  resultIngestedAt?: number;
-  /** Durable provider result metadata used when the server journal expires before ingestion. */
-  resultSnapshots?: GenerationJobResult[];
-  retryClass?: GenerationRetryClass;
-  error?: string;
-  timestamps: GenerationOperationTimestamps;
-  /** Pre-v1 summary only. Retained for display/backward compatibility, never rerun. */
-  params?: Record<string, unknown>;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface TrackedJobPatch extends Partial<Pick<TrackedJob,
-  | 'status'
-  | 'label'
-  | 'resultPath'
-  | 'resultAssetId'
-  | 'resultAssetIds'
-  | 'error'
-  | 'params'
-  | 'provider'
-  | 'model'
-  | 'resultSnapshots'
-  | 'providerTaskId'
-  | 'resultUrls'
-  | 'retryClass'
-  | 'sourceRevisions'
->> {
-  timestamps?: Partial<GenerationOperationTimestamps>;
-  /** Definitive provider rejection only: atomically release the semantic operation reservation. */
-  releaseIdempotencyKey?: boolean;
-}
 
 const projectQueues = new Map<string, Promise<void>>();
 const listeners = new Map<string, Set<() => void>>();
@@ -127,53 +62,6 @@ export function resetJobRegistryMemory(): void {
   resetSharedKvMemory();
 }
 
-function normalizeTrackedJob(value: unknown): TrackedJob | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const stored = value as Partial<TrackedJob>;
-  if (typeof stored.jobId !== 'string'
-    || typeof stored.projectId !== 'string'
-    || stored.kind !== 'generation'
-    || typeof stored.status !== 'string'
-    || typeof stored.createdAt !== 'number'
-    || typeof stored.updatedAt !== 'number') return null;
-  const operationId = typeof stored.operationId === 'string' && stored.operationId ? stored.operationId : stored.jobId;
-  const rawTimestamps = stored.timestamps && typeof stored.timestamps === 'object' && !Array.isArray(stored.timestamps)
-    ? stored.timestamps as Partial<GenerationOperationTimestamps>
-    : {};
-  const submitArgs = stored.submitArgs && typeof stored.submitArgs === 'object' && !Array.isArray(stored.submitArgs)
-    ? stored.submitArgs as Record<string, unknown>
-    : undefined;
-  const resultAssetIds = Array.isArray(stored.resultAssetIds)
-    ? [...new Set(stored.resultAssetIds.filter((id): id is string => typeof id === 'string' && id.length > 0))]
-    : typeof stored.resultAssetId === 'string' && stored.resultAssetId
-      ? [stored.resultAssetId]
-      : undefined;
-  const resultSnapshots = Array.isArray(stored.resultSnapshots)
-    ? stored.resultSnapshots.filter((result): result is GenerationJobResult => (
-      !!result && typeof result === 'object' && typeof result.assetId === 'string'
-    ))
-    : undefined;
-  return {
-    ...(stored as TrackedJob),
-    operationId,
-    submitArgsVersion: stored.submitArgsVersion === 1 ? 1 : undefined,
-    submitArgs,
-    resultAssetIds: resultAssetIds ?? resultSnapshots
-      ?.map((result) => result.assetId)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0),
-    resultSnapshots,
-    timestamps: {
-      createdAt: typeof rawTimestamps.createdAt === 'number' ? rawTimestamps.createdAt : stored.createdAt,
-      submittedAt: typeof rawTimestamps.submittedAt === 'number' ? rawTimestamps.submittedAt : undefined,
-      acceptedAt: typeof rawTimestamps.acceptedAt === 'number' ? rawTimestamps.acceptedAt : undefined,
-      startedAt: typeof rawTimestamps.startedAt === 'number' ? rawTimestamps.startedAt : undefined,
-      succeededAt: typeof rawTimestamps.succeededAt === 'number' ? rawTimestamps.succeededAt : undefined,
-      failedAt: typeof rawTimestamps.failedAt === 'number' ? rawTimestamps.failedAt : undefined,
-      updatedAt: typeof rawTimestamps.updatedAt === 'number' ? rawTimestamps.updatedAt : stored.updatedAt,
-    },
-  };
-}
-
 async function readPartitionedJobs(projectId: string) {
   return partitionRecords(await idbGet<unknown>(jobsKey(projectId)), normalizeTrackedJob);
 }
@@ -188,25 +76,6 @@ export async function listTrackedJobs(projectId: string): Promise<TrackedJob[]> 
   } catch {
     return [];
   }
-}
-
-function resultAssetIdsOf(job: TrackedJob): string[] {
-  return job.resultAssetIds?.length
-    ? job.resultAssetIds
-    : job.resultAssetId
-      ? [job.resultAssetId]
-      : [];
-}
-
-function isRecoverableJob(job: TrackedJob): boolean {
-  const resultPendingIngestion = normalizeStatus(job.status) === 'complete'
-    && resultAssetIdsOf(job).length > 0
-    && job.resultIngestedAt === undefined;
-  return !isTerminal(job.status)
-    || resultPendingIngestion
-    || job.retryClass === 'download-retryable'
-    || job.retryClass === 'provider-retryable'
-    || job.retryClass === 'restart-recoverable';
 }
 
 async function writeJobs(projectId: string, jobs: TrackedJob[]): Promise<void> {
@@ -310,11 +179,6 @@ export async function registerTrackedJob(input: {
     return job;
   });
 }
-
-export type GenerationOperationReservation =
-  | { state: 'reserved'; operationId: string; jobId: string }
-  | { state: 'resumable'; operationId: string; jobId: string }
-  | { state: 'accepted'; operationId: string; jobId: string; acceptedAt: number };
 
 /**
  * Atomically bind one semantic request to a durable operation before provider I/O.
@@ -449,46 +313,6 @@ export async function acknowledgeIngestedGenerationResults(
   });
 }
 
-export interface TrackedJobCandidate {
-  operationId: string;
-  distinguishingId: string;
-  label?: string;
-}
-
-export type TrackedJobResolution =
-  | { ok: true; job: TrackedJob }
-  | { ok: false; code: 'not_found' | 'ambiguous'; message: string; candidates?: TrackedJobCandidate[] };
-
-function shortestUniquePrefix(id: string, ids: readonly string[]): string {
-  for (let length = 1; length <= id.length; length += 1) {
-    const prefix = id.slice(0, length);
-    if (ids.filter((candidate) => candidate.startsWith(prefix)).length === 1) return prefix;
-  }
-  return id;
-}
-
-/** Resolve exact ids first. Prefixes are accepted only when they identify one row. */
-export function resolveTrackedJob(jobs: readonly TrackedJob[], query: string): TrackedJobResolution {
-  const id = query.trim();
-  const exact = jobs.filter((job) => job.operationId === id || job.jobId === id);
-  if (exact.length === 1) return { ok: true, job: exact[0] };
-  const matches = jobs.filter((job) => job.operationId.startsWith(id) || job.jobId.startsWith(id));
-  if (!matches.length) return { ok: false, code: 'not_found', message: `generation operation not found: ${id}` };
-  if (matches.length === 1) return { ok: true, job: matches[0] };
-  const ids = matches.map((job) => job.operationId);
-  const candidates = matches.map((job) => ({
-    operationId: job.operationId,
-    distinguishingId: shortestUniquePrefix(job.operationId, ids),
-    label: job.label,
-  }));
-  return {
-    ok: false,
-    code: 'ambiguous',
-    message: `generation operation id is ambiguous: ${id}. Use one of: ${candidates.map((candidate) => candidate.distinguishingId).join(', ')}`,
-    candidates,
-  };
-}
-
 export async function resolveTrackedJobForProject(projectId: string, query: string): Promise<TrackedJobResolution> {
   return resolveTrackedJob(await listTrackedJobs(projectId), query);
 }
@@ -523,111 +347,12 @@ export async function cacheMediaFromUrl(src: string, name?: string): Promise<voi
   }
 }
 
-function reportPatch(report: GenerationJobReport): TrackedJobPatch {
-  const results = report.results?.length ? report.results : report.result ? [report.result] : [];
-  const resultAssetIds = [...new Set(results
-    .map((result) => result.assetId)
-    .filter((id): id is string => typeof id === 'string' && id.length > 0))];
-  const primaryResult = report.result ?? report.results?.[0];
-  return {
-    status: report.status,
-    error: report.error,
-    resultPath: primaryResult?.path,
-    resultAssetId: primaryResult?.assetId,
-    resultAssetIds: resultAssetIds.length ? resultAssetIds : undefined,
-    resultSnapshots: results.length ? results : undefined,
-    provider: report.provider,
-    providerTaskId: report.providerTaskId,
-    resultUrls: report.resultUrls ?? (report.pendingDownloadUrl ? [report.pendingDownloadUrl] : undefined),
-    retryClass: report.retryClass,
-    timestamps: report.timestamps,
-  };
-}
-
 /** Apply one progress response with one read/write, including jobs learned after refresh. */
 export async function applyGenerationJobReports(projectId: string, reports: readonly GenerationJobReport[]): Promise<void> {
   if (!reports.length) return;
   await enqueueProjectWrite(projectId, async () => {
     const list = await readJobs(projectId);
-    const now = Date.now();
-    const remaining = new Set(reports);
-    const next = list.map((job) => {
-      const report = reports.find((candidate) => (
-        candidate.operationId ? candidate.operationId === job.operationId : candidate.jobId === job.jobId
-      ));
-      if (!report) return job;
-      remaining.delete(report);
-      // A refresh can race the original request while provider preflight is still
-      // materializing a source slice. Keep the awaited local intent open until
-      // the stable operation id appears in the server journal.
-      if (report.status === 'not_found'
-        && job.status === 'submitting'
-        && now - (job.timestamps.submittedAt ?? job.createdAt) < 5 * 60_000) {
-        return job;
-      }
-      const patch = reportPatch(report);
-      const resultSetChanged = patch.resultAssetIds !== undefined
-        && (patch.resultAssetIds.length !== resultAssetIdsOf(job).length
-          || patch.resultAssetIds.some((id) => !resultAssetIdsOf(job).includes(id)));
-      const terminalTimestamp = report.status === 'succeeded'
-        ? { succeededAt: patch.timestamps?.succeededAt ?? now }
-        : report.status === 'failed' || report.status === 'not_found'
-          ? { failedAt: patch.timestamps?.failedAt ?? now }
-          : {};
-      return {
-        ...job,
-        ...patch,
-        ...(resultSetChanged ? { resultIngestedAt: undefined } : {}),
-        toolName: report.toolName ?? job.toolName,
-        submitArgsVersion: report.submitArgsVersion ?? job.submitArgsVersion,
-        submitArgs: report.submitArgs ?? job.submitArgs,
-        model: report.model ?? job.model,
-        sourceRevisions: report.sourceRevisions ?? job.sourceRevisions,
-        label: report.label ?? job.label,
-        timestamps: {
-          ...job.timestamps,
-          ...patch.timestamps,
-          ...terminalTimestamp,
-          updatedAt: now,
-        },
-        updatedAt: now,
-      };
-    });
-    for (const report of remaining) {
-      const createdAt = report.timestamps?.createdAt ?? now;
-      const patch = reportPatch(report);
-      next.push({
-        operationId: report.operationId ?? report.jobId,
-        jobId: report.jobId,
-        projectId,
-        kind: 'generation',
-        label: report.label,
-        status: report.status,
-        submitArgsVersion: report.submitArgsVersion,
-        submitArgs: report.submitArgs,
-        toolName: report.toolName,
-        provider: report.provider,
-        model: report.model,
-        providerTaskId: report.providerTaskId,
-        sourceRevisions: report.sourceRevisions,
-        resultUrls: patch.resultUrls,
-        resultPath: patch.resultPath,
-        resultAssetId: patch.resultAssetId,
-        resultAssetIds: patch.resultAssetIds,
-        resultSnapshots: patch.resultSnapshots,
-        retryClass: report.retryClass,
-        error: report.error,
-        params: report.params,
-        timestamps: {
-          createdAt,
-          ...report.timestamps,
-          updatedAt: now,
-        },
-        createdAt,
-        updatedAt: now,
-      });
-    }
-    await writeJobs(projectId, next);
+    await writeJobs(projectId, reconcileJobReports(projectId, list, reports, Date.now()));
   });
 }
 

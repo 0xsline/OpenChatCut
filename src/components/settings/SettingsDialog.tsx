@@ -210,6 +210,7 @@ function useFieldContext(
   setValues: React.Dispatch<React.SetStateAction<Values>>,
   reveal: boolean,
   refreshStatus: () => Promise<void>,
+  copilotEnabled: boolean,
 ): FieldCtx {
   const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
   const [autoClearedEffort, setAutoClearedEffort] = useState<string | null>(null);
@@ -217,7 +218,7 @@ function useFieldContext(
     modelValue(status, 'CODEX_MODEL'),
     modelValue(status, 'CODEX_REASONING_EFFORT'),
   );
-  const copilot = useCopilotSettings();
+  const copilot = useCopilotSettings(copilotEnabled);
   const onStage = (field: SettingsField, raw: string): void => {
     const staged = stageFieldValue(values, field, raw, status, codex.models, autoClearedEffort);
     setValues(staged.values);
@@ -266,7 +267,8 @@ export function SettingsDialog({ onClose, initialVendor }: { onClose: () => void
       // Keep the stale snapshot; the next save or dialog open refreshes it.
     }
   };
-  const ctx = useFieldContext(status, values, setValues, reveal, refreshStatus);
+  const ctx = useFieldContext(status, values, setValues, reveal, refreshStatus,
+    page.connection === 'copilot');
   useEffect(() => {
     if (!status?.models) return;
     syncTranscriptionPreferences(status.models);

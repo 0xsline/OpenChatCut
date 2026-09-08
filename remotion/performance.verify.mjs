@@ -166,7 +166,13 @@ console.log('remotion performance verification passed');
   assert.match(render, /process\.platform === 'linux' \? 'angle-egl' : 'angle'/, 'linux defaults to angle-egl, others to angle');
   assert.match(render, /CC_RENDER_GL/, 'CC_RENDER_GL overrides the backend');
   assert.ok((render.match(/gl: resolveRenderGlBackend\(\)/g) ?? []).length >= 5, 'every render/still path uses the resolver');
-  assert.match(render, /CC_REMOTION_BINARIES_DIR/, 'packaged Windows may supply the complete FFmpeg directory');
-  assert.match(render, /directBinaries \? \{ binariesDirectory: directBinaries \} : \{\}/,
-    'only custom hardware encoding uses the alternate FFmpeg');
+  assert.match(render, /CC_REMOTION_BINARIES_DIR/, 'the packaged app supplies the mirrored compositor directory');
+  // The packaged app ships as an asar archive: the compositor inside it can be neither
+  // chmod'ed nor spawned, so every selectComposition / renderMedia / renderStill call must
+  // render from the mirrored directory (null in dev, where the package path is a real file).
+  assert.ok((render.match(/binariesDirectory: binariesDirectory\(\)/g) ?? []).length >= 5,
+    'every composition selection, media render and still render passes the binaries directory');
+  assert.doesNotMatch(render, /binariesDirectory: undefined/, 'the software retry keeps the binaries directory');
+  assert.match(render, /attempt\.ffmpegOverride\s*\?\s*renderDirectHardware/,
+    'the custom ffmpeg override, not the binaries directory, marks the direct-hardware attempt');
 }

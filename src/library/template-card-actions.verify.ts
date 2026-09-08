@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const source = await readFile(new URL('./TemplateBrowser.tsx', import.meta.url), 'utf8');
+const source = await readFile(new URL('./TemplateCard.tsx', import.meta.url), 'utf8');
 
 assert.match(source, /onContextMenu=\{\(event\) =>/);
 assert.match(source, /aria-label=\{t\('添加到时间线：\{name\}'/);

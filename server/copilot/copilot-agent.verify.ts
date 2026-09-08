@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { ToolSet } from '@github/copilot-sdk';
 import { parseCopilotTurnRequest } from '../plugins/copilot-agent.ts';
-import { isSupportedCopilotVersion } from './installation.ts';
+import { isSupportedCopilotVersion, resolveCopilotCli } from './installation.ts';
+import { copilotModelSummary } from './client.ts';
+import { copilotSessionConfig } from './turn-manager.ts';
 import { KEY_NAMES, seedKeystore } from '../keystore.ts';
 import {
   copilotProviderForModel,
@@ -22,6 +26,30 @@ const turnBody = {
   projectId: 'project-1',
   tools: [],
 };
+
+const cliOverride = process.env.OPENCHATCUT_COPILOT_PATH;
+try {
+  delete process.env.OPENCHATCUT_COPILOT_PATH;
+  const bundled = fileURLToPath(import.meta.resolve(`@github/copilot-${process.platform}-${process.arch}`));
+  assert.equal(await resolveCopilotCli(), bundled, 'the installed platform package is discovered without a PATH installation');
+} finally {
+  if (cliOverride === undefined) delete process.env.OPENCHATCUT_COPILOT_PATH;
+  else process.env.OPENCHATCUT_COPILOT_PATH = cliOverride;
+}
+const session = copilotSessionConfig(turnBody, () => undefined);
+assert.equal(session.streaming, true, 'the SDK must emit the delta events consumed by the turn manager');
+assert.ok(session.availableTools instanceof ToolSet);
+assert.deepEqual(session.availableTools.toArray(), new ToolSet().addCustom('*').toArray(),
+  'only host editing tools are available, never built-in or MCP tools');
+assert.throws(() => copilotSessionConfig({ ...turnBody, reasoningEffort: 'invalid' }, () => undefined),
+  /Unsupported Copilot reasoning effort/);
+const automaticModel = copilotModelSummary({
+  id: 'auto', name: 'Auto',
+  capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 0 } },
+});
+assert.equal(automaticModel.supportsTools, true, 'SDK models have no tool_calls flag');
+assert.equal(automaticModel.isDefault, true, 'an account with only Auto must retain a usable model choice');
+assert.equal(automaticModel.contextWindowTokens, null, 'Auto does not invent measured token limits');
 
 assert.equal(parseCopilotTurnRequest(turnBody).model, 'claude-sonnet-5',
   'callers without a model fall back to the saved setting');

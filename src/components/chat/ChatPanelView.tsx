@@ -111,10 +111,24 @@ function EarlierMessagesButton({ controller }: { controller: ChatPanelController
   </button>;
 }
 
+function lastUserTurn(messages: readonly DisplayMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]!.role === 'user') return index;
+  }
+  return -1;
+}
+
 function MessageEntries({ controller }: { controller: ChatPanelController }) {
   const { agent, composer, props, visibleMessages, visibleFrom } = controller;
-  const onRetry = (retry: NonNullable<DisplayMessage['retry']>) => {
-    if (!agent.running) void agent.send(retry.text, {
+  // Retry re-runs the turn instead of asking again after it: the failed attempt is rewound
+  // out of both histories first, so an error or a half-finished tool call cannot steer the
+  // second try. Only the latest turn offers it — rewinding an earlier one would discard
+  // every turn after it as well.
+  const lastUser = lastUserTurn(agent.messages);
+  const onRetry = (index: number, retry: NonNullable<DisplayMessage['retry']>) => {
+    if (agent.running) return;
+    agent.rewindTurn(index);
+    void agent.send(retry.text, {
       askOnly: retry.askOnly,
       references: retry.references,
     });
@@ -125,10 +139,10 @@ function MessageEntries({ controller }: { controller: ChatPanelController }) {
     ) : (
       <ChatMessage key={item.index} msg={item.msg} running={agent.running}
         onOpenSettings={props.onOpenSettings}
-        retry={item.msg.role === 'user' ? item.msg.retry : undefined}
+        retry={item.msg.role === 'user' && item.index === lastUser ? item.msg.retry : undefined}
         streaming={agent.running && item.index === agent.messages.length - 1 && item.msg.role === 'assistant'}
         widgetSubmitted={agent.messages.slice(item.index + 1).some((message) => message.role === 'user')}
-        onRetry={onRetry}
+        onRetry={(retry) => onRetry(item.index, retry)}
         onContinue={item.msg.role === 'continue' && item.index === agent.messages.length - 1 && !agent.running
           ? () => { void agent.send('继续'); } : null}
         onWidgetSubmit={(answer) => {

@@ -30,6 +30,8 @@ export default {
   // Lost asset / heavy chain
   '有 {n} 个素材丢失或无法加载。选择文件夹搜索，或从行内重新链接。': '{n} assets are missing or failed to load. Pick a folder to search, or relink from each row.',
   '重新链接离线素材': 'Relink Offline Media',
+  '移除全部失效素材': 'Remove all offline media',
+  '本地音乐分析模型未安装，素材卡片暂不显示分析入口。在 设置 → 本地 AI 中安装「节拍」与「音乐语义」模型包后即可分析。': 'Local music-analysis models are not installed, so cards show no analysis entry. Install the Rhythm and Music Semantics packs under Settings → Local AI to analyze.',
   '点击重新链接': 'Click to relink',
   '单击选中，双击加入时间线，或拖到指定轨道：{name}': 'Click to select, double-click to add to the timeline, or drag to a specific track: {name}',
   '单击选中，或拖到 AI 对话框：{name}': 'Click to select, or drag into the AI chat: {name}',

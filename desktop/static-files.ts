@@ -6,6 +6,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join, normalize, sep } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { mimeFor, resolveUploadFile, serveDiskFile } from '../server/media-dir.ts';
 import { editorCredentialAuthorized } from '../server/editor-auth.ts';
 import type { Middleware } from './mini-connect.ts';
@@ -38,7 +39,7 @@ async function sendFile(req: IncomingMessage, res: ServerResponse, file: string)
   }
   res.writeHead(200, { 'Content-Type': staticMime(file), 'Content-Length': String(size) });
   if (req.method === 'HEAD') { res.end(); return true; }
-  createReadStream(file).pipe(res);
+  await pipeline(createReadStream(file), res);
   return true;
 }
 

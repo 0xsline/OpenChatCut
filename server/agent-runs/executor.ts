@@ -391,17 +391,10 @@ async function executeRunTurns(
       return;
     }
     messages = outcome.messages;
-    const disposition = turnDisposition(
-      outcome.hitMaxTokens,
-      outcome.continued,
-      plan.activation.toolFailures.hasUnresolved,
-    );
+    const disposition = turnDisposition(outcome.hitMaxTokens, outcome.continued);
     if (disposition === 'continue') continue;
     if (disposition === 'max-tokens') {
       pushRunEvent(run, 'max-tokens', { turn: turn + 1 });
-    }
-    if (disposition === 'failed') {
-      throw new Error(plan.activation.toolFailures.report());
     }
     if (disposition === 'completed') {
       const acceptance = decideAcceptanceAfterTurn(plan.activation.acceptance);
@@ -431,6 +424,11 @@ async function executeRunTurns(
           maxIterations: acceptance.state.maxIterations,
         });
       }
+    }
+    if (plan.activation.toolFailures.hasUnresolved) {
+      // The model answered with the failed result in its context, so the run completes;
+      // this tells the user and the inspector which calls failed, without a failure banner.
+      pushRunEvent(run, 'tool-failures', { failures: plan.activation.toolFailures.snapshot() });
     }
     pushRunEvent(run, 'finish', {
       ...serverRunTextMetadata(outcome.text),

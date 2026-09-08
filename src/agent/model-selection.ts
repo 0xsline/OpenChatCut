@@ -269,10 +269,11 @@ export function applyCopilotAgentStatus(
   const preferred = loadAgentModelPref();
   const preserved = choices.some((choice) => choice.id === preferred) ? preferred
     : choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
-  commitChoices(choices, preserved || snapshot.activeId || choices[0]?.id || '', true);
+  commitChoices(choices, preserved || choices[0]?.id || '', true);
 }
 
-export function getAgentModelSnapshot(): AgentModelSnapshot {  return snapshot;
+export function getAgentModelSnapshot(): AgentModelSnapshot {
+  return snapshot;
 }
 
 export function subscribeAgentModels(listener: () => void): () => void {

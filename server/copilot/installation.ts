@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const VERSION_TIMEOUT_MS = 10_000;
 const VERSION_OUTPUT_LIMIT = 16 * 1024;
@@ -41,11 +42,10 @@ function configuredCandidates(): string[] {
  */
 function bundledCandidates(): string[] {
   const platformPackage = `@github/copilot-${process.platform}-${process.arch}`;
-  const binary = process.platform === 'win32' ? 'copilot.exe' : 'copilot';
   try {
-    const entry = import.meta.resolve?.(`${platformPackage}/package.json`);
+    const entry = import.meta.resolve(platformPackage);
     if (!entry?.startsWith('file:')) return [];
-    return [join(new URL('.', entry).pathname, binary)];
+    return [fileURLToPath(entry)];
   } catch {
     return [];
   }

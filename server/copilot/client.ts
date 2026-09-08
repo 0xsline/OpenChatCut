@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { CopilotClient, RuntimeConnection } from '@github/copilot-sdk';
+import { CopilotClient, RuntimeConnection, type ModelInfo } from '@github/copilot-sdk';
 import type { CopilotAccountSummary, CopilotAgentModel } from '../../shared/copilot-agent.ts';
 import { resolveCopilotCli } from './installation.ts';
 
@@ -10,7 +10,7 @@ import { resolveCopilotCli } from './installation.ts';
  * `~/.copilot` so an in-app run can never disturb their terminal CLI.
  */
 const COPILOT_HOME = join(homedir(), '.openchatcut', 'copilot');
-const MODEL_LIST_TIMEOUT_MS = 15_000;
+const RUNTIME_REQUEST_TIMEOUT_MS = 15_000;
 const MODEL_CACHE_TTL_MS = 5 * 60_000;
 
 /**
@@ -50,34 +50,54 @@ function childEnvironment(): Record<string, string> {
 
 let started: Promise<CopilotClient> | null = null;
 
+async function runtimeRequest<T>(request: Promise<T>, operation: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new CopilotProcessError(
+          `Copilot ${operation} timed out.`,
+        )), RUNTIME_REQUEST_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function startCopilotClient(): Promise<CopilotClient> {
+  const path = await resolveCopilotCli();
+  if (!path) throw new CopilotProcessError(
+    'Copilot CLI not found. Install it (`brew install copilot` or `npm i -g @github/copilot`) '
+    + 'or set OPENCHATCUT_COPILOT_PATH.',
+  );
+  const client = new CopilotClient({
+    mode: 'empty',
+    connection: RuntimeConnection.forStdio({ path, env: childEnvironment() }),
+    baseDirectory: COPILOT_HOME,
+    logLevel: 'error',
+  });
+  try {
+    await runtimeRequest(client.start(), 'startup');
+    return client;
+  } catch (error) {
+    await client.forceStop().catch(() => undefined);
+    throw new CopilotProcessError(
+      error instanceof Error ? error.message : 'Copilot CLI failed to start.',
+    );
+  }
+}
+
 /**
  * Lazily start a single shared runtime. The SDK multiplexes sessions over one
  * process, so unlike the Codex client there is no need to respawn per turn.
  */
 export function copilotClient(): Promise<CopilotClient> {
-  started ??= (async () => {
-    const path = await resolveCopilotCli();
-    if (!path) {
-      throw new CopilotProcessError(
-        'Copilot CLI not found. Install it (`brew install copilot` or `npm i -g @github/copilot`) '
-        + 'or set OPENCHATCUT_COPILOT_PATH.',
-      );
-    }
-    const client = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path, env: childEnvironment() }),
-      baseDirectory: COPILOT_HOME,
-      logLevel: 'error',
-    });
-    try {
-      await client.start();
-    } catch (error) {
-      started = null;
-      throw new CopilotProcessError(
-        error instanceof Error ? error.message : 'Copilot CLI failed to start.',
-      );
-    }
-    return client;
-  })();
+  started ??= startCopilotClient().catch((error) => {
+    started = null;
+    throw error;
+  });
   return started;
 }
 
@@ -90,7 +110,7 @@ export async function stopCopilotClient(): Promise<void> {
 
 export async function readCopilotAuth(): Promise<CopilotAccountSummary & { authenticated: boolean }> {
   const client = await copilotClient();
-  const status = await client.getAuthStatus();
+  const status = await runtimeRequest(client.getAuthStatus(), 'authentication check');
   return {
     authenticated: status.isAuthenticated === true,
     login: status.login ?? null,
@@ -110,36 +130,26 @@ function numeric(value: unknown): number | null {
  */
 export async function listCopilotModels(): Promise<readonly CopilotAgentModel[]> {
   const client = await copilotClient();
-  const raw = await Promise.race([
-    client.listModels(),
-    new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new CopilotProcessError('Copilot model list timed out.')), MODEL_LIST_TIMEOUT_MS);
-    }),
-  ]);
-  const models = raw
-    .filter((model) => model.id !== 'auto')
-    .map((model) => {
-      const entry = model as unknown as Record<string, any>;
-      const capabilities = entry.capabilities ?? {};
-      const supports = capabilities.supports ?? {};
-      const limits = capabilities.limits ?? {};
-      return {
-        id: String(entry.id),
-        label: String(entry.name ?? entry.id),
-        isDefault: entry.isDefault === true,
-        supportsTools: supports.tool_calls === true,
-        supportsVision: supports.vision === true,
-        contextWindowTokens: numeric(limits.max_context_window_tokens)
-          ?? numeric(limits.max_prompt_tokens),
-        maxInputTokens: numeric(limits.max_prompt_tokens),
-        maxOutputTokens: numeric(limits.max_output_tokens),
-        supportedReasoningEfforts: Array.isArray(entry.supportedReasoningEfforts)
-          ? entry.supportedReasoningEfforts.map(String)
-          : [],
-      } satisfies CopilotAgentModel;
-    });
+  const raw = await runtimeRequest(client.listModels(), 'model list');
+  const models = raw.filter((model) => model.policy?.state !== 'disabled').map(copilotModelSummary);
   cache = { models, at: Date.now() };
   return models;
+}
+
+export function copilotModelSummary(model: ModelInfo): CopilotAgentModel {
+  const limits = model.capabilities?.limits;
+  return {
+    id: model.id,
+    label: model.name || model.id,
+    isDefault: model.id === 'auto',
+    // The SDK exposes CLI agent models, including auto; it has no tool_calls flag.
+    supportsTools: true,
+    supportsVision: model.capabilities?.supports?.vision === true,
+    contextWindowTokens: numeric(limits?.max_context_window_tokens) ?? numeric(limits?.max_prompt_tokens),
+    maxInputTokens: numeric(limits?.max_prompt_tokens),
+    maxOutputTokens: null,
+    supportedReasoningEfforts: model.supportedReasoningEfforts ?? [],
+  };
 }
 
 let cache: { models: readonly CopilotAgentModel[]; at: number } | null = null;

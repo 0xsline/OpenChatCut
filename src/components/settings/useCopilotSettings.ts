@@ -29,7 +29,7 @@ function useMountedRef(): RefObject<boolean> {
  * `copilot login` in a terminal. This controller therefore only reads status
  * and discovers models, then republishes both to the agent model registry.
  */
-export function useCopilotSettings(): CopilotSettingsController {
+export function useCopilotSettings(enabled: boolean): CopilotSettingsController {
   const mounted = useMountedRef();
   const [status, setStatus] = useState<CopilotAgentStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +81,7 @@ export function useCopilotSettings(): CopilotSettingsController {
     }
   }, [mounted]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (enabled) void refresh(); }, [enabled, refresh]);
 
   return { status, loading, error, modelBusy, modelError, models, refresh, discoverModels };
 }

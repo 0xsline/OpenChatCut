@@ -41,6 +41,7 @@ function serverRunAdapter(
     reProposeStale: bridge.reProposeStale,
     rollbackChangeSession: bridge.rollbackChangeSession,
     canRollbackChangeSession: bridge.canRollbackChangeSession,
+    rewindTurn: bridge.rewindTurn,
   };
 }
 

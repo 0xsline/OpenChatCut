@@ -46,6 +46,7 @@ export interface ServerRunProposalBridge {
   readonly clearHistory: () => void;
   readonly rollbackChangeSession: (id: string, force?: boolean) => boolean;
   readonly canRollbackChangeSession: (id: string) => boolean;
+  readonly rewindTurn: (index: number) => boolean;
 }
 
 function useServerRunSession(

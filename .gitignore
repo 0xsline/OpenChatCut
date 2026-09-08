@@ -103,3 +103,6 @@ public/whisper-cli/
 .npm-cache/
 # Root-level local runtime files
 /etc/
+
+# Agent tooling local state (Command Code taste captures)
+.commandcode/

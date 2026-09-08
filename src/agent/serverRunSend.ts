@@ -1,27 +1,19 @@
 import type { AgentContext } from './context';
-import { resolveAgentReferences } from './context';
-import type { ProjectDoc } from '../editor/types';
 import { TOOL_SCHEMAS } from './tools';
 import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import { ToolActivation } from './tool-activation';
 import type { AgentSettings } from './settings/agentSettings';
-import { buildAgentSystemPrompt } from './systemPrompt';
 import { getActiveAgentModelChoice } from './model-selection';
-import { describeImagesForTextModel } from './vision';
-import { resolveVisionModel } from './visionConfig';
-import { withoutModelImages } from './messages';
-import { effectiveOutputTokenBudget, estimateContextTokens } from './context-compaction';
+import { buildPreparedServerRun, type PreparedServerRun } from './serverRunPayload';
 import type { AgentSendOptions } from './useAgentRun';
 import { createAgentRetry, type DisplayMessage } from './agent-session';
 import { ServerRunToolExecutor } from './serverRunToolExecutor';
 import {
-  buildServerRunPayload,
   loadServerRunMetadata,
   requestServerRunCancellation,
   requestServerRunStart,
   type CreatedServerRunResponse,
   type ServerRunOptions,
-  type ServerRunPayload,
   type ServerRunRecovery,
 } from './serverRunProtocol';
 import {
@@ -99,15 +91,6 @@ function throwIfAborted(signal: AbortSignal): void {
   throw signal.reason instanceof Error ? signal.reason : new Error('Server run request aborted.');
 }
 
-interface PreparedServerRun {
-  readonly payload: ServerRunPayload;
-  readonly trimmed: string;
-  readonly content: string;
-  readonly baseDoc: ProjectDoc;
-  readonly modelHistoryLength: number;
-  readonly options: ServerRunOptions;
-  readonly sendOptions: AgentSendOptions;
-}
 interface ActiveServerRun extends PreparedServerRun {
   readonly abort: AbortController;
   readonly storedCreation: StoredServerRun;
@@ -126,60 +109,19 @@ async function prepareServerRunPayload(
     || !trimmed
     || refs.running.current) return null;
   const choice = getActiveAgentModelChoice();
-  if (!choice
-    || (choice.backend !== 'api' && choice.backend !== 'codex' && choice.backend !== 'copilot')) {
-    environment.appendMessage({
-      role: 'error',
-      text: '服务端运行仅支持已配置的 API / Codex / Copilot 模型。',
-    });
+  if (!choice || (choice.backend !== 'api' && choice.backend !== 'codex' && choice.backend !== 'copilot')) {
+    environment.appendMessage({ role: 'error', text: '服务端运行仅支持已配置的 API / Codex / Copilot 模型。' });
     return null;
   }
-  const settings = refs.settings.current;
-  const ctx = refs.context.current;
-  const options = refs.options.current;
-  const entries = resolveAgentReferences(ctx, sendOptions.references ?? []);
-  const content = entries.length
-    ? `${trimmed}\n\n${JSON.stringify({ type: 'chat_context_entry', entries })}`
-    : trimmed;
-  let modelMessages = options.session?.modelMessages() ?? [];
-  const supportsImages = choice.capabilities.supportsImages.value;
-  const vision = resolveVisionModel(choice);
-  if (!supportsImages && vision) {
-    modelMessages = await describeImagesForTextModel(modelMessages, vision);
-  } else if (!supportsImages) {
-    modelMessages = withoutModelImages(modelMessages);
-  }
-  const systemPrompt = buildAgentSystemPrompt(ctx, settings);
-  const estimatedInputTokens = estimateContextTokens(
-    [...modelMessages, { role: 'user', content } as (typeof modelMessages)[number]],
-    systemPrompt,
-  );
-  const payload = buildServerRunPayload(environment.projectId, content, sendOptions, {
-    history: modelMessages,
-    systemPrompt,
-    provider: choice.provider,
-    model: choice.model,
-    backend: choice.backend,
-    ...(choice.reasoningEffort ? { reasoningEffort: choice.reasoningEffort } : {}),
-    cacheMode: settings.cacheMode,
-    autonomousAcceptance: settings.autonomousAcceptance,
-    maxAcceptanceIterations: settings.maxAcceptanceIterations,
-    maxOutputTokens: effectiveOutputTokenBudget(
-      choice.capabilities.maxOutputTokens.value,
-      choice.capabilities.contextWindowTokens.value,
-      estimatedInputTokens,
-    ),
-    openAiApiMode: choice.openAiApiMode,
-  });
-  return {
-    payload,
+  return buildPreparedServerRun({
+    projectId: environment.projectId,
     trimmed,
-    content,
-    baseDoc: ctx.getDoc(),
-    options,
     sendOptions,
-    modelHistoryLength: modelMessages.length,
-  };
+    settings: refs.settings.current,
+    ctx: refs.context.current,
+    options: refs.options.current,
+    choice,
+  });
 }
 
 function storedServerRunFor(

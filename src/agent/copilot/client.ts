@@ -4,6 +4,8 @@ import type {
   CopilotToolResultRequest,
 } from '../../../shared/copilot-agent';
 
+const STATUS_TIMEOUT_MS = 30_000;
+
 async function responseError(response: Response): Promise<Error> {
   let message = '';
   try {
@@ -40,11 +42,15 @@ function postJson(body?: unknown, signal?: AbortSignal): RequestInit {
 }
 
 export function fetchCopilotStatus(): Promise<CopilotAgentStatus> {
-  return requestJson<CopilotAgentStatus>('/api/copilot/status');
+  return requestJson<CopilotAgentStatus>('/api/copilot/status', {
+    signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
+  });
 }
 
 export function fetchCopilotModels(): Promise<CopilotAgentModelsResponse> {
-  return requestJson<CopilotAgentModelsResponse>('/api/copilot/models');
+  return requestJson<CopilotAgentModelsResponse>('/api/copilot/models', {
+    signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
+  });
 }
 
 export function submitCopilotToolResult(result: CopilotToolResultRequest): Promise<void> {
