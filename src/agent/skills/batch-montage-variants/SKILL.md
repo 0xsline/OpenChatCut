@@ -9,7 +9,7 @@ description: |
 
 Use this workflow when the user wants **many** finished cuts from the same media pool — matrix accounts, A/B hook testing, platform variants, or daily batch output. Each output must satisfy the agreed mode: structural differentiation, a controlled hook test, or a platform adaptation.
 
-This is a OpenChatCut-native workflow. Use the current project, source assets, asset-frame inspection, AV/script context, and OpenChatCut editing tools. Do not depend on external download, transcription, ffmpeg, or auto-crop pipelines unless the user explicitly asks for an external source that is not already in the project.
+This is an OpenChatCut-native workflow. Use the current project, source assets, asset-frame inspection, AV/script context, and built-in editing tools. Editing imported media requires no external service. Use external sources or processing pipelines only when explicitly requested by the user.
 
 ## When to switch workflows
 
