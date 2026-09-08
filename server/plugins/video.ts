@@ -26,8 +26,7 @@ import {
   type KlingVideoReferType, type ValidVideoRequest, type VideoRequest,
 } from './video-validation.ts';
 export { hailuoApiResolution, seedanceApiResolution, validateVideoRequest } from './video-validation.ts';
-// Proxy-aware fetch: attaches the configured outbound proxy (keystore
-// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
+// Attach the configured outbound proxy through undici.
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
 const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
   fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);

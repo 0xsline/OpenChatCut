@@ -109,6 +109,10 @@ assert.ok(!serialized.includes('secret-abc') && !serialized.includes('px-1'), 's
 assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value server-side');
 seedKeystore({ ...isolatedSeed, PREFERRED_TRANSCRIPTION_PROVIDER: 'local' } as Record<string, string>);
 assert.equal(keyStatus().caps.transcription, true, 'selected local Whisper keeps keyless transcription available');
+assert.equal(keyStatus().caps.video, false, 'unconfigured OFox leaves existing video capability off');
+seedKeystore({ ...isolatedSeed, LLM_OFOX_API_KEY: 'ofox-test-key' });
+assert.equal(keyStatus().caps.video, true, 'OFox alone enables video generation');
+assert.equal(keyStatus().caps.image, false, 'OFox does not enable unimplemented image generation');
 seedKeystore({
   ...isolatedSeed,
   [MODEL_CAPABILITY_OVERRIDES_KEY]: '[{"backend":"api","provider":"openai","modelId":"x","apiKey":"secret"}]',

@@ -146,7 +146,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_video',
-    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, or xAI Grok Imagine video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
+    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
     input_schema: {
       type: 'object',
       properties: {
@@ -165,8 +165,8 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         refVideoMode: { type: 'string', enum: ['feature', 'base'], description: 'Kling only with refVideos. feature (default)=motion/camera/style guide; base=edit that source clip (keep_original_sound).' },
         promptOptimizer: { type: 'boolean', description: 'Hailuo only. MiniMax prompt_optimizer; default true. Set false for more literal prompts.' },
         fastPretreatment: { type: 'boolean', description: 'Hailuo only. MiniMax fast_pretreatment when promptOptimizer is true; default false.' },
-        generateAudio: { type: 'boolean', description: 'Seedance/BytePlus only. Generate synchronized audio; official default true.' },
-        seed: { type: 'integer', description: 'Seedance/BytePlus only. Deterministic random seed.' },
+        generateAudio: { type: 'boolean', description: 'Seedance/BytePlus/OFox. Generate synchronized audio; default true for models that support audio.' },
+        seed: { type: 'integer', description: 'Seedance/BytePlus/OFox. Random seed; determinism depends on the model.' },
         cameraFixed: { type: 'boolean', description: 'Seedance/BytePlus only. Lock camera motion; default false.' },
         watermark: { type: 'boolean', description: 'Seedance/BytePlus only. Add provider watermark; default false.' },
         returnLastFrame: { type: 'boolean', description: 'Seedance/BytePlus only. Save the returned last frame as an additional image asset.' },

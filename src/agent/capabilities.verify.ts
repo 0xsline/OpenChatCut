@@ -86,4 +86,12 @@ assert.ok(autoMode.includes('guide them to Settings'), 'unconfigured capability 
 assert.equal(typeof CONFIGURED_CAPS.image, 'boolean', 'CONFIGURED_CAPS resolves under tsx (all-false fallback, no ReferenceError)');
 assert.equal(CONFIGURED_CAPS.image, false, 'fallback is all-false outside Vite');
 
+applyLiveKeyStatus({ LLM_OFOX_API_KEY: { configured: true }, IMAGE_API_KEY: { configured: true } });
+applyLiveModels({ PREFERRED_VIDEO_VENDOR: 'ofox' });
+const ofox = capabilitiesPrompt({ ...ALL_OFF, video: true, image: true });
+assert.ok(ofox.includes('Video generation(submit_video · user default: OFox(model=ofox)'));
+assert.ok(ofox.includes('Image generation(submit_image · available: gpt-image(model=gpt-image-2) — use it directly)'));
+applyLiveKeyStatus({});
+assert.ok(!capabilitiesPrompt({ ...ALL_OFF, video: true }).includes('OFox(model=ofox)'), 'unconfigured OFox stays hidden');
+
 console.log('capabilities.verify: ok');

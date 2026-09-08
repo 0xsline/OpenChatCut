@@ -1911,7 +1911,7 @@
     },
     {
       "name": "submit_video",
-      "description": "Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, or xAI Grok Imagine video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
+      "description": "Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -2012,11 +2012,11 @@
           },
           "generateAudio": {
             "type": "boolean",
-            "description": "Seedance/BytePlus only. Generate synchronized audio; official default true."
+            "description": "Seedance/BytePlus/OFox. Generate synchronized audio; default true for models that support audio."
           },
           "seed": {
             "type": "integer",
-            "description": "Seedance/BytePlus only. Deterministic random seed."
+            "description": "Seedance/BytePlus/OFox. Random seed; determinism depends on the model."
           },
           "cameraFixed": {
             "type": "boolean",

@@ -77,6 +77,7 @@ export async function generateOfoxVideo(
   registerProviderTask: RegisterGenerationProviderTask,
   existingTaskId?: string,
 ): Promise<string> {
+  if (!options.ofoxApiKey) throw new Error('OFox generation is not configured. Set LLM_OFOX_API_KEY in .env.local.');
   const baseUrl = options.ofoxBaseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${options.ofoxApiKey}` };
   let taskId = existingTaskId;
@@ -97,8 +98,8 @@ export async function generateOfoxVideo(
     });
     if (!startedResponse.ok) throw new Error(await providerError(startedResponse));
     const started = await startedResponse.json() as { id?: unknown };
-    taskId = String(started.id ?? '');
-    if (!taskId) throw new Error('ofox did not return a task id');
+    if (typeof started.id !== 'string' || !started.id.trim()) throw new Error('ofox did not return a task id');
+    taskId = started.id;
     await registerProviderTask('ofox', taskId);
   }
   const deadline = Date.now() + 15 * 60_000;
