@@ -370,6 +370,48 @@ claude mcp add --transport http openchatcut \
 
 外部 Agent 调用的仍是编辑器内部同一套工具和 `EditorCore` 命令，不存在两套互相漂移的工程格式；外部草稿准备期间不会修改正式时间线。
 
+### Qoder
+
+Qoder 同样支持一键接入：指南里的「连接」按钮会把端点和 Bearer 令牌写进 Qoder
+自己的设置文件，已有的其它设置和 MCP 服务保持不变。
+
+```text
+~/.qoder/settings.json        （国际版）
+~/.qoder-cn/settings.json     （国内版；已安装时一并写入）
+```
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <令牌>" }
+    }
+  }
+}
+```
+
+写入后重启 Qoder 生效。
+
+### 千问办公
+
+千问办公 的自定义 MCP 保存在应用内部的连接器里，没有可供写入的配置文件，
+因此这一步无法一键完成：在指南中点「千问办公」卡片的「复制配置」，再到
+千问办公 的 连接器 → 自定义 MCP → 添加 中粘贴并保存：
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "streamable-http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <令牌>" }
+    }
+  }
+}
+```
+
 ### MCP 访问保护
 
 自行暴露 MCP 入口时可配置：
