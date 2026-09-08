@@ -7,7 +7,7 @@ description: |
 
 # Batch Montage Variants
 
-Use this workflow when the user wants **many** finished cuts from the same media pool — matrix accounts, A/B hook testing, platform variants, or daily batch output. The hard problem is not making one good cut; it is making N cuts that are each good *and* provably different from each other.
+Use this workflow when the user wants **many** finished cuts from the same media pool — matrix accounts, A/B hook testing, platform variants, or daily batch output. Each output must satisfy the agreed mode: structural differentiation, a controlled hook test, or a platform adaptation.
 
 This is a OpenChatCut-native workflow. Use the current project, source assets, asset-frame inspection, AV/script context, and OpenChatCut editing tools. Do not depend on external download, transcription, ffmpeg, or auto-crop pipelines unless the user explicitly asks for an external source that is not already in the project.
 
@@ -22,7 +22,7 @@ Tell the user when you switch, and say why.
 ## Workflow
 
 1. Read the project state before editing. Inventory the source pool: clip count, usable duration, aspect ratio, visual subjects, motion/energy, audio quality, and duplicates.
-2. Confirm the batch is real: the user wants more than one finished cut, and the pool can support it. A pool that only supports one honest cut should be reported as such rather than padded into N near-duplicates.
+2. Confirm the user wants more than one output and the pool supports the selected mode. Do not pad a distinct-cut batch with near-duplicates; controlled tests and platform adaptations may intentionally reuse an edit.
 3. Fix the batch contract before cutting — mode (distinct cuts, controlled hook test, or platform adaptations), count, target duration, platform, audience, language, and music bed. If more than one is missing, ask in one `<widget>` after loading `widget-forms`.
 4. Score every source asset for reuse headroom before planning. See [references/variation-matrix.md](references/variation-matrix.md). Reserve distinct hooks where the mode requires them; shared end cards and intentional shared bodies are allowed.
 5. Build the **variation matrix** before editing. For distinct cuts, plan different hooks and structural changes. For controlled hook tests, change only the hook and keep the body fixed. For platform adaptations, retain the approved content and adapt presentation. See [references/variation-matrix.md](references/variation-matrix.md).
@@ -53,7 +53,7 @@ Present the batch as one table, not prose:
 - Distinct cuts and hook tests need different opening three seconds. Platform adaptations may share an opening and must be labeled as adaptations, not distinct edits.
 - For distinct cuts, differentiate on **structure** before decoration. Styling changes alone do not establish structural differentiation; these checks do not guarantee a platform's duplicate-detection outcome.
 - Do not pad a thin pool into N cuts. Report the honest maximum and ask.
-- Do not reuse a single-use asset as the hook of more than one cut.
+- Distinct cuts and hook tests need different hooks; platform adaptations may reuse the same approved hook.
 - Keep one variable dominant per cut. When everything differs slightly, nothing reads as different.
 - Batch output is not permission to lower the bar: each cut must stand alone as publishable.
 - Do not use captions or titles to invent claims the footage does not support, in any variant.

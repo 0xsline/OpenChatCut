@@ -5,7 +5,7 @@ before cutting, not discovered afterward when two timelines already look alike.
 
 ## 1. Score reuse headroom first
 
-Before planning, classify every source asset:
+For distinct-cut planning, classify every source asset with the reuse rules below. Controlled hook tests may repeat every body shot in its original position. Platform adaptations may reuse the entire approved edit, including its hook.
 
 | Class | Meaning | Planning rule |
 |---|---|---|
@@ -13,8 +13,7 @@ Before planning, classify every source asset:
 | `positional` | Works in one role: establishing wide, product close-up, reaction shot | May repeat across cuts, but not in the same slot |
 | `flexible` | Works anywhere: B-roll texture, ambient motion, cutaway | Free to reuse; carries no differentiation |
 
-Count the `single-use` assets. The honest batch size is bounded by how many
-distinct hooks the pool supports, not by how many permutations exist on paper.
+For distinct cuts and hook tests, check how many usable different openings the pool supports. This does not limit the number of platform adaptations of one approved edit.
 
 ## 2. The five differentiation dimensions
 
@@ -26,7 +25,7 @@ Ranked by how much they actually change viewer and platform perception:
 4. **Packaging** — captions style, motion graphics, transitions, crops, speed ramps.
 5. **Music bed** (weakest alone) — a different track changes mood but barely changes perceived content.
 
-Rules of thumb:
+Rules of thumb for distinct cuts only (not controlled hook tests or platform adaptations):
 
 - Dimensions 4 and 5 alone do **not** constitute a distinct variant. A recut with new music and new caption styling is the same video.
 - Dimensions 1 and 2 alone are sufficient, even with identical packaging.
