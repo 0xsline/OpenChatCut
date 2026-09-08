@@ -23,7 +23,10 @@ try {
     (await listMediaReferences(uploads)).map((entry) => ({ name: entry.name, bytes: entry.bytes })),
     [{ name, bytes: 20 }],
   );
-  assert.equal((await stat(mediaReferenceManifestPath(uploads, name))).mode & 0o077, 0);
+  // POSIX permission bits: Windows reports no owner-only mode.
+  if (process.platform !== 'win32') {
+    assert.equal((await stat(mediaReferenceManifestPath(uploads, name))).mode & 0o077, 0);
+  }
 
   assert.equal(await deleteMediaReference(uploads, name), true);
   assert.equal(resolveMediaReference(uploads, name), null);

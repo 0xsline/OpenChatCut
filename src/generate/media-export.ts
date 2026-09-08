@@ -108,7 +108,9 @@ export async function submitMediaExport(
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // Delayed revoke: revoking synchronously after click() can cut the download
+  // off before the browser starts reading the blob (same pattern as exportFiles.ts).
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   return {
     status: 'completed',
     format: args.format,

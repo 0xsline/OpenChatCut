@@ -233,6 +233,17 @@ try {
   if (!address || typeof address === 'string') throw new Error('ingest policy verification server has no TCP address');
   const origin = `http://127.0.0.1:${address.port}`;
 
+  for (const [body, status] of [
+    ['{', 400],
+    ['null', 400],
+    [JSON.stringify({ src: 'x'.repeat(9_000) }), 413],
+  ] as const) {
+    const response = await fetch(`${origin}/api/normalize-media`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body,
+    });
+    assert.equal(response.status, status, await response.text());
+  }
+
   const vfrResponse = await postNormalize(origin, 'unequal-pts.mp4', { targetFps: 24 });
   const vfrText = await vfrResponse.text();
   assert.equal(vfrResponse.status, 200, vfrText);

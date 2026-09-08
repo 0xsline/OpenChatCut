@@ -78,7 +78,9 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       dispatch(actions.length > 1 ? { type: 'batch', label: 'Add media', actions } : add);
       return;
     }
-    const doc = getDoc();
+    // Planning replaces the full state, so include staged tracks and assets
+    // through the same reducer used by the eventual atomic commit.
+    const doc = [...trackCreates, ...before].reduce(projectReduce, getDoc());
     const state = { ...activeTimeline(doc), assets: doc.assets };
     const plan = planOverwrite(state, item, at.startFrame ?? 0, () => uid('item'));
     if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: [...trackCreates, ...before, ...plan.actions] });

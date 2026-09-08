@@ -190,6 +190,7 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     frameRange,
     totalFrames: frames,
     filename: exportFilename(body?.name, media.ext),
+    // The fps filter drops or duplicates frames while preserving duration.
     durationSeconds: frames / fps,
     scale: exportScale(state, body?.resolution),
     retimeFps,
