@@ -124,6 +124,14 @@ export async function execAgentPathImportTool(
         + 'use the media pool upload UI or watched folders in the browser',
     };
   }
+  return importPathsIntoProject(paths, api, ctx);
+}
+
+async function importPathsIntoProject(
+  paths: string[],
+  api: DesktopPathImportApi,
+  ctx: AgentContext,
+): Promise<Record<string, unknown>> {
   const projectId = ctx.getProjectId?.();
   if (!projectId) return { error: 'no open project; open a project before importing local paths' };
   const state = ctx.getState();
