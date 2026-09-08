@@ -4,6 +4,7 @@ import { access, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { unpackedPath } from '../media-binaries';
 
 const VERSION_TIMEOUT_MS = 10_000;
 const VERSION_OUTPUT_LIMIT = 16 * 1024;
@@ -89,7 +90,7 @@ export async function resolveCopilotCli(): Promise<string | null> {
     ...pathCandidates('copilot'),
     ...commonCandidates(),
   ];
-  const unique = [...new Set(candidates)];
+  const unique = [...new Set(candidates.map(unpackedPath))];
   const checks = await Promise.all(unique.map(async (candidate) => ({
     candidate,
     executable: await executable(candidate),

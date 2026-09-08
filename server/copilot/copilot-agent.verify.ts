@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { ToolSet } from '@github/copilot-sdk';
 import { parseCopilotTurnRequest } from '../plugins/copilot-agent.ts';
 import { isSupportedCopilotVersion, resolveCopilotCli } from './installation.ts';
@@ -28,11 +31,20 @@ const turnBody = {
 };
 
 const cliOverride = process.env.OPENCHATCUT_COPILOT_PATH;
+const packageFixture = await mkdtemp(join(tmpdir(), 'copilot package with spaces-'));
 try {
   delete process.env.OPENCHATCUT_COPILOT_PATH;
   const bundled = fileURLToPath(import.meta.resolve(`@github/copilot-${process.platform}-${process.arch}`));
   assert.equal(await resolveCopilotCli(), bundled, 'the installed platform package is discovered without a PATH installation');
+  const archivePath = join(packageFixture, 'app.asar', 'node_modules', 'copilot', 'copilot');
+  const unpacked = archivePath.replace('app.asar', 'app.asar.unpacked');
+  await mkdir(dirname(unpacked), { recursive: true });
+  await copyFile(bundled, unpacked);
+  process.env.OPENCHATCUT_COPILOT_PATH = archivePath;
+  assert.equal(await resolveCopilotCli(), unpacked,
+    'packaged executables resolve to their on-disk asar twin, including paths with spaces');
 } finally {
+  await rm(packageFixture, { recursive: true, force: true });
   if (cliOverride === undefined) delete process.env.OPENCHATCUT_COPILOT_PATH;
   else process.env.OPENCHATCUT_COPILOT_PATH = cliOverride;
 }
