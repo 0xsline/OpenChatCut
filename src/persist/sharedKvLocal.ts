@@ -29,13 +29,24 @@ export function resetLocalKvMemory(): void {
   injectedBackend = undefined;
 }
 
+// Reuse successful connections; a failed open must remain retryable.
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => { db.close(); dbPromise = undefined; };
+      db.onclose = () => { dbPromise = undefined; };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error);
+  }).catch((error) => {
+    dbPromise = undefined;
+    throw error;
   });
+  return dbPromise;
 }
 
 export async function localGet<T>(key: string): Promise<T | undefined> {

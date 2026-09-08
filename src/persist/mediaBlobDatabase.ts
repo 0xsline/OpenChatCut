@@ -59,16 +59,27 @@ function normalizeRecord(value: MediaBlobRecord): MediaBlobRecord | null {
   };
 }
 
+// Reuse successful connections; a failed open must remain retryable.
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'src' });
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => { db.close(); dbPromise = undefined; };
+      db.onclose = () => { dbPromise = undefined; };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
+  }).catch((error) => {
+    dbPromise = undefined;
+    throw error;
   });
+  return dbPromise;
 }
 interface StoredBlobMeta { src: string; bytes: number; lastAccessedAt: number }
 

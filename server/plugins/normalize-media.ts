@@ -29,6 +29,7 @@ export {
 export type { NormalizeEncodeContext } from '../media-normalization.ts';
 
 const MAX_JSON = 8 * 1024;
+class NormalizeBodyTooLargeError extends Error {}
 const VIDEO_EXTENSIONS: Record<string, true> = {
   '.mp4': true,
   '.mov': true,
@@ -86,8 +87,9 @@ function readJson(req: IncomingMessage, max = MAX_JSON): Promise<unknown> {
   req.on('data', (chunk: Buffer) => {
     size += chunk.length;
     if (size > max) {
-      deferred.reject(new Error('body too large'));
-      req.destroy();
+      chunks.length = 0;
+      deferred.reject(new NormalizeBodyTooLargeError('body too large'));
+      // Keep draining the request so the client can receive the error response.
     } else {
       chunks.push(chunk);
     }
@@ -100,6 +102,7 @@ function readJson(req: IncomingMessage, max = MAX_JSON): Promise<unknown> {
     }
   });
   req.on('error', deferred.reject);
+  req.on('aborted', () => deferred.reject(new Error('request body aborted')));
   return deferred.promise;
 }
 
@@ -251,7 +254,16 @@ export function normalizeMediaPlugin(options: NormalizeMediaPluginOptions = {}):
           sendJson(res, 405, { error: 'method not allowed — use POST' });
           return;
         }
-        await handleNormalizeRequest(req, res, options, server.config.logger);
+        try {
+          await handleNormalizeRequest(req, res, options, server.config.logger);
+        } catch (error) {
+          // Parsing errors happen before normalization owns the response.
+          if (!res.writableEnded && !res.socket?.destroyed) {
+            sendJson(res, error instanceof NormalizeBodyTooLargeError ? 413 : 400, {
+              error: error instanceof Error ? error.message : 'invalid request',
+            });
+          }
+        }
       });
     },
   };
