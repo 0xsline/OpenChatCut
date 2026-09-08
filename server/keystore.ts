@@ -82,6 +82,10 @@ export const KEY_NAMES = [
   "LLM_OPENROUTER_API_KEY",
   "LLM_OPENROUTER_BASE_URL",
   "LLM_OPENROUTER_MODEL",
+  "LLM_OFOX_API_KEY",
+  "LLM_OFOX_BASE_URL",
+  "LLM_OFOX_MODEL",
+  "OFOX_VIDEO_MODEL",
   "LLM_ORCAROUTER_API_KEY",
   "LLM_ORCAROUTER_BASE_URL",
   "LLM_ORCAROUTER_MODEL",
@@ -248,6 +252,7 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "BYTEPLUS_VIDEO_MODEL",
   "XAI_IMAGE_MODEL",
   "XAI_VIDEO_MODEL",
+  "OFOX_VIDEO_MODEL",
   "INWORLD_TTS_MODEL",
   "FISHAUDIO_TTS_MODEL",
   "SPEECHIFY_TTS_MODEL",
@@ -400,7 +405,7 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "mistral" && has("LLM_MISTRAL_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
     video:
-      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY"),
+      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY") || has("LLM_OFOX_API_KEY"),
     music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:
