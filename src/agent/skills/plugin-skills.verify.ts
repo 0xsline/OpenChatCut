@@ -1,5 +1,5 @@
 // Runnable check: `npx tsx src/agent/skills/plugin-skills.check.ts`（转正为 .verify.ts 后挂 verify:skills）。
-// Verifies the 28 bundled skills are present + verbatim + parse cleanly. Reads the
+// Verifies the bundled skills are present + verbatim + parse cleanly. Reads the
 // SKILL.md files from disk (not via plugin-skills.ts, which uses Vite `?raw` and can't
 // load under tsx) and exercises the pure frontmatter parser on all three source shapes.
 import assert from 'node:assert/strict';
@@ -23,7 +23,7 @@ const EXPECTED = [
 
 // Every expected skill dir is present, and no extras.
 const slugs = readdirSync(SKILLS_DIR).filter((d) => statSync(join(SKILLS_DIR, d)).isDirectory()).sort();
-assert.deepStrictEqual(slugs, [...EXPECTED].sort(), '28 个内置技能全部在册,无多无少');
+assert.deepStrictEqual(slugs, [...EXPECTED].sort(), '内置技能全部在册,无多无少');
 
 // Each SKILL.md parses to name(=slug) + non-empty description + substantive verbatim body.
 for (const slug of slugs) {
