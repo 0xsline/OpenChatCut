@@ -44,6 +44,7 @@ const READ_TOOLS = new Set([
 ]);
 const PERSISTENT_LOCAL_TOOLS = new Set([
   'download_media', 'push_asset', 'import_url_asset', 'import_media',
+  'import_asset', 'import_assets', 'import_folder',
   'finalize_uploaded_asset', 'install_skill', 'run_skill_script',
   'manage_skill', 'manage_template', 'manage_versions', 'manage_project',
   'create_project', 'duplicate_project', 'delete_project', 'restore_project',
