@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { exportScale, validateVideoParams } from './export.ts';
 import { requestedVideoBitrateBps, resolveVideoBitrateBps } from '../../src/export/bitrate.ts';
+import { planExport } from './export-plan';
 
 // Short-edge presets preserve orientation; 4K means a 2160 px short edge.
 const scale480p = exportScale({ width: 1920, height: 1080 }, '480p');
@@ -47,5 +48,17 @@ assert.equal(resolveVideoBitrateBps({ ...bitrateInput, mode: 'compact' }), 6_500
 assert.equal(resolveVideoBitrateBps({ ...bitrateInput, mode: 'high' }), 15_000_000);
 assert.equal(resolveVideoBitrateBps({ ...bitrateInput, mode: 'custom' }), 12_000_000);
 assert.equal(requestedVideoBitrateBps({ ...bitrateInput, mode: 'auto' }), undefined);
+
+// FFmpeg's fps filter resamples frames without changing presentation duration.
+for (const fps of [24, 30, 60]) {
+  const plan = planExport({
+    fps,
+    state: {
+      fps: 30, width: 1920, height: 1080, selectedId: null,
+      items: [{ id: 'clip', name: 'clip', kind: 'video', track: 'V1', src: '/media/uploads/clip.mp4', startFrame: 0, durationInFrames: 120 }],
+    },
+  });
+  assert.equal(plan.durationSeconds, 4, `30 to ${fps} fps must retain the 4s duration`);
+}
 
 console.log('export params verification passed');

@@ -15,13 +15,24 @@ const PACKS_KEY = 'plugins:packs';
 const API_PATH = '/api/plugins';
 let memoryPacks: unknown[] = [];
 
+// Reuse successful connections; a failed open must remain retryable.
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => { db.close(); dbPromise = undefined; };
+      db.onclose = () => { dbPromise = undefined; };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
+  }).catch((error) => {
+    dbPromise = undefined;
+    throw error;
   });
+  return dbPromise;
 }
 
 async function idbGet<T>(key: string): Promise<T | undefined> {

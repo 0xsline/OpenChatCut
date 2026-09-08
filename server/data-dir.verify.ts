@@ -42,7 +42,10 @@ try {
   const chosen = join(fixture, 'chosen');
   await writeDataDirPointer(chosen, home);
   assert.equal(readDataDirPointer(home), chosen);
-  assert.equal((await stat(dataDirPointerPath(home))).mode & 0o777, 0o600);
+  // POSIX permission bits: Windows reports no owner-only mode.
+  if (process.platform !== 'win32') {
+    assert.equal((await stat(dataDirPointerPath(home))).mode & 0o777, 0o600);
+  }
   await writeDataDirPointer(null, home);
   assert.equal(readDataDirPointer(home), null);
   await writeDataDirPointer(null, home);

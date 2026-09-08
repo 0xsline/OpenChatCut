@@ -13,6 +13,11 @@ const SOURCE = `${ROOT}/clip.mov`;
 const HASH_A = 'aa'.repeat(32);
 const HASH_B = 'bb'.repeat(32);
 
+// Production cleanup joins use platform separators, and a resolved upload
+// directory gains a Windows drive prefix; compare paths positionally instead.
+const asPosixPaths = (paths: readonly string[]): Set<string> =>
+  new Set(paths.map((path) => path.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '')));
+
 function fileStats(size = 100, mtimeMs = 10, ino = 20): Stats {
   return {
     size,
@@ -102,7 +107,7 @@ const duplicateResult = await importDirectoryCandidate(
 );
 assert.equal(duplicateResult.status, 'duplicate');
 assert.deepEqual(
-  new Set(duplicate.removed),
+  asPosixPaths(duplicate.removed),
   new Set([
     '/uploads/id.mov', '/uploads/id.mp4', '/uploads/id.alpha.webm',
     '/uploads/.references/id.mov.json',
@@ -118,7 +123,7 @@ assert.deepEqual(
   'a post-copy probe failure must remain retryable',
 );
 assert.deepEqual(
-  new Set(probeFailure.removed),
+  asPosixPaths(probeFailure.removed),
   new Set([
     '/uploads/id.mov', '/uploads/id.mp4', '/uploads/id.alpha.webm',
     '/uploads/.references/id.mov.json',
@@ -138,7 +143,7 @@ await assert.rejects(
   DirectoryImportCancelledError,
 );
 assert.deepEqual(
-  new Set(cancelledCopy.removed),
+  asPosixPaths(cancelledCopy.removed),
   new Set([
     '/uploads/id.mov', '/uploads/id.mp4', '/uploads/id.alpha.webm',
     '/uploads/.references/id.mov.json',
@@ -164,7 +169,7 @@ await normalizeEntered.promise;
 normalizeAbort.abort(new DirectoryImportCancelledError());
 await assert.rejects(normalizePending, DirectoryImportCancelledError);
 assert.deepEqual(
-  new Set(cancelledNormalize.removed),
+  asPosixPaths(cancelledNormalize.removed),
   new Set([
     '/uploads/id.mov', '/uploads/id.mp4', '/uploads/id.alpha.webm',
     '/uploads/.references/id.mov.json',
@@ -182,7 +187,7 @@ await assert.rejects(
   DirectoryDestinationChangedError,
 );
 assert.deepEqual(
-  new Set(destinationChanged.removed),
+  asPosixPaths(destinationChanged.removed),
   new Set([
     '/uploads/id.mov', '/uploads/id.mp4', '/uploads/id.alpha.webm',
     '/uploads/.references/id.mov.json',
@@ -203,7 +208,7 @@ if (transparentResult.status === 'imported') {
   assert.equal(transparentResult.prepared.file.durationSeconds, 2);
   assert.equal(transparentResult.prepared.file.sourceFps, 30);
   assert.deepEqual(
-    new Set(transparentResult.prepared.createdPaths),
+    asPosixPaths(transparentResult.prepared.createdPaths),
     new Set([
       '/uploads/id.mov', '/uploads/id.mp4', '/uploads/id.alpha.webm',
       '/uploads/.references/id.mov.json',
@@ -234,7 +239,7 @@ const secondBatch = harness({
   }),
 });
 assert.equal((await importDirectoryCandidate(request(hashes), secondBatch.dependencies)).status, 'duplicate');
-assert.ok(secondBatch.removed.includes('/uploads/second.mov'));
+assert.ok(asPosixPaths(secondBatch.removed).has('/uploads/second.mov'));
 
 const differentContent = harness({
   importLocalMedia: async () => ({ src: '/media/uploads/different.mov', storedName: 'different.mov', contentHash: HASH_B }),

@@ -21,6 +21,7 @@ const SOURCE_EXTENSION = /\.(?:tsx|mts|cjs|mjs|ts|js|frag|vert|glsl)$/;
 const VERIFY_EXTENSION = /\.verify\.(?:tsx|mts|cjs|mjs|ts|js)$/;
 const FULL_GATE = /^(?:package(?:-lock)?\.json$|npm-shrinkwrap\.json$|tsconfig(?:\.[^/]+)?\.json$|config\/|shared\/|assets\/|public\/|\.github\/)/;
 const DOCUMENTATION = /^(?:docs\/|README(?:_[A-Z]+)?\.md$|CHANGELOG\.md$|LICENSE$|AGENTS\.md$|CLAUDE\.md$)/;
+const toPosix = (value) => value.split(sep).join('/');
 
 export async function gitChanged(cwd = process.cwd()) {
   const run = promisify(execFile);
@@ -44,7 +45,7 @@ export function affectedSelection(changedFiles, cwd = process.cwd()) {
   const matches = new Set();
   const requiresFullGate = new Set();
   for (const changed of changedFiles) {
-    const file = relative(cwd, resolve(cwd, changed)).split(sep).join('/');
+    const file = toPosix(relative(cwd, resolve(cwd, changed)));
     if (DOCUMENTATION.test(file)) continue;
     if (FULL_GATE.test(file) && !VERIFY_EXTENSION.test(file)) requiresFullGate.add(file);
     if (!SOURCE_EXTENSION.test(file) || file.startsWith('../')) {
@@ -52,20 +53,20 @@ export function affectedSelection(changedFiles, cwd = process.cwd()) {
       continue;
     }
     if (/^src\/gl\/.*\.(?:frag|vert|glsl)$/.test(file)) {
-      for (const name of directoryVerifies('src/gl', cwd)) matches.add(join('src/gl', name));
+      for (const name of directoryVerifies('src/gl', cwd)) matches.add(toPosix(join('src/gl', name)));
     }
     let dir = dirname(file);
     let candidates = directoryVerifies(dir, cwd);
     const base = file.split('/').pop().replace(SOURCE_EXTENSION, '');
     const exact = candidates.filter((name) => name.replace(VERIFY_EXTENSION, '') === base
-      || join(dir, name) === file);
+      || toPosix(join(dir, name)) === file);
     if (exact.length) candidates = exact;
     while (!candidates.length && dir !== '.') {
       dir = dirname(dir);
       candidates = directoryVerifies(dir, cwd);
     }
     if (!candidates.length) requiresFullGate.add(file);
-    for (const name of candidates) matches.add(join(dir, name));
+    for (const name of candidates) matches.add(toPosix(join(dir, name)));
   }
   return { verifies: [...matches].sort(), requiresFullGate: [...requiresFullGate].sort() };
 }
