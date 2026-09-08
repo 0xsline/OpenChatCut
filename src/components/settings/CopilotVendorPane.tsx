@@ -55,4 +55,3 @@ export function CopilotVendorPane({ page, hint, ctx, children, rawOverrides, onO
     </div>
   );
 }
-

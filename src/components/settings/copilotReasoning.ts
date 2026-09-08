@@ -16,4 +16,3 @@ export function copilotReasoningOptions(ctx: FieldCtx, defaultLabel: string): re
     ...(model?.supportedReasoningEfforts.map((effort) => ({ value: effort, label: effort })) ?? []),
   ];
 }
-
