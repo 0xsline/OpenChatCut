@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { ToolSet } from '@github/copilot-sdk';
 import { parseCopilotTurnRequest } from '../plugins/copilot-agent.ts';
-import { isSupportedCopilotVersion, resolveCopilotCli } from './installation.ts';
+import { isSupportedCopilotVersion, resolveCopilotCli, selectCopilotExecutable } from './installation.ts';
 import { copilotModelSummary } from './client.ts';
 import { copilotSessionConfig } from './turn-manager.ts';
 import { KEY_NAMES, seedKeystore } from '../keystore.ts';
@@ -43,6 +43,14 @@ try {
   process.env.OPENCHATCUT_COPILOT_PATH = archivePath;
   assert.equal(await resolveCopilotCli(), unpacked,
     'packaged executables resolve to their on-disk asar twin, including paths with spaces');
+  const cmd = join(packageFixture, 'override.cmd');
+  const bat = join(packageFixture, 'override.bat');
+  const native = join(packageFixture, 'bundled.exe');
+  await Promise.all([cmd, bat, native].map((path) => writeFile(path, 'fixture')));
+  assert.equal(await selectCopilotExecutable([cmd, bat, native], 'win32'), native,
+    'Windows shell shims cannot mask a directly executable bundled CLI');
+  assert.equal(await selectCopilotExecutable([cmd, bat], 'win32'), null,
+    'a shim-only installation is unavailable to both the version probe and SDK spawn');
 } finally {
   await rm(packageFixture, { recursive: true, force: true });
   if (cliOverride === undefined) delete process.env.OPENCHATCUT_COPILOT_PATH;

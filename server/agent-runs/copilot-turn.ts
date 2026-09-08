@@ -100,8 +100,10 @@ async function summarizeWithCopilot(
 
 async function prepareCopilotContext(
   input: ServerCopilotTurnInput,
+  tools: CopilotTurnRequest['tools'],
+  prepare: typeof prepareContext = prepareContext,
 ): Promise<Awaited<ReturnType<typeof prepareContext>>> {
-  const prepared = await prepareContext({
+  const prepared = await prepare({
     messages: [...input.messages],
     system: input.instructions,
     modelId: input.model,
@@ -109,7 +111,7 @@ async function prepareCopilotContext(
     contextWindowEstimated: input.contextWindowEstimated,
     maxInputTokens: input.maxInputTokens,
     maxOutputTokens: input.maxOutputTokens,
-    requestOverheadTokens: estimateTextTokens(JSON.stringify(input.schemas)),
+    requestOverheadTokens: estimateTextTokens(JSON.stringify(tools)),
     summarize: (messages) => summarizeConversation(
       messages,
       input.contextWindowTokens,
@@ -128,6 +130,7 @@ async function prepareCopilotContext(
 }
 
 export interface ServerCopilotTurnDeps {
+  readonly prepareContext?: typeof prepareContext;
   /** Overridable for verification; defaults to the real server Copilot runner. */
   readonly runTurn?: (
     request: CopilotTurnRequest,
@@ -178,9 +181,9 @@ function copilotEventReceiver(
   prepared: { usage: AgentContextUsage },
   state: CopilotTurnState,
   requestId: string,
+  schemas: readonly AgentToolSchema[],
+  tools: CopilotTurnRequest['tools'],
 ): (event: CopilotTurnStreamEvent) => void {
-  const activeSchemas = input.activation.current.schemas();
-  const schemas = input.activation.current.allSchemas();
   return (event) => {
     switch (event.type) {
       case 'text-delta':
@@ -195,7 +198,7 @@ function copilotEventReceiver(
         break;
       case 'context-usage':
         recordServerContextUsage(input.run, usageFromCopilotEvent(event, prepared, input.requestIndex),
-          activeSchemas.length, JSON.stringify(activeSchemas).length);
+          tools.length, JSON.stringify(tools).length);
         break;
       case 'error': state.errorMessage = event.message; break;
       case 'done': state.done = true; break;
@@ -208,13 +211,14 @@ function copilotRunRequest(
   input: ServerCopilotTurnInput,
   messages: readonly ModelMessage[],
   requestId: string,
+  tools: CopilotTurnRequest['tools'],
 ): CopilotTurnRequest {
   return {
     requestId, system: input.instructions, prompt: serializeMessagesForPrompt([...messages]),
     projectId: input.projectId, askOnly: input.askOnly,
     ...(input.model ? { model: input.model } : {}),
     ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-    tools: copilotToolSpecs(input.activation.current.allSchemas()),
+    tools,
   };
 }
 
@@ -226,7 +230,9 @@ export async function executeServerCopilotTurn(
   messages: ModelMessage[]; text: string; continued: boolean;
   followupText: string | null; hitMaxTokens: boolean;
 }> {
-  const prepared = await prepareCopilotContext(input);
+  const schemas = input.activation.current.allSchemas();
+  const tools = copilotToolSpecs(schemas);
+  const prepared = await prepareCopilotContext(input, tools, deps.prepareContext);
   const requestId = `run-${input.run.id}-${input.requestIndex}`;
   const state: CopilotTurnState = {
     text: '', pending: '', pendingThinking: '', done: false, errorMessage: null, toolHistory: [],
@@ -234,8 +240,8 @@ export async function executeServerCopilotTurn(
   pushRunEvent(input.run, 'text-start', {});
   try {
     await (deps.runTurn ?? runServerCopilotTurn)(
-      copilotRunRequest(input, prepared.messages, requestId),
-      copilotEventReceiver(input, prepared, state, requestId), input.signal,
+      copilotRunRequest(input, prepared.messages, requestId, tools),
+      copilotEventReceiver(input, prepared, state, requestId, schemas, tools), input.signal,
     );
   } finally {
     flushTextEvents(input.run, state.pending, true);

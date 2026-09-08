@@ -19,8 +19,8 @@ export interface CopilotInstallation {
 }
 
 function executableNames(name = 'copilot'): string[] {
-  if (process.platform !== 'win32' || /\.(?:exe|cmd|bat)$/i.test(name)) return [name];
-  return [`${name}.exe`, `${name}.cmd`, `${name}.bat`];
+  if (process.platform !== 'win32' || /\.exe$/i.test(name)) return [name];
+  return /\.(?:cmd|bat)$/i.test(name) ? [] : [`${name}.exe`];
 }
 
 function pathCandidates(name: string): string[] {
@@ -56,7 +56,6 @@ function commonCandidates(): string[] {
   const home = homedir();
   if (process.platform === 'win32') {
     return [
-      process.env.APPDATA ? join(process.env.APPDATA, 'npm', 'copilot.cmd') : '',
       process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Programs', 'copilot', 'copilot.exe') : '',
       process.env.USERPROFILE ? join(process.env.USERPROFILE, '.local', 'bin', 'copilot.exe') : '',
     ].filter(Boolean);
@@ -72,11 +71,13 @@ function commonCandidates(): string[] {
   ];
 }
 
-async function executable(candidate: string): Promise<boolean> {
+async function executable(candidate: string, platform: NodeJS.Platform): Promise<boolean> {
+  // Both execFile and the SDK's stdio spawn require a native executable on Windows.
+  if (platform === 'win32' && !/\.exe$/i.test(candidate)) return false;
   try {
     const info = await stat(candidate);
     if (!info.isFile()) return false;
-    if (process.platform !== 'win32') await access(candidate, constants.X_OK);
+    if (platform !== 'win32') await access(candidate, constants.X_OK);
     return true;
   } catch {
     return false;
@@ -90,10 +91,17 @@ export async function resolveCopilotCli(): Promise<string | null> {
     ...pathCandidates('copilot'),
     ...commonCandidates(),
   ];
+  return selectCopilotExecutable(candidates);
+}
+
+export async function selectCopilotExecutable(
+  candidates: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): Promise<string | null> {
   const unique = [...new Set(candidates.map(unpackedPath))];
   const checks = await Promise.all(unique.map(async (candidate) => ({
     candidate,
-    executable: await executable(candidate),
+    executable: await executable(candidate, platform),
   })));
   return checks.find((check) => check.executable)?.candidate ?? null;
 }
