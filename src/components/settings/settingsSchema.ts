@@ -14,7 +14,7 @@ import type { CopilotAgentStatus } from '../../../shared/copilot-agent';
 import type { VendorId } from './vendorIcons';
 import {
   directory,
-  modelSelect,
+  modelPicker,
   modelText,
   routeSelect,
   secret,
@@ -104,7 +104,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             text('GEMINI_BASE_URL', 'Base URL', '默认 https://generativelanguage.googleapis.com'),
             modelText('GEMINI_IMAGE_MODEL', '生图模型', 'gemini-3.1-flash-image'),
           ] },
-          minimaxPage('image', modelSelect('MINIMAX_IMAGE_MODEL', '生图模型', 'image-01', ['image-01', 'image-01-live'])),
+          minimaxPage('image', modelPicker('MINIMAX_IMAGE_MODEL', '生图模型', 'image-01', ['image-01', 'image-01-live'])),
           { key: 'image/wavespeed', vendor: 'wavespeed', title: 'WaveSpeed', fields: [
             secret('WAVESPEED_API_KEY', 'API Key'),
             text('WAVESPEED_BASE_URL', 'Base URL', '默认 https://api.wavespeed.ai'),
@@ -139,7 +139,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             text('KLING_BASE_URL', 'Base URL', '默认 https://api-singapore.klingai.com'),
             modelText('KLING_VIDEO_MODEL', '视频模型', 'kling-v3-omni'),
           ] },
-          minimaxPage('video', modelSelect('MINIMAX_VIDEO_MODEL', '视频模型', 'MiniMax-Hailuo-02',
+          minimaxPage('video', modelPicker('MINIMAX_VIDEO_MODEL', '视频模型', 'MiniMax-Hailuo-02',
             ['MiniMax-Hailuo-02', 'MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'S2V-01']), 'MiniMax 海螺', 'hailuo'),
           byteplusPage('video', modelText('BYTEPLUS_VIDEO_MODEL', '视频模型', 'seedance-1-5-pro-251215',
             '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedance'),
@@ -163,12 +163,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             text('MUREKA_BASE_URL', 'Base URL', '默认 https://api.mureka.ai'),
             modelText('MUREKA_MUSIC_MODEL', '音乐模型', 'auto'),
           ] },
-          minimaxPage('music', modelSelect('MINIMAX_MUSIC_MODEL', '音乐模型', 'music-2.6',
+          minimaxPage('music', modelPicker('MINIMAX_MUSIC_MODEL', '音乐模型', 'music-2.6',
             ['music-3.0', 'music-2.6', 'music-3.0-free', 'music-2.6-free', 'music-cover', 'music-cover-free'])),
           { key: 'music/atlas', vendor: 'atlas', title: 'Atlas Cloud', fields: [
             secret('ATLASCLOUD_API_KEY', 'API Key'),
             text('ATLASCLOUD_API_BASE', 'Base URL', '默认 https://api.atlascloud.ai/api/v1'),
-            modelSelect('ATLASCLOUD_MUSIC_MODEL', '音乐模型', 'minimax/music-2.6', ['minimax/music-2.6']),
+            modelPicker('ATLASCLOUD_MUSIC_MODEL', '音乐模型', 'minimax/music-2.6', ['minimax/music-2.6']),
           ] },
           { key: 'music/sonilo', vendor: 'sonilo', title: 'Sonilo',
             note: '按成片生成：把渲染好的视频交给 Sonilo，配乐跟着画面节奏走（可选一句风格提示，不填也行）。'
