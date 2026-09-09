@@ -16,12 +16,17 @@ export function CopilotVendorPane({ page, hint, ctx, children, rawOverrides, onO
 }) {
   const t = useT();
   const status = ctx.copilot.status;
-  const statusLabel = !status ? t('状态未知')
+  const auth = ctx.copilot.auth;
+  const expired = auth?.available && auth.status === 'pending' && auth.device && auth.device.expiresAt <= Date.now();
+  const pending = auth?.available && auth.status === 'pending' && !expired;
+  const authError = ctx.copilot.authError || expired || (auth?.available && auth.status === 'error');
+  const statusLabel = pending ? t('等待 GitHub 授权') : authError ? t('连接异常') : !status ? t('状态未知')
     : !status.installed ? t('CLI 未安装')
       : !status.supported ? t('版本过低')
-        : status.authenticated ? t('已登录')
-          : status.error || ctx.copilot.error ? t('连接异常') : t('未登录');
-  const on = vendorConfigured(ctx.status, page, ctx.codex.status, status);
+        : status.error || ctx.copilot.error ? t('连接异常')
+          : status.authenticated ? t('已登录') : t('未登录');
+  const on = !pending && !authError && vendorConfigured(ctx.status, page, ctx.codex.status, status);
+  const showLegacyNote = !!page.note && !auth?.available;
   const capabilityModelId = (ctx.values.COPILOT_MODEL ?? modelValue(ctx.status, 'COPILOT_MODEL'))
     || ctx.copilot.models.find((model) => model.isDefault)?.id
     || '';
@@ -40,9 +45,9 @@ export function CopilotVendorPane({ page, hint, ctx, children, rawOverrides, onO
       </div>
       <CopilotAccountCard controller={ctx.copilot} />
       <section style={fieldCardBox}>
-        {page.note && <div style={pageNote}>{t(page.note)}</div>}
+        {showLegacyNote && <div style={pageNote}>{t(page.note!)}</div>}
         {page.noteAction && <SettingsNoteAction config={page.noteAction} />}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: showLegacyNote ? 9 : 0 }}>
           {children}
         </div>
         {capabilityModelId && (

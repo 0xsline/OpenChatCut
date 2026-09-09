@@ -219,6 +219,25 @@ export default {
   '已登录 ChatGPT': 'Signed in to ChatGPT',
   '凭据与续期均由 Codex CLI 管理。': 'Credentials and renewal are managed by the Codex CLI.',
   // ── GitHub Copilot ──
+  '使用 GitHub 登录': 'Sign in with GitHub',
+  '请更新或重新安装桌面应用，然后刷新状态。': 'Update or reinstall the desktop app, then refresh its status.',
+  '打开 GitHub': 'Open GitHub',
+  '等待 GitHub 授权': 'Waiting for GitHub authorization',
+  '使用 GitHub 账号连接你的 Copilot 订阅。': 'Connect your Copilot subscription with your GitHub account.',
+  '在 GitHub 页面输入设备代码，完成授权后此处会自动刷新。':
+    'Enter the device code on GitHub. This page will refresh automatically after authorization.',
+  '桌面版已内置 Copilot 运行时，无需安装 gh 或单独的 CLI。':
+    'The desktop app includes the Copilot runtime. No gh or separate CLI installation is needed.',
+  '已在此应用中连接 GitHub 账号。': 'Your GitHub account is connected in this app.',
+  '有效期至 {time}': 'Expires at {time}',
+  '设备代码已过期，请重新登录。': 'The device code has expired. Please sign in again.',
+  'Copilot 返回了无效的验证地址。': 'Copilot returned an invalid verification URL.',
+  '正在取消…': 'Canceling…',
+  '退出此应用的登录': 'Sign out of this app',
+  '仅移除此应用的 OAuth 登录，不会撤销 GitHub 授权或退出其他应用。':
+    'Only this app’s OAuth sign-in is removed. This does not revoke GitHub authorization or sign out other apps.',
+  '无法读取 Copilot 登录状态，请刷新后重试。': 'Could not read Copilot sign-in status. Refresh and try again.',
+  '无法更新 Copilot 登录状态，请稍后重试。': 'Could not update Copilot sign-in status. Please try again.',
   '版本过低': 'Version too old',
   '正在检查 Copilot CLI…': 'Checking Copilot CLI…',
   '正在读取本机 Copilot 运行时状态。': 'Reading the local Copilot runtime status.',

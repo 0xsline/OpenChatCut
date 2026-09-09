@@ -3,6 +3,7 @@ import type {
   CopilotAgentStatus,
   CopilotToolResultRequest,
 } from '../../../shared/copilot-agent';
+import type { CopilotAuthState } from '../../../shared/copilot-auth';
 
 const STATUS_TIMEOUT_MS = 30_000;
 
@@ -41,16 +42,40 @@ function postJson(body?: unknown, signal?: AbortSignal): RequestInit {
   };
 }
 
-export function fetchCopilotStatus(): Promise<CopilotAgentStatus> {
+function requestSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(STATUS_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+export function fetchCopilotStatus(signal?: AbortSignal): Promise<CopilotAgentStatus> {
   return requestJson<CopilotAgentStatus>('/api/copilot/status', {
-    signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
+    signal: requestSignal(signal),
   });
 }
 
-export function fetchCopilotModels(): Promise<CopilotAgentModelsResponse> {
+export function fetchCopilotModels(signal?: AbortSignal): Promise<CopilotAgentModelsResponse> {
   return requestJson<CopilotAgentModelsResponse>('/api/copilot/models', {
-    signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
+    signal: requestSignal(signal),
   });
+}
+
+export function fetchCopilotAuth(signal?: AbortSignal): Promise<CopilotAuthState> {
+  return requestJson<CopilotAuthState>('/api/copilot/auth', {
+    cache: 'no-store',
+    signal: requestSignal(signal),
+  });
+}
+
+export function startCopilotAuth(signal?: AbortSignal): Promise<CopilotAuthState> {
+  return requestJson<CopilotAuthState>('/api/copilot/auth/start', postJson({}, requestSignal(signal)));
+}
+
+export function cancelCopilotAuth(id: string, signal?: AbortSignal): Promise<CopilotAuthState> {
+  return requestJson<CopilotAuthState>('/api/copilot/auth/cancel', postJson({ id }, requestSignal(signal)));
+}
+
+export function logoutCopilotAuth(signal?: AbortSignal): Promise<CopilotAuthState> {
+  return requestJson<CopilotAuthState>('/api/copilot/auth/logout', postJson({}, requestSignal(signal)));
 }
 
 export function submitCopilotToolResult(result: CopilotToolResultRequest): Promise<void> {
