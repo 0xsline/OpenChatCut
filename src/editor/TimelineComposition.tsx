@@ -5,7 +5,8 @@ import { GlTransition } from '../gl/GlTransition';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
 import { selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPreviewFallbackStatus } from '../gl/previewAdapter';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
-import { captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
+import { timelineItemAssetId } from './mediaAssetUsage';
+import { captionOverlayVisible, captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import { previewTextEditFields } from '../components/preview/previewTextEdit';
 import type { AspectFit, CssTransitionType, GlslTransitionType, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection } from './types';
 import { sourceFrameAt } from './sourceLimit';
@@ -130,6 +131,16 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
   if (state.fxDefs) {
     for (const def of Object.values(state.fxDefs)) if (!(def.id in ALL_FX)) registerCustomFx(def);
   }
+  const poolAssets = state.assets ?? project?.assets ?? [];
+  /** Media length from the pool, so the audio layer can reject a transcript
+   *  window that starts past the end of the file. */
+  const sourceDurationOf = (item: TimelineItem): number | undefined => {
+    const assetId = timelineItemAssetId(item, poolAssets);
+    const asset = assetId ? poolAssets.find((candidate) => candidate.id === assetId) : undefined;
+    return typeof asset?.durationInFrames === 'number' && asset.durationInFrames > 0
+      ? asset.durationInFrames
+      : undefined;
+  };
   const isHidden = (t: TimelineItem['track']) => state.tracks?.[t]?.hidden ?? false;
   const isMuted = (t: TimelineItem['track']) => forceMuted || (state.tracks?.[t]?.muted ?? false);
   const trackIds = timelineTrackIds(state);
@@ -310,8 +321,9 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         const ea = extendAfter.get(item.id) ?? 0;
         const entrance = entranceOf.get(item.id);
         // Captions off hides on-screen text clips too (render-layer only).
-        const captionsOff = state.captionsHidden === true
-          || (state.captionsHidden === undefined && captionEntries.length > 0 && captionEntries.every((entry) => !entry.captions?.enabled));
+        // Shares captionOverlayVisible with the toolbar so the CC button and the
+        // picture can never disagree about an unset captionsHidden flag.
+        const captionsOff = !captionOverlayVisible(state);
         const hiddenByCaptions = captionsOff && previewTextEditFields(item) !== null;
         const fillBackground = isBackgroundFillActive(state, item);
         const foreground = (
@@ -377,6 +389,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           transitions={state.transitions}
           premountFor={premountFrames}
           browserRenderer={browserRenderer}
+          sourceDurationInFrames={sourceDurationOf(item)}
         />
       ))}
       {videoAudioGroups.map((group) => (
