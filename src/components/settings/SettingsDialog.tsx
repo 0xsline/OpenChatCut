@@ -11,6 +11,7 @@ import {
   setPreferredTranscriptionProvider,
 } from '../../transcript/provider';
 import { isTranscriptionProviderId } from '../../transcript/types';
+import { isAsrModelTier } from '../../../shared/asr-models';
 import { setAutoTranscribeIngest } from '../../transcript/provider';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import { useCodexSettings } from './useCodexSettings';
@@ -97,9 +98,9 @@ function syncTranscriptionPreferences(models: Record<string, string>): void {
 /** Keep the runtime ASR model tier in sync with the saved setting ('' → auto). */
 function syncLocalAsrModel(saved: string | undefined): void {
   try {
-    if (saved === 'tiny' || saved === 'base' || saved === 'small' || saved === 'medium' || saved === '') {
-      localStorage.setItem('cc.asrModel', saved ?? '');
-    }
+    // Validate against the catalog, never a hand-written list: a tier missing
+    // here is discarded silently and the previous selection stays in force.
+    if (isAsrModelTier(saved ?? '')) localStorage.setItem('cc.asrModel', saved ?? '');
   } catch {
     // Best-effort; the auto tier stays in effect.
   }

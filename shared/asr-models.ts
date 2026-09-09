@@ -159,7 +159,17 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
 ];
 
 export const ASR_MODEL_FILES: readonly string[] = ASR_MODELS[0].files.map((file) => file.path);
-export const ASR_MODEL_TIERS: readonly string[] = ['', 'tiny', 'base', 'small', 'medium', 'large-v3-turbo'] as const;
+/**
+ * Selectable tiers, including '' for auto. Derived from the catalog so adding a
+ * tier cannot leave a hard-coded allow-list behind: `large-v3-turbo` shipped
+ * with exactly that drift and the settings sync silently discarded the user's
+ * choice, pinning them to whatever tier was selected before.
+ */
+export const ASR_MODEL_TIERS: readonly string[] = ['', ...ASR_MODELS.map((entry) => entry.id)];
+
+export function isAsrModelTier(value: unknown): value is AsrModelEntry['id'] | '' {
+  return typeof value === 'string' && ASR_MODEL_TIERS.includes(value);
+}
 
 export function asrModelEntry(id: string): AsrModelEntry | undefined {
   return ASR_MODELS.find((entry) => entry.id === id);
