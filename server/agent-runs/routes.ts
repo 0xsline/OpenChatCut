@@ -26,6 +26,7 @@ import {
   type ServerRunSettleStatus,
 } from './store-settle';
 import { deleteAgentArtifacts, loadAgentRuntimeSidecar, storeAgentArtifact } from '../../src/persist/agentRuntimeStore';
+import { MAX_ARTIFACT_BYTES } from '../../src/persist/agentRuntimeTypes';
 import { sha256Text } from '../../src/persist/agentRuntimeStore';
 import {
   readJson,
@@ -37,6 +38,19 @@ import {
 import { CursorProtocolError, resolveCursor, sseForRun } from './sse';
 import { projectStoreHttpAuthorized, projectStoreReadAuthorized } from '../project-store-http-auth';
 const MAX_TOOL_RESULT_BODY_BYTES = 1024 * 1024;
+/**
+ * Draft artifacts are contracted at MAX_ARTIFACT_BYTES (8 MiB) by the producer,
+ * the snapshot validation, and the durable store. The request envelope embeds
+ * that already-serialized JSON body as a string, so every quote and backslash
+ * in it is escaped again — roughly 2x in the worst realistic case. Sizing the
+ * transport below the artifact cap is what produced 413s on large drafts while
+ * the client's own guard said the draft was fine.
+ *
+ * This bound only keeps an unbounded upload out of memory; storeAgentArtifact
+ * recomputes the real size after parsing and still rejects anything over the
+ * artifact cap with 409.
+ */
+export const MAX_DRAFT_BODY_BYTES = MAX_ARTIFACT_BYTES * 2 + 64 * 1024;
 const SERVER_RUN_CAPABILITY_HEADER = 'x-openchatcut-run-capability';
 const SERVER_RUN_ADMISSION_TIMEOUT_MS = 60_000;
 interface DeferredRun {
@@ -344,7 +358,7 @@ async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: st
 }
 
 async function handleDraftStore(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
-  const body = await readJson(req);
+  const body = await readJson(req, MAX_DRAFT_BODY_BYTES);
   const projectId = requireProjectId(body.projectId);
   const run = await boundRun(req, res, projectId, runId);
   if (!run) return;
