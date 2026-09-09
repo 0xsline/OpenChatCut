@@ -20,6 +20,9 @@ import {
   type CopilotInstallation,
 } from '../copilot/installation.ts';
 import { hasCopilotRequest, runCopilotTurn, settleToolResult } from '../copilot/turn-manager.ts';
+import { trustedEditorRequest } from '../editor-auth.ts';
+import { copilotOAuth, unavailableCopilotAuthState } from '../copilot/oauth-service.ts';
+import { CopilotAuthError } from '../copilot/oauth-types.ts';
 
 const JSON_BODY_LIMIT = 4 * 1024 * 1024;
 const TOOL_RESULT_BODY_LIMIT = 32 * 1024 * 1024;
@@ -290,8 +293,33 @@ function routePath(req: IncomingMessage): string {
   return pathname.startsWith('/api/copilot') ? pathname.slice('/api/copilot'.length) || '/' : pathname;
 }
 
+export async function handleCopilotAuthRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const path = routePath(req);
+  const reading = req.method === 'GET' && path === '/auth';
+  if (!trustedEditorRequest(req, !reading) || req.headers['sec-fetch-site'] === 'cross-site') {
+    throw new HttpError(403, 'untrusted editor request');
+  }
+  const auth = copilotOAuth();
+  if (reading) return sendJson(res, 200, auth ? await auth.state() : unavailableCopilotAuthState());
+  if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
+  if (!['/auth/start', '/auth/cancel', '/auth/logout'].includes(path)) throw new HttpError(404, 'not found');
+  if (!auth) throw new HttpError(503, 'GitHub sign-in requires the desktop app with secure credential storage.');
+  if (req.headers['content-type']?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
+    throw new HttpError(415, 'content-type must be application/json');
+  }
+  const body = await readJson(req, 1024);
+  if (path === '/auth/cancel') {
+    if (Object.keys(body).length !== 1 || typeof body.id !== 'string'
+      || !/^[a-f0-9-]{36}$/.test(body.id)) throw new HttpError(400, 'invalid sign-in attempt');
+    return sendJson(res, 200, await auth.cancel(body.id));
+  }
+  if (Object.keys(body).length) throw new HttpError(400, 'unexpected sign-in parameters');
+  return sendJson(res, 200, path === '/auth/start' ? await auth.start() : await auth.logout());
+}
+
 async function handleCopilotRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = routePath(req);
+  if (path === '/auth' || path.startsWith('/auth/')) return handleCopilotAuthRequest(req, res);
   if (path === '/status' && req.method === 'GET') return sendJson(res, 200, await copilotStatus());
   if (path === '/models' && req.method === 'GET') return sendJson(res, 200, await copilotModels());
   if (path === '/turn' && req.method === 'POST') return streamTurn(req, res, await readJson(req));
@@ -312,6 +340,7 @@ function handleFailure(res: ServerResponse, error: unknown): void {
     return;
   }
   if (error instanceof HttpError) sendJson(res, error.status, { error: error.message });
+  else if (error instanceof CopilotAuthError) sendJson(res, error.statusCode, { error: error.message });
   else if (error instanceof CopilotProcessError) sendJson(res, 503, { error: error.message });
   else sendJson(res, 500, { error: 'Copilot request failed.' });
 }
@@ -324,6 +353,7 @@ export function copilotAgentPlugin(): Plugin {
         void handleCopilotRequest(req, res).catch((error) => handleFailure(res, error));
       });
       server.httpServer?.once('close', () => {
+        copilotOAuth()?.dispose();
         void stopCopilotClient();
       });
     },
