@@ -228,6 +228,7 @@ export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
 };
 
 export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
+  fal: [['FAL_KEY']],
   'gpt-image-2': [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
   'nano-banana': [['GEMINI_API_KEY']],
   'image-01': [['MINIMAX_API_KEY']],

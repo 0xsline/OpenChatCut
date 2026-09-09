@@ -1,11 +1,13 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
 
 export interface SubmitImageArgs {
-  model?: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine';
+  model?: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'fal';
+  /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
+  falModel?: string;
   prompt: string;
   name: string;
-  aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3' | '4:5' | '5:4' | '21:9';
-  imageSize?: '512px' | '1K' | '2K' | '4K';
+  aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3' | '4:5' | '5:4' | '21:9' | 'auto' | '4:1' | '1:4' | '8:1' | '1:8';
+  imageSize?: '512px' | '0.5K' | '1K' | '2K' | '4K';
   /** GPT Image 2 or MiniMax image-01 custom dimensions. Must be provided together. */
   width?: number;
   height?: number;

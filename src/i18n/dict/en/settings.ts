@@ -44,6 +44,7 @@ export default {
   '可灵 Kling': 'Kling',
   'MiniMax 海螺': 'MiniMax Hailuo',
   '本地磁盘': 'Local Disk',
+  '选择 Fal.ai 作为默认厂商，然后选择模型。聊天中指定的模型优先于此默认值。': 'Select Fal.ai as the default provider, then choose a model. An explicit model request in chat overrides this default.',
 
   // ── capability group hint ──
   '对话与工具调用的核心，未配置无法对话。': 'Core of chat and tool calls — chat is unavailable until configured.',

@@ -30,7 +30,6 @@ const ENV_PATH = ACTIVE_PROFILE.keystorePath;
 // rejects anything outside this set so the endpoint can never write arbitrary env.
 const SETTABLE = new Set<string>(KEY_NAMES);
 
-
 const store = new Map<string, string>(); // current value per key (seed + runtime overrides)
 const envSeeded = new Set<string>(); // which keys came from .env.local / process.env at startup
 
@@ -153,7 +152,8 @@ export function computeCaps(): Caps {
       has("GEMINI_API_KEY") ||
       has("MINIMAX_API_KEY") ||
       has("WAVESPEED_API_KEY") ||
-      has("BYTEPLUS_API_KEY"),
+      has("BYTEPLUS_API_KEY") ||
+      has("FAL_KEY"),
     voice:
       (has("DOUBAO_TTS_APP_ID") && has("DOUBAO_TTS_ACCESS_KEY")) ||
       has("ELEVENLABS_API_KEY") ||
@@ -166,7 +166,8 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "mistral" && has("LLM_MISTRAL_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
     video:
-      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY") || has("LLM_OFOX_API_KEY"),
+      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY")
+      || has("LLM_OFOX_API_KEY") || has("FAL_KEY"),
     music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:
