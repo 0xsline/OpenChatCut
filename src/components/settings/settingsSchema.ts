@@ -1,3 +1,4 @@
+import { FAL_MODELS } from '../../../shared/fal-models';
 // Set the information architecture of the panel (first-level classification → second-level capability group → third-level provider page → fields) and pure display logic.
 // Three columns: Left tree = Category → Capability; Middle column = Vendor list under this capability; Right column = Configuration page of the selected vendor.
 // Agent LLM saves independent API URLs, API Keys and models for each vendor; the capability to generate classes can be additionally provided
@@ -67,6 +68,22 @@ const byteplusPage = (cap: string, modelField: SettingsField, title = 'BytePlus 
   ],
 });
 
+const falPage = (cap: 'image' | 'video'): SettingsVendorPage => ({
+  key: `${cap}/fal`, vendor: 'fal', title: 'Fal.ai',
+  note: '选择 Fal.ai 作为默认厂商，然后选择模型。聊天中指定的模型优先于此默认值。',
+  fields: [
+    secret('FAL_KEY', 'API Key'),
+    {
+      name: cap === 'image' ? 'FAL_IMAGE_MODEL' : 'FAL_VIDEO_MODEL',
+      label: cap === 'image' ? '生图模型' : '视频模型', kind: 'select',
+      options: [
+        { value: '', label: '每次询问（默认）' },
+        ...FAL_MODELS.filter((model) => model.kind === cap).map(({ id, label }) => ({ value: id, label })),
+      ],
+    },
+  ],
+});
+
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     key: 'agent', title: 'Agent 模型', icon: 'sparkles',
@@ -87,6 +104,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     groups: [
       { key: 'image', title: '生图', hint: 'submit_image · 文生图 / 图生图，任一厂商即可。',
         route: routeSelect('PREFERRED_IMAGE_VENDOR', [
+          { value: 'fal', label: 'Fal.ai' },
           { value: 'gpt-image-2', label: 'OpenAI gpt-image' },
           { value: 'nano-banana', label: 'Gemini Nano Banana' },
           { value: 'image-01', label: 'MiniMax' },
@@ -104,6 +122,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             text('GEMINI_BASE_URL', 'Base URL', '默认 https://generativelanguage.googleapis.com'),
             modelText('GEMINI_IMAGE_MODEL', '生图模型', 'gemini-3.1-flash-image'),
           ] },
+          falPage('image'),
           minimaxPage('image', modelSelect('MINIMAX_IMAGE_MODEL', '生图模型', 'image-01', ['image-01', 'image-01-live'])),
           { key: 'image/wavespeed', vendor: 'wavespeed', title: 'WaveSpeed', fields: [
             secret('WAVESPEED_API_KEY', 'API Key'),
@@ -122,6 +141,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       VOICE_SETTINGS_GROUP,
       { key: 'video', title: '生视频', hint: 'submit_video · 文 / 图生视频，任一厂商即可。',
         route: routeSelect('PREFERRED_VIDEO_VENDOR', [
+          { value: 'fal', label: 'Fal.ai' },
           { value: 'seedance2', label: 'Seedance' },
           { value: 'kling', label: '可灵' },
           { value: 'hailuo', label: 'MiniMax 海螺' },
@@ -129,6 +149,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
         ]),
         vendors: [
+          falPage('video'),
           { key: 'video/seedance', vendor: 'seedance', title: 'Seedance · 火山', fields: [
             secret('SEEDANCE_API_KEY', 'API Key'),
             text('SEEDANCE_BASE_URL', 'Base URL', '默认 https://ark.cn-beijing.volces.com/api/v3'),

@@ -242,4 +242,14 @@ for (const expected of genericExpectations) {
   assert.equal(voice.pitch, undefined, `${expected.provider} must not receive Doubao/MiniMax controls`);
 }
 
+const falImage = buildSubmitImageArgs({ model: 'fal', falModel: 'nano-banana-2', prompt: 'cat', name: 'cat', count: 1 });
+assert.equal(falImage.model, 'fal');
+assert.equal(falImage.falModel, 'nano-banana-2');
+assert.equal(falImage.imageSize, undefined, 'preserve model defaults');
+assert.throws(() => buildSubmitImageArgs({ model: 'fal', quality: 'high' }), /quality/);
+const falVideo = buildSubmitVideoArgs({ model: 'fal', falModel: 'seedance-2.5', prompt: 'cat', refImages: ['asset-1'] });
+assert.equal(falVideo.falModel, 'seedance-2.5');
+assert.deepEqual(falVideo.refImages, ['asset-1']);
+assert.equal(falVideo.durationSeconds, undefined, 'preserve model defaults');
+assert.throws(() => buildSubmitVideoArgs({ model: 'fal', mode: 'pro' }), /mode/);
 console.log('generation-tool-input.verify: ok');

@@ -10,6 +10,8 @@ const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Respo
   fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
 
 export interface ProviderImage {
+  width?: number;
+  height?: number;
   b64_json?: string;
   url?: string;
 }

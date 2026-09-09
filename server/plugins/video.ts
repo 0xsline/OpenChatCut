@@ -1,3 +1,5 @@
+import { generateFalVideo } from './fal-client.ts';
+import { getKey } from '../keystore.ts';
 import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -21,7 +23,7 @@ import {
 import { generateGrokVideo } from './grok-video-provider.ts';
 import { saveVideoResults } from './video-result-save.ts';
 import {
-  hailuoApiResolution, seedanceApiResolution, validateVideoRequest, videoSeconds,
+  hailuoApiResolution, seedanceApiResolution, validateVideoRequest, validateSavedVideoRequest, videoSeconds,
   type KlingVideoReferType, type ValidVideoRequest, type VideoRequest,
 } from './video-validation.ts';
 export { hailuoApiResolution, seedanceApiResolution, validateVideoRequest } from './video-validation.ts';
@@ -78,8 +80,6 @@ async function providerError(response: Response): Promise<string> {
     return text.slice(0, 300) || `video provider failed (${response.status})`;
   }
 }
-
-const validate = validateVideoRequest;
 
 async function requestJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
   const response = await fetchWithProxy(url, init);
@@ -395,7 +395,9 @@ async function runVideoOperation(
   const checkpoint = generationResultCheckpoint(storedResultUrls, expectedResultCount, providerTaskId);
   let urls = checkpoint.urls;
   if (!checkpoint.complete) {
-    if (input.model === 'seedance2' || input.model === 'byteplus') {
+    if (providerTaskId?.startsWith('fal:') || (!providerTaskId && input.model === 'fal')) {
+      urls = requireGenerationResultUrls([await generateFalVideo(input, registerProviderTask, providerTaskId)], expectedResultCount);
+    } else if (input.model === 'seedance2' || input.model === 'byteplus') {
       const generated = await generateSeedance(input, seedanceConfig(input.model, options), registerProviderTask, providerTaskId);
       if (input.returnLastFrame && !generated.lastFrameUrl) {
         throw new IncompleteGenerationResultError(expectedResultCount, 1);
@@ -426,14 +428,14 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'fal'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,
       registerDownload,
       registerProviderTask,
     ) => {
-      const input = validate(snapshot.params as VideoRequest);
+      const input = validateSavedVideoRequest(snapshot.params as VideoRequest);
       const name = snapshot.label
         || String(input.name ?? '').trim()
         || `Video · ${(input.prompt || input.multiPrompts?.[0]?.prompt || input.model).slice(0, 36)}`;
@@ -456,7 +458,10 @@ export function videoGenerationPlugin(options: VideoOptions): Plugin {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
           const raw = await readJson(req);
-          const input = validate(await materializeVideoReferences(raw));
+          if (raw.model === 'fal' && !raw.falModel) raw.falModel = getKey('FAL_VIDEO_MODEL').trim() || undefined;
+          const input = validateVideoRequest(await materializeVideoReferences(raw));
+          // Persist the resolved choice so settings changes cannot redirect a retry.
+          if (input.model === 'fal') raw.falModel = input.falModel;
           const name = String(input.name ?? '').trim() || `Video · ${(input.prompt || input.multiPrompts?.[0]?.prompt || input.model).slice(0, 36)}`;
           const submitArgs = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'operationId'));
           const submission = await createGenerationJob(

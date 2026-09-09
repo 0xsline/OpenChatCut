@@ -1,3 +1,4 @@
+import { FAL_MODELS } from '../../shared/fal-models';
 // Which key-gated capabilities are actually configured. The booleans are computed
 // SERVER-SIDE in config/vite.config.ts (from .env.local) and injected via `define` as
 // __CONFIGURED_CAPS__ — BOOLEANS ONLY, never any key value reaches the browser.
@@ -58,6 +59,7 @@ export function applyLiveModels(models: Record<string, string>): void {
 interface ProviderRow { label: string; arg: string; argKey: 'model' | 'provider'; need: string[][] }
 const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   image: [
+    { label: 'Fal.ai', arg: 'fal', argKey: 'model', need: [['FAL_KEY']] },
     { label: 'gpt-image', arg: 'gpt-image-2', argKey: 'model', need: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']] },
     { label: 'Nano Banana', arg: 'nano-banana', argKey: 'model', need: [['GEMINI_API_KEY']] },
     { label: 'MiniMax', arg: 'image-01', argKey: 'model', need: [['MINIMAX_API_KEY']] },
@@ -78,6 +80,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Cartesia', arg: 'cartesia', argKey: 'provider', need: [['CARTESIA_API_KEY']] },
   ],
   video: [
+    { label: 'Fal.ai', arg: 'fal', argKey: 'model', need: [['FAL_KEY']] },
     { label: 'Seedance', arg: 'seedance2', argKey: 'model', need: [['SEEDANCE_API_KEY']] },
     { label: 'Kling', arg: 'kling', argKey: 'model', need: [['KLING_API_KEY']] },
     { label: 'Hailuo', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
@@ -121,6 +124,17 @@ const PREFERRED_KEY: Partial<Record<CapabilityKey, string>> = {
 };
 
 const rowTag = (r: ProviderRow): string => `${r.label}(${r.argKey}=${r.arg})`;
+
+function falModelSuffix(cap: CapabilityKey): string {
+  if ((cap !== 'image' && cap !== 'video') || !liveKeys?.FAL_KEY?.configured) return '';
+  const models = FAL_MODELS.filter((model) => model.kind === cap);
+  const preferred = liveModels?.[cap === 'image' ? 'FAL_IMAGE_MODEL' : 'FAL_VIDEO_MODEL'];
+  const selected = models.find((model) => model.id === preferred);
+  return `\nFal ${cap} models (use model=fal and falModel=<id>): ${models.map((model) => `${model.label}=${model.id}`).join(', ')}. `
+    + (selected ? `Saved Fal default: ${selected.id}; honor it unless the user explicitly requests another model.`
+      : 'No Fal model selected: ask which model to use before submitting; do not silently default to Seedance.')
+    + ' Only the documented common inputs are supported; use the selected model constraints in the tool schema.';
+}
 
 /** Routing suffix for an ON capability, mode-aware:
  * user default → use it; single vendor → use it;
@@ -176,6 +190,7 @@ export function capabilitiesPrompt(
   }
   return `\n\n# Available capabilities (based on configured API keys; local editing is always available without keys)\n`
     + `✅ Configured: ${on.length ? on.join(', ') : '(no key-gated capabilities)'}.\n`
+    + falModelSuffix('image') + falModelSuffix('video') + '\n'
     + `⬜ Not configured — do not promise these in a plan or call them; they return "not configured" and waste a turn:\n`
     + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
     + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured'

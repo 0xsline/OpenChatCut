@@ -32,6 +32,16 @@ const vendored = capabilitiesPrompt({ ...ALL_OFF, video: true });
 assert.ok(vendored.includes('Kling(model=kling) — use it directly'), 'single vendor → use directly');
 assert.ok(!vendored.includes('seedance2'), 'unconfigured vendor NOT listed');
 
+applyLiveKeyStatus({ FAL_KEY: { configured: true } });
+const falRouted = capabilitiesPrompt({ ...ALL_OFF, image: true, video: true });
+assert.ok(falRouted.includes('Fal.ai(model=fal)'), 'Fal key enables an explicit provider');
+assert.ok(!falRouted.includes('Seedance(model=seedance2)'), 'Fal does not impersonate native providers');
+assert.ok(falRouted.includes('No Fal model selected'), 'unset Fal default asks for a model');
+applyLiveModels({ FAL_IMAGE_MODEL: 'nano-banana-2' });
+const falDefault = capabilitiesPrompt({ ...ALL_OFF, image: true });
+assert.ok(falDefault.includes('Saved Fal default: nano-banana-2'), 'selected Fal model reaches the assistant');
+applyLiveModels({});
+
 // one minimax key lights all its vendor rows
 applyLiveKeyStatus({ MINIMAX_API_KEY: { configured: true } });
 const mm = capabilitiesPrompt({ ...ALL_OFF, video: true, image: true, voice: true, music: true });

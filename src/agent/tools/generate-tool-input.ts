@@ -26,9 +26,15 @@ export function buildSubmitImageArgs(args: GenerateArgs): SubmitImageArgs {
   const width = aspectRatio === undefined ? num(args.width) : undefined;
   const height = aspectRatio === undefined ? num(args.height) : undefined;
   const shared: SubmitImageArgs = {
-    model, prompt: String(args.prompt ?? ''), name: String(args.name ?? ''), aspectRatio,
+    model, falModel: str(args.falModel), prompt: String(args.prompt ?? ''), name: String(args.name ?? ''), aspectRatio,
     referenceAssetIds: references, count: num(args.count),
   };
+  if (model === 'fal') {
+    for (const key of ['width', 'height', 'quality', 'maskAssetId', 'background', 'moderation', 'inputFidelity', 'outputFormat', 'outputCompression', 'seed', 'promptOptimizer']) {
+      if (args[key] !== undefined) throw new Error(`${key} is not supported by the Fal image integration`);
+    }
+    return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'] };
+  }
   if (model === 'image-01') {
     return { ...shared, width, height, seed: num(args.seed), promptOptimizer: bool(args.promptOptimizer) };
   }
@@ -218,10 +224,21 @@ const hailuoVideo = (args: GenerateArgs): SubmitVideoArgs => ({
 // xAI Grok Imagine Video: text-to-video only — the base fields are the whole surface.
 const grokVideo = (args: GenerateArgs): SubmitVideoArgs => videoBase(args, 'grok-imagine-video');
 
-const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo } as const;
+const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
+  for (const key of ['mode', 'refVideoMode', 'promptOptimizer', 'fastPretreatment', 'seed', 'cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority', 'multiPrompts', 'shotType']) {
+    if (args[key] !== undefined) throw new Error(`${key} is not supported by the Fal video integration`);
+  }
+  return ({
+  ...videoBase(args, 'fal'), falModel: str(args.falModel), ratio: str(args.ratio),
+  refImages: list(args.refImages), refVideos: list(args.refVideos), refAudios: list(args.refAudios),
+  generateAudio: bool(args.generateAudio),
+  });
+};
+
+const VIDEO_STRATEGIES = { fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
   const model = args.model === undefined ? 'seedance2' : args.model;
-  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video') {
+  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'fal') {
     throw new Error('Unsupported video model; select an available provider before submitting or rerunning.');
   }
   return VIDEO_STRATEGIES[model](args);

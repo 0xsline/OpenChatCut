@@ -1148,7 +1148,7 @@
     },
     {
       "name": "submit_image",
-      "description": "Generate one or more AI images (gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, or xAI Grok Imagine), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.",
+      "description": "Generate one or more AI images (Fal catalog, gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, or xAI Grok Imagine), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1160,9 +1160,25 @@
               "image-01",
               "wavespeed",
               "byteplus",
-              "grok-imagine"
+              "grok-imagine",
+              "fal"
             ],
             "description": "gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K)."
+          },
+          "falModel": {
+            "type": "string",
+            "enum": [
+              "nano-banana-2",
+              "nano-banana-pro",
+              "gpt-image-2",
+              "flux-2",
+              "flux-2-pro",
+              "seedream-5-pro",
+              "ideogram-4",
+              "qwen-image-3",
+              "recraft-v3"
+            ],
+            "description": "With model=fal, select a curated Fal image model; omitted uses the saved Fal image default. nano-banana-2: Nano Banana 2 — count 1–4, resolutions 0.5K/1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; nano-banana-pro: Nano Banana Pro — count 1–4, resolutions 1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; gpt-image-2: GPT Image 2 — count 1–4, resolutions 1K, up to 16 image refs, image editing, default 1K/4:3; flux-2: FLUX.2 — count 1–4, resolutions 1K, default 1K/4:3; flux-2-pro: FLUX.2 Pro — count 1–1, resolutions 1K, up to 4 image refs, image editing, default 1K/4:3; seedream-5-pro: Seedream 5.0 Pro — count 1–1, resolutions 1K/2K, up to 10 image refs, image editing, default 2K/auto; ideogram-4: Ideogram 4 — count 1–4, resolutions 1K, default 1K/1:1; qwen-image-3: Qwen Image 3 — count 1–4, resolutions 1K, default 1K/1:1; recraft-v3: Recraft V3 — count 1–1, resolutions 1K, up to 1 image refs, image editing, default 1K/1:1. Model-specific limits are validated before submission."
           },
           "prompt": {
             "type": "string",
@@ -1188,9 +1204,14 @@
               "2:3",
               "4:5",
               "5:4",
-              "21:9"
+              "21:9",
+              "auto",
+              "4:1",
+              "1:4",
+              "8:1",
+              "1:8"
             ],
-            "description": "Defaults to 16:9. Do not send width/height with aspectRatio."
+            "description": "Native providers default to 16:9; Fal uses its selected model default. Fal-only ratios require a supporting model. Do not send width/height with aspectRatio."
           },
           "imageSize": {
             "type": "string",
@@ -1198,9 +1219,10 @@
               "512px",
               "1K",
               "2K",
-              "4K"
+              "4K",
+              "0.5K"
             ],
-            "description": "Defaults to 1K. 512px is Gemini-only; use 2K/4K only when explicitly requested. Ignored when custom width/height are set."
+            "description": "Native providers default to 1K; Fal uses model defaults and validates its supported sizes. For Fal, 512px is an alias for 0.5K. Use 2K/4K only when explicitly requested. Ignored when custom width/height are set."
           },
           "width": {
             "type": "integer",
@@ -1911,7 +1933,7 @@
     },
     {
       "name": "submit_video",
-      "description": "Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, or xAI Grok Imagine video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
+      "description": "Submit a Fal catalog, Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, or xAI Grok Imagine video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1922,9 +1944,27 @@
               "kling",
               "hailuo",
               "byteplus",
-              "grok-imagine-video"
+              "grok-imagine-video",
+              "fal"
             ],
             "description": "hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames."
+          },
+          "falModel": {
+            "type": "string",
+            "enum": [
+              "seedance-2.5",
+              "seedance-2.0",
+              "kling-v3-standard",
+              "kling-v3-pro",
+              "kling-o3-standard",
+              "kling-o3-pro",
+              "veo-3.1",
+              "veo-3.1-fast",
+              "wan-3.0",
+              "minimax-h3-max",
+              "pixverse-v6"
+            ],
+            "description": "With model=fal, select a curated Fal video model; omitted uses the saved Fal video default. seedance-2.5: Seedance 2.5 — audio toggle supported, resolutions 480p/720p, durations 4–30s, up to 30 image refs, up to 10 video refs, up to 10 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; seedance-2.0: Seedance 2.0 — audio toggle supported, resolutions 480p/720p/1080p/4k, durations 4–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; kling-v3-standard: Kling 3.0 Standard — audio toggle supported, resolutions 720p, durations 3–15s, first frame/last frame, default 720p/5s/16:9; kling-v3-pro: Kling 3.0 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, first frame/last frame, default 1080p/5s/16:9; kling-o3-standard: Kling O3 Standard — audio toggle supported, resolutions 720p, durations 3–15s, up to 4 image refs, reference mode, default 720p/5s/16:9; kling-o3-pro: Kling O3 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, up to 4 image refs, reference mode, default 1080p/5s/16:9; veo-3.1: Veo 3.1 — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; veo-3.1-fast: Veo 3.1 Fast — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; wan-3.0: Wan 3.0 — audio toggle supported, resolutions 480p/720p/1080p, durations 5/10s, first frame/last frame, default 1080p/5s/adaptive; minimax-h3-max: MiniMax H3 Max — no audio toggle, resolutions 480p/768p/1080p, durations 5–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, reference mode, default 768p/5s/16:9; pixverse-v6: PixVerse V6 — audio toggle supported, resolutions 360p/540p/720p/1080p, durations 1–15s, first frame, default 720p/5s/16:9. Omit duration/resolution to use model defaults."
           },
           "prompt": {
             "type": "string",
@@ -1942,7 +1982,7 @@
                 "type": "string"
               }
             ],
-            "description": "Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video."
+            "description": "For Fal, see falModel limits and omit to use model default. Native providers: integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video."
           },
           "ratio": {
             "type": "string",
@@ -1955,7 +1995,10 @@
               "512p",
               "720p",
               "1080p",
-              "4k"
+              "4k",
+              "768p",
+              "360p",
+              "540p"
             ],
             "description": "Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p."
           },
