@@ -15,7 +15,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "verify:copilot-auth": "tsx server/copilot/oauth-api.verify.ts && tsx server/copilot/oauth-store.verify.ts && tsx server/copilot/oauth-service.verify.ts && tsx server/copilot/oauth-http.verify.ts",
+    "verify:copilot-auth": "tsx server/copilot/oauth-api.verify.ts && tsx server/copilot/oauth-store.verify.ts && tsx server/copilot/oauth-service.verify.ts && tsx server/copilot/oauth-http.verify.ts && tsx src/components/settings/copilot-auth.verify.tsx",
     "verify:agent-local-media": "tsx desktop/agent-local-media.verify.ts && tsx desktop/agent-path-import.verify.ts && tsx desktop/agent-path-import.e2e.verify.ts && tsx src/agent/tools/agent-path-import-tools.verify.ts",
     "sync:mediapipe": "node scripts/sync-mediapipe.mjs",
     "sync:whisper-cli": "node scripts/sync-whisper-cli.mjs",
