@@ -38,6 +38,7 @@ export function CopilotAccountCard({ controller }: {
   const status = controller.status;
   const auth = controller.auth;
   const appSignedIn = auth?.status === 'signed-in';
+  const canSignOut = auth?.available && (appSignedIn || auth.status === 'error');
   const device = auth?.available && auth.status === 'pending' ? auth.device : null;
   const expired = !!device && device.expiresAt <= Date.now();
   const verificationUri = device?.verificationUri === 'https://github.com/login/device'
@@ -122,7 +123,7 @@ export function CopilotAccountCard({ controller }: {
             {controller.authBusy === 'cancel' ? t('正在取消…') : t('取消登录')}
           </button>
         )}
-        {auth?.available && appSignedIn && (
+        {canSignOut && (
           <button type="button" style={button} disabled={!!controller.authBusy}
             onClick={() => { void controller.logout(); }}>
             {controller.authBusy === 'logout' ? t('正在退出…') : t('退出此应用的登录')}
@@ -140,7 +141,7 @@ export function CopilotAccountCard({ controller }: {
           </button>
         )}
       </div>
-      {appSignedIn && (
+      {canSignOut && (
         <div style={summaryDetail}>{t('仅移除此应用的 OAuth 登录，不会撤销 GitHub 授权或退出其他应用。')}</div>
       )}
       {authError && <div role="alert" style={errorText}>{authError}</div>}

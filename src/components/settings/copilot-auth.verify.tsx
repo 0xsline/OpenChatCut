@@ -226,6 +226,25 @@ try {
   assert.equal(current().auth?.status, 'error');
   mock.timers.tick(60_000);
   assert.equal(requests.length, 0, 'expiry is read from the server, then polling stops');
+  for (const account of [null, { login: 'octocat' }]) {
+    const failedAuth: CopilotAuthState = {
+      ...signedOut, status: 'error', account, error: 'Saved credentials are unavailable.',
+    };
+    const checking = current().refresh();
+    respond('status', runtimeOut);
+    respond('auth', failedAuth);
+    await checking;
+    assert.deepEqual(current().auth, failedAuth);
+    assert.equal(requests.length, 0, 'an account attached to an auth error must not trigger model discovery');
+    const resetting = current().logout();
+    respond('auth/logout', signedOut);
+    await settle();
+    respond('status', runtimeOut);
+    await resetting;
+    assert.deepEqual(current().auth, signedOut, 'logout recovers expired or unreadable credentials without an account');
+    assert.deepEqual(current().models, []);
+    assert.deepEqual(copilotChoices(), []);
+  }
   deactivate();
   deactivate = undefined;
   const modelRequests = history.filter((request) => request.path.endsWith('/models'));
@@ -322,6 +341,16 @@ try {
   assert.ok(click(CopilotAccountCard({ controller: authenticated }), 'Refresh status'));
   assert.ok(click(CopilotAccountCard({ controller: authenticated }), 'Load models'));
   assert.deepEqual(calls, ['start', 'cancel', 'logout', 'refresh', 'models']);
+  for (const account of [null, { login: 'octocat' }]) {
+    const auth: CopilotAuthState = { ...signedOut, status: 'error', account, error: 'Saved credentials are unavailable.' };
+    const recovery = markup({ auth });
+    assert.match(recovery, /Sign out of this app/);
+    assert.match(recovery, /Saved credentials are unavailable/);
+    assert.doesNotMatch(recovery, /Signed in to GitHub Copilot|Load models/);
+    assert.ok(click(CopilotAccountCard({ controller: { ...base, auth } }), 'Sign out of this app'));
+  }
+  assert.deepEqual(calls.slice(-2), ['logout', 'logout']);
+  assert.doesNotMatch(markup({ auth: { ...signedOut, available: false, status: 'error' } }), /Sign out of this app/);
 } finally {
   await vite.close();
 }
