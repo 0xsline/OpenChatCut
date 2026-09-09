@@ -178,6 +178,8 @@ export class GitHubCopilotOAuth implements CopilotOAuthApi {
       client_id: this.clientId, grant_type: 'refresh_token', refresh_token: credentials.refreshToken,
     }, signal);
     const next = this.token(body);
-    return { ...next, login: await this.identity(next.accessToken, signal) };
+    // Rotation invalidates the old grant. Return the new pair for persistence
+    // immediately; a separate profile lookup must not strand it on a network failure.
+    return { ...next, login: credentials.login };
   }
 }

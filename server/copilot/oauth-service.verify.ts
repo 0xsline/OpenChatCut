@@ -17,6 +17,7 @@ function fixture() {
   let busy = false;
   let available = true;
   let changed = 0;
+  let notify: () => Promise<void> = async () => { changed += 1; };
   const polls: number[] = [];
   let poll: CopilotOAuthApi['poll'] = async () => ({ kind: 'pending' });
   let refresh: CopilotOAuthApi['refresh'] = async (previous) => ({ ...credentials(), accessToken: 'rotated-access', login: previous.login });
@@ -34,7 +35,7 @@ function fixture() {
       identity: async () => 'test-user',
       refresh: (previous: Parameters<CopilotOAuthApi['refresh']>[0], signal: AbortSignal) => refresh(previous, signal),
     },
-    isBusy: () => busy, credentialsChanged: async () => { changed += 1; },
+    isBusy: () => busy, credentialsChanged: () => notify(),
   };
   return {
     service: new CopilotOAuthService(options), options, polls,
@@ -45,6 +46,7 @@ function fixture() {
     setPoll: (value: typeof poll) => { poll = value; },
     setRefresh: (value: typeof refresh) => { refresh = value; },
     setWrite: (value: typeof write) => { write = value; },
+    setNotify: (value: typeof notify) => { notify = value; },
   };
 }
 
@@ -211,6 +213,32 @@ try {
   await Promise.all([refreshing, signingOut]);
   assert.deepEqual(refreshRace.stored(), { version: 1, kind: 'signed-out' },
     'a late refresh cannot undo sign-out');
+
+  const shutdownRace = make();
+  const shutdownStarted = Promise.withResolvers<void>();
+  const finishShutdown = Promise.withResolvers<void>();
+  shutdownRace.setNotify(async () => { shutdownStarted.resolve(); await finishShutdown.promise; });
+  shutdownRace.setPoll(async () => ({ kind: 'token', credentials: credentials() }));
+  const shutdownCode = (await shutdownRace.service.start()).device!;
+  mock.timers.tick(5000);
+  await shutdownStarted.promise;
+  const cancelDuringShutdown = shutdownRace.service.cancel(shutdownCode.id);
+  finishShutdown.resolve();
+  assert.equal((await cancelDuringShutdown).status, 'signed-out');
+  assert.equal(shutdownRace.stored(), null, 'cancelling during SDK shutdown must roll back sign-in');
+
+  const leaseRace = make();
+  leaseRace.setStored({ ...credentials(), login: 'test-user', expiresAt: Date.now() - 1 });
+  const resetStarted = Promise.withResolvers<void>();
+  const finishReset = Promise.withResolvers<void>();
+  leaseRace.setNotify(async () => { resetStarted.resolve(); await finishReset.promise; });
+  const acquiring = assert.rejects(leaseRace.service.acquireForTurn(), /cancelled/);
+  await resetStarted.promise;
+  const logoutDuringReset = leaseRace.service.logout();
+  finishReset.resolve();
+  await acquiring;
+  assert.equal((await logoutDuringReset).status, 'signed-out',
+    'logout during SDK shutdown must not be defeated by a newly granted turn lease');
 } finally {
   fixtures.forEach(({ service }) => service.dispose());
   mock.timers.reset();

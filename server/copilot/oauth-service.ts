@@ -134,6 +134,10 @@ export class CopilotOAuthService {
           return;
         }
         await this.options.credentialsChanged();
+        if (this.closed || this.pending !== pending || pending.abort.signal.aborted) {
+          await this.options.store.write(previous);
+          return;
+        }
         this.pending = null;
         this.error = undefined;
       });
@@ -216,6 +220,7 @@ export class CopilotOAuthService {
         throw new CopilotAuthError('GitHub sign-in was cancelled.', 409);
       }
       await this.options.credentialsChanged();
+      if (abort.signal.aborted || this.closed) throw new CopilotAuthError('GitHub sign-in was cancelled.', 409);
       this.error = undefined;
       return next.accessToken;
     } catch (error) {

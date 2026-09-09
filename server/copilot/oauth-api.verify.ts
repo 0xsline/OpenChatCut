@@ -44,9 +44,8 @@ const stored: CopilotOAuthCredentials = { ...token.credentials, login: 'test-use
 const refreshRequests: Array<{ url: string; init: RequestInit }> = [];
 const refreshApi = new GitHubCopilotOAuth(COPILOT_OAUTH_CLIENT_ID, async (url, init) => {
   refreshRequests.push({ url: String(url), init: init ?? {} });
-  return Response.json(String(url).endsWith('/user')
-    ? { login: 'test-user' }
-    : { access_token: 'rotated-access', refresh_token: 'rotated-refresh', token_type: 'bearer', expires_in: 28800 });
+  if (String(url).endsWith('/user')) return new Response('profile temporarily unavailable', { status: 502 });
+  return Response.json({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', token_type: 'bearer', expires_in: 28800 });
 });
 const refreshed = await refreshApi.refresh(stored, signal);
 assert.equal(refreshed.refreshToken, 'rotated-refresh');
@@ -55,9 +54,13 @@ const form = new URLSearchParams(String(refreshRequests[0]!.init.body));
 assert.equal(form.get('grant_type'), 'refresh_token');
 assert.equal(form.get('refresh_token'), 'private-refresh-token');
 assert.equal(form.has('client_secret'), false, 'device-flow refresh must not require a bundled secret');
-assert.equal(refreshRequests[1]!.url, 'https://api.github.com/user');
-assert.equal(new Headers(refreshRequests[1]!.init.headers).get('Authorization'), 'Bearer rotated-access');
+assert.equal(refreshRequests.length, 1,
+  'no fallible profile request may discard a rotated token pair before it is persisted');
 assert.ok(refreshRequests.every(({ init }) => init.redirect === 'error'));
+response = { login: 'test-user' };
+assert.equal(await api.identity('private-access-token', signal), 'test-user');
+assert.equal(requests.at(-1)!.url, 'https://api.github.com/user');
+assert.equal(new Headers(requests.at(-1)!.init.headers).get('Authorization'), 'Bearer private-access-token');
 
 for (const error of ['access_denied', 'expired_token', 'device_flow_disabled', 'incorrect_client_credentials', 'unknown']) {
   response = { error, error_description: 'private-access-token' };
