@@ -3,12 +3,14 @@ import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 
 export interface SubmitVideoArgs {
   operationId?: string;
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'fal';
+  /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
+  falModel?: string;
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
   ratio?: string;
-  resolution?: '480p' | '512p' | '720p' | '1080p' | '4k';
+  resolution?: '360p' | '480p' | '512p' | '540p' | '720p' | '768p' | '1080p' | '480P' | '768P' | '1080P' | '4k';
   mode?: 'std' | 'pro';
   firstFrame?: string;
   lastFrame?: string;

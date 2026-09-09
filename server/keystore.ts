@@ -1,10 +1,5 @@
-// Server-side in-memory API-key store backing the settings UI. Seeded at Vite
-// startup, live-updated by POST /api/keys, and persisted to the active runtime
-// profile's private settings file. Secret values never appear in responses; the
-// browser sees booleans only (keyStatus / caps). Model ids and vendor
-// routing are configuration, not credentials: the explicit NON_SECRET_NAMES whitelist
-// lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
-// show and edit them.
+// Server-side settings for the active runtime profile. Secrets remain private;
+// keyStatus exposes only configuration flags and explicitly allowlisted model values.
 import { readFile } from "node:fs/promises";
 import { atomicWriteFile } from "./plugins/project-store-durable.ts";
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from "./llm-config.ts";
@@ -96,6 +91,7 @@ export const KEY_NAMES = [
   "IMAGE_BASE_URL",
   "GEMINI_API_KEY",
   "GEMINI_BASE_URL",
+  "FAL_KEY",
   "WAVESPEED_API_KEY",
   "WAVESPEED_BASE_URL",
   "BYTEPLUS_API_KEY",
@@ -151,6 +147,8 @@ export const KEY_NAMES = [
   "COPILOT_MODEL",
   "COPILOT_REASONING_EFFORT",
   MODEL_CAPABILITY_OVERRIDES_KEY,
+  "FAL_IMAGE_MODEL",
+  "FAL_VIDEO_MODEL",
   "GEMINI_IMAGE_MODEL",
   "MINIMAX_IMAGE_MODEL",
   "WAVESPEED_IMAGE_MODEL",
@@ -211,6 +209,8 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "COPILOT_REASONING_EFFORT",
   "LLM_OPENAI_API_MODE",
   MODEL_CAPABILITY_OVERRIDES_KEY,
+  "FAL_IMAGE_MODEL",
+  "FAL_VIDEO_MODEL",
   "GEMINI_IMAGE_MODEL",
   "IMAGE_BASE_URL",
   "GEMINI_BASE_URL",
@@ -389,7 +389,8 @@ export function computeCaps(): Caps {
       has("GEMINI_API_KEY") ||
       has("MINIMAX_API_KEY") ||
       has("WAVESPEED_API_KEY") ||
-      has("BYTEPLUS_API_KEY"),
+      has("BYTEPLUS_API_KEY") ||
+      has("FAL_KEY"),
     voice:
       (has("DOUBAO_TTS_APP_ID") && has("DOUBAO_TTS_ACCESS_KEY")) ||
       has("ELEVENLABS_API_KEY") ||
@@ -402,7 +403,7 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "mistral" && has("LLM_MISTRAL_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
     video:
-      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY"),
+      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY") || has("FAL_KEY"),
     music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:

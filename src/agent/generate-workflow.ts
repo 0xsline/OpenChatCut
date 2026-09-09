@@ -1,5 +1,6 @@
 export const GENERATE_WORKFLOW = `
 ## AI image generation
+- When Fal.ai is selected or explicitly requested, use model=fal and the requested falModel (or saved Fal image default from capabilities). If neither is set, ask which Fal model to use. Follow the catalog limits instead of native-provider defaults.
 - Use submit_image only after the user explicitly asks to generate an image.
 - Default model gpt-image-2; use nano-banana for reference-heavy work; image-01 (MiniMax) for stills without references (prompt ≤1500 chars, count ≤9, no referenceAssetIds; optional promptOptimizer).
 - Always provide a short descriptive name. Default aspectRatio 16:9, imageSize 1K, quality high, and count 1 (imageSize/quality are gpt-image-2-oriented).
@@ -29,6 +30,7 @@ export const GENERATE_WORKFLOW = `
 - submit_music returns immediately with a jobId. Call track_progress target=generation with action=status or action=wait; only a successful tracked result creates the media-pool audio asset.
 
 ## Video generation
+- When Fal.ai is selected or explicitly requested, use model=fal and the requested falModel (or saved Fal video default from capabilities). If neither is set, ask which Fal model to use; never silently pick Seedance for Fal. Follow catalog duration/resolution defaults rather than the native-provider defaults below.
 - Use submit_video only after an explicit video-generation request. Default to seedance2 when configured, 5 seconds, 16:9, and 720p; never silently add variants, duration, or quality.
 - Seedance supports 2–15 seconds, resolution 480p/720p(default)/1080p/4k, typed image/video/audio references, optional audio/seed/camera/watermark/last-frame/expiry/priority controls. Kling supports 3–15 seconds, std/pro, images (≤7, or ≤4 with one refVideo), refVideoMode feature|base, customize/intelligence multi-shot; use @ImageN/@Video1 in prompts. Hailuo supports 6 or 10 seconds, 512p (Hailuo-02), 720p→768P, or 1080p (6s only), firstFrame/lastFrame, optional promptOptimizer/fastPretreatment, or S2V-01 subject-reference via firstFrame when that model is selected; no multi-ref multi-shot.
 - References must be project asset IDs and must stay in refImages/refVideos/refAudios by media type. lastFrame requires firstFrame.

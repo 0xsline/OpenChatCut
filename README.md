@@ -448,6 +448,13 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 
 ---
 
+### Fal.ai image and video generation
+
+Fal.ai is an optional generation provider with an explicit image/video model catalog.
+Configure it under **Settings → AI Generation → Image or Video → Fal.ai**.
+See [Fal setup, supported models, and extension guide](FAL.md) for supported modes,
+server-only credentials, and checks that do not spend generation credits.
+
 ## Development and Verification
 
 ```bash

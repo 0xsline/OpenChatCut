@@ -1,7 +1,7 @@
 ---
 name: video-gen
 description: |
-  AI video generation via Seedance 2.0, Kling, MiniMax Hailuo, and xAI Grok Imagine. Use when the user wants to generate a video clip — text-to-video, image-to-video, first/last-frame transitions, reference-guided generation, multi-shot, or generatively editing / extending an existing clip.
+  AI video generation via Fal.ai, Seedance 2.0, Kling, MiniMax Hailuo, and xAI Grok Imagine. Use when the user wants to generate a video clip — text-to-video, image-to-video, first/last-frame transitions, reference-guided generation, multi-shot, or generatively editing / extending an existing clip.
 user-invocable: true
 ---
 
@@ -17,6 +17,7 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 
 | Model | Reference | Strengths |
 | --- | --- | --- |
+| `fal` + `falModel` | [references/fal.md](references/fal.md) | Explicit Fal catalog; see tool schema for per-model limits |
 | `seedance2` | [references/seedance2.md](references/seedance2.md) | Default when configured. Multimodal refs, first/last, edit/extend/bridge, 2–15s, 480p/720p/1080p/4k, audio/seed/camera/watermark/last-frame/task controls. |
 | `kling` | [references/kling.md](references/kling.md) | Technical camera/performance; Omni multi-shot; images ≤7 (≤4 with one feature `refVideos`); std/pro; 3–15s. |
 | `hailuo` | [references/hailuo.md](references/hailuo.md) | MiniMax 海螺. T2V / I2V / first+last; **6s or 10s**; 512P (Hailuo-02), 720p→768P, 1080P (6s); no multi-ref / multi-shot. |
@@ -29,9 +30,10 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 Respect **configured vendors** from the capabilities prompt (only call a model whose key is on).
 
 1. **User named a vendor** ("用海螺", "MiniMax", "Kling", "Seedance") → that `model`, if configured.
-2. Else **default `seedance2`** when Seedance is configured.
-3. Else if only Kling is on → `kling`. Else if only MiniMax is on → `hailuo`. Else if only xAI is on → `grok-imagine-video`.
-4. Switch away from default when:
+2. If Fal.ai is selected or requested, use `model: "fal"` and the requested `falModel` or saved Fal default from capabilities. Ask if no Fal model is selected. Read the Fal catalog constraints in the tool schema; the native-provider limits below do not apply.
+3. Else **default `seedance2`** when Seedance is configured.
+4. Else if only Kling is on → `kling`. Else if only MiniMax is on → `hailuo`. Else if only xAI is on → `grok-imagine-video`.
+5. Switch away from default when:
    - Need **multi-shot customize / intelligence** → `kling` (confirm if not user-named).
    - Need **rich multi-modal refs** (video/audio refs, edit/extend) → `seedance2`.
    - Need a **short single beat** and only MiniMax is available, or user wants Hailuo → `hailuo` with duration 6 or 10.

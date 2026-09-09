@@ -443,6 +443,12 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 
 ---
 
+### Fal.ai 图像与视频生成
+
+Fal.ai 是可选的生成服务，提供明确的图像与视频模型目录。
+在 **设置 → AI 生成 → 生图或生视频 → Fal.ai** 中配置。
+支持的模型、服务端密钥配置、免费验证和扩展方式见 [Fal.ai 使用指南](FAL.md)。
+
 ## 开发与验证
 
 ```bash

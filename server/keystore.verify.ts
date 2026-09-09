@@ -109,6 +109,14 @@ assert.ok(!serialized.includes('secret-abc') && !serialized.includes('px-1'), 's
 assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value server-side');
 seedKeystore({ ...isolatedSeed, PREFERRED_TRANSCRIPTION_PROVIDER: 'local' } as Record<string, string>);
 assert.equal(keyStatus().caps.transcription, true, 'selected local Whisper keeps keyless transcription available');
+seedKeystore({ ...isolatedSeed, FAL_KEY: 'fal-secret', FAL_IMAGE_MODEL: 'nano-banana-2', FAL_VIDEO_MODEL: 'seedance-2.5' } as Record<string, string>);
+const falStatus = keyStatus();
+assert.equal(falStatus.models.FAL_IMAGE_MODEL, 'nano-banana-2');
+assert.equal(falStatus.models.FAL_VIDEO_MODEL, 'seedance-2.5');
+assert.equal(falStatus.keys.FAL_KEY.configured, true, 'Fal key is reported as configured');
+assert.equal(falStatus.caps.image, true, 'Fal key enables image capability for routed image models');
+assert.equal(falStatus.caps.video, true, 'Fal key enables video capability for routed video models');
+assert.ok(!JSON.stringify(falStatus).includes('fal-secret'), 'Fal secret never appears in browser status');
 seedKeystore({
   ...isolatedSeed,
   [MODEL_CAPABILITY_OVERRIDES_KEY]: '[{"backend":"api","provider":"openai","modelId":"x","apiKey":"secret"}]',
@@ -136,6 +144,7 @@ const MODEL_ROUTING_NAMES = [
   'LLM_PROVIDER', 'LLM_MODEL', 'CODEX_MODEL', 'CODEX_REASONING_EFFORT', 'LLM_OPENAI_API_MODE',
   'COPILOT_MODEL', 'COPILOT_REASONING_EFFORT',
   MODEL_CAPABILITY_OVERRIDES_KEY,
+  'FAL_IMAGE_MODEL', 'FAL_VIDEO_MODEL',
   'GEMINI_IMAGE_MODEL', 'IMAGE_BASE_URL', 'GEMINI_BASE_URL',
   'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
   'OPENAI_TTS_MODEL', 'GEMINI_TTS_MODEL', 'MISTRAL_TTS_MODEL', 'CARTESIA_TTS_MODEL',
