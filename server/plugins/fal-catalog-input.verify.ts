@@ -67,6 +67,16 @@ assert.deepEqual(buildFalCatalogImageRequest({
   endpoint: 'openai/gpt-image-2',
   input: { prompt: 'Editorial portrait', image_size: 'landscape_4_3', quality: 'high', num_images: 1, output_format: 'png' },
 });
+for (const [aspectRatio, width, height] of [
+  ['1:1', 1024, 1024], ['16:9', 1408, 792], ['9:16', 792, 1408],
+  ['4:3', 1216, 912], ['3:4', 912, 1216],
+] as const) {
+  const request = buildFalCatalogImageRequest({
+    falModel: 'seedream-5-pro', prompt: 'A red paper boat', resolution: '1K', aspectRatio,
+  });
+  assert.deepEqual(request.input.image_size, { width, height });
+  assert.ok(width * height >= 1024 * 1024 && width * height <= 2048 * 2048);
+}
 const seedreamEdit = buildFalCatalogImageRequest({
   falModel: 'seedream-5-pro', prompt: 'A multilingual poster', resolution: '2K',
   aspectRatio: '16:9', imageUrls: ['one', 'two'],

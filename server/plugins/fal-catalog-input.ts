@@ -83,8 +83,15 @@ function imageSizePreset(aspectRatio: string, resolution: string): string {
 
 function seedreamImageSize(aspectRatio: string, resolution: string): string | { width: number; height: number } {
   if (aspectRatio === 'auto') return `auto_${resolution}`;
-  if (resolution === '1K') return imageSizePreset(aspectRatio, resolution);
-  const sizes: Record<string, { width: number; height: number }> = {
+  // Generic presets may resolve to 2K; use explicit dimensions for the chosen tier.
+  // Non-square 1K sizes retain the ratio and satisfy Fal's 1024² minimum area.
+  const sizes: Record<string, { width: number; height: number }> = resolution === '1K' ? {
+    '1:1': { width: 1024, height: 1024 },
+    '16:9': { width: 1408, height: 792 },
+    '9:16': { width: 792, height: 1408 },
+    '4:3': { width: 1216, height: 912 },
+    '3:4': { width: 912, height: 1216 },
+  } : {
     '1:1': { width: 2048, height: 2048 },
     '16:9': { width: 2048, height: 1152 },
     '9:16': { width: 1152, height: 2048 },
