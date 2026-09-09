@@ -23,6 +23,7 @@ const LOAD_ATTEMPT_TIMEOUT_MS = 15 * 60_000;
 type ProgressInfo = { progress?: number; file?: string };
 
 let asr: AutomaticSpeechRecognitionPipeline | null = null;
+let loadedModelId = '';
 let loading: Promise<void> | null = null;
 const workerScope = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -78,6 +79,7 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
       // at every call site — and no longer exports the dynamic_time_warping the
       // patch was built on. The library owns this now.
       asr = next as AutomaticSpeechRecognitionPipeline;
+      loadedModelId = request.modelId;
     } catch (error) {
       throw localAsrLoadError(error);
     }
@@ -88,6 +90,28 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
 interface WhisperWordOutput {
   text: string;
   timestamp?: [number, number] | [null, null];
+}
+
+/**
+ * onnxruntime-web runs in a 32-bit wasm heap, so a tier whose weights plus
+ * attention intermediates do not fit reports a raw C++ allocator failure
+ * ("OrtRun ERROR_CODE: 6 … std::bad_alloc") that says nothing about the cause
+ * or the fix. Whisper medium/large exceed that heap on most machines; the
+ * desktop whisper.cpp engine has no such limit.
+ *
+ * Match the allocator wording only: ERROR_CODE 6 is ORT's generic
+ * RUNTIME_EXCEPTION and carries plenty of failures that are not memory.
+ */
+function isWasmAllocationFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /bad_alloc|out of memory|\bOOM\b|failed to allocate|allocation failed|Cannot enlarge memory/i
+    .test(message);
+}
+
+function allocationFailureMessage(modelId: string): string {
+  return `本地转写模型 ${modelId} 超出浏览器 wasm 引擎的内存上限（分配失败）。`
+    + '请在 设置 → 转写 → 本地模型 选择更小的模型（Base / Small），'
+    + '或在桌面端开启本地原生推理（whisper.cpp，无此限制）。';
 }
 
 interface WhisperOutput {
@@ -125,6 +149,16 @@ async function transcribe(
     chunk_length_s: ASR_INFERENCE_CONTRACT.chunkSeconds,
     stride_length_s: ASR_INFERENCE_CONTRACT.strideSeconds,
     language: request.language,
+  }).catch((error: unknown) => {
+    // A failed run leaves the ORT session in an unusable state; drop it so the
+    // next request reloads instead of compounding the exhausted heap.
+    if (isWasmAllocationFailure(error)) {
+      const modelId = loadedModelId;
+      asr = null;
+      loadedModelId = '';
+      throw new Error(allocationFailureMessage(modelId));
+    }
+    throw error;
   }) as unknown as WhisperOutput;
   return { text: output.text ?? '', chunks: toChunks(output) };
 }

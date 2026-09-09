@@ -20,6 +20,9 @@ import {
   type AsrModelEntry,
   type AsrModelFile,
 } from '../../shared/asr-models.ts';
+import {
+  GGML_SOURCE_MODEL_ID, legacyGgmlCachePath, resolveGgmlPath,
+} from '../../shared/asr-ggml-cache.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
 import { downloadModelFile, modelCacheDir } from './hf-proxy.ts';
 
@@ -125,7 +128,7 @@ export async function inspectAsrModel(
   throwIfAborted(signal);
   const stats: string[] = [];
   const ggmlPath = entry.ggmlFile
-    ? join(cacheDir, 'ggml', entry.ggmlFile.fileName)
+    ? resolveGgmlPath(cacheDir, entry.ggmlFile.fileName)
     : undefined;
   const checkedFiles: Array<{ path: string; sizeBytes: number; sha256: string }> = [
     ...entry.files.map((file) => ({
@@ -218,13 +221,15 @@ async function startDownload(id: string): Promise<AsrDownloadTask> {
         task.bytesDone += file.sizeBytes;
       }
       if (ggml) {
-        const ggmlPath = join(modelCacheDir(), 'ggml', ggml.fileName);
+        const ggmlPath = resolveGgmlPath(modelCacheDir(), ggml.fileName);
         const ggmlFile = { path: ggmlPath, sizeBytes: ggml.sizeBytes, sha256: ggml.sha256 };
         if (!(await modelFileVerified(ggmlPath, ggmlFile))) {
           await rm(ggmlPath, { force: true });
+          // The destination is explicit: hf-proxy would otherwise derive it
+          // from the source repo id and strand the file where no reader looks.
           await downloadModelFile(
-            { modelId: 'ggerganov/whisper.cpp', revision: ggml.revision, filePath: ggml.fileName },
-            undefined,
+            { modelId: GGML_SOURCE_MODEL_ID, revision: ggml.revision, filePath: ggml.fileName },
+            ggmlPath,
             { expectedBytes: ggml.sizeBytes, expectedSha256: ggml.sha256 },
           );
         }
@@ -247,7 +252,8 @@ async function deleteModel(id: string): Promise<boolean> {
   if (task?.status === 'downloading') throw new Error(`model ${id} is downloading`);
   await rm(join(modelCacheDir(), entry.modelId), { recursive: true, force: true });
   if (entry.ggmlFile) {
-    await rm(join(modelCacheDir(), 'ggml', entry.ggmlFile.fileName), { force: true });
+    await rm(resolveGgmlPath(modelCacheDir(), entry.ggmlFile.fileName), { force: true });
+    await rm(legacyGgmlCachePath(modelCacheDir(), entry.ggmlFile.fileName), { force: true });
   }
   tasks.delete(id);
   inspections.delete(`${modelCacheDir()}\0${entry.modelId}`);

@@ -21,6 +21,7 @@ import {
   parseDesktopAsrRequest,
 } from '../shared/desktop-inference.ts';
 import { ASR_INFERENCE_CONTRACT } from '../shared/asr-inference-contract.ts';
+import { resolveGgmlPath } from '../shared/asr-ggml-cache.ts';
 import { NativeAsrWorkerLifecycle } from './native-asr-worker-lifecycle.ts';
 import {
   nativeGgmlFileName,
@@ -334,7 +335,7 @@ async function transcribeWithEngine(
 function ggmlPathFor(modelId: string): string | null {
   const fileName = nativeGgmlFileName(modelId);
   if (!fileName) return null;
-  const path = join(requireRuntime().cacheDir, 'ggml', fileName);
+  const path = resolveGgmlPath(requireRuntime().cacheDir, fileName);
   return existsSync(path) ? path : null;
 }
 

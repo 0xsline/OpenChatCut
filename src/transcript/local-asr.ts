@@ -144,7 +144,16 @@ export class LocalAsrClient {
   }
 
   async transcribe(samples: Float32Array, language: string): Promise<AsrResult> {
-    const result = await this.request({ type: 'transcribe', samples, language });
+    let result: AsrResult;
+    try {
+      result = await this.request({ type: 'transcribe', samples, language });
+    } catch (error) {
+      // The worker drops its pipeline when a run fails (an exhausted wasm heap
+      // leaves the session unusable), so forget the cached load key as well or
+      // the next attempt short-circuits ensureLoaded and finds no model.
+      this.config = null;
+      throw error;
+    }
     // A WebGPU session that yields an empty transcript is silently broken
     // (measured: encoder fp16 on Metal/WebGPU); remember it and retry on wasm
     // once so the user still gets their transcript this run.
