@@ -91,7 +91,7 @@ Join the OpenChatCut community to discuss workflows, share feedback, and follow 
 
 <p align="center">
   <br />
-  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut WeChat community QR code" />
+  <img src="assets/readme-pic/wechat-community.jpg" width="220" alt="OpenChatCut WeChat community QR code" />
 </p>
 
 ---

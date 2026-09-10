@@ -91,7 +91,7 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 <p align="center">
   <br />
-  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut 微信社区二维码" />
+  <img src="assets/readme-pic/wechat-community.jpg" width="220" alt="OpenChatCut 微信社区二维码" />
 </p>
 
 ---
