@@ -67,8 +67,9 @@
 **OfoxAI：一个平台，连接文本、图像与视频 AI**
 
 OfoxAI 是统一的 AI API 平台，汇集文本、图像和视频模型，支持 Seedance、MiniMax（海螺）、Wan 等视频模型系列。从 AI 应用与智能体开发，到创意构思、图像生成和视频素材制作，通过一个平台选择适合的模型。
-
 [探索 OfoxAI 模型与 API →](https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut)
+
+<br />
 
 如果 OpenChatCut 对你有帮助，欢迎通过 Ko-fi 或爱发电支持项目持续开发。
 

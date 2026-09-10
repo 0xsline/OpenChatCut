@@ -67,8 +67,9 @@
 **OfoxAI: Text, image, and video AI in one platform**
 
 OfoxAI is a unified API platform for text, image, and video AI, with video models from the Seedance, MiniMax (Hailuo), and Wan families. Choose models for AI applications, agents, creative ideation, image generation, and video assets through one platform.
-
 [Explore OfoxAI models and APIs →](https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut)
+
+<br />
 
 If OpenChatCut helps you, you can support its continued development on Ko-fi or Afdian.
 
