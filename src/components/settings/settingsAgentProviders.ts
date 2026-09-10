@@ -102,10 +102,17 @@ const XAI_OAUTH_PAGE: SettingsVendorPage = {
   }],
 };
 
+// Sponsored placement: OFox sits 4th in Agent 大脑 (Anthropic, OpenAI,
+// OpenAI · Codex, OFox), independent of its position in LLM_PROVIDER_PRESETS.
+const OFOX_PRESET = LLM_PROVIDER_PRESETS.find((preset) => preset.id === 'ofox');
 const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.flatMap((preset) => {
   if (preset.id === 'xai-oauth') return [XAI_OAUTH_PAGE];
+  if (preset.id === 'ofox') return [];
   const page = llmPage(preset);
-  return preset.id === 'openai' ? [page, CODEX_PAGE, COPILOT_PAGE] : [page];
+  if (preset.id !== 'openai') return [page];
+  return OFOX_PRESET
+    ? [page, CODEX_PAGE, llmPage(OFOX_PRESET), COPILOT_PAGE]
+    : [page, CODEX_PAGE, COPILOT_PAGE];
 });
 
 const VISION_PAGE: SettingsVendorPage = {

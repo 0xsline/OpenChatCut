@@ -109,6 +109,10 @@ assert.ok(!serialized.includes('secret-abc') && !serialized.includes('px-1'), 's
 assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value server-side');
 seedKeystore({ ...isolatedSeed, PREFERRED_TRANSCRIPTION_PROVIDER: 'local' } as Record<string, string>);
 assert.equal(keyStatus().caps.transcription, true, 'selected local Whisper keeps keyless transcription available');
+assert.equal(keyStatus().caps.video, false, 'unconfigured OFox leaves existing video capability off');
+seedKeystore({ ...isolatedSeed, LLM_OFOX_API_KEY: 'ofox-test-key' });
+assert.equal(keyStatus().caps.video, true, 'OFox alone enables video generation');
+assert.equal(keyStatus().caps.image, false, 'OFox does not enable unimplemented image generation');
 seedKeystore({
   ...isolatedSeed,
   [MODEL_CAPABILITY_OVERRIDES_KEY]: '[{"backend":"api","provider":"openai","modelId":"x","apiKey":"secret"}]',
@@ -145,7 +149,7 @@ const MODEL_ROUTING_NAMES = [
   'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',
   'ATLASCLOUD_API_BASE', 'ATLASCLOUD_MUSIC_MODEL',
   'WAVESPEED_IMAGE_MODEL', 'BYTEPLUS_IMAGE_MODEL', 'BYTEPLUS_VIDEO_MODEL',
-  'XAI_IMAGE_MODEL', 'XAI_VIDEO_MODEL',
+  'XAI_IMAGE_MODEL', 'XAI_VIDEO_MODEL', 'OFOX_VIDEO_MODEL',
   'INWORLD_TTS_MODEL', 'FISHAUDIO_TTS_MODEL', 'SPEECHIFY_TTS_MODEL',
   'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
   'PREFERRED_TRANSCRIPTION_PROVIDER', 'TRANSCRIPTION_LANGUAGE', 'TRANSCRIPTION_DIARIZATION', 'AUTO_TRANSCRIBE_INGEST', 'UI_SCALE', 'UI_SCALE_BASE', 'UI_LOCALE',
