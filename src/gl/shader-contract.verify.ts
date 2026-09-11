@@ -17,7 +17,14 @@ const files: Record<string, string> = {
 };
 
 for (const [name, expected] of Object.entries(files)) {
-  const source = readFileSync(fileURLToPath(new URL(name, import.meta.url)), 'utf8').trim();
+  // Normalize CRLF before hashing. These digests pin shader CONTENT, not the
+  // checkout's line endings — with git's core.autocrlf=true (the Windows
+  // default) every one of these files lands as CRLF and all nine hashes
+  // mismatched, which reads as "someone edited the shaders" rather than
+  // "this is Windows".
+  const source = readFileSync(fileURLToPath(new URL(name, import.meta.url)), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .trim();
   assert.strictEqual(createHash('sha256').update(source).digest('hex'), expected, `${name} content changed`);
 }
 
