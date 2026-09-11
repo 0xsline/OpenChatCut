@@ -120,8 +120,24 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
   // retry_transcription: force a fresh ASR run (the only action that doesn't need an existing transcript).
   if (action === 'retry_transcription') {
     if (!it.src) return { error: `item ${it.id} has no media to transcribe` };
+    // Honor the same provider override transcribe_track accepts. Without it a
+    // retry always fell back to the default provider, so on a setup configured
+    // for (say) Groq the only way to redo a transcript failed with
+    // "AssemblyAI API key is not configured" — even though the initial
+    // transcribe_track had just succeeded.
+    const provider = args.provider === undefined
+      ? undefined
+      : isTranscriptionProviderId(args.provider) ? args.provider : undefined;
+    if (args.provider !== undefined && provider === undefined) {
+      return { error: `unsupported transcription provider: ${String(args.provider)}` };
+    }
     try {
-      const r = await transcribePath(it.src);
+      const r = await transcribePath(
+        it.src,
+        (note) => { if (note) ctx.onToolProgress?.(note); },
+        {},
+        provider,
+      );
       ctx.commands.setItemTranscript(it.id, r.words);
       return { ok: true, action, itemId: it.id, words: r.words.length, text: r.text.slice(0, 200), retried: true };
     } catch (e) {
