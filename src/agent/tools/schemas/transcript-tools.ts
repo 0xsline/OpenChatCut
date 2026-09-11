@@ -123,7 +123,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
       + '- fix: correct the source transcript. For a word, pass wordIndex or find with the incorrect source text plus text with the correction; only word.text changes. To rename or merge a speaker, pass from with an existing label such as "A" plus to with the new display name; passing another existing label merges them. Only word.speaker changes.\n'
       + '- clear_edits: restore the clip to the raw transcript by clearing deleted words, silence caps, gap overrides, and play-order overrides (same as the Transcript panel 「还原全部」). Retimes the clip to the full transcript duration.\n'
       + '- set_play_order: reorder spoken playback via playOrder word-index array (same as dragging speech blocks in the Transcript panel). Pass playOrder:null or clearPlayOrder:true to restore chronological order. Retimes the clip.\n'
-      + '- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing.\n'
+      + '- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing. Accepts the same optional provider override as transcribe_track.\n'
       + '- translation_create: translate the full transcript to lang and create or replace a word-level translation variant sharing the source timeline.\n'
       + '- translation_ensure: idempotently reuse an existing variant for lang or create it otherwise. Prefer this for ordinary translation requests.\n'
       + '- translation_list: list the source transcript and all translation variants with id/lang/word count.\n'
@@ -142,6 +142,11 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
         },
         itemId: { type: 'string', description: 'Target clip item id or unique prefix; omit to use the first transcribed audio/video clip on the track.' },
         track: { type: 'string', description: 'When itemId is omitted, locate by track alias or stable id; default A1.' },
+        provider: {
+          type: 'string',
+          enum: ['assemblyai', 'local', 'openai', 'mistral', 'deepgram', 'groq', 'elevenlabs', 'cartesia'],
+          description: 'retry_transcription: optional configured provider override, same values as transcribe_track. Omit to use the provider selected in Settings.',
+        },
         wordIndex: { type: 'number', description: 'fix word: index of the word to correct; mutually exclusive with find.' },
         find: { type: 'string', description: 'fix word: incorrect source text that must match exactly one word; mutually exclusive with wordIndex.' },
         text: { type: 'string', description: 'fix word: corrected text.' },
