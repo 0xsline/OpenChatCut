@@ -160,6 +160,14 @@ export function registerExportJobRoute(server: ViteDevServer): void {
               message: error instanceof Error ? error.message : String(error),
             });
             jobParams.exportFailure = failure;
+            // Without this the only record of a server render failure is the
+            // HTTP response. When the client then falls back to the browser and
+            // that fails too, the browser's error is what surfaces and the
+            // server's real cause is lost — which made an unexportable project
+            // look like a browser codec problem.
+            server.config.logger.error(
+              `[export] render failed (${failure.stage}/${failure.code}): ${failure.message}`,
+            );
             throw new ExportFailureError(failure);
           } finally {
             await cleanupRenderMedia();
