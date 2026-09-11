@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { builtinApprovalMode } from './builtin-approval-mode.ts';
+import type { ExternalApprovalMode } from '../../src/agent/external-edit-session.ts';
 import { setImmediate as delayImmediate } from 'node:timers/promises';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -73,6 +75,8 @@ interface McpSession extends McpBindingSession {
   toolListDigest: string;
   exposure: McpToolExposure;
   lastUsed: number;
+  /** Non-null only for the built-in Claude Code backend; see builtin-approval-mode.ts. */
+  builtinApprovalMode: ExternalApprovalMode | null;
 }
 
 const sessions = new Map<string, McpSession>();
@@ -177,6 +181,12 @@ async function callTool(
   const args: Record<string, unknown> = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)
     ? { ...rawArgs as Record<string, unknown> }
     : {};
+  // The built-in backend's run owns its approval mode, so it overrides whatever
+  // the model passed (or omitted, which would normalize to "manual"). Every
+  // other MCP client keeps full control of its own argument.
+  if (name === 'begin_edit_session' && session.builtinApprovalMode) {
+    args.approvalMode = session.builtinApprovalMode;
+  }
   const allowRevisionDrift = name === 'get_edit_session'
     && Boolean(
       session.id
@@ -412,6 +422,7 @@ async function startMcpSession(
     offline: null,
     staleReason: null,
     lastUsed: Date.now(),
+    builtinApprovalMode: builtinApprovalMode(req),
   };
   const server = makeServer(baseUrl, session);
   session.server = server;

@@ -86,6 +86,8 @@ export interface ServerRunInput {
   readonly origin: string;
   readonly tools: readonly AgentToolSchema[];
   readonly instructions?: string;
+  /** claude-code only: enforced on that turn's own MCP server, not a model choice. */
+  readonly approvalMode?: 'manual' | 'auto';
 }
 
 /** Narrow a persisted or request-supplied backend string to the known set. */
@@ -349,6 +351,7 @@ async function executeRunTurns(
       signal,
       activation: plan.activation,
       requestIndex: turn + 1,
+      approvalMode: input.approvalMode,
     };
     const outcome = await runServerTurnWithRetry(run, turn + 1, signal, () =>
       plan.backend === 'codex'

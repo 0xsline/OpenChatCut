@@ -184,6 +184,8 @@ function parseClaudeCodeTurnRequest(body: Record<string, unknown>): ClaudeCodeTu
     projectId: shortString(body.projectId, 'projectId', 256),
     ...(typeof body.model === 'string' && body.model ? { model: body.model } : {}),
     ...(typeof body.sessionId === 'string' && body.sessionId ? { sessionId: body.sessionId } : {}),
+    ...(body.approvalMode === 'auto' || body.approvalMode === 'manual'
+      ? { approvalMode: body.approvalMode } : {}),
   };
 }
 
