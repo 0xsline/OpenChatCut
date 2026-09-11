@@ -335,6 +335,8 @@ const overrides: Record<string, string> = {
   '桌面原生推理加速': 'Accelerazione inferenza nativa desktop',
   '启用后，转写使用 macOS Metal 或原生 CPU；画面语义、节拍与音乐语义模型自动选择 Windows DirectML、Linux CUDA、macOS CoreML 或浏览器 WebGPU；失败时回退 CPU 或浏览器引擎。': 'Se attiva, la trascrizione usa macOS Metal o CPU nativa; i modelli visuali, ritmo e musica scelgono Windows DirectML, Linux CUDA, macOS CoreML o WebGPU browser. In caso di errore tornano a CPU/browser.',
   'WebGPU 转写加速': 'Accelerazione trascrizione WebGPU',
+  '删除静音（本地 VAD）': 'Rimuovi silenzi (VAD locale)',
+  '启用后，Agent 的删除静音用本机 Silero VAD 判定语音区间，只删除确认无人说话的片段；关闭时不执行删除。模型随应用内置，无需下载。': 'Se attiva, la rimozione dei silenzi dell’agente usa il VAD Silero locale per individuare il parlato ed elimina solo i tratti senza voce confermata; se disattiva non elimina nulla. Il modello è incluso nell’app, nessun download.',
   '无法读取模型列表：{err}': 'Impossibile leggere elenco modelli: {err}',
   '默认模型': 'Modello predefinito',
   '自动（按设备内存选择）': 'Auto (in base alla memoria)',

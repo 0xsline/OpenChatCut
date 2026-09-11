@@ -502,6 +502,9 @@ export default {
   '启用后，转写使用 macOS Metal 或原生 CPU；画面语义、节拍与音乐语义模型自动选择 Windows DirectML、Linux CUDA、macOS CoreML 或浏览器 WebGPU；失败时回退 CPU 或浏览器引擎。':
     'When enabled, transcription uses macOS Metal or native CPU. Visual-semantic, rhythm, and music-semantic models select Windows DirectML, Linux CUDA, macOS CoreML, or browser WebGPU. Failures fall back to CPU or the browser engine.',
   'WebGPU 转写加速': 'WebGPU transcription acceleration',
+  '删除静音（本地 VAD）': 'Remove silence (local VAD)',
+  '启用后，Agent 的删除静音用本机 Silero VAD 判定语音区间，只删除确认无人说话的片段；关闭时不执行删除。模型随应用内置，无需下载。':
+    'When enabled, the agent\'s silence removal uses the on-device Silero VAD to locate speech and only deletes spans confirmed to contain none; when disabled it deletes nothing. The model ships with the app, so there is no download.',
   '无法读取模型列表：{err}': 'Cannot load the model list: {err}',
   '默认模型': 'Default model',
   '自动（按设备内存选择）': 'Auto (by device memory)',

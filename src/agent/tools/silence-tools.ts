@@ -8,7 +8,7 @@ import type { TimelineItem } from '../../editor/types';
 import type { Action } from '../../editor/reduce';
 import { analyzeClipSilence, type SilenceSpan } from '../../audio/silence';
 import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
-import { vadSilenceRemovalEnabled } from '../../audio/vad';
+import { vadSilenceRemovalEnabled } from '../../audio/vadPreference';
 import { planSilenceRemoval, silenceRemovalBlocker, spansToLocalCuts } from '../../editor/silenceRebuild';
 
 type Args = Record<string, unknown>;
@@ -31,7 +31,7 @@ export async function execSilenceTool(name: string, args: Args, ctx: AgentContex
     return {
       ok: true,
       edited: [],
-      note: 'VAD 静音删除功能未启用；为避免把音乐、噪声或低声讲话当静音，未执行删除。',
+      note: 'VAD 静音删除未启用（设置 → 本地模型 → 本地转写 → 删除静音（本地 VAD））；为避免把音乐、噪声或低声讲话当静音，未执行删除。请告知用户在该开关启用后重试。',
     };
   }
   const params = {

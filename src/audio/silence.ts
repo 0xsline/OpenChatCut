@@ -10,10 +10,10 @@ import { sourceRevisionOf } from '../editor/mediaSourceRevision';
 import {
   obtainVadEvidence,
   removableSilenceFromEvidence,
-  vadSilenceRemovalEnabled,
   VAD_MODEL,
   VAD_MODEL_VERSION,
 } from './vad';
+import { vadSilenceRemovalEnabled } from './vadPreference';
 
 // ── Pure function (node-testable) ────────────────────────────────────────────
 

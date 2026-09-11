@@ -16,6 +16,10 @@ import {
   desktopNativeInferenceEnabled,
   setDesktopNativeInferenceEnabled,
 } from '../../transcript/desktop-inference-preference';
+import {
+  setVadSilenceRemovalPreference,
+  vadSilenceRemovalEnabled,
+} from '../../audio/vadPreference';
 
 interface AsrModelState {
   id: string;
@@ -52,6 +56,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
   const [nativeInference, setNativeInference] = useState(desktopNativeInferenceEnabled);
   const [desktopInferenceSupported, setDesktopInferenceSupported] = useState(false);
   const [webgpuAccel, setWebgpuAccel] = useState(() => asrBackendPreference() === 'webgpu');
+  const [vadSilence, setVadSilence] = useState(vadSilenceRemovalEnabled);
   useEffect(() => {
     let active = true;
     const inference = window.openChatCutDesktop?.inference;
@@ -89,6 +94,10 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
       // Best-effort preference persistence.
     }
     setWebgpuAccel(enabled);
+  }, []);
+  const toggleVadSilence = useCallback((enabled: boolean) => {
+    setVadSilenceRemovalPreference(enabled);
+    setVadSilence(enabled);
   }, []);
 
   const downloadingRef = useRef<ReadonlySet<string>>(new Set());
@@ -197,6 +206,23 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
         />
         <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ fontSize: 12, fontWeight: 600 }}>{t('WebGPU 转写加速')}</span>
+        </span>
+      </label>
+      <label style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
+        border: `0.5px solid ${theme.border}`, borderRadius: 8, background: theme.panel,
+      }}>
+        <input
+          type="checkbox"
+          checked={vadSilence}
+          onChange={(event) => toggleVadSilence(event.target.checked)}
+          style={{ marginTop: 2 }}
+        />
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>{t('删除静音（本地 VAD）')}</span>
+          <span style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.45 }}>
+            {t('启用后，Agent 的删除静音用本机 Silero VAD 判定语音区间，只删除确认无人说话的片段；关闭时不执行删除。模型随应用内置，无需下载。')}
+          </span>
         </span>
       </label>
       <div style={{ fontSize: 11.5, color: theme.textDim }}>

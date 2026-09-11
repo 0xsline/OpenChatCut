@@ -35,12 +35,6 @@ export function registerVadRunner(runner: VadRunner | undefined): void {
   registeredRunner = runner;
 }
 
-export function vadSilenceRemovalEnabled(
-  value: unknown = import.meta.env?.VITE_ENABLE_VAD_SILENCE_REMOVAL,
-): boolean {
-  return value === true || value === 'true' || value === '1';
-}
-
 export async function obtainVadEvidence(
   key: VadEvidenceKey,
   samples: Float32Array,
