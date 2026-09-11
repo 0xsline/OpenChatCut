@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
+  h264HardwareSupportsDimensions,
   h264FfmpegOverride,
   hardwareEncoderFailureClass,
   isHardwareEncoderFailure,
@@ -176,3 +177,40 @@ console.log('remotion performance verification passed');
   assert.match(render, /attempt\.ffmpegOverride\s*\?\s*renderDirectHardware/,
     'the custom ffmpeg override, not the binaries directory, marks the direct-hardware attempt');
 }
+
+// ── Hardware H.264 frame-size ceiling ─────────────────────────────────────────
+// Hardware H.264 encoders stop at 4096 per dimension, far below what the codec
+// allows. Measured on the reference machine: h264_nvenc encodes 3840x2160 and
+// fails 5808x2160 with "No capable devices found", leaving a zero-byte file.
+assert.equal(h264HardwareSupportsDimensions(1920, 1080), true, '1080p stays on hardware');
+assert.equal(h264HardwareSupportsDimensions(3840, 2160), true, 'UHD stays on hardware');
+assert.equal(h264HardwareSupportsDimensions(4096, 4096), true, 'the cap itself is allowed');
+assert.equal(h264HardwareSupportsDimensions(4097, 2160), false, 'one pixel over the cap is not');
+// The case that could not export at all: a 2.69:1 scope timeline at the "4k"
+// preset, which scales the short side to 2160 and lands at 5808 wide.
+assert.equal(h264HardwareSupportsDimensions(5808, 2160), false, 'scope 4k exceeds hardware H.264');
+assert.equal(h264HardwareSupportsDimensions(2160, 5808), false, 'the cap applies to height too');
+// Fail open: an unreadable size must not disable hardware for everyone.
+assert.equal(h264HardwareSupportsDimensions(undefined, 2160), true, 'unknown width keeps hardware');
+assert.equal(h264HardwareSupportsDimensions(NaN, NaN), true, 'unreadable size keeps hardware');
+assert.equal(h264HardwareSupportsDimensions(0, 0), true, 'a zero size is unknown, not oversized');
+assert.equal(h264HardwareSupportsDimensions(5808, 2160, { max: 8192 }), true,
+  'the cap is overridable for encoders that genuinely allow more');
+
+// ── Runtime failures that previously escaped the software fallback ────────────
+// The exact stderr h264_nvenc emits for an oversized frame.
+assert.equal(isHardwareEncoderFailure(new Error(
+  '[h264_nvenc @ 0x1] No capable devices found',
+)), true, 'the real NVENC oversize message is a hardware failure');
+assert.equal(isHardwareEncoderFailure(new Error(
+  'Error while opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.',
+)), true, 'ffmpeg’s encoder-open failure is a hardware failure');
+// hardwareAcceleration is 'required' for NVENC on Windows, so Remotion rejects
+// rather than degrading; that rejection has to reach the software fallback.
+assert.equal(isHardwareEncoderFailure(new Error(
+  'Hardware acceleration is set to "required" but is not available',
+)), true, 'a required-acceleration rejection is a hardware failure');
+assert.equal(isHardwareEncoderFailure(new Error('Disk full')), false,
+  'unrelated failures still propagate instead of silently re-rendering');
+
+console.log('performance.verify: hardware H.264 frame-size ceiling and failure detection passed');
