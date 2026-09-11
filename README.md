@@ -385,6 +385,50 @@ approve it in OpenChatCut before reporting that the edit was applied.
 
 External agents invoke the same internal editing tools and `EditorCore` commands as the editor itself. There are no separate project formats that can drift apart, and the live timeline is not changed while an external draft is being prepared.
 
+### Qoder
+
+Qoder is one-click too: the guide's **Connect** button writes the endpoint and
+bearer token into Qoder's own settings file, keeping any unrelated settings and
+MCP servers already there.
+
+```text
+~/.qoder/settings.json        (international build)
+~/.qoder-cn/settings.json     (China build — written as well when installed)
+```
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Restart Qoder afterwards to load the server.
+
+### Qwen Work (千问办公)
+
+千问办公 keeps custom MCP servers inside its own connector store rather than a
+config file, so OpenChatCut cannot write this one for you. In the guide, use
+**Copy config** on the 千问办公 card, then in 千问办公 open
+连接器 → 自定义 MCP → 添加, paste the JSON, and save:
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "streamable-http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
 ### Protecting MCP access
 
 When exposing the MCP endpoint yourself, configure:
