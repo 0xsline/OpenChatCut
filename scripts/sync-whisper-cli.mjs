@@ -1,16 +1,25 @@
 // Provision the whisper.cpp CLI binary used by the desktop native-ASR worker.
 //
 // Platform sources:
-// - darwin-arm64: no official release asset exists; the build machine compiles
-//   from source (see README of whisper.cpp) and the binary is supplied via
-//   OPENCHATCUT_WHISPER_CLI or copied into public/whisper-cli/darwin-arm64/.
-//   As a fallback the official x64 build can be fetched (Rosetta).
-// - darwin-x64 / win32-x64 / linux-x64 / linux-arm64: official GitHub release
-//   assets (whisper-bin-*), verified by size + sha256 recorded at first fetch.
+// - darwin-arm64 / darwin-x64: no official release asset exists; the build
+//   machine compiles from source, or OPENCHATCUT_WHISPER_CLI supplies a
+//   prebuilt binary.
+// - win32-x64 / linux-x64 / linux-arm64: official GitHub release assets
+//   (whisper-bin-*), checked against the size and sha256 pinned below BEFORE
+//   anything is installed.
+//
+// Every provisioned binary gets a provenance record (<binary>.provenance.json)
+// holding the upstream version, the pinned archive digest it came from, and the
+// binary's own digest. A later run trusts an existing binary only when that
+// record still matches the pinned expectations, the bytes still hash to the
+// recorded digest, and `--help` actually runs. Previously the only check was
+// existsSync(), so a truncated download or a placeholder file was installed
+// permanently and then certified by a sha256 sidecar computed from those same
+// bad bytes — a record nothing ever read.
 //
 // Output: public/whisper-cli/<platform>/whisper-cli[.exe]
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -18,10 +27,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT_DIR = join(ROOT, 'public', 'whisper-cli');
 const BUILD_CACHE = join(ROOT, '.cache', 'whisper-cli');
-const VERSION = 'v1.9.2';
+export const VERSION = 'v1.9.2';
 const BASE = `https://github.com/ggml-org/whisper.cpp/releases/download/${VERSION}`;
 
-const PLATFORMS = {
+// Pinned from the GitHub release API for VERSION:
+//   gh api repos/ggml-org/whisper.cpp/releases/tags/v1.9.2 \
+//     --jq '.assets[] | select(.name|test("whisper-bin")) | "\(.name) \(.size) \(.digest)"'
+// Regenerate both fields whenever VERSION moves. A mismatch must fail
+// provisioning, never install whatever bytes arrived.
+export const PLATFORMS = {
   'darwin-arm64': {
     asset: null,
     executable: 'whisper-cli',
@@ -34,18 +48,30 @@ const PLATFORMS = {
     executable: 'whisper-cli',
     note: 'no official darwin-x64 asset; compile from source',
   },
-  'win32-x64': { asset: 'whisper-bin-x64.zip', executable: 'whisper-cli.exe' },
-  'linux-x64': { asset: 'whisper-bin-ubuntu-x64.tar.gz', executable: 'whisper-cli' },
-  'linux-arm64': { asset: 'whisper-bin-ubuntu-arm64.tar.gz', executable: 'whisper-cli' },
+  'win32-x64': {
+    asset: 'whisper-bin-x64.zip',
+    archiveBytes: 8_194_445,
+    archiveSha256: '49dcc16de826f20bd53d44f947a1ae49dfa81f86cad67a64d80820cb192d674a',
+    executable: 'whisper-cli.exe',
+  },
+  'linux-x64': {
+    asset: 'whisper-bin-ubuntu-x64.tar.gz',
+    archiveBytes: 9_497_583,
+    archiveSha256: '46811a3ecf584307480a220b9ef5ff81b7b22dc41577cbc274ce3afc61f753b1',
+    executable: 'whisper-cli',
+  },
+  'linux-arm64': {
+    asset: 'whisper-bin-ubuntu-arm64.tar.gz',
+    archiveBytes: 4_572_842,
+    archiveSha256: '7e26fa6a36d9174d5c0bf033ccbc026c3b5e569e2ee787058241346ef5392719',
+    executable: 'whisper-cli',
+  },
 };
 
-async function download(url, dest) {
+async function fetchArchive(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`download failed ${response.status} for ${url}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  await mkdir(dirname(dest), { recursive: true });
-  await writeFile(dest, bytes);
-  return bytes.length;
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 async function extractArchive(archive, outDir) {
@@ -63,6 +89,131 @@ async function extractArchive(archive, outDir) {
 
 function sha256Of(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
+}
+
+/** Any real whisper-cli build is ~0.8-1 MB; this only rejects stubs and truncations. */
+export const MIN_WHISPER_BINARY_BYTES = 64 * 1024;
+export const PROVENANCE_SUFFIX = '.provenance.json';
+const LEGACY_DIGEST_SUFFIX = '.sha256';
+
+/** Reject an archive before it is written anywhere. Pure. */
+export function archiveProblem(bytes, spec) {
+  if (bytes.length !== spec.archiveBytes) {
+    return `archive is ${bytes.length} bytes, pinned size is ${spec.archiveBytes}`;
+  }
+  const digest = sha256Of(bytes);
+  if (digest !== spec.archiveSha256) {
+    return `archive sha256 ${digest} does not match the pinned ${spec.archiveSha256}`;
+  }
+  return null;
+}
+
+/**
+ * `whisper-cli --help` needs no model and no audio: it only has to start. The
+ * real banner goes to stderr and contains "usage:"; a missing DLL or shared
+ * object exits non-zero (127 on the CI runners), and a placeholder script that
+ * merely exits 0 prints nothing. Pure.
+ */
+export function helpProbeProblem(code, output) {
+  if (code !== 0) return `\`--help\` exited ${code}`;
+  if (output.length < 200) return '`--help` printed no usable output';
+  if (!/usage:/i.test(output)) return '`--help` output is not a whisper usage banner';
+  return null;
+}
+
+/**
+ * Decide whether an already-provisioned binary can be trusted, so the skip path
+ * is a verification instead of existsSync(). Pure; `binary` and `probe` are
+ * null when the caller could not gather them.
+ */
+export function provisionedProblem({ expected, record, binary, probe }) {
+  if (!record) return 'no provenance record';
+  if (record.source === 'override' || record.source === 'adopted') {
+    // A binary supplied by hand, or adopted from an earlier provisioning that
+    // kept no record, has no knowable upstream version; it still has to be a
+    // real, runnable executable matching its recorded digest.
+  } else if (record.version !== expected.version) {
+    return `provisioned from ${record.version ?? 'an unrecorded version'}, want ${expected.version}`;
+  } else if (record.archiveSha256 !== expected.archiveSha256) {
+    return 'provenance archive digest does not match the pinned digest';
+  }
+  if (!binary) return 'binary is missing';
+  if (binary.bytes < MIN_WHISPER_BINARY_BYTES) {
+    return `binary is only ${binary.bytes} bytes (minimum ${MIN_WHISPER_BINARY_BYTES})`;
+  }
+  if (!binary.executable) return 'binary is not executable';
+  if (binary.sha256 !== record.binarySha256) return 'binary does not match its provenance digest';
+  return probe?.problem ?? null;
+}
+
+/**
+ * A working binary that predates provenance records. Adopting it beats forcing
+ * a full whisper.cpp compile on every machine that already has one, and it is
+ * still gated on the size floor, the executable bit and a real `--help` run —
+ * the checks a placeholder or truncated file cannot pass. Pure.
+ */
+export function adoptable({ binary, probe }) {
+  return Boolean(binary)
+    && binary.bytes >= MIN_WHISPER_BINARY_BYTES
+    && binary.executable
+    && !probe?.problem;
+}
+
+async function readProvenance(binPath) {
+  try {
+    const parsed = JSON.parse(await readFile(binPath + PROVENANCE_SUFFIX, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function inspectBinary(binPath) {
+  try {
+    const info = await stat(binPath);
+    if (!info.isFile()) return null;
+    return {
+      bytes: info.size,
+      executable: process.platform === 'win32' || (info.mode & 0o111) !== 0,
+      sha256: sha256Of(await readFile(binPath)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function probeHelp(binPath) {
+  const { execFile } = await import('node:child_process');
+  return await new Promise((resolve) => {
+    execFile(binPath, ['--help'], { timeout: 30_000, maxBuffer: 8 << 20 }, (error, stdout, stderr) => {
+      const output = `${stdout ?? ''}${stderr ?? ''}`;
+      const code = error ? (error.code ?? 1) : 0;
+      resolve({ problem: helpProbeProblem(code, output) });
+    });
+  });
+}
+
+async function writeProvenance(binPath, record) {
+  // The legacy sidecar was written from whatever bytes were on disk and read by
+  // nothing; drop it rather than keep a second, weaker record.
+  await rm(binPath + LEGACY_DIGEST_SUFFIX, { force: true });
+  await writeFile(binPath + PROVENANCE_SUFFIX, `${JSON.stringify(record, null, 2)}\n`);
+}
+
+async function installedRecord(binPath, source, spec, extra = {}) {
+  const binary = await inspectBinary(binPath);
+  if (!binary) throw new Error(`whisper-cli missing after provisioning: ${binPath}`);
+  return {
+    version: VERSION,
+    platform: `${process.platform}-${process.arch}`,
+    source,
+    asset: spec.asset ?? null,
+    archiveSha256: spec.archiveSha256 ?? null,
+    binaryBytes: binary.bytes,
+    binarySha256: binary.sha256,
+    recordedAt: new Date().toISOString(),
+    ...extra,
+  };
 }
 
 // Find `executable` anywhere under `dir`. Depth-first, and it must backtrack:
@@ -110,7 +261,7 @@ export async function flattenExecutableDir(targetDir, executable) {
   return binPath;
 }
 
-async function buildFromSource(srcDir, buildDir, platformKey) {
+async function buildFromSource(srcDir, buildDir) {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const run = promisify(execFile);
@@ -132,6 +283,72 @@ async function buildFromSource(srcDir, buildDir, platformKey) {
   return builtCli;
 }
 
+async function copyExecutable(from, to) {
+  await rm(to, { force: true });
+  await writeFile(to, await readFile(from));
+  await chmod(to, 0o755);
+}
+
+/** The persistent whisper-server binary lives next to the CLI; ship it when present. */
+async function copyServerBeside(sourceBin, targetDir) {
+  const name = `whisper-server${process.platform === 'win32' ? '.exe' : ''}`;
+  const from = join(dirname(sourceBin), name);
+  if (!existsSync(from)) return;
+  await copyExecutable(from, join(targetDir, name));
+}
+
+async function provisionFromOverride(override, binPath, targetDir, spec) {
+  console.log(`[whisper-cli] using override ${override}`);
+  await mkdir(targetDir, { recursive: true });
+  await copyExecutable(override, binPath);
+  await copyServerBeside(override, targetDir);
+  return await installedRecord(binPath, 'override', spec, { overridePath: override });
+}
+
+async function provisionFromSource(binPath, targetDir, spec, platformKey) {
+  const srcDir = join(BUILD_CACHE, 'whisper.cpp');
+  const cli = await buildFromSource(srcDir, BUILD_CACHE);
+  await mkdir(targetDir, { recursive: true });
+  await copyExecutable(cli, binPath);
+  await copyServerBeside(cli, targetDir);
+  console.log(`[whisper-cli] built ${platformKey} from source -> ${binPath}`);
+  return await installedRecord(binPath, 'build', spec);
+}
+
+async function provisionFromAsset(binPath, targetDir, spec, platformKey) {
+  const url = `${BASE}/${spec.asset}`;
+  console.log(`[whisper-cli] downloading ${url}`);
+  const bytes = await fetchArchive(url);
+  const problem = archiveProblem(bytes, spec);
+  if (problem) throw new Error(`refusing ${spec.asset}: ${problem}`);
+  const archive = join(OUT_DIR, `${platformKey}.${spec.asset.endsWith('.zip') ? 'zip' : 'tar.gz'}`);
+  await mkdir(OUT_DIR, { recursive: true });
+  await writeFile(archive, bytes);
+  try {
+    await extractArchive(archive, targetDir);
+    // Official archives nest the CLI and its libraries together; bring that
+    // whole directory up so the binary keeps its DLLs / shared objects.
+    await flattenExecutableDir(targetDir, spec.executable);
+  } finally {
+    await rm(archive, { force: true });
+  }
+  if (process.platform !== 'win32') await chmod(binPath, 0o755);
+  return await installedRecord(binPath, 'asset', spec);
+}
+
+async function inspectProvisioned(binPath, spec) {
+  const record = await readProvenance(binPath);
+  const binary = await inspectBinary(binPath);
+  const probe = binary ? await probeHelp(binPath) : null;
+  const snapshot = {
+    expected: { version: VERSION, archiveSha256: spec.archiveSha256 ?? null },
+    record,
+    binary,
+    probe,
+  };
+  return { ...snapshot, problem: provisionedProblem(snapshot) };
+}
+
 async function main() {
   const platformKey = `${process.platform}-${process.arch}`;
   const spec = PLATFORMS[platformKey];
@@ -139,65 +356,39 @@ async function main() {
   const targetDir = join(OUT_DIR, platformKey);
   const binPath = join(targetDir, spec.executable);
   const override = process.env.OPENCHATCUT_WHISPER_CLI;
-  if (override) {
-    console.log(`[whisper-cli] using override ${override}`);
-    await mkdir(targetDir, { recursive: true });
+
+  if (!override) {
+    const state = await inspectProvisioned(binPath, spec);
+    if (!state.problem) {
+      console.log(`[whisper-cli] ${platformKey} verified at ${binPath}`);
+      return;
+    }
+    // Release-asset platforms re-fetch a few megabytes; source-build platforms
+    // would pay a full compile, so a binary that still runs is adopted.
+    if (!spec.asset && !state.record && adoptable(state)) {
+      await writeProvenance(binPath, await installedRecord(binPath, 'adopted', spec, { version: null }));
+      console.log(`[whisper-cli] adopted the existing ${platformKey} binary at ${binPath} (it runs; no provenance existed)`);
+      return;
+    }
+    console.log(`[whisper-cli] re-provisioning ${platformKey}: ${state.problem}`);
+  }
+
+  const record = override
+    ? await provisionFromOverride(override, binPath, targetDir, spec)
+    : spec.asset
+      ? await provisionFromAsset(binPath, targetDir, spec, platformKey)
+      : await provisionFromSource(binPath, targetDir, spec, platformKey);
+  await writeProvenance(binPath, record);
+
+  const { problem } = await inspectProvisioned(binPath, spec);
+  if (problem) {
+    // Never leave unusable bytes behind with a record vouching for them: the
+    // next run must see an empty slot, not a certified-bad binary.
     await rm(binPath, { force: true });
-    await writeFile(binPath, await readFile(override));
-    await chmod(binPath, 0o755);
-    await rm(binPath + '.sha256', { force: true });
-    await writeFile(
-      binPath + '.sha256',
-      sha256Of(await readFile(binPath)),
-    );
-    console.log(`[whisper-cli] copied ${override} -> ${binPath}`);
-    // The persistent whisper-server binary lives next to the CLI; ship it
-    // when present (locally compiled builds provide it).
-    const serverSrc = join(dirname(override), `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
-    const serverDst = join(targetDir, `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
-    if (existsSync(serverSrc)) {
-      await rm(serverDst, { force: true });
-      await writeFile(serverDst, await readFile(serverSrc));
-      await chmod(serverDst, 0o755);
-      console.log(`[whisper-cli] copied ${serverSrc} -> ${serverDst}`);
-    }
-    return;
+    await rm(binPath + PROVENANCE_SUFFIX, { force: true });
+    throw new Error(`${binPath} failed verification after provisioning: ${problem}`);
   }
-  if (!spec.asset) {
-    // macOS has no official release asset: build from source (local or CI).
-    // OPENCHATCUT_WHISPER_CLI still wins when set.
-    const buildDir = BUILD_CACHE;
-    const srcDir = join(buildDir, 'whisper.cpp');
-    const cli = await buildFromSource(srcDir, buildDir, platformKey);
-    await mkdir(targetDir, { recursive: true });
-    await writeFile(binPath, await readFile(cli));
-    await chmod(binPath, 0o755);
-    await rm(binPath + '.sha256', { force: true });
-    await writeFile(binPath + '.sha256', sha256Of(await readFile(binPath)));
-    const serverBin = join(dirname(cli), `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
-    const serverDst = join(targetDir, `whisper-server${process.platform === 'win32' ? '.exe' : ''}`);
-    if (existsSync(serverBin)) {
-      await writeFile(serverDst, await readFile(serverBin));
-      await chmod(serverDst, 0o755);
-    }
-    console.log(`[whisper-cli] built ${platformKey} from source -> ${binPath}`);
-    return;
-  }
-  const archive = join(OUT_DIR, `${platformKey}.${spec.asset.endsWith('.zip') ? 'zip' : 'tar.gz'}`);
-  const url = `${BASE}/${spec.asset}`;
-  if (!existsSync(binPath)) {
-    console.log(`[whisper-cli] downloading ${url}`);
-    await download(url, archive);
-    await extractArchive(archive, targetDir);
-    // Official archives nest the CLI and its libraries together; bring that
-    // whole directory up so the binary keeps its DLLs / shared objects.
-    await flattenExecutableDir(targetDir, spec.executable);
-    await rm(archive, { force: true });
-  }
-  const bytes = await readFile(binPath);
-  await rm(binPath + '.sha256', { force: true });
-  await writeFile(binPath + '.sha256', sha256Of(bytes));
-  console.log(`[whisper-cli] ${platformKey} ready at ${binPath} (${bytes.length} bytes)`);
+  console.log(`[whisper-cli] ${platformKey} ready at ${binPath} (${record.binaryBytes} bytes, ${record.source})`);
 }
 
 // Only provision when invoked directly, so the verify can import the flatten
