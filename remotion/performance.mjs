@@ -80,12 +80,42 @@ export function resolveH264VideoBitrate({ width, height, fps, scale = 1 } = {}) 
   return `${Math.ceil(clamped / 500_000) * 500}k`;
 }
 
+/**
+ * Hardware H.264 encoders cap each frame dimension well below what the codec
+ * itself allows: H.264 Level 6.2 permits ~16k pixels wide, but NVENC, Quick
+ * Sync, AMF and VideoToolbox all stop at 4096. Verified on this project's
+ * reference machine — `h264_nvenc` encodes 3840x2160 fine and fails 5808x2160
+ * with "No capable devices found", writing a zero-byte file.
+ *
+ * 5808x2160 is not exotic: it is what a 2.69:1 scope timeline becomes when the
+ * "4k" preset scales the SHORT side to 2160. Such a project could not export
+ * H.264 at all — the server render failed on the GPU limit, fell back to the
+ * browser, and WebCodecs hit the same GPU.
+ *
+ * A dimension this large therefore selects software encoding up front instead
+ * of discovering the failure mid-render. HEVC has no such problem (NVENC
+ * handles 7680x2160), so an H.265 route would keep hardware speed here.
+ */
+export const H264_HARDWARE_MAX_DIMENSION = 4096;
+
+/** Whether a hardware H.264 encoder can encode this frame size at all. */
+export function h264HardwareSupportsDimensions(width, height, {
+  max = H264_HARDWARE_MAX_DIMENSION,
+} = {}) {
+  const w = Math.ceil(Number(width));
+  const h = Math.ceil(Number(height));
+  // An unknown size must not silently disable hardware: only a size we can
+  // read AND that exceeds the cap rules it out.
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return true;
+  return w <= max && h <= max;
+}
+
 /** Runtime device/driver failure that an encoder-list probe cannot detect. */
 export function isHardwareEncoderFailure(error) {
   const message = error instanceof Error
     ? `${error.message}\n${error.cause instanceof Error ? error.cause.message : String(error.cause ?? '')}`
     : String(error ?? '');
-  return /videotoolbox|nvenc|nvcuda|libcuda|qsv|quick sync|mfx|amf|vaapi|va-api|renderD\d+|no (?:nvenc )?capable devices|no device|device setup failed|hardware encoder|failed to open encoder|could not open encoder|error initializing output stream/i.test(message);
+  return /videotoolbox|nvenc|nvcuda|libcuda|qsv|quick sync|mfx|amf|vaapi|va-api|renderD\d+|no (?:nvenc )?capable devices|no device|device setup failed|hardware encoder|hardware acceleration|failed to open encoder|could not open encoder|error while opening encoder|error initializing output stream|incorrect parameters such as|invalid (?:frame )?(?:size|dimensions)|(?:width|height) (?:is )?(?:too large|not supported)/i.test(message);
 }
 
 export function hardwareEncoderFailureClass(error) {
@@ -104,7 +134,7 @@ export function hardwareEncoderFailureClass(error) {
   return 'runtime-failure';
 }
 
-const SOFTWARE_H264_PROFILE = Object.freeze({
+export const SOFTWARE_H264_PROFILE = Object.freeze({
   id: 'libx264',
   label: 'Software (libx264)',
   hardware: false,
