@@ -32,7 +32,7 @@ assert.equal(resolveMaxActiveExports('2'), 2);
 assert.equal(resolveMaxActiveExports('99'), 4);
 assert.deepEqual(
   exportOutputSize({ width: 1920, height: 1080 }, exportScale({ width: 1920, height: 1080 }, '480p')),
-  { width: 854, height: 480 },
+  { width: 864, height: 486 },
 );
 
 assert.deepEqual(

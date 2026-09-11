@@ -134,8 +134,11 @@ async function renderMediaOptimized(options) {
   const oversizedForHardware = requestedProfile?.hardware
     && !h264HardwareSupportsDimensions(outputWidth, outputHeight);
   const profile = oversizedForHardware ? SOFTWARE_H264_PROFILE : requestedProfile;
+  // Report the size Remotion actually encodes. The server renderer rounds
+  // (mediaSettings.safeRenderPlan picks serverScale so the rounded result is
+  // even), so ceiling here would name an odd frame the encoder never sees.
   const oversizeFallbackReason = oversizedForHardware
-    ? `${requestedProfile.id}: frame ${Math.ceil(outputWidth)}x${Math.ceil(outputHeight)} exceeds the hardware H.264 limit of 4096`
+    ? `${requestedProfile.id}: frame ${Math.round(outputWidth)}x${Math.round(outputHeight)} exceeds the hardware H.264 limit of 4096`
     : null;
   if (oversizeFallbackReason) {
     console.warn(`[render] ${oversizeFallbackReason}; encoding with software libx264`);
