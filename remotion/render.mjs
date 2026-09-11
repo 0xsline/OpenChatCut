@@ -15,6 +15,8 @@ import {
   resolveOffthreadVideoThreads,
   resolveRenderConcurrency,
   withEncoderProfileFallback,
+  h264HardwareSupportsDimensions,
+  SOFTWARE_H264_PROFILE,
 } from './performance.mjs';
 import { renderDirectHardware } from './direct-hardware.mjs';
 import { assertMaterializedRenderSnapshot, normalizeH264Profile } from './render-contract.mjs';
@@ -119,7 +121,28 @@ function directHardwareRenderer(directBinaries, abortSignal) {
 /** Render with the selected probed engine, then make a truthful software retry. */
 async function renderMediaOptimized(options) {
   const { abortSignal, h264Profile, vaapiDevice, ...renderOptions } = options;
-  const profile = normalizeH264Profile(renderOptions.codec, h264Profile);
+  const requestedProfile = normalizeH264Profile(renderOptions.codec, h264Profile);
+  // The output frame, not the composition frame: `scale` is what turns a 1080p
+  // timeline into a 4k render, and the encoder only ever sees the scaled size.
+  const outputScale = renderOptions.scale ?? 1;
+  const outputWidth = renderOptions.composition?.width * outputScale;
+  const outputHeight = renderOptions.composition?.height * outputScale;
+  // Hardware H.264 stops at 4096 per dimension. Discovering that mid-render
+  // costs the whole render and, with hardwareAcceleration 'required', surfaces
+  // as an opaque failure rather than degrading — so rule it out up front and
+  // render in software instead of not at all.
+  const oversizedForHardware = requestedProfile?.hardware
+    && !h264HardwareSupportsDimensions(outputWidth, outputHeight);
+  const profile = oversizedForHardware ? SOFTWARE_H264_PROFILE : requestedProfile;
+  // Report the size Remotion actually encodes. The server renderer rounds
+  // (mediaSettings.safeRenderPlan picks serverScale so the rounded result is
+  // even), so ceiling here would name an odd frame the encoder never sees.
+  const oversizeFallbackReason = oversizedForHardware
+    ? `${requestedProfile.id}: frame ${Math.round(outputWidth)}x${Math.round(outputHeight)} exceeds the hardware H.264 limit of 4096`
+    : null;
+  if (oversizeFallbackReason) {
+    console.warn(`[render] ${oversizeFallbackReason}; encoding with software libx264`);
+  }
   const hardwareAcceleration = remotionHardwareAcceleration(renderOptions.codec, { encoder: profile?.id });
   const customOverride = profile?.hardware && hardwareAcceleration === 'disable'
     ? h264FfmpegOverride(profile.id, { vaapiDevice })
@@ -146,6 +169,13 @@ async function renderMediaOptimized(options) {
   };
   const render = directHardwareRenderer(directBinaries, abortSignal);
   if (!profile) return { result: await render(hardwareOptions), encoder: undefined };
+  if (oversizeFallbackReason) {
+    return {
+      result: await render(hardwareOptions),
+      encoder: profile,
+      encoderFallbackReason: oversizeFallbackReason,
+    };
+  }
   return withEncoderProfileFallback({
     render,
     hardwareOptions,

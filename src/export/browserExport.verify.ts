@@ -42,34 +42,62 @@ const state: TimelineState = {
   }],
 };
 
+/**
+ * Every export size must satisfy both renderers at once:
+ *  - the product `source x scale` is an integer AS JAVASCRIPT COMPUTES IT,
+ *    because Remotion validates that product and throws
+ *    "must be an integer, but is 5808.403361344537" otherwise;
+ *  - both dimensions are even, or H.264 fails "width not divisible by 2" and
+ *    writes a zero-byte file.
+ */
+function assertRenderable(
+  source: { width: number; height: number },
+  resolution: Parameters<typeof browserScaledExportDimensions>[1],
+  label: string,
+): { width: number; height: number; scale: number } {
+  const actual = browserScaledExportDimensions(source, resolution);
+  assert.equal(source.width * actual.scale, actual.width, `${label}: width product is exact`);
+  assert.equal(source.height * actual.scale, actual.height, `${label}: height product is exact`);
+  assert.equal(actual.width % 2, 0, `${label}: width is even`);
+  assert.equal(actual.height % 2, 0, `${label}: height is even`);
+  return actual;
+}
+
 function assertBrowserDimensions(
   source: { width: number; height: number },
   resolution: Parameters<typeof browserScaledExportDimensions>[1],
   expected: { width: number; height: number },
 ): void {
-  const actual = browserScaledExportDimensions(source, resolution);
+  const actual = assertRenderable(source, resolution, `${source.width}x${source.height} ${String(resolution)}`);
   assert.deepEqual({ width: actual.width, height: actual.height }, expected);
-  assert.equal(Math.ceil(source.width * actual.scale), expected.width);
-  assert.equal(Math.ceil(source.height * actual.scale), expected.height);
 }
 
-assertBrowserDimensions(state, '480p', { width: 854, height: 480 });
-assertBrowserDimensions({ width: 1080, height: 1920 }, '480p', { width: 480, height: 854 });
+// Standard 16:9 sizes are reachable exactly and are unchanged.
 assertBrowserDimensions(state, '4k', { width: 3840, height: 2160 });
+assertBrowserDimensions(state, '1080p', { width: 1920, height: 1080 });
+assertBrowserDimensions(state, '720p', { width: 1280, height: 720 });
 assertBrowserDimensions({ width: 1080, height: 1920 }, '4k', { width: 2160, height: 3840 });
-const upscaled480p = browserScaledExportDimensions({ width: 854, height: 480 }, '4k');
-assert.equal(upscaled480p.height, 2160);
-assert.equal(upscaled480p.width % 2, 0);
-assert.equal(Math.ceil(854 * upscaled480p.scale), upscaled480p.width);
-assert.equal(Math.ceil(480 * upscaled480p.scale), upscaled480p.height);
-const portraitCustom = browserScaledExportDimensions({ width: 100, height: 138 }, '4k');
-assert.deepEqual({ width: portraitCustom.width, height: portraitCustom.height }, { width: 2160, height: 2980 });
-assert.equal(Math.ceil(100 * portraitCustom.scale), portraitCustom.width);
-assert.equal(Math.ceil(138 * portraitCustom.scale), portraitCustom.height);
-const narrowCustom = browserScaledExportDimensions({ width: 25, height: 45 }, '4k');
-assert.deepEqual({ width: narrowCustom.width, height: narrowCustom.height }, { width: 2160, height: 3888 });
-assert.equal(Math.ceil(25 * narrowCustom.scale), narrowCustom.width);
-assert.equal(Math.ceil(45 * narrowCustom.scale), narrowCustom.height);
+
+// 854x480 is NOT reachable from 1920x1080 by any exact scale (854/16 is not an
+// integer), so 480p resolves to the nearest size that is. The old search
+// accepted 854 by rounding, which is exactly what handed Remotion a fractional
+// width and made every such server render fail.
+assertBrowserDimensions(state, '480p', { width: 864, height: 486 });
+assertBrowserDimensions({ width: 1080, height: 1920 }, '480p', { width: 486, height: 864 });
+
+// The regression that started this: a 2.69:1 anamorphic scope timeline. The
+// requested 4k short side asks for 1920 x 3.0252... = 5808.403361344537, which
+// no renderer can encode.
+const scope4k = assertRenderable({ width: 1920, height: 714 }, '4k', 'scope 4k');
+assert.deepEqual({ width: scope4k.width, height: scope4k.height }, { width: 5760, height: 2142 });
+
+// Awkward sources still resolve, including one where the arithmetic is exact
+// but the float product is not (25 * 86.4 === 2160.0000000000005).
+assertRenderable({ width: 854, height: 480 }, '4k', '480p source upscaled');
+assertRenderable({ width: 100, height: 138 }, '4k', 'odd portrait');
+assertRenderable({ width: 25, height: 45 }, '4k', 'tiny narrow');
+assertRenderable({ width: 1918, height: 1080 }, '4k', 'off-by-two width');
+assertRenderable({ width: 3840, height: 1600 }, '4k', 'ultrawide 2.4:1');
 
 
 

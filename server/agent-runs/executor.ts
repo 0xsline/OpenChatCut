@@ -86,11 +86,13 @@ export interface ServerRunInput {
   readonly origin: string;
   readonly tools: readonly AgentToolSchema[];
   readonly instructions?: string;
+  /** claude-code only: enforced on that turn's own MCP server, not a model choice. */
+  readonly approvalMode?: 'manual' | 'auto';
 }
 
 /** Narrow a persisted or request-supplied backend string to the known set. */
 export function serverRunBackend(value: unknown): ModelBackend {
-  return value === 'codex' || value === 'copilot' ? value : 'api';
+  return value === 'codex' || value === 'copilot' || value === 'claude-code' ? value : 'api';
 }
 
 type ServerTurnInput = Omit<ServerContextInput, 'schemas'> & {
@@ -312,7 +314,7 @@ async function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
     maxInputTokens,
     activation,
     prompt,
-    model: backend === 'codex' || backend === 'copilot'
+    model: backend === 'codex' || backend === 'copilot' || backend === 'claude-code'
       ? undefined
       : createServerLanguageModel(
           provider,
@@ -349,32 +351,36 @@ async function executeRunTurns(
       signal,
       activation: plan.activation,
       requestIndex: turn + 1,
+      approvalMode: input.approvalMode,
     };
     const outcome = await runServerTurnWithRetry(run, turn + 1, signal, () =>
       plan.backend === 'codex'
         ? (async () => (await import('./codex-turn'))
           .executeServerCodexTurn(subprocessTurnInput))()
-        : plan.backend === 'copilot'
-          ? (async () => (await import('./copilot-turn')).executeServerCopilotTurn({
-            ...subprocessTurnInput,
-            reasoningEffort: input.reasoningEffort ?? null,
-          }))()
-          : executeServerTurn({
-            run,
-            messages,
-            instructions: plan.prompt.instructions,
-            model: plan.model!,
-            provider: plan.provider,
-            apiMode: plan.apiMode,
-            cacheMode: input.cacheMode,
-            contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-            contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-            maxInputTokens: plan.maxInputTokens,
-            maxOutputTokens: plan.maxOutputTokens,
-            signal,
-            activation: plan.activation,
-            requestIndex: turn + 1,
-          }),
+        : plan.backend === 'claude-code'
+          ? (async () => (await import('./claude-code-turn'))
+            .executeServerClaudeCodeTurn(subprocessTurnInput))()
+          : plan.backend === 'copilot'
+            ? (async () => (await import('./copilot-turn')).executeServerCopilotTurn({
+              ...subprocessTurnInput,
+              reasoningEffort: input.reasoningEffort ?? null,
+            }))()
+            : executeServerTurn({
+              run,
+              messages,
+              instructions: plan.prompt.instructions,
+              model: plan.model!,
+              provider: plan.provider,
+              apiMode: plan.apiMode,
+              cacheMode: input.cacheMode,
+              contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+              contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+              maxInputTokens: plan.maxInputTokens,
+              maxOutputTokens: plan.maxOutputTokens,
+              signal,
+              activation: plan.activation,
+              requestIndex: turn + 1,
+            }),
     );
     if (outcome.followupText) {
       if (plan.activation.acceptance.phase === 'checking') {

@@ -1,6 +1,7 @@
 import { resolveAgentReferences, type AgentContext } from './context';
 import type { ProjectDoc } from '../editor/types';
 import type { AgentSettings } from './settings/agentSettings';
+import { agentAutoApply } from './approval-mode';
 import { buildAgentSystemPrompt } from './systemPrompt';
 import type { AgentModelChoice } from './model-selection';
 import { describeImagesForTextModel } from './vision';
@@ -72,6 +73,14 @@ export async function buildPreparedServerRun(input: PrepareServerRunInput): Prom
       estimatedInputTokens,
     ),
     openAiApiMode: choice.openAiApiMode,
+    // Only the claude-code backend needs this: its tools run inside Claude
+    // Code's own MCP client, where the composer's auto-apply toggle would
+    // otherwise never reach the edit session. Every other backend executes
+    // tools in-process and already reads the same toggle directly, so their
+    // payloads — and their request digests — stay byte-identical.
+    ...(choice.backend === 'claude-code'
+      ? { approvalMode: agentAutoApply() ? 'auto' as const : 'manual' as const }
+      : {}),
   });
   return {
     payload,

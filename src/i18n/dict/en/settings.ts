@@ -263,9 +263,32 @@ export default {
   '已复制': 'Copied',
   'Codex 返回了无效的登录地址。': 'Codex returned an invalid sign-in URL.',
   'Codex 返回了无效的验证地址。': 'Codex returned an invalid verification URL.',
-  '内置 Agent 需要 Anthropic API Key。Claude Code 订阅用户请通过「外部 Agent 接入 (MCP)」连接；OpenChatCut 不接收 Claude OAuth。':
-    'The built-in Agent requires an Anthropic API key. Claude Code subscription users should connect through “External agents (MCP)”; OpenChatCut does not accept Claude OAuth.',
   '复制失败': 'Copy failed',
+  // ── Claude Code account (TODO: not yet translated for it/ru/zh locales) ──
+  '内置 Agent 可使用 Anthropic API Key，也可以在下方「Anthropic · Claude Code」页用 Claude 订阅登录（无需 API Key）。独立运行的 Claude Code 会话也可以通过「外部 Agent 接入 (MCP)」驱动 OpenChatCut。':
+    'The built-in Agent can use an Anthropic API key, or sign in with a Claude subscription on the “Anthropic · Claude Code” page below (no API key needed). A standalone Claude Code session can also drive OpenChatCut through “External agents (MCP)”.',
+  '使用 Claude 订阅登录，由官方 Claude Code CLI 管理凭据、续期与退出，OpenChatCut 不会读取或显示 OAuth 凭据。在终端运行 claude auth login（或 claude setup-token 获取长期令牌）完成登录后，点击“重新检测”。':
+    'Sign in with a Claude subscription. The official Claude Code CLI manages credentials, renewal, and logout; OpenChatCut never reads or displays OAuth credentials. Run claude auth login (or claude setup-token for a long-lived token) in a terminal, then click “Recheck”.',
+  'Claude Code 模型': 'Claude Code model',
+  'Claude Code 默认模型': 'Claude Code default model',
+  '登录后可从可用模型中选择，也可以手动填写别名（如 sonnet / opus / haiku）。':
+    'After signing in, choose from the available models or enter an alias manually (e.g. sonnet / opus / haiku).',
+  '正在检查 Claude Code CLI…': 'Checking Claude Code CLI…',
+  '正在读取本机 Claude Code 运行时状态。': 'Reading the local Claude Code runtime status.',
+  '未检测到 Claude Code CLI': 'Claude Code CLI was not found',
+  '请先安装官方 Claude Code CLI，然后刷新状态。': 'Install the official Claude Code CLI, then refresh the status.',
+  '尚未登录 Claude': 'Not signed in to Claude',
+  '在终端完成登录后点击“重新检测”。': 'After signing in from a terminal, click “Recheck”.',
+  '已登录 Claude': 'Signed in to Claude',
+  '凭据与续期均由 Claude Code CLI 管理。': 'Credentials and renewal are managed by the Claude Code CLI.',
+  'Claude Code 暂时不可用': 'Claude Code is temporarily unavailable',
+  'Claude Code CLI {version}': 'Claude Code CLI {version}',
+  '无法连接 Claude Code 服务，请确认开发服务正在运行。':
+    'Could not reach the Claude Code service. Make sure the development server is running.',
+  '无法读取 Claude Code 模型，请稍后重试。': 'Could not load Claude Code models. Please try again.',
+  '重新检测': 'Recheck',
+  '登录': 'Sign in',
+  '长期令牌': 'Long-lived token',
   // ──Provider page status/test connection/field rendering──
   '已配置': 'Configured',
   '未配置': 'Not configured',

@@ -6,8 +6,11 @@ import { requestedVideoBitrateBps, resolveVideoBitrateBps } from '../../src/expo
 import { planExport } from './export-plan';
 
 // Short-edge presets preserve orientation; 4K means a 2160 px short edge.
+// 854x480 is unreachable from 1920x1080 by any scale that lands both axes on
+// an integer (854/16 is not whole), and Remotion rejects a fractional product
+// outright — so 480p resolves to the nearest exactly-representable size.
 const scale480p = exportScale({ width: 1920, height: 1080 }, '480p');
-assert.deepEqual([Math.round(1920 * scale480p), Math.round(1080 * scale480p)], [854, 480]);
+assert.deepEqual([1920 * scale480p, 1080 * scale480p], [864, 486]);
 assert.equal(exportScale({ width: 1080, height: 1920 }, '720p'), 720 / 1080);
 assert.equal(exportScale({ width: 1920, height: 1080 }, '1080p'), 1);
 assert.equal(exportScale({ width: 1920, height: 1080 }, '4k'), 2);
@@ -18,17 +21,22 @@ assert.equal(exportScale({ width: 1280, height: 720 }, '1080p'), 1.5);
 assert.equal(exportScale({ width: 100, height: 100 }, '1080p'), 10.8);
 assert.equal(exportScale({ width: 100, height: 100 }, '4k'), 21.6);
 const upscaled480p = exportScale({ width: 854, height: 480 }, '4k');
-assert.equal(Math.round(480 * upscaled480p), 2160);
-assert.equal(Math.round(854 * upscaled480p) % 2, 0);
+assert.equal(Number.isInteger(854 * upscaled480p), true, 'the width product is exact');
+assert.equal(Number.isInteger(480 * upscaled480p), true, 'the height product is exact');
+assert.equal((854 * upscaled480p) % 2, 0);
+assert.equal((480 * upscaled480p) % 2, 0);
+// Awkward canvases resolve to the nearest size both renderers can actually
+// encode, rather than to a rounded one that Remotion rejects. 2160x2980 and
+// 2160x3888 were only reachable by rounding a fractional product.
 const portraitCustomScale = exportScale({ width: 100, height: 138 }, '4k');
 assert.deepEqual(
-  [Math.round(100 * portraitCustomScale), Math.round(138 * portraitCustomScale)],
-  [2160, 2980],
+  [100 * portraitCustomScale, 138 * portraitCustomScale],
+  [2200, 3036],
 );
 const narrowCustomScale = exportScale({ width: 25, height: 45 }, '4k');
 assert.deepEqual(
-  [Math.round(25 * narrowCustomScale), Math.round(45 * narrowCustomScale)],
-  [2160, 3888],
+  [25 * narrowCustomScale, 45 * narrowCustomScale],
+  [2170, 3906],
 );
 
 validateVideoParams({ resolution: '4k', fps: 60, videoBitrate: 40_000_000 }, 'video');
