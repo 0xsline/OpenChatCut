@@ -1,5 +1,5 @@
 import {
-  modelSelect,
+  modelPicker,
   modelText,
   routeSelect,
   secret,
@@ -107,7 +107,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       fields: [
         secret('ELEVENLABS_API_KEY', 'API Key'),
         text('ELEVENLABS_BASE_URL', 'Base URL', '默认 https://api.elevenlabs.io'),
-        modelSelect('ELEVENLABS_TTS_MODEL', '配音模型', 'eleven_multilingual_v2',
+        modelPicker('ELEVENLABS_TTS_MODEL', '配音模型', 'eleven_multilingual_v2',
           ['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5']),
         modelText('ELEVENLABS_SOUND_MODEL', '音效模型', 'eleven_text_to_sound_v2'),
       ],
@@ -124,7 +124,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       key: 'voice/minimax', vendor: 'minimax', title: 'MiniMax', note: MINIMAX_NOTE, fields: [
         secret('MINIMAX_API_KEY', 'API Key'),
         text('MINIMAX_BASE_URL', 'Base URL', '默认 https://api.minimaxi.com'),
-        modelSelect('MINIMAX_TTS_MODEL', '配音模型', 'speech-2.6-hd',
+        modelPicker('MINIMAX_TTS_MODEL', '配音模型', 'speech-2.6-hd',
           ['speech-2.6-hd', 'speech-2.8-hd', 'speech-2.8-turbo', 'speech-2.6-turbo', 'speech-02-hd', 'speech-02-turbo']),
       ],
     },
@@ -146,7 +146,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       key: 'voice/speechify', vendor: 'speechify', title: 'Speechify', fields: [
         secret('SPEECHIFY_TTS_API_KEY', 'API Key'),
         text('SPEECHIFY_TTS_BASE_URL', 'Base URL', '默认 https://api.sws.speechify.com'),
-        modelSelect('SPEECHIFY_TTS_MODEL', '配音模型', 'simba-multilingual',
+        modelPicker('SPEECHIFY_TTS_MODEL', '配音模型', 'simba-multilingual',
           ['simba-multilingual', 'simba-english', 'simba-3.2']),
       ],
     },

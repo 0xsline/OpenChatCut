@@ -307,6 +307,21 @@ const flBody = hailuoRequestBody(fl, 'MiniMax-Hailuo-02', 'data:image/jpeg;base6
 assert.equal(flBody.resolution, '1080P');
 assert.equal(flBody.last_frame_image, 'data:image/jpeg;base64,b');
 
+// A model id newer than the family list stays reachable (#136): it gets the
+// current-generation request shape rather than a local rejection, and MiniMax
+// decides. Constraints for models we HAVE categorized still fire.
+const nextGen = 'MiniMax-Hailuo-9.9';
+assert.equal(validateMinimaxVideoMode(t2v, nextGen), 'unknown');
+const nextGenBody = hailuoRequestBody(t2v, nextGen);
+assert.equal(nextGenBody.model, nextGen);
+assert.equal(nextGenBody.duration, 6);
+assert.equal(nextGenBody.resolution, '768P');
+assert.equal(validateMinimaxVideoMode(fl, nextGen), 'unknown');
+assert.equal(hailuoRequestBody({ ...fl, resolution: '512p' }, nextGen, 'data:image/jpeg;base64,a', 'data:image/jpeg;base64,b').resolution, '512P');
+assert.equal(validateMinimaxVideoMode(fl, 'MiniMax-Hailuo-02'), 'hailuo02');
+assert.throws(() => validateMinimaxVideoMode(fl, 'MiniMax-Hailuo-2.3'), /requires MiniMax-Hailuo-02/);
+assert.throws(() => validateMinimaxVideoMode(t2v, 'S2V-01'), /requires firstFrame/);
+
 const grok = validateVideoRequest({ model: 'grok-imagine-video', prompt: 'a cat on a windowsill', durationSeconds: 10, ratio: '9:16', resolution: '720p' });
 assert.equal(grok.model, 'grok-imagine-video');
 assert.equal(grok.durationSeconds, 10);
