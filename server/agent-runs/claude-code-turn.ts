@@ -18,6 +18,12 @@ import {
 } from './store';
 import { digestToolArgs } from './store-values';
 import { flushTextEvents, flushThinkingEvents, serverRunTextMetadata, type ActivationState } from './executor';
+import {
+  claudeCodeSessionKey,
+  forgetClaudeCodeSession,
+  recallClaudeCodeSession,
+  rememberClaudeCodeSession,
+} from '../claude-code/resume-store.ts';
 
 const CLAUDE_CODE_TURN_TIMEOUT_MS = 600_000;
 
@@ -74,6 +80,18 @@ async function summarizeWithClaudeCode(
   );
   if (!text.trim()) throw new Error('Claude Code context summary returned no text.');
   return text.slice(0, maxOutputTokens * 4);
+}
+
+/**
+ * The prompt for a resumed turn. The CLI already holds every earlier message in
+ * its own transcript, so re-sending the serialized history would duplicate the
+ * whole conversation inside the resumed session.
+ */
+function latestUserPrompt(messages: readonly ModelMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === 'user') return serializeMessagesForPrompt([messages[index]]);
+  }
+  return serializeMessagesForPrompt([...messages]);
 }
 
 async function prepareClaudeCodeContext(
@@ -156,6 +174,17 @@ export async function executeServerClaudeCodeTurn(
   let errorMessage: string | null = null;
   const toolHistory: ModelMessage[] = [];
   const pendingArgs = new Map<string, unknown>();
+  let cliSessionId: string | null = null;
+  const resumeKey = claudeCodeSessionKey({
+    projectId: input.projectId,
+    sessionGeneration: input.run.sessionGeneration,
+    model: input.model,
+  });
+  // Compaction rewrites OpenChatCut's history but leaves the CLI's own
+  // transcript untouched, so the two have diverged and a resumed session would
+  // carry the pre-summary conversation the compaction was meant to shed.
+  if (prepared.usage.compacted) forgetClaudeCodeSession(resumeKey);
+  const resumeSessionId = prepared.usage.compacted ? null : recallClaudeCodeSession(resumeKey);
 
   const emit = (event: ClaudeCodeTurnStreamEvent): void => {
     switch (event.type) {
@@ -208,6 +237,10 @@ export async function executeServerClaudeCodeTurn(
         done = true;
         break;
       case 'session':
+        // The CLI reports the session it actually used, which is not
+        // necessarily the one passed to --resume: keep whatever it says so the
+        // next turn resumes the live transcript rather than a forked ancestor.
+        cliSessionId = event.sessionId;
         break;
       default:
         break;
@@ -216,22 +249,43 @@ export async function executeServerClaudeCodeTurn(
 
   let turnError: unknown = null;
   const runTurn = deps.runTurn ?? runServerClaudeCodeTurn;
-  try {
-    await withTimeout(runTurn(
-      {
-        requestId,
-        system: input.instructions,
-        prompt: serializeMessagesForPrompt([...prepared.messages]),
-        projectId: input.projectId,
-        model: input.model,
-        ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
-      },
-      emit,
-      input.signal,
-    ), CLAUDE_CODE_TURN_TIMEOUT_MS);
-  } catch (error) {
-    turnError = error;
+  const attempt = async (sessionId: string | null): Promise<void> => {
+    try {
+      await withTimeout(runTurn(
+        {
+          requestId,
+          system: input.instructions,
+          prompt: sessionId
+            ? latestUserPrompt(prepared.messages)
+            : serializeMessagesForPrompt([...prepared.messages]),
+          projectId: input.projectId,
+          model: input.model,
+          ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+          ...(sessionId ? { sessionId } : {}),
+        },
+        emit,
+        input.signal,
+      ), CLAUDE_CODE_TURN_TIMEOUT_MS);
+    } catch (error) {
+      turnError = error;
+    }
+  };
+  await attempt(resumeSessionId);
+  // A session the CLI cannot load fails before producing anything at all. That
+  // is indistinguishable from never having started, so fall back to a cold
+  // start with the full history rather than surfacing a stale transcript as the
+  // user's failure. The guard is deliberately strict: nothing was streamed and
+  // no tool ran, so replaying cannot duplicate a UI event or an edit.
+  if (resumeSessionId && !input.signal.aborted && !text && !toolHistory.length && !done) {
+    forgetClaudeCodeSession(resumeKey);
+    turnError = null;
+    errorMessage = null;
+    cliSessionId = null;
+    pendingArgs.clear();
+    await attempt(null);
   }
+  if (turnError || errorMessage || !done) forgetClaudeCodeSession(resumeKey);
+  else if (cliSessionId) rememberClaudeCodeSession(resumeKey, cliSessionId);
   flushTextEvents(input.run, pending, true);
   flushThinkingEvents(input.run, pendingThinking, true);
   pushRunEvent(input.run, 'text-end', serverRunTextMetadata(text));

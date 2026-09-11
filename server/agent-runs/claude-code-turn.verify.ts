@@ -5,7 +5,8 @@ import { executeServerClaudeCodeTurn, type ServerClaudeCodeTurnDeps } from './cl
 import { ToolActivation } from '../../src/agent/tool-activation';
 import { TOOL_SCHEMAS } from '../../src/agent/tools';
 import type { AgentToolSchema } from '../../src/agent/tool-schema';
-import type { ClaudeCodeTurnStreamEvent } from '../../shared/claude-code-agent';
+import type { ClaudeCodeTurnRequest, ClaudeCodeTurnStreamEvent } from '../../shared/claude-code-agent';
+import { resetClaudeCodeSessionsForTest } from '../claude-code/resume-store';
 import type { ServerRun } from './store-types';
 import { ToolFailureTracker } from '../../src/agent/toolFailure';
 import { createAcceptanceLoop } from './acceptance-loop';
@@ -188,3 +189,139 @@ function sequence(events: readonly ClaudeCodeTurnStreamEvent[]): ServerClaudeCod
 }
 
 console.log('server agent claude-code turn verification passed');
+
+// ── Session resume across runs ────────────────────────────────────────────────
+// Every Claude Code turn is a fresh `claude -p` subprocess, so without a
+// remembered session id each follow-up message re-boots the CLI, re-runs the
+// MCP handshake, and re-sends the whole conversation as a new prompt. These
+// guard that the second message resumes instead.
+{
+  resetClaudeCodeSessionsForTest();
+  const requests: ClaudeCodeTurnRequest[] = [];
+  const recording = (events: readonly ClaudeCodeTurnStreamEvent[]): ServerClaudeCodeTurnDeps => ({
+    runTurn: async (request, emit) => {
+      requests.push(request);
+      for (const event of events) emit(event);
+    },
+  });
+  const reply = (sessionId: string): readonly ClaudeCodeTurnStreamEvent[] => [
+    { type: 'session', sessionId },
+    { type: 'text-delta', delta: 'done' },
+    { type: 'done' },
+  ];
+
+  const first = makeInput(makeRun());
+  await executeServerClaudeCodeTurn(first, recording(reply('sess-a')));
+  assert.equal(requests[0].sessionId, undefined, 'the first message of a chat cold-starts');
+  assert.match(requests[0].prompt, /Find media\./, 'a cold start sends the serialized history');
+
+  const second = makeInput(makeRun());
+  second.messages = [
+    { role: 'user', content: 'Find media.' },
+    { role: 'assistant', content: 'done' },
+    { role: 'user', content: 'Now trim it.' },
+  ];
+  await executeServerClaudeCodeTurn(second, recording(reply('sess-a')));
+  assert.equal(requests[1].sessionId, 'sess-a', 'a follow-up in the same chat resumes the CLI session');
+  assert.equal(requests[1].prompt, 'USER:\nNow trim it.',
+    'a resumed turn sends only the new message, never the history the CLI already holds');
+
+  // A different model is a different transcript, and a rotated generation means
+  // the chat was cleared or rewound. Neither may resume the old session.
+  const otherModel = makeInput(makeRun());
+  otherModel.model = 'opus';
+  await executeServerClaudeCodeTurn(otherModel, recording(reply('sess-b')));
+  assert.equal(requests[2].sessionId, undefined, 'switching model starts a fresh session');
+
+  const rotated = makeInput(createRunWithCapability({
+    projectId: 'claude-code-verify-project',
+    sessionGeneration: 'gen-2',
+    backend: 'claude-code',
+    provider: 'anthropic',
+    model: 'sonnet',
+  }).run);
+  await executeServerClaudeCodeTurn(rotated, recording(reply('sess-c')));
+  assert.equal(requests[3].sessionId, undefined, 'a rotated session generation starts a fresh session');
+}
+
+// ── A session the CLI cannot load falls back to a cold start ──────────────────
+{
+  resetClaudeCodeSessionsForTest();
+  const requests: ClaudeCodeTurnRequest[] = [];
+  const seed = makeInput(makeRun());
+  await executeServerClaudeCodeTurn(seed, {
+    runTurn: async (request, emit) => {
+      requests.push(request);
+      emit({ type: 'session', sessionId: 'sess-gone' });
+      emit({ type: 'done' });
+    },
+  });
+  assert.equal(requests[0].sessionId, undefined, 'the seeding turn cold-starts');
+
+  const resumed = makeInput(makeRun());
+  resumed.messages = [
+    { role: 'user', content: 'Find media.' },
+    { role: 'user', content: 'Now trim it.' },
+  ];
+  const outcome = await executeServerClaudeCodeTurn(resumed, {
+    // First call: the stale id fails before producing anything, exactly as a
+    // CLI that cannot load the transcript does. Second call must be the cold
+    // start, and the user must never see the resume failure.
+    runTurn: async (request, emit) => {
+      requests.push(request);
+      if (request.sessionId) {
+        emit({ type: 'error', message: 'No conversation found with session ID sess-gone' });
+        return;
+      }
+      emit({ type: 'session', sessionId: 'sess-fresh' });
+      emit({ type: 'text-delta', delta: 'trimmed' });
+      emit({ type: 'done' });
+    },
+  });
+  assert.equal(requests[1].sessionId, 'sess-gone', 'the follow-up tries the remembered session first');
+  assert.equal(requests[2].sessionId, undefined, 'an unloadable session retries as a cold start');
+  assert.match(requests[2].prompt, /Find media\./,
+    'the cold-start retry sends the full history, not just the new message');
+  assert.equal(outcome.text, 'trimmed', 'the retry result reaches the user, not the resume error');
+}
+
+// ── A failed turn forgets the session ─────────────────────────────────────────
+{
+  resetClaudeCodeSessionsForTest();
+  const requests: ClaudeCodeTurnRequest[] = [];
+  const seed = makeInput(makeRun());
+  await executeServerClaudeCodeTurn(seed, {
+    runTurn: async (request, emit) => {
+      requests.push(request);
+      emit({ type: 'session', sessionId: 'sess-doomed' });
+      emit({ type: 'text-delta', delta: 'ok' });
+      emit({ type: 'done' });
+    },
+  });
+  // A turn that fails after producing output leaves the CLI transcript in an
+  // unknown state, so the next message must not resume it.
+  const failing = makeInput(makeRun());
+  failing.messages = [
+    { role: 'user', content: 'Find media.' },
+    { role: 'user', content: 'Now trim it.' },
+  ];
+  await assert.rejects(executeServerClaudeCodeTurn(failing, {
+    runTurn: async (request, emit) => {
+      requests.push(request);
+      emit({ type: 'text-delta', delta: 'partial' });
+      emit({ type: 'error', message: 'usage limit exceeded' });
+    },
+  }));
+  assert.equal(requests[1].sessionId, 'sess-doomed', 'the failing turn did resume');
+
+  const next = makeInput(makeRun());
+  await executeServerClaudeCodeTurn(next, {
+    runTurn: async (request, emit) => {
+      requests.push(request);
+      emit({ type: 'done' });
+    },
+  });
+  assert.equal(requests[2].sessionId, undefined, 'a failed turn forgets the session id');
+}
+
+console.log('claude-code-turn.verify: session resume, fallback and invalidation passed');
