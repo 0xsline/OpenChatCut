@@ -36,6 +36,8 @@ export interface ServerClaudeCodeTurnInput {
   readonly signal: AbortSignal;
   readonly activation: ActivationState;
   readonly requestIndex: number;
+  /** Declared to this turn's MCP server so begin_edit_session cannot default to manual. */
+  readonly approvalMode?: 'manual' | 'auto';
 }
 
 function usageFromClaudeCodeEvent(
@@ -222,6 +224,7 @@ export async function executeServerClaudeCodeTurn(
         prompt: serializeMessagesForPrompt([...prepared.messages]),
         projectId: input.projectId,
         model: input.model,
+        ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
       },
       emit,
       input.signal,

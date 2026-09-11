@@ -53,6 +53,8 @@ export function resolveRunExecution(
     origin,
     tools,
     instructions: input.instructions,
+    ...(backend === 'claude-code' && (body.approvalMode === 'auto' || body.approvalMode === 'manual')
+      ? { approvalMode: body.approvalMode } : {}),
   };
 }
 
@@ -77,6 +79,8 @@ export function runRequestDigests(
       model: execution.model,
       ...(execution.backend === 'copilot'
         ? { backend: execution.backend, reasoningEffort: execution.reasoningEffort ?? null } : {}),
+      ...(execution.backend === 'claude-code'
+        ? { approvalMode: execution.approvalMode ?? null } : {}),
       openAiApiMode: execution.openAiApiMode,
       cacheMode: execution.cacheMode,
       maxOutputTokens: execution.maxOutputTokens,

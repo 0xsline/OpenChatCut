@@ -183,14 +183,13 @@ export function translateClaudeCodeLine(
   return events;
 }
 
-async function withTempMcpConfig<T>(
+/** The private MCP config this turn hands the CLI. Exported for verify tests. */
+export function claudeCodeMcpConfig(
   mcpUrl: string,
   mcpToken: string,
-  run: (path: string) => Promise<T>,
-): Promise<T> {
-  const dir = await mkdtemp(join(tmpdir(), 'occ-claude-code-'));
-  const path = join(dir, `mcp-${randomUUID()}.json`);
-  const config = {
+  approvalMode?: 'manual' | 'auto',
+): Record<string, unknown> {
+  return {
     mcpServers: {
       [MCP_SERVER_NAME]: {
         type: 'http',
@@ -198,11 +197,25 @@ async function withTempMcpConfig<T>(
         headers: {
           Authorization: `Bearer ${mcpToken}`,
           'x-openchatcut-mcp-client': 'claude-code-builtin',
+          // Auto-apply is a property of the run, not a choice the model makes:
+          // the server overrides begin_edit_session's approvalMode with this.
+          // See server/external-agent/builtin-approval-mode.ts.
+          ...(approvalMode ? { 'x-openchatcut-approval-mode': approvalMode } : {}),
         },
       },
     },
   };
-  await writeFile(path, JSON.stringify(config), 'utf8');
+}
+
+async function withTempMcpConfig<T>(
+  mcpUrl: string,
+  mcpToken: string,
+  approvalMode: 'manual' | 'auto' | undefined,
+  run: (path: string) => Promise<T>,
+): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), 'occ-claude-code-'));
+  const path = join(dir, `mcp-${randomUUID()}.json`);
+  await writeFile(path, JSON.stringify(claudeCodeMcpConfig(mcpUrl, mcpToken, approvalMode)), 'utf8');
   try {
     return await run(path);
   } finally {
@@ -224,7 +237,7 @@ export async function runClaudeCodeTurn(
   signal: AbortSignal,
 ): Promise<void> {
   if (signal.aborted) return;
-  await withTempMcpConfig(mcpUrl, mcpToken, async (mcpConfigPath) => {
+  await withTempMcpConfig(mcpUrl, mcpToken, request.approvalMode, async (mcpConfigPath) => {
     const systemPrompt = request.system ? `${RUNTIME_RULES}\n\n${request.system}` : RUNTIME_RULES;
     // The system prompt goes in a file, never on the command line. OpenChatCut's
     // agent system prompt runs to tens of KB, and Windows caps a command line at

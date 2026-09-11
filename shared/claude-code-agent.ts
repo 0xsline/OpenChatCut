@@ -30,6 +30,13 @@ export interface ClaudeCodeTurnRequest {
   readonly projectId: string;
   readonly model?: string;
   readonly sessionId?: string;
+  /**
+   * The composer's auto-apply (YOLO) state for this run. Declared to the
+   * turn's own MCP server so begin_edit_session cannot fall back to "manual"
+   * when the model omits the argument. Omitted means "leave it to the model",
+   * which is the pre-existing behaviour.
+   */
+  readonly approvalMode?: 'manual' | 'auto';
 }
 
 /**
