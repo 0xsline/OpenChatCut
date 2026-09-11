@@ -82,7 +82,11 @@ export default {
     channel: updateChannel,
   }],
   files: [
+    // Two bundles: the entry (desktop/bootstrap.ts) and the application it
+    // imports dynamically (desktop/main.ts). Shipping only the entry would make
+    // every launch fail on a missing ./app-main.mjs.
     'desktop-dist/main.mjs',
+    'desktop-dist/app-main.mjs',
     'desktop-dist/preload.cjs',
     ...nativeInferenceWorkers,
     'package.json',

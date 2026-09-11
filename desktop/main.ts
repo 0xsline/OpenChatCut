@@ -44,6 +44,13 @@ import {
 } from './page-origin.ts';
 import type { DesktopPageUrlDecision, DesktopPageUrlSurface } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
+import {
+  describeMissingRuntimeAssets,
+  missingRuntimeAssets,
+  packagedRuntimeAssetChecks,
+  runtimeAssetFailure,
+} from './runtime-preflight.ts';
+import { ffmpegBin } from '../server/media-binaries.ts';
 import { focusExistingWindow } from './single-instance.ts';
 import { requestProfileScopedSingleInstanceLock } from './runtime-profile.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
@@ -73,15 +80,11 @@ import {
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
+// The V8 heap ceiling is raised in desktop/bootstrap.ts, which runs before this bundle loads.
 const DIST_DIR = app.isPackaged
   ? join(process.resourcesPath, 'dist')
   : join(fileURLToPath(new URL('..', import.meta.url)), 'dist');
 const PRELOAD_PATH = join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs');
-
-// Remotion renders export frames inside this process (main + headless tabs).
-// Raise the V8 heap ceiling so large/4K exports don't die with "out of memory"
-// (issue #40). Must run before app 'ready'; js-flags apply to every V8 instance.
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=6144');
 
 // CC_SMOKE=1: No window smoke - start the embedded server, load the page, explore /api/keys, and return the code 0/1 according to the result.
 // CC_SMOKE_RENDER=1 adds a true rendering probe (packaged version acceptance: pre-bundled + full browser link included in the package).
@@ -326,6 +329,14 @@ function registerDesktopHandlers(trustedOrigin: string): void {
 async function boot(): Promise<void> {
   await app.whenReady();
   if (app.isPackaged) {
+    const missing = missingRuntimeAssets(packagedRuntimeAssetChecks({
+      resourcesPath: process.resourcesPath,
+      platform: process.platform,
+      ffmpegPath: ffmpegBin(),
+    }));
+    if (missing.length) console.error(`[desktop] ${describeMissingRuntimeAssets(missing)}`);
+    const fatal = runtimeAssetFailure(missing);
+    if (fatal) throw new Error(fatal);
     await preparePackagedRuntime({
       resourcesPath: process.resourcesPath,
       userDataPath: app.getPath('userData'),
@@ -456,8 +467,18 @@ if (SMOKE) {
 
 if (hasSingleInstanceLock) {
   boot().catch((err) => {
+    const detail = err instanceof Error ? err.message : String(err);
     console.error('[desktop] boot failed:', err instanceof Error ? err.stack ?? err.message : err);
     if (SMOKE) exitSmoke(1);
-    else app.exit(1);
+    else {
+      // A packaged double-click has no console: without this the process just
+      // disappears and the user has nothing to report (issue #140).
+      try {
+        dialog.showErrorBox('OpenChatCut 启动失败 / failed to start', detail);
+      } catch {
+        // A dialog is best effort; the exit below still has to happen.
+      }
+      app.exit(1);
+    }
   });
 }

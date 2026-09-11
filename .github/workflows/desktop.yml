@@ -204,6 +204,26 @@ jobs:
               throw "NSIS installer did not create $installedExe"
             }
             $installed = $true
+
+            # What the installed tree must carry: boot() reads all of these
+            # before it can show a window, and issue #140 reported exactly
+            # these as absent. Asserting them here names the missing file
+            # instead of leaving a launch that "does nothing".
+            $required = @(
+              'resources\app.asar',
+              'resources\dist\index.html',
+              'resources\remotion-bundle\index.html',
+              'resources\app.asar.unpacked\node_modules\ffmpeg-static\ffmpeg.exe'
+            )
+            $absent = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $installDir $_)) })
+            if ($absent.Count -gt 0) {
+              throw "Installed tree is missing: $($absent -join ', ')"
+            }
+            $shell = @(Get-ChildItem -LiteralPath (Join-Path $installDir 'resources\chrome-headless-shell') `
+              -Recurse -Filter 'chrome-headless-shell.exe' -File -ErrorAction SilentlyContinue)
+            if ($shell.Count -lt 1) {
+              throw 'Installed tree has no chrome-headless-shell.exe for rendering'
+            }
             # Redirect the app's output: Start-Process discards stdout/stderr
             # otherwise, which left the v0.2.12 hang with zero evidence — every
             # [smoke] milestone log evaporated. The bounded wait is the outer

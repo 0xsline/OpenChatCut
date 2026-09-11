@@ -30,6 +30,11 @@ assert.deepEqual(arm64.publish, [{
   channel: 'latest-arm64',
 }]);
 assert.deepEqual(arm64.mac?.target, ['dmg', 'zip'], 'macOS updates need a zip artifact in addition to the DMG');
+// Both main-process bundles have to ship: the entry imports ./app-main.mjs
+// dynamically, so a package with only the entry fails every launch.
+for (const bundle of ['desktop-dist/main.mjs', 'desktop-dist/app-main.mjs', 'desktop-dist/preload.cjs']) {
+  assert.ok(arm64.files?.includes(bundle), `packages must ship ${bundle}`);
+}
 assert.ok(arm64.files?.includes('desktop-dist/native-asr-worker.mjs'));
 assert.ok(arm64.files?.includes('desktop-dist/native-semantic-worker.mjs'));
 assert.ok(arm64.files?.includes('desktop-dist/native-clap-worker.mjs'));
