@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 
@@ -41,13 +41,19 @@ const referenced = new Set(
 );
 
 const isVerifyFile = new RegExp(`\\.verify\\.(?:${extensionPattern})$`);
+// package.json names files with "/", so a walked path must be posix-shaped before
+// it can be compared with one. On Windows `relative()` returns "a\b\c", which
+// matched nothing: every file on disk looked like an orphan and the check failed
+// with the entire corpus listed. Split on `sep` rather than replacing "\\" — a
+// backslash is a legal character in a POSIX filename.
+const posix = (path) => path.split(sep).join('/');
 const onDisk = [];
 const walk = (dir) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
-    else if (isVerifyFile.test(entry.name)) onDisk.push(relative(root, full));
+    else if (isVerifyFile.test(entry.name)) onDisk.push(posix(relative(root, full)));
   }
 };
 walk(root);
