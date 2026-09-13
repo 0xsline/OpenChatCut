@@ -15,6 +15,7 @@ import {
   h264HardwareSupportsDimensions,
   SOFTWARE_H264_PROFILE,
 } from './performance.mjs';
+import { compensateAacEncoderDelay, remotionFfRunner, rendersRemotionAacTrack } from './aac-encoder-delay.mjs';
 import { renderDirectHardware } from './direct-hardware.mjs';
 import { assertMaterializedRenderSnapshot, normalizeH264Profile } from './render-contract.mjs';
 import { resolveRenderTimeout } from './render-timeout.mjs';
@@ -101,13 +102,25 @@ export async function withAbortableCompositionSelection({
   }
 }
 
+/** renderMedia, then restore the AAC encoder delay its ADTS audio track dropped (see aac-encoder-delay.mjs). */
+async function renderMediaWithAlignedAudio(options, abortSignal) {
+  const result = await renderMedia(options);
+  if (rendersRemotionAacTrack(options)) {
+    await compensateAacEncoderDelay({
+      file: options.outputLocation,
+      run: remotionFfRunner({ binariesDirectory: options.binariesDirectory ?? binariesDirectory(), signal: abortSignal }),
+    });
+  }
+  return result;
+}
+
 function directHardwareRenderer(directBinaries, abortSignal) {
-  if (!directBinaries) return renderMedia;
+  if (!directBinaries) return (attempt) => renderMediaWithAlignedAudio(attempt, abortSignal);
   // The custom ffmpeg override marks the hardware attempt; the software retry drops it
   // but keeps binariesDirectory, which every attempt needs once the app ships as an asar.
   return (attempt) => attempt.ffmpegOverride
     ? renderDirectHardware({ render: renderMedia, options: attempt, binariesDirectory: directBinaries, signal: abortSignal })
-    : renderMedia(attempt);
+    : renderMediaWithAlignedAudio(attempt, abortSignal);
 }
 
 /** Render with the selected probed engine, then make a truthful software retry. */
