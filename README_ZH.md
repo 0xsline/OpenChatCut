@@ -50,6 +50,10 @@
 </p>
 
 <p align="center">
+  <a href="https://atomgit.com/Paxton_/openchatcut" target="_blank" rel="noopener noreferrer"><img alt="AtomGit G-Star" src="https://atomgit.com/Paxton_/openchatcut/star/new_badge.svg" /></a>
+</p>
+
+<p align="center">
   <img src="assets/readme-pic/01-editor-overview.png" alt="OpenChatCut 编辑器总览：Agent 工作台、素材池、预览窗口与多轨时间线" />
 </p>
 
