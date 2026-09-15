@@ -25,7 +25,6 @@ import {
 
 const ACTIVE_PROFILE = runtimeProfile();
 const ENV_PATH = ACTIVE_PROFILE.keystorePath;
-
 // Whitelist of settable env vars — mirrors what config/vite.config.ts reads. POST /api/keys
 // rejects anything outside this set so the endpoint can never write arbitrary env.
 export const KEY_NAMES = [
@@ -86,6 +85,7 @@ export const KEY_NAMES = [
   "LLM_OFOX_BASE_URL",
   "LLM_OFOX_MODEL",
   "OFOX_VIDEO_MODEL",
+  "MUAPI_API_KEY", "MUAPI_BASE_URL", "MUAPI_VIDEO_ENDPOINT", "MUAPI_RESOLUTION",
   "LLM_ORCAROUTER_API_KEY",
   "LLM_ORCAROUTER_BASE_URL",
   "LLM_ORCAROUTER_MODEL",
@@ -200,7 +200,6 @@ export const KEY_NAMES = [
 ] as const;
 export type KeyName = (typeof KEY_NAMES)[number];
 const SETTABLE = new Set<string>(KEY_NAMES);
-
 // Names whose VALUES may be sent to the browser (model ids / vendor routing — config,
 // not credentials). Deliberately a separate explicit list rather than derived from
 // KEY_NAMES: adding a key to the whitelist must never accidentally make it non-secret.
@@ -253,6 +252,9 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "XAI_IMAGE_MODEL",
   "XAI_VIDEO_MODEL",
   "OFOX_VIDEO_MODEL",
+  "MUAPI_BASE_URL",
+  "MUAPI_VIDEO_ENDPOINT",
+  "MUAPI_RESOLUTION",
   "INWORLD_TTS_MODEL",
   "FISHAUDIO_TTS_MODEL",
   "SPEECHIFY_TTS_MODEL",
@@ -271,10 +273,8 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
     return [names.baseUrl, names.model];
   }),
 ]);
-
 const store = new Map<string, string>(); // current value per key (seed + runtime overrides)
 const envSeeded = new Set<string>(); // which keys came from .env.local / process.env at startup
-
 function normalizeStoredValue(name: string, raw: unknown, loading = false): string {
   const value = String(raw ?? "").trim();
   return name === MODEL_CAPABILITY_OVERRIDES_KEY && value
@@ -283,7 +283,6 @@ function normalizeStoredValue(name: string, raw: unknown, loading = false): stri
     }))
     : value;
 }
-
 function seedLegacyModelCapabilities(env: Record<string, string>): void {
   if (store.has(MODEL_CAPABILITY_OVERRIDES_KEY)) return;
   const records: ModelCapabilityOverride[] = [];
@@ -305,7 +304,6 @@ function seedLegacyModelCapabilities(env: Record<string, string>): void {
   store.set(MODEL_CAPABILITY_OVERRIDES_KEY, serializeModelCapabilityOverrides(records));
   envSeeded.add(MODEL_CAPABILITY_OVERRIDES_KEY);
 }
-
 /** Seed the store from Vite's loaded env (+ process.env fallback). Call once at startup. */
 export function seedKeystore(env: Record<string, string>): void {
   for (const name of KEY_NAMES) {
@@ -407,7 +405,7 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "mistral" && has("LLM_MISTRAL_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
     video:
-      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY") || has("LLM_OFOX_API_KEY"),
+      has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY") || has("LLM_OFOX_API_KEY") || has("MUAPI_API_KEY"),
     music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:

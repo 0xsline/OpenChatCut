@@ -323,6 +323,18 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get ofoxVideoModel() {
         return getKey("OFOX_VIDEO_MODEL") || "bytedance/seedance-2.0-fast";
       },
+      get muapiBaseUrl() {
+        return getKey("MUAPI_BASE_URL") || "https://api.muapi.ai/api/v1";
+      },
+      get muapiApiKey() {
+        return getKey("MUAPI_API_KEY");
+      },
+      get muapiVideoEndpoint() {
+        return getKey("MUAPI_VIDEO_ENDPOINT") || "seedance-lite-t2v";
+      },
+      get muapiResolution() {
+        return getKey("MUAPI_RESOLUTION") || "480p";
+      },
       get byteplusModel() {
         return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";
       },

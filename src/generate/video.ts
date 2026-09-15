@@ -3,7 +3,7 @@ import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 
 export interface SubmitVideoArgs {
   operationId?: string;
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'muapi';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -203,6 +203,9 @@ export function preflightGenerationReferences(
     if (imageCount > maxImages) {
       issues.push({ code: 'kling_image_limit', model, role: 'reference-image', message: `kling accepts at most ${maxImages} total image references for this request` });
     }
+  }
+  if (model === 'muapi' && (firstFrames || lastFrames || images || videos || audios)) {
+    issues.push({ code: 'muapi_reference_role', model, message: 'muapi is text-to-video only; frames and reference arrays are not supported' });
   }
   if (issues.length) throw new GenerationReferencePreflightError(issues);
 }

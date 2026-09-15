@@ -337,6 +337,12 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
     models: parseModelCatalog,
   },
+  'video/muapi': {
+    needs: [['MUAPI_API_KEY']],
+    run: (get) => fetch(`${base(get, 'MUAPI_BASE_URL', 'https://api.muapi.ai/api/v1')}/account/balance`, {
+      signal: t(), headers: { 'x-api-key': get('MUAPI_API_KEY') },
+    }),
+  },
   'music/mureka': {
     needs: [['MUREKA_API_KEY']],
     run: (get) => fetch(`${base(get, 'MUREKA_BASE_URL', 'https://api.mureka.ai')}/v1/account/billing`, {

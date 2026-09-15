@@ -292,6 +292,15 @@ export default {
   'OFox · 多模型网关': 'OFox · Multi-model Gateway',
   '使用 LLM_OFOX_API_KEY（在 Agent 供应商里配置 OFox）生成视频。一个 Key 覆盖 Seedance、Wan 等视频模型；支持文生视频、首帧/首尾帧图生视频与图片参考（最多 9 张）；时长/分辨率按模型由 API 校验，2–30 秒。':
     'Generates videos with LLM_OFOX_API_KEY (configure OFox under Agent providers). One key covers Seedance, Wan and other video models; supports text-to-video, first-frame / first-and-last-frame image-to-video, and up to 9 reference images; duration/resolution are validated per model by the API, 2–30 seconds.',
+  'MuAPI': 'MuAPI',
+  'MuAPI · 视频生成': 'MuAPI · Video Generation',
+  '使用 MuAPI API Key 生成视频。MuAPI 按 endpoint 选择模型；默认 Seedance Lite 文生视频，支持 3–12 秒、480p / 720p / 1080p。生成请求会消耗账户额度，请确认 endpoint 与参数后再提交。':
+    'Generates videos with a MuAPI key. MuAPI selects the model through the endpoint; the default Seedance Lite text-to-video endpoint supports 3–12s and 480p / 720p / 1080p. Requests consume account credits; confirm the endpoint and parameters before submitting.',
+  '默认 https://api.muapi.ai/api/v1': 'Default https://api.muapi.ai/api/v1',
+  '视频 endpoint': 'Video endpoint',
+  '默认 seedance-lite-t2v': 'Default seedance-lite-t2v',
+  '默认分辨率': 'Default resolution',
+  '默认 480p': 'Default 480p',
   'xAI · Grok Imagine (视频)': 'xAI · Grok Imagine (Video)',
   '验证地址与密钥，并读取该接口可用的模型': 'Verifies the endpoint and key, then loads the models available from that API',
   '选择模型': 'Choose model',

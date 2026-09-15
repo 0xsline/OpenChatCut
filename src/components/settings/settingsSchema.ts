@@ -128,6 +128,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
           { value: 'ofox', label: 'OFox · 多模型' },
+          { value: 'muapi', label: 'MuAPI' },
         ]),
         vendors: [
           { key: 'video/seedance', vendor: 'seedance', title: 'Seedance · 火山', fields: [
@@ -155,6 +156,14 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             fields: [
               modelText('OFOX_VIDEO_MODEL', '视频模型', 'bytedance/seedance-2.0-fast',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
+            ] },
+          { key: 'video/muapi', vendor: 'muapi', title: 'MuAPI · 视频生成',
+            note: '使用 MuAPI API Key 生成视频。MuAPI 按 endpoint 选择模型；默认 Seedance Lite 文生视频，支持 3–12 秒、480p / 720p / 1080p。生成请求会消耗账户额度，请确认 endpoint 与参数后再提交。',
+            fields: [
+              secret('MUAPI_API_KEY', 'API Key'),
+              text('MUAPI_BASE_URL', 'Base URL', '默认 https://api.muapi.ai/api/v1'),
+              text('MUAPI_VIDEO_ENDPOINT', '视频 endpoint', '默认 seedance-lite-t2v'),
+              text('MUAPI_RESOLUTION', '默认分辨率', '默认 480p'),
             ] },
         ] },
       { key: 'music', title: '生音乐', hint: 'submit_music · 文字 / 成片生成配乐，任一厂商即可。',

@@ -109,6 +109,16 @@ assert.equal(ofoxVideo.ratio, '9:16');
 assert.deepEqual(ofoxVideo.refImages, ['asset-a']);
 assert.equal(ofoxVideo.generateAudio, false);
 assert.equal(ofoxVideo.seed, 7);
+const muapiVideo = buildSubmitVideoArgs({
+  model: 'muapi', prompt: 'a slow camera move across a mountain lake', durationSeconds: 8, ratio: '16:9',
+  firstFrame: 'must-be-dropped', generateAudio: true, seed: 42,
+});
+assert.equal(muapiVideo.model, 'muapi');
+assert.equal(muapiVideo.durationSeconds, 8);
+assert.equal(muapiVideo.ratio, '16:9');
+assert.equal(muapiVideo.firstFrame, undefined, 'MuAPI strategy must not pass unsupported reference fields');
+assert.equal(muapiVideo.generateAudio, undefined, 'MuAPI strategy must not pass provider-specific controls');
+assert.equal(muapiVideo.seed, undefined, 'MuAPI strategy must not pass provider-specific controls');
 assert.equal(buildSubmitVideoArgs({ prompt: 'legacy default' }).model, 'seedance2');
 
 const minimaxMusic = buildSubmitMusicArgs({

@@ -1,7 +1,7 @@
 ---
 name: video-gen
 description: |
-  AI video generation via Seedance 2.0, Kling, MiniMax Hailuo, and xAI Grok Imagine. Use when the user wants to generate a video clip — text-to-video, image-to-video, first/last-frame transitions, reference-guided generation, multi-shot, or generatively editing / extending an existing clip.
+  AI video generation via Seedance 2.0, Kling, MiniMax Hailuo, xAI Grok Imagine, and MuAPI. Use when the user wants to generate a video clip — text-to-video, image-to-video, first/last-frame transitions, reference-guided generation, multi-shot, or generatively editing / extending an existing clip.
 user-invocable: true
 ---
 
@@ -22,6 +22,7 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 | `hailuo` | [references/hailuo.md](references/hailuo.md) | MiniMax 海螺. T2V / I2V / first+last; **6s or 10s**; 512P (Hailuo-02), 720p→768P, 1080P (6s); no multi-ref / multi-shot. |
 | `grok-imagine-video` | [references/grok-imagine-video.md](references/grok-imagine-video.md) | xAI Grok Imagine. Text-to-video only; 1–15s; 480p/720p/1080p; audio track included. |
 | `ofox` | [references/ofox.md](references/ofox.md) | OFox multi-model gateway (Seedance/Wan and more behind one key). Text/image-to-video, first+last frame, up to 9 image refs; 2–30s with per-model API limits; 480p/720p/1080p per model. |
+| `muapi` | [references/muapi.md](references/muapi.md) | MuAPI endpoint gateway. Text-to-video only; default Seedance Lite endpoint, 3–12s, 480p/720p/1080p, no references or provider-specific controls. |
 
 **IMPORTANT:** Before generating, READ the chosen model's reference for capabilities, input channels, modes, prompt structure, and model-specific behavior. Never invent params the reference forbids.
 
@@ -29,9 +30,9 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 
 Respect **configured vendors** from the capabilities prompt (only call a model whose key is on).
 
-1. **User named a vendor** ("用海螺", "MiniMax", "Kling", "Seedance") → that `model`, if configured.
+1. **User named a vendor** ("用海螺", "MiniMax", "Kling", "Seedance", "MuAPI") → that `model`, if configured.
 2. Else **default `seedance2`** when Seedance is configured.
-3. Else if only Kling is on → `kling`. Else if only MiniMax is on → `hailuo`. Else if only xAI is on → `grok-imagine-video`. Else if only OFox is on → `ofox`.
+3. Else if only Kling is on → `kling`. Else if only MiniMax is on → `hailuo`. Else if only xAI is on → `grok-imagine-video`. Else if only OFox is on → `ofox`. Else if only MuAPI is on → `muapi`.
 4. Switch away from default when:
    - Need **multi-shot customize / intelligence** → `kling` (confirm if not user-named).
    - Need **rich multi-modal refs** (video/audio refs, edit/extend) → `seedance2`.
@@ -45,10 +46,10 @@ Briefly tell the user what you will generate before submitting.
 
 | Param | Values | Default |
 | --- | --- | --- |
-| `model` | `seedance2`, `kling`, `hailuo`, `grok-imagine-video`, `ofox` | seedance2 when available |
-| `durationSeconds` | model-specific | seedance/kling ~5; **hailuo 6 or 10** (1080p → 6 only); **grok 1–15**; **ofox 2–30 (per-model API limits)** |
-| `ratio` | see model docs | 16:9 (seedance/kling/grok/ofox); **ignored on hailuo** |
-| `resolution` | `480p`, `512p`, `720p`, `1080p`, `4k` | provider-specific; hailuo adds 512p for Hailuo-02; grok: 480p/720p/1080p |
+| `model` | `seedance2`, `kling`, `hailuo`, `grok-imagine-video`, `ofox`, `muapi` | seedance2 when available |
+| `durationSeconds` | model-specific | seedance/kling ~5; **hailuo 6 or 10** (1080p → 6 only); **grok 1–15**; **ofox 2–30 (per-model API limits)**; **muapi 3–12** |
+| `ratio` | see model docs | 16:9 (seedance/kling/grok/ofox/muapi); **ignored on hailuo** |
+| `resolution` | `480p`, `512p`, `720p`, `1080p`, `4k` | provider-specific; hailuo adds 512p for Hailuo-02; grok: 480p/720p/1080p; muapi: 480p/720p/1080p |
 | `refVideoMode` | `feature`, `base` | kling only, with `refVideos` |
 | `promptOptimizer` / `fastPretreatment` | boolean | hailuo only |
 | `generateAudio`, `seed`, `cameraFixed`, `watermark` | controls | seedance only |

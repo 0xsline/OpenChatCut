@@ -46,7 +46,7 @@ assert.ok(!out2.includes('E2B_API_KEY') && out2.includes('LLM_API_KEY=x'), 'clea
 assert.ok(out2.endsWith('\n') && !out2.endsWith('\n\n'), 'exactly one trailing newline');
 
 // ── generation-service BASE_URLs are whitelisted and writable via the merge path ──
-const BASE_URL_NAMES = ['ELEVENLABS_BASE_URL', 'DOUBAO_TTS_BASE_URL', 'MUREKA_BASE_URL', 'SEEDANCE_BASE_URL', 'KLING_BASE_URL'] as const;
+const BASE_URL_NAMES = ['ELEVENLABS_BASE_URL', 'DOUBAO_TTS_BASE_URL', 'MUREKA_BASE_URL', 'SEEDANCE_BASE_URL', 'KLING_BASE_URL', 'MUAPI_BASE_URL'] as const;
 for (const name of BASE_URL_NAMES) {
   assert.ok((KEY_NAMES as readonly string[]).includes(name), `${name} is whitelisted (settable via POST /api/keys)`);
 }
@@ -113,6 +113,8 @@ assert.equal(keyStatus().caps.video, false, 'unconfigured OFox leaves existing v
 seedKeystore({ ...isolatedSeed, LLM_OFOX_API_KEY: 'ofox-test-key' });
 assert.equal(keyStatus().caps.video, true, 'OFox alone enables video generation');
 assert.equal(keyStatus().caps.image, false, 'OFox does not enable unimplemented image generation');
+seedKeystore({ ...isolatedSeed, MUAPI_API_KEY: 'muapi-test-key' });
+assert.equal(keyStatus().caps.video, true, 'MuAPI alone enables video generation');
 seedKeystore({
   ...isolatedSeed,
   [MODEL_CAPABILITY_OVERRIDES_KEY]: '[{"backend":"api","provider":"openai","modelId":"x","apiKey":"secret"}]',
@@ -150,6 +152,7 @@ const MODEL_ROUTING_NAMES = [
   'ATLASCLOUD_API_BASE', 'ATLASCLOUD_MUSIC_MODEL',
   'WAVESPEED_IMAGE_MODEL', 'BYTEPLUS_IMAGE_MODEL', 'BYTEPLUS_VIDEO_MODEL',
   'XAI_IMAGE_MODEL', 'XAI_VIDEO_MODEL', 'OFOX_VIDEO_MODEL',
+  'MUAPI_BASE_URL', 'MUAPI_VIDEO_ENDPOINT', 'MUAPI_RESOLUTION',
   'INWORLD_TTS_MODEL', 'FISHAUDIO_TTS_MODEL', 'SPEECHIFY_TTS_MODEL',
   'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
   'PREFERRED_TRANSCRIPTION_PROVIDER', 'TRANSCRIPTION_LANGUAGE', 'TRANSCRIPTION_DIARIZATION', 'AUTO_TRANSCRIBE_INGEST', 'UI_SCALE', 'UI_SCALE_BASE', 'UI_LOCALE',
