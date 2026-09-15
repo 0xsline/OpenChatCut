@@ -39,6 +39,7 @@
   <img alt="Remotion" src="https://img.shields.io/badge/Remotion-4-0B84F3?style=flat" />
   <img alt="Electron" src="https://img.shields.io/badge/Electron-43-47848F?style=flat&logo=electron&logoColor=white" />
   <img alt="MCP" src="https://img.shields.io/badge/MCP-Agent_native-7C3AED?style=flat" />
+  <a href="https://atomgit.com/Oxsline/openchatcut"><img alt="AtomGit G-Star" src="https://img.shields.io/badge/AtomGit-G--Star-DA203E?logo=gitcode&logoColor=white" /></a>
 </p>
 
 <p align="center">
@@ -47,10 +48,6 @@
 
 <p align="center">
   <a href="https://www.producthunt.com/products/openchatcut?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-openchatcut" target="_blank" rel="noopener noreferrer"><img alt="OpenChatCut - 带真实时间线的开源 AI Agent 视频编辑器 | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1201995&amp;theme=light&amp;t=1784645557617" /></a>
-</p>
-
-<p align="center">
-  <a href="https://atomgit.com/Oxsline/openchatcut" target="_blank" rel="noopener noreferrer"><img alt="AtomGit G-Star" src="https://atomgit.com/Oxsline/openchatcut/star/new_badge.svg" /></a>
 </p>
 
 <p align="center">
