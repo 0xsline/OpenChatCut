@@ -4,7 +4,7 @@ export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'muapi';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -34,7 +34,7 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'muapi';
   prompt: string;
   durationSeconds: number;
   durationSpecified: boolean;
@@ -229,9 +229,34 @@ function validateOfox(input: ValidVideoRequest): ValidVideoRequest {
   return input;
 }
 
+/** MuAPI's configurable endpoint is intentionally exposed as a text-to-video
+ * route. The default Seedance Lite endpoint accepts 3–12 seconds and the
+ * shared API contract supports the three common aspect ratios below. */
+function validateMuAPI(input: ValidVideoRequest): ValidVideoRequest {
+  if (!input.prompt || input.prompt.length > 4000) throw new Error('muapi prompt is required and must be at most 4000 characters');
+  if (input.durationSeconds < 3 || input.durationSeconds > 12) throw new Error('muapi durationSeconds must be between 3 and 12');
+  if (!['16:9', '9:16', '1:1'].includes(input.ratio)) throw new Error(`muapi does not support ratio ${input.ratio}`);
+  if (input.resolution && !['480p', '720p', '1080p'].includes(input.resolution)) throw new Error('muapi resolution must be 480p, 720p, or 1080p');
+  if (input.firstFramePath || input.lastFramePath || input.refImagePaths.length || input.refVideoPaths.length || input.refAudioPaths.length) {
+    throw new Error('muapi is text-to-video only; frames and reference arrays are not supported');
+  }
+  if (input.mode || input.shotType || input.multiPrompts?.length || input.refVideoMode) {
+    throw new Error('multi-shot and editing options are not supported by muapi');
+  }
+  if (input.generateAudio !== undefined || input.seed !== undefined || input.cameraFixed !== undefined
+    || input.watermark !== undefined || input.returnLastFrame !== undefined
+    || input.executionExpiresAfter !== undefined || input.priority !== undefined) {
+    throw new Error('MuAPI currently supports prompt, aspect ratio, resolution, and duration only');
+  }
+  if (input.promptOptimizer !== undefined || input.fastPretreatment !== undefined) {
+    throw new Error('promptOptimizer/fastPretreatment are supported by hailuo only');
+  }
+  return input;
+}
+
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
-  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox') {
-    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, or ofox');
+  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox' && input.model !== 'muapi') {
+    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, ofox, or muapi');
   }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);
@@ -239,5 +264,6 @@ export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
   if (normalized.model === 'kling') return validateKling(normalized);
   if (normalized.model === 'grok-imagine-video') return validateGrok(normalized);
   if (normalized.model === 'ofox') return validateOfox(normalized);
+  if (normalized.model === 'muapi') return validateMuAPI(normalized);
   return validateSeedance(normalized);
 }

@@ -117,6 +117,7 @@ export default defineConfig(({ mode }) => {
   const minimaxKey = env.MINIMAX_API_KEY || '';
   const seedanceKey = env.SEEDANCE_API_KEY || '';
   const klingKey = env.KLING_API_KEY || '';
+  const muapiKey = env.MUAPI_API_KEY || '';
   const pexelsKey = env.PEXELS_API_KEY || '';
   const pixabayKey = env.PIXABAY_API_KEY || '';
   const unsplashKey = env.UNSPLASH_ACCESS_KEY || '';
@@ -135,7 +136,7 @@ export default defineConfig(({ mode }) => {
       __CONFIGURED_CAPS__: JSON.stringify({
         image: Boolean(imageKey || geminiKey || minimaxKey),
         voice: Boolean((doubaoAppId && doubaoAccessKey) || elevenKey || minimaxKey),
-        video: Boolean(seedanceKey || klingKey || minimaxKey),
+        video: Boolean(seedanceKey || klingKey || minimaxKey || muapiKey),
         music: Boolean(murekaKey || minimaxKey),
         sound: Boolean(elevenKey),
         stock: Boolean(pexelsKey || pixabayKey || unsplashKey || freesoundKey),

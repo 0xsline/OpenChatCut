@@ -452,6 +452,15 @@ const overrides: Record<string, string> = {
   'OFox · 多模型网关': 'OFox · Gateway multi-modello',
   '使用 LLM_OFOX_API_KEY（在 Agent 供应商里配置 OFox）生成视频。一个 Key 覆盖 Seedance、Wan 等视频模型；支持文生视频、首帧/首尾帧图生视频与图片参考（最多 9 张）；时长/分辨率按模型由 API 校验，2–30 秒。':
     'Genera video con LLM_OFOX_API_KEY (configura OFox tra i provider Agent). Una sola chiave copre Seedance, Wan e altri modelli video; supporta testo-video, immagine-video con primo fotogramma / primo e ultimo fotogramma e fino a 9 immagini di riferimento; durata e risoluzione sono convalidate per modello dalla API, 2–30 secondi.',
+  'MuAPI': 'MuAPI',
+  'MuAPI · 视频生成': 'MuAPI · Generazione video',
+  '使用 MuAPI API Key 生成视频。MuAPI 按 endpoint 选择模型；默认 Seedance Lite 文生视频，支持 3–12 秒、480p / 720p / 1080p。生成请求会消耗账户额度，请确认 endpoint 与参数后再提交。':
+    'Genera video con una chiave MuAPI. MuAPI seleziona il modello tramite l’endpoint; l’endpoint predefinito Seedance Lite supporta testo-video da 3–12 s e 480p / 720p / 1080p. Le richieste consumano crediti: conferma endpoint e parametri prima dell’invio.',
+  '默认 https://api.muapi.ai/api/v1': 'Predefinito https://api.muapi.ai/api/v1',
+  '视频 endpoint': 'Endpoint video',
+  '默认 seedance-lite-t2v': 'Predefinito seedance-lite-t2v',
+  '默认分辨率': 'Risoluzione predefinita',
+  '默认 480p': 'Predefinito 480p',
   '处理中…': 'Elaborazione…',
   '导入登录状态': 'Importa accesso',
   '新工程和生成素材的默认保存位置，以及可选的 R2 云备份。': 'Posizione predefinita per i nuovi progetti e i media generati, con backup cloud R2 facoltativo.',

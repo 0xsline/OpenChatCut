@@ -19,6 +19,7 @@ import {
   ServerReferencePreflightError,
 } from './video-media.ts';
 import { generateGrokVideo } from './grok-video-provider.ts';
+import { generateMuAPIVideo } from './muapi-video-provider.ts';
 import { generateOfoxVideo } from './ofox-video-provider.ts';
 import { saveVideoResults } from './video-result-save.ts';
 import {
@@ -32,7 +33,6 @@ const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Respo
   fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
 
 const VIDEO_FAILURES = new Set(['failed', 'expired', 'cancelled']);
-
 interface VideoOptions {
   seedanceBaseUrl: string;
   seedanceApiKey: string;
@@ -52,8 +52,8 @@ interface VideoOptions {
   ofoxBaseUrl: string;
   ofoxApiKey: string;
   ofoxVideoModel: string;
+  muapiBaseUrl: string; muapiApiKey: string; muapiVideoEndpoint: string; muapiResolution: string;
 }
-
 async function readJson(req: IncomingMessage): Promise<VideoRequest> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -65,13 +65,11 @@ async function readJson(req: IncomingMessage): Promise<VideoRequest> {
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as VideoRequest;
 }
-
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
 }
-
 async function providerError(response: Response): Promise<string> {
   const text = await response.text();
   try {
@@ -412,6 +410,8 @@ async function runVideoOperation(
         ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
         : input.model === 'ofox'
           ? await generateOfoxVideo(input, options, registerProviderTask, providerTaskId)
+          : input.model === 'muapi'
+            ? await generateMuAPIVideo(input, options, registerProviderTask, providerTaskId)
           : input.model === 'kling'
             ? await generateKling(input, options, registerProviderTask, providerTaskId)
             : await generateHailuo(input, options, registerProviderTask, providerTaskId);
@@ -419,7 +419,7 @@ async function runVideoOperation(
     }
   }
   urls = requireGenerationResultUrls(urls, expectedResultCount);
-  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' ? fetchWithProxy : undefined;
+  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' || input.model === 'muapi' ? fetchWithProxy : undefined;
   const download = () => saveVideoResults(
     operationId,
     name,
@@ -431,7 +431,7 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'muapi'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,

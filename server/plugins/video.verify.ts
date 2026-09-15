@@ -379,4 +379,33 @@ assert.throws(
   /multi-shot and editing options are not supported by ofox/,
 );
 
-console.log('video.check: ok (seedance 480p + kling base/feature + hailuo)');
+const muapi = validateVideoRequest({
+  model: 'muapi', prompt: 'a paper airplane gliding through a sunlit room',
+  durationSeconds: 8, ratio: '9:16', resolution: '720p',
+});
+assert.equal(muapi.model, 'muapi');
+assert.equal(muapi.durationSeconds, 8);
+assert.equal(muapi.ratio, '9:16');
+assert.equal(muapi.resolution, '720p');
+assert.throws(
+  () => validateVideoRequest({ model: 'muapi', prompt: 'x', durationSeconds: 2 }),
+  /durationSeconds must be between 3 and 12/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'muapi', prompt: 'x', durationSeconds: 13 }),
+  /durationSeconds must be between 3 and 12/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'muapi', prompt: 'x', ratio: '4:3' }),
+  /does not support ratio/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'muapi', prompt: 'x', firstFramePath: '/media/uploads/a.jpg' }),
+  /text-to-video only/,
+);
+assert.throws(
+  () => validateVideoRequest({ model: 'muapi', prompt: 'x', generateAudio: false }),
+  /supports prompt, aspect ratio, resolution, and duration only/,
+);
+
+console.log('video.check: ok (seedance 480p + kling base/feature + hailuo + grok + ofox + muapi)');

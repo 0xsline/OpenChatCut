@@ -218,10 +218,17 @@ const hailuoVideo = (args: GenerateArgs): SubmitVideoArgs => ({
 });
 // xAI Grok Imagine Video: text-to-video only — the base fields are the whole surface.
 const grokVideo = (args: GenerateArgs): SubmitVideoArgs => videoBase(args, 'grok-imagine-video');
+// MuAPI selects the concrete model through its configured endpoint and only
+// accepts the common text-to-video fields here.
+const muapiVideo = (args: GenerateArgs): SubmitVideoArgs => ({
+  model: 'muapi', prompt: str(args.prompt), name: str(args.name),
+  durationSeconds: typeof args.durationSeconds === 'number' || typeof args.durationSeconds === 'string' ? args.durationSeconds : undefined,
+  ratio: str(args.ratio), resolution: args.resolution as SubmitVideoArgs['resolution'],
+});
 
-const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo } as const;
+const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo, muapi: muapiVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
-  const model = args.model === 'kling' || args.model === 'hailuo' || args.model === 'byteplus' || args.model === 'grok-imagine-video' || args.model === 'ofox' ? args.model : 'seedance2';
+  const model = args.model === 'kling' || args.model === 'hailuo' || args.model === 'byteplus' || args.model === 'grok-imagine-video' || args.model === 'ofox' || args.model === 'muapi' ? args.model : 'seedance2';
   return VIDEO_STRATEGIES[model](args);
 }
 

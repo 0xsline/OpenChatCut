@@ -94,4 +94,9 @@ assert.ok(ofox.includes('Image generation(submit_image · available: gpt-image(m
 applyLiveKeyStatus({});
 assert.ok(!capabilitiesPrompt({ ...ALL_OFF, video: true }).includes('OFox(model=ofox)'), 'unconfigured OFox stays hidden');
 
+applyLiveKeyStatus({ MUAPI_API_KEY: { configured: true } });
+applyLiveModels({ PREFERRED_VIDEO_VENDOR: 'muapi' });
+const muapi = capabilitiesPrompt({ ...ALL_OFF, video: true });
+assert.ok(muapi.includes('user default: MuAPI(model=muapi) — use it without asking again'), 'MuAPI key enables the MuAPI route');
+
 console.log('capabilities.verify: ok');
