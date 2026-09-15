@@ -50,7 +50,7 @@
 </p>
 
 <p align="center">
-  <a href="https://atomgit.com/Paxton_/openchatcut" target="_blank" rel="noopener noreferrer"><img alt="AtomGit G-Star" src="https://atomgit.com/Paxton_/openchatcut/star/new_badge.svg" /></a>
+  <a href="https://atomgit.com/Oxsline/openchatcut" target="_blank" rel="noopener noreferrer"><img alt="AtomGit G-Star" src="https://atomgit.com/Oxsline/openchatcut/star/new_badge.svg" /></a>
 </p>
 
 <p align="center">
