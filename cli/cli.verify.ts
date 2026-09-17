@@ -12,7 +12,7 @@
 //   * unknown flags and unknown projects fail loudly instead of silently no-oping.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -297,18 +297,59 @@ try {
   const media = occJson<{ assets: unknown[] }>(['media', 'ls', created.id, '--json']);
   assert.deepEqual(media.assets, []);
 
-  // 13. browser-backed tools are refused, and the failure is observable
+  // 14. browser-backed tools are refused, and the failure is observable
   const refused = occ(['tools', 'call', 'import_media', '--args', '{}', '--project', created.id]);
   assert.equal(refused.status, 1);
   assert.match(refused.stderr, /headless tool subset/);
 
-  // 14. bad references and bad flags fail loudly
+  // 15. bad references and bad flags fail loudly
   const missingProject = occ(['timeline', 'show', 'no-such-project']);
   assert.equal(missingProject.status, 1);
   assert.match(missingProject.stderr, /No project matches/);
   const unknownFlag = occ(['project', 'list', '--wat']);
   assert.equal(unknownFlag.status, 2);
   assert.match(unknownFlag.stderr, /unknown flag --wat/);
+
+  // 16. an installed plugin pack reaches the headless catalog too
+  const packId = 'occ-fixture-pack';
+  const packVersion = '1.0.0';
+  const packRoot = join(HOME, '.openchatcut', 'plugins');
+  const packDir = join(packRoot, packId, Buffer.from(packVersion, 'utf8').toString('base64url'));
+  mkdirSync(packDir, { recursive: true });
+  const installedAt = Date.now();
+  writeFileSync(
+    join(packRoot, 'index.json'),
+    JSON.stringify([{ id: packId, version: packVersion, enabled: true, installedAt }]),
+  );
+  writeFileSync(join(packDir, 'manifest.json'), JSON.stringify({
+    format: 'openchatcut-plugin@1',
+    id: packId,
+    name: 'Occ fixture pack',
+    version: packVersion,
+    installedAt,
+    enabled: true,
+    items: [{
+      id: 'fixture-card',
+      type: 'mg-template',
+      name: 'Occ Fixture Card',
+      code: 'const Card = () => null;',
+      props: {},
+      durationInFrames: 90,
+    }],
+  }));
+  const packHits = occJson<CallJson>([
+    'tools', 'call', 'search_templates', '--args', '{"query":"Occ Fixture"}', '--project', created.id, '--json',
+  ]).ops[0]?.result;
+  const packTemplates = Array.isArray(packHits)
+    ? packHits.filter((entry): entry is { name: string } => (
+      entry !== null && typeof entry === 'object' && 'name' in entry && typeof entry.name === 'string'
+    ))
+    : [];
+  assert.deepEqual(
+    packTemplates.map((entry) => entry.name),
+    ['Occ Fixture Card'],
+    'installed packs must feed the headless template catalog, not just the renderer',
+  );
 
   process.stdout.write('occ cli verify: ok\n');
 } finally {

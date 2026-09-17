@@ -100,6 +100,15 @@ async function listPacks(rootDir: string): Promise<StoredPack[]> {
   return packs.filter((pack): pack is StoredPack => pack !== null);
 }
 
+/**
+ * Installed packs as they sit on disk, for hosts that need the same catalog the
+ * renderer hydrates (headless editor sessions). The envelope is validated here;
+ * field-level narrowing happens where each pack is consumed.
+ */
+export async function readInstalledPacks(rootDir = DEFAULT_ROOT_DIR): Promise<unknown[]> {
+  return listPacks(rootDir);
+}
+
 async function savePack(rootDir: string, pack: StoredPack): Promise<void> {
   const dir = join(rootDir, pack.id, versionFolder(pack.version));
   await mkdir(dir, { recursive: true, mode: 0o700 });

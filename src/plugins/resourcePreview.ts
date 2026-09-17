@@ -2,7 +2,8 @@ import { applyLibraryToClip, applyLibraryToTrack } from '../components/timeline/
 import { makeDraft } from '../editor/store';
 import type { MediaAsset, TimelineState } from '../editor/types';
 import type { LibraryDragPayload } from '../library/drag';
-import { pluginResourceItems, pluginTemplates } from '../library/pluginResources';
+import { pluginResourceItems } from '../library/pluginResources';
+import { pluginTemplates } from '../library/pluginTemplateCatalog';
 import { docFromTimeline } from '../persist/projectStore';
 import {
   HOVER_DURATION_MS,

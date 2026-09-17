@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import type { PlayerRef } from '@remotion/player';
 import type { AgentContext } from '../agent/context';
 import { AUDIO_ASSETS } from '../audio/library';
-import { pluginTemplates, usePluginPacks } from '../library/pluginResources';
+import { pluginTemplates } from '../library/pluginTemplateCatalog';
+import { usePluginPacks } from '../library/pluginResources';
 import { useOfflineMedia } from '../media/useOfflineMedia';
 import { loadCreativeMode, saveCreativeMode } from '../persist/projectStore';
 import { loadChatAutoApply } from '../persist/sessionPrefs';

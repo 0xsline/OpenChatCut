@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { asPluginZoom, pluginTemplates } from '../library/pluginResources';
+import { asPluginZoom, pluginTemplates } from '../library/pluginTemplateCatalog';
 import type { InstalledPack } from './store';
 import { validatePack } from './validate';
 

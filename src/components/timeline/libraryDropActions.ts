@@ -8,7 +8,7 @@ import {
 import type { EditorCommands } from '../../editor/store';
 import { applyLibraryDropIsolation } from './libraryDropIsolation';
 import type { LibraryDragPayload } from '../../library/drag';
-import { asPluginTpl, asPluginZoom } from '../../library/pluginResources';
+import { asPluginTpl, asPluginZoom } from '../../library/pluginTemplateCatalog';
 import { isPluginAssetId } from '../../plugins/types';
 import { customTransitionUniforms, getCustomTransition } from '../../gl/customTransitions';
 import { ALL_FX, serializableDefsFor } from '../../gl/fx/effects';

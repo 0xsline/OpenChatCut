@@ -12,7 +12,8 @@ import {
   type ExternalEditSessionTerminalStatus,
 } from '../../src/agent/external-edit-session.ts';
 import { assertOfflineToolAllowed } from './offline-tool-authorization.ts';
-import { OFFLINE_AUDIO, OFFLINE_TEMPLATES } from './offline-catalogs.ts';
+import { offlineEditorCatalogs, type OfflineEditorCatalogs } from './offline-catalogs.ts';
+import { offlineAgentContext, offlineSessionInfo, projectedFailureMessage } from './offline-session-view.ts';
 import type { AgentContext } from '../../src/agent/context.ts';
 import { ExternalEditorCallError, isProjectConnected } from './broker.ts';
 import { executeOfflineTool } from './offline-executor.ts';
@@ -63,6 +64,7 @@ export class OfflineExternalEditRuntime {
   private readonly persistence: OfflineEditPersistence;
   private readonly browserConnected: (projectId: string) => boolean;
   private readonly executeTool: typeof executeOfflineTool;
+  private readonly catalogs: OfflineEditorCatalogs;
   private operationTail: Promise<void> = Promise.resolve();
   private expectedRevision: string;
   private baseDoc: OfflineStoredProject['doc'];
@@ -75,6 +77,7 @@ export class OfflineExternalEditRuntime {
     ownership: ProjectEditOwnershipClaim,
     editorUrl: string,
     dependencies: OfflineRuntimeDependencies,
+    catalogs: OfflineEditorCatalogs,
   ) {
     this.projectId = snapshot.projectId;
     this.expectedRevision = snapshot.revision;
@@ -84,6 +87,7 @@ export class OfflineExternalEditRuntime {
     this.persistence = dependencies.persistence ?? DEFAULT_PERSISTENCE;
     this.browserConnected = dependencies.isBrowserConnected ?? isProjectConnected;
     this.executeTool = dependencies.executeTool ?? executeOfflineTool;
+    this.catalogs = catalogs;
   }
 
   static async create(
@@ -106,7 +110,10 @@ export class OfflineExternalEditRuntime {
       throw new ExternalEditorCallError('rejected', message);
     }
     const snapshot = { projectId, doc: claimed.doc, revision: claimed.revision };
-    return new OfflineExternalEditRuntime(snapshot, claimed.claim, editorUrl, dependencies);
+    // Loaded per session: the same catalogs the renderer hydrates (bundled
+    // templates + installed packs), read from disk rather than from the browser.
+    const catalogs = await offlineEditorCatalogs();
+    return new OfflineExternalEditRuntime(snapshot, claimed.claim, editorUrl, dependencies, catalogs);
   }
   binding(): OfflineEditorBinding {
     return { mode: 'offline', projectId: this.projectId, baseRevision: this.expectedRevision };
@@ -261,7 +268,7 @@ export class OfflineExternalEditRuntime {
     const failure = externalToolResultFailure(invocation, result);
     if (failure) {
       const projected = await run.captureToolOutcome(invocation, failure, result);
-      throw new ExternalEditorCallError('failed', this.projectedFailureMessage(projected));
+      throw new ExternalEditorCallError('failed', projectedFailureMessage(projected));
     }
     const captured = captureExternalToolActions(candidate, name, args);
     await this.persistCheckpoint(state, captured);
@@ -436,16 +443,7 @@ export class OfflineExternalEditRuntime {
 
   private context(session: ExternalEditSession): AgentContext {
     if (!session.draft) throw new Error(`Edit session ${session.id} is no longer writable.`);
-    return {
-      commands: session.draft.commands,
-      getState: session.draft.getState,
-      getDoc: session.draft.getDoc,
-      getCreativeMode: () => null,
-      templates: OFFLINE_TEMPLATES,
-      audio: OFFLINE_AUDIO,
-      getProjectId: () => this.projectId,
-      getApprovalMode: () => 'auto',
-    };
+    return offlineAgentContext(session.draft, this.projectId, this.catalogs);
   }
 
   private requireSession(sessionId: string): VersionedOfflineSession {
@@ -462,18 +460,6 @@ export class OfflineExternalEditRuntime {
     return run;
   }
 
-  private projectedFailureMessage(projected: unknown): string {
-    if (projected && typeof projected === 'object' && !Array.isArray(projected)) {
-      if ('error' in projected && typeof projected.error === 'string') {
-        return projected.error.slice(0, 1_200);
-      }
-      if ('artifactId' in projected && typeof projected.artifactId === 'string') {
-        return `The tool returned an archived error result. Read artifact ${projected.artifactId} for details.`;
-      }
-    }
-    return 'The tool returned an error result.';
-  }
-
   private failActiveSessions(status: Extract<ExternalEditSessionTerminalStatus, 'cancelled' | 'stale'>): void {
     for (const state of this.sessions.values()) {
       if (ACTIVE_SESSION_STATUSES[state.session.status] === true) {
@@ -483,18 +469,6 @@ export class OfflineExternalEditRuntime {
   }
 
   private info(session: ExternalEditSession): Record<string, unknown> {
-    return {
-      editSessionId: session.id,
-      status: session.status,
-      clientName: session.clientName,
-      approvalMode: session.approvalMode,
-      baseRevision: session.baseRevision,
-      operationCount: session.operationCount,
-      appliedOperationCount: session.appliedOperationCount,
-      bindingMode: 'offline',
-      agentRunId: this.runs.get(session.id)?.runId,
-      editorUrl: this.editorUrl,
-      updatedAt: new Date(session.updatedAt).toISOString(),
-    };
+    return offlineSessionInfo(session, this.editorUrl, this.runs.get(session.id)?.runId);
   }
 }
