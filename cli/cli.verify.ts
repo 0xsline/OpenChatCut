@@ -16,6 +16,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CURRENT_PROJECT_VERSION } from '../shared/project-version.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(ROOT, 'cli', 'main.ts');
@@ -88,7 +89,7 @@ interface ToolJson {
 
 interface CallJson {
   readonly applied: boolean;
-  readonly result: unknown;
+  readonly ops: readonly { readonly tool: string; readonly result: unknown }[];
 }
 
 function activeTimelineSize(projectId: string): { width: number; height: number; fps: number } {
@@ -100,7 +101,9 @@ function activeTimelineSize(projectId: string): { width: number; height: number;
 
 try {
   // The literal in cli/profile.ts mirrors the server's env name; drift here would
-  // silently point --data-dir at nothing.
+  // silently point --data-dir at nothing. Both imports below are dynamic on purpose:
+  // static ones would resolve the store's paths (and the active profile) before the
+  // throwaway HOME/DATA_DIR above could take effect.
   const runtimeProfile = await import('../server/runtime-profile.ts');
   assert.equal(runtimeProfile.DATA_DIR_ENV, 'OPENCHATCUT_DATA_DIR');
 
@@ -129,7 +132,7 @@ try {
   // 5. a read tool runs without committing
   const read = occJson<CallJson>(['tools', 'call', 'read_project', '--project', created.id, '--json']);
   assert.equal(read.applied, false);
-  assert.ok(read.result, 'read_project must return a payload');
+  assert.ok(read.ops[0]?.result, 'read_project must return a payload');
 
   // 6. an edit without --apply is discarded: the draft ran, the project did not move
   const drafted = occJson<CallJson>([
@@ -147,6 +150,7 @@ try {
   assert.deepEqual(activeTimelineSize(created.id), { width: 1080, height: 1920, fps: 30 });
 
   // 8. the commit snapshots a pre-edit version, so the app can undo it
+  // (dynamic import for the same profile-resolution reason as above)
   const store = await import('../server/plugins/project-store.ts');
   const versions = await store.getStoredEntry(`versions:${created.id}`);
   assert.equal(versions.found, true);
@@ -171,12 +175,71 @@ try {
   );
   assert.equal(docView.doc.timelines[0]?.watermark?.text, 'occ', 'both ops must land in the same commit');
 
-  // 10. browser-backed tools are refused, and the failure is observable
+  // 10. clip edits: the item sugar commands map onto allowlisted tools
+  const fixtureTimelineId = 'tl_cli_verify';
+  await store.setStoredEntry(`project:${created.id}`, {
+    version: CURRENT_PROJECT_VERSION,
+    assets: [],
+    mediaFolders: [],
+    activeTimelineId: fixtureTimelineId,
+    timelines: [{
+      id: fixtureTimelineId,
+      name: 'Verify',
+      order: 0,
+      fps: 30,
+      width: 1920,
+      height: 1080,
+      items: [{
+        id: 'clip-fixture',
+        track: 'track_v1',
+        startFrame: 0,
+        durationInFrames: 90,
+        name: 'Fixture',
+        kind: 'solid',
+      }],
+      selectedId: null,
+      trackOrder: ['track_v1'],
+      tracks: { track_v1: { kind: 'video' } },
+    }],
+  });
+  const items = (): { id: string; startFrame: number; durationFrames: number }[] => (
+    occJson<{ items: { id: string; startFrame: number; durationFrames: number }[] }>(
+      ['timeline', 'items', created.id, '--json'],
+    ).items
+  );
+  const fixture = (): { id: string; startFrame: number; durationFrames: number } | undefined => (
+    items().find((item) => item.id === 'clip-fixture')
+  );
+  assert.equal(fixture()?.durationFrames, 90, 'fixture clip must be readable through the CLI');
+
+  // preview: without --apply the draft is discarded and the clip does not move
+  const preview = occJson<CallJson>(['item', 'move', 'clip-fixture', '--start', '90', '--json']);
+  assert.equal(preview.applied, false);
+  assert.equal(fixture()?.startFrame, 0);
+
+  occOk(['item', 'trim', 'clip-fixture', '--start', '15', '--duration', '2s', '--apply']);
+  assert.equal(fixture()?.startFrame, 15);
+  assert.equal(fixture()?.durationFrames, 60, '2s at 30fps is 60 frames');
+
+  occOk(['item', 'dup', 'clip-fixture', '--apply']);
+  assert.equal(items().length, 2, 'duplicate_item appends a copy under a new id');
+
+  occOk(['item', 'split', 'clip-fixture', '--at', '45', '--apply']);
+  assert.equal(items().length, 3, 'split_item replaces one clip with two');
+
+  occOk(['item', 'rm', 'clip-fixture', '--apply']);
+  assert.equal(items().length, 2, 'remove_item drops exactly one clip');
+
+  // 11. media ls reads the pool without touching it
+  const media = occJson<{ assets: unknown[] }>(['media', 'ls', created.id, '--json']);
+  assert.deepEqual(media.assets, []);
+
+  // 12. browser-backed tools are refused, and the failure is observable
   const refused = occ(['tools', 'call', 'import_media', '--args', '{}', '--project', created.id]);
   assert.equal(refused.status, 1);
   assert.match(refused.stderr, /headless tool subset/);
 
-  // 11. bad references and bad flags fail loudly
+  // 13. bad references and bad flags fail loudly
   const missingProject = occ(['timeline', 'show', 'no-such-project']);
   assert.equal(missingProject.status, 1);
   assert.match(missingProject.stderr, /No project matches/);

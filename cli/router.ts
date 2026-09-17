@@ -5,6 +5,8 @@
 import { flagBoolean, type CommandLine } from './args.ts';
 import { UsageError } from './errors.ts';
 import { runEditCommand } from './commands/edit.ts';
+import { runItemCommand } from './commands/item.ts';
+import { runMediaCommand } from './commands/media.ts';
 import { runProjectCommand } from './commands/project.ts';
 import { runTimelineCommand } from './commands/timeline.ts';
 import { runToolsCommand } from './commands/tools.ts';
@@ -23,6 +25,10 @@ export async function runCommand(commandLine: CommandLine): Promise<void> {
       return runToolsCommand(positionals, commandLine, json);
     case 'edit':
       return runEditCommand(subLine(commandLine, positionals), json);
+    case 'item':
+      return runItemCommand(positionals, commandLine, json);
+    case 'media':
+      return runMediaCommand(positionals, commandLine, json);
     case 'where':
       return runWhereCommand(commandLine, json);
     case undefined:

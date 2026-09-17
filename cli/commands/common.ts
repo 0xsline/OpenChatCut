@@ -42,3 +42,13 @@ export function positiveInteger(input: string, flag: string): number {
   }
   return value;
 }
+
+/** Frames are the editor's unit, seconds are a human's: accept `240`, `240f`, or `4s`. */
+export function parseFrames(input: string, fps: number, flag: string): number {
+  const text = input.trim().toLowerCase();
+  const seconds = /^([0-9]*\.?[0-9]+)s$/.exec(text);
+  if (seconds) return Math.round(Number(seconds[1]) * fps);
+  const frames = /^([0-9]+)f?$/.exec(text);
+  if (frames) return Number(frames[1]);
+  throw new UsageError(`--${flag} expects frames (240) or seconds (4s), got "${input}"`);
+}

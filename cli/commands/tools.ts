@@ -9,10 +9,10 @@ import { readFileSync } from 'node:fs';
 import { flagBoolean, flagText, rejectUnknownFlags, type CommandLine } from '../args.ts';
 import { UsageError } from '../errors.ts';
 import { printJson, writeStdout } from '../output.ts';
-import { runToolSession } from '../session.ts';
 import { resolveProject } from '../store.ts';
 import { parseJsonObject, requireHeadlessTool, toolRows } from '../tool-catalog.ts';
 import { GLOBAL_FLAGS, projectReference, requirePositional, subLine } from './common.ts';
+import { runToolOps } from './run-op.ts';
 
 const FLAGS = [...GLOBAL_FLAGS, 'all', 'args', 'apply', 'summary'] as const;
 
@@ -60,26 +60,14 @@ async function callCommand(line: CommandLine, commandLine: CommandLine, json: bo
   const tool = requirePositional(line, 0, 'tool name');
   requireHeadlessTool(tool);
   const project = await resolveProject(projectReference(line, 1));
-  const apply = flagBoolean(commandLine, 'apply');
   const summary = flagText(commandLine, 'summary');
-  const outcome = await runToolSession(
-    project.id,
-    [{ tool, args: invocationArgs(commandLine) }],
-    { apply, ...(summary ? { summary } : {}) },
-  );
-  const result = outcome.executions[0]?.result;
-  if (json) {
-    printJson({
-      projectId: project.id,
-      tool,
-      applied: outcome.applied,
-      result,
-      terminal: outcome.terminal,
-    });
-    return;
-  }
-  printJson(result);
-  writeStdout(outcome.applied
-    ? `committed to ${project.name} (${project.id})`
-    : `draft discarded — ${project.name} unchanged. Add --apply to commit.`);
+  await runToolOps({
+    projectId: project.id,
+    projectName: project.name,
+    ops: [{ tool, args: invocationArgs(commandLine) }],
+    apply: flagBoolean(commandLine, 'apply'),
+    ...(summary ? { summary } : {}),
+    json,
+    label: tool,
+  });
 }
