@@ -6,9 +6,12 @@ import {
   requireGenerationResultUrls,
 } from './generation-jobs.ts';
 import {
+  hailuoRequestBody, isMinimaxSubjectModel, validateMinimaxVideoMode,
+} from './minimax-video.ts';
+import {
   expectedVideoResultCount,
-  hailuoApiResolution, hailuoRequestBody, isMinimaxSubjectModel, klingPrompt, seedanceApiResolution, seedanceRequestBody,
-  validateMinimaxVideoMode, validateVideoRequest,
+  hailuoApiResolution, klingPrompt, seedanceApiResolution, seedanceRequestBody,
+  validateVideoRequest,
 } from './video.ts';
 
 assert.equal(hailuoApiResolution(undefined), '768P');
