@@ -37,6 +37,28 @@ delete ENV.OPENCHATCUT_DEV_PROFILE_ID;
 Object.assign(process.env, ENV);
 delete process.env.OPENCHATCUT_DEV_PROFILE_ID;
 
+/** Half a second of silence at 8 kHz, as a valid 16-bit PCM WAV. */
+function toneWav(): Buffer {
+  const sampleRate = 8000;
+  const samples = sampleRate / 2;
+  const data = Buffer.alloc(samples * 2);
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
+}
+
 interface RunResult {
   readonly status: number;
   readonly stdout: string;
@@ -350,6 +372,43 @@ try {
     ['Occ Fixture Card'],
     'installed packs must feed the headless template catalog, not just the renderer',
   );
+
+  // 17. local-path media import: the same core the desktop main process runs
+  const importDir = join(HOME, 'imports');
+  mkdirSync(importDir, { recursive: true });
+  const wavPath = join(importDir, 'occ-tone.wav');
+  writeFileSync(wavPath, toneWav());
+  const imported = occJson<CallJson>([
+    'tools', 'call', 'import_assets', '--args', JSON.stringify({ paths: [wavPath] }),
+    '--project', created.id, '--apply', '--json',
+  ]);
+  const importResult: unknown = imported.ops[0]?.result;
+  assert.equal(imported.applied, true);
+  assert.ok(
+    importResult !== null && typeof importResult === 'object' && 'ok' in importResult && importResult.ok === true,
+    `import_assets must succeed: ${JSON.stringify(importResult)}`,
+  );
+  const poolAfterImport = occJson<{ assets: { id: string; kind: string; src: string }[] }>(
+    ['media', 'ls', created.id, '--json'],
+  ).assets;
+  assert.equal(poolAfterImport.length, 1, 'the imported file must land in the pool');
+  assert.equal(poolAfterImport[0]?.kind, 'audio');
+  assert.match(poolAfterImport[0]?.src ?? '', /^\/media\/uploads\//, 'asserts stay same-origin under /media/uploads');
+
+  // ... and the fingerprint chain is real: importing the same bytes again dedupes.
+  // Nothing is staged, so the CLI reports the no-op instead of failing review.
+  const again = occJson<CallJson>([
+    'tools', 'call', 'import_assets', '--args', JSON.stringify({ paths: [wavPath] }),
+    '--project', created.id, '--apply', '--json',
+  ]);
+  const againResult: unknown = again.ops[0]?.result;
+  const duplicateCount = againResult !== null && typeof againResult === 'object' && 'duplicateCount' in againResult
+    && typeof againResult.duplicateCount === 'number'
+    ? againResult.duplicateCount
+    : 0;
+  assert.equal(duplicateCount, 1, 'a second import of identical bytes must be reported as a duplicate');
+  assert.equal(again.applied, false, 'an all-duplicate import stages nothing and must not fail review');
+  assert.equal(occJson<{ assets: unknown[] }>(['media', 'ls', created.id, '--json']).assets.length, 1);
 
   process.stdout.write('occ cli verify: ok\n');
 } finally {

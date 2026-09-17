@@ -3,12 +3,12 @@ import { basename, extname, isAbsolute, join, relative, resolve } from 'node:pat
 import type { Stats } from 'node:fs';
 import type { DirectoryImportedFile, DirectoryImportMediaKind } from '../shared/directory-import.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
-import { ffprobeBin } from '../server/media-binaries.ts';
-import { spawnMediaProcess } from '../server/media-process.ts';
-import { resolveUploadFile, uploadDir } from '../server/media-dir.ts';
-import { mediaReferenceManifestPath } from '../server/media-references.ts';
-import { normalizeMediaFile, type NormalizeMediaFileResult } from '../server/media-normalization-runner.ts';
-import { normalizationAbortError, throwIfNormalizationAborted } from '../server/media-normalization.ts';
+import { ffprobeBin } from './media-binaries.ts';
+import { spawnMediaProcess } from './media-process.ts';
+import { resolveUploadFile, uploadDir } from './media-dir.ts';
+import { mediaReferenceManifestPath } from './media-references.ts';
+import { normalizeMediaFile, type NormalizeMediaFileResult } from './media-normalization-runner.ts';
+import { normalizationAbortError, throwIfNormalizationAborted } from './media-normalization.ts';
 import {
   createTransparentMovProxy,
   importLocalMedia,

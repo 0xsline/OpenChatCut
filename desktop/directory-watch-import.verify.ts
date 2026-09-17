@@ -6,7 +6,7 @@ import {
   importDirectoryCandidate,
   type DirectoryCandidateRequest,
   type DirectoryImportDependencies,
-} from './directory-watch-import.ts';
+} from '../server/directory-watch-import.ts';
 
 const ROOT = '/watch';
 const SOURCE = `${ROOT}/clip.mov`;

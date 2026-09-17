@@ -10,7 +10,7 @@ import {
   type DirectoryWatchSender,
   type DirectoryWatchSessionContract,
 } from './directory-watch-controller.ts';
-import type { DirectoryWatchSessionOptions } from './directory-watch.ts';
+import type { DirectoryWatchSessionOptions } from '../server/directory-watch.ts';
 
 const HASH = 'ab'.repeat(32);
 

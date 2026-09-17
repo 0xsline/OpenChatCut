@@ -4,8 +4,8 @@ import {
   type DirectoryImportEvent,
   type DirectoryWatchStartResult,
 } from '../shared/directory-import.ts';
-import { isPathInside } from './directory-watch-import.ts';
-import type { DirectoryWatchSessionOptions } from './directory-watch.ts';
+import { isPathInside } from '../server/directory-watch-import.ts';
+import type { DirectoryWatchSessionOptions } from '../server/directory-watch.ts';
 
 export interface DirectoryWatchSender {
   readonly id: number;

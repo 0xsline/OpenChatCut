@@ -29,6 +29,9 @@ export interface SessionOutcome {
   readonly applied: boolean;
   readonly executions: readonly ToolExecution[];
   readonly terminal: unknown;
+  /** The ops ran but staged nothing (for example every imported file was already
+   *  in the pool), so there was nothing to commit and the draft was discarded. */
+  readonly noChanges: boolean;
 }
 
 function editorUrl(projectId: string): string {
@@ -44,6 +47,14 @@ function editSessionIdOf(begun: unknown): string {
     throw new CliError('The edit session did not return an id; nothing was written.');
   }
   return id;
+}
+
+async function operationCount(runtime: OfflineExternalEditRuntime, editSessionId: string): Promise<number> {
+  const info = await runtime.execute('get_edit_session', { editSessionId });
+  const count = info !== null && typeof info === 'object' && 'operationCount' in info
+    ? info.operationCount
+    : undefined;
+  return typeof count === 'number' && Number.isFinite(count) ? count : 0;
 }
 
 /**
@@ -70,13 +81,21 @@ export async function runToolSession(
         result: await runtime.execute(invocation.tool, { ...invocation.args, editSessionId }),
       });
     }
+    // A commit needs staged changes; an operation that legitimately changes nothing
+    // (all imported files were duplicates, an idempotent re-run) must not fail. Ask
+    // the session what it staged and discard instead of reviewing an empty draft.
+    const staged = options.apply ? await operationCount(runtime, editSessionId) : 0;
+    if (options.apply && staged === 0) {
+      const terminal = await runtime.execute('discard_edit_session', { editSessionId });
+      return { applied: false, executions, terminal, noChanges: true };
+    }
     const terminal = options.apply
       ? await runtime.execute('review_edit_session', {
         editSessionId,
         ...(options.summary ? { summary: options.summary } : {}),
       })
       : await runtime.execute('discard_edit_session', { editSessionId });
-    return { applied: options.apply, executions, terminal };
+    return { applied: options.apply, executions, terminal, noChanges: false };
   } finally {
     await runtime.dispose();
   }

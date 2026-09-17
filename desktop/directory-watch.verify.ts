@@ -8,10 +8,10 @@ import {
   DirectoryWatchSession,
   scanImportDirectory,
   type DirectoryWatchDependencies,
-} from './directory-watch.ts';
+} from '../server/directory-watch.ts';
 import type {
   DirectoryCandidateResult,
-} from './directory-watch-import.ts';
+} from '../server/directory-watch-import.ts';
 import { ROOT, UPLOADS, createHarness, entry, imported, sessionFor, waitForCondition } from './directory-watch.verify-fixtures.ts';
 
 const lifecycle = createHarness();

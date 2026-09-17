@@ -40,6 +40,12 @@ const CATALOG_TOOL_NAMES: Record<string, true> = {
   browse_library: true,
 };
 
+const PATH_IMPORT_TOOL_NAMES: Record<string, true> = {
+  import_asset: true,
+  import_assets: true,
+  import_folder: true,
+};
+
 /**
  * Catalog-driven tools. Loaded lazily for the same reason as the GL-backed pair:
  * core-tools pulls the template sandbox and the model client, which the desktop
@@ -73,6 +79,10 @@ export async function executeOfflineTool(
 ): Promise<unknown> {
   if (name === 'edit_item' || name === 'manage_effects') return executeGlBackedTool(name, args, ctx);
   if (CATALOG_TOOL_NAMES[name] === true) return executeCatalogTool(name, args, ctx);
+  if (PATH_IMPORT_TOOL_NAMES[name] === true) {
+    const { executeOfflinePathImport } = await import('./offline-path-import.js');
+    return executeOfflinePathImport(name, args, ctx);
+  }
   if (name === 'read_agent_artifact') return execAgentRuntimeTool(name, args, ctx);
   if (CORE_DATA_TOOL_NAMES.has(name)) return execCoreDataTool(name, args, ctx);
   if (name === 'manage_timelines') return execTimelineTool(name, args, ctx);

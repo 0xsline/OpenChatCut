@@ -20,6 +20,9 @@ const DRAFT_EDIT_TOOL_NAMES = new Set([
   'manage_design_style',
   'import_timeline',
   'export_jianying_draft',
+  // Local-path media import lands assets in the session's pool; the file copy
+  // itself is a library write, reviewed in offline-tool-authorization.ts.
+  'import_asset', 'import_assets', 'import_folder',
 ]);
 
 const SERVER_DIRECT_READ_TOOL_NAMES: Record<string, true> = {
@@ -68,6 +71,13 @@ const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
   // headless catalog, so those adds fail explicitly.
   add_motion_graphic: true,
   add_audio: true,
+  // Local-path media import (desktop agent tools until now). Reviewed for
+  // headless execution: the importer is the same core the desktop main process
+  // runs, it copies into the media library and lands pool assets in the session
+  // draft, and reachable paths are gated by the AGENT_IMPORT_ROOTS keystore key.
+  import_asset: true,
+  import_assets: true,
+  import_folder: true,
 };
 
 const SERVER_DIRECT_BROWSER_ACTIONS: Record<string, true> = {

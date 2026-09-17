@@ -26,6 +26,7 @@ export async function runToolOps(run: ToolOpRun): Promise<void> {
     printJson({
       projectId: run.projectId,
       applied: outcome.applied,
+      noChanges: outcome.noChanges,
       ops: outcome.executions,
       terminal: outcome.terminal,
     });
@@ -33,6 +34,10 @@ export async function runToolOps(run: ToolOpRun): Promise<void> {
   }
   for (const execution of outcome.executions) {
     writeStdout(`${execution.tool}: ${JSON.stringify(execution.result)}`);
+  }
+  if (outcome.noChanges) {
+    writeStdout(`nothing to commit — ${run.projectName} unchanged (the operation staged no changes).`);
+    return;
   }
   writeStdout(outcome.applied
     ? `committed ${run.label} to ${run.projectName} (${run.projectId})`

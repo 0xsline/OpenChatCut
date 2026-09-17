@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
-import { ffmpegBin, ffprobeBin } from '../server/media-binaries.ts';
-import { ffmpegThreadArgs, spawnMediaProcess } from '../server/media-process.ts';
-import { resolveUploadFile, uploadDir } from '../server/media-dir.ts';
-import { registerMediaReference } from '../server/media-references.ts';
+import { ffmpegBin, ffprobeBin } from './media-binaries.ts';
+import { ffmpegThreadArgs, spawnMediaProcess } from './media-process.ts';
+import { resolveUploadFile, uploadDir } from './media-dir.ts';
+import { registerMediaReference } from './media-references.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
 import { sha256File } from '../shared/node-content-hash.ts';
 import {
   normalizationAbortError,
   throwIfNormalizationAborted,
-} from '../server/media-normalization.ts';
+} from './media-normalization.ts';
 
 export interface LocalMediaImport {
   src: string;

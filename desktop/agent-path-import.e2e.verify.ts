@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { seedKeystore } from '../server/keystore.ts';
 import { resolveUploadFile } from '../server/media-dir.ts';
 import { mediaReferenceManifestPath } from '../server/media-references.ts';
-import { importAgentPaths, pathAllowedByRoots } from './agent-path-import.ts';
-import { canonicalCurrentUploadDirectory } from './directory-watch-import.ts';
+import { importAgentPaths, pathAllowedByRoots } from '../server/local-path-import.ts';
+import { canonicalCurrentUploadDirectory } from '../server/directory-watch-import.ts';
 
 // End-to-end main-process import for issue #84 Feature B: a real file inside
 // the whitelist lands in the media pool as a reference with fingerprinting; outside

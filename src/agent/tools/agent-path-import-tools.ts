@@ -88,6 +88,9 @@ interface DesktopPathImportApi {
   }): Promise<AgentPathImportResult>;
 }
 
+/** The subset the import path needs, so a non-Electron host can supply it too. */
+export type PathImportApi = Pick<DesktopPathImportApi, 'importAgentPaths'>;
+
 function desktopApi(): DesktopPathImportApi | null {
   const bridge = (typeof window === 'undefined' ? undefined : window) as unknown as {
     openChatCutDesktop?: DesktopPathImportApi;
@@ -111,12 +114,6 @@ export async function execAgentPathImportTool(
       return { error: error instanceof Error ? error.message : String(error) };
     }
   }
-  const rawPath = typeof args.path === 'string' ? args.path.trim() : '';
-  const paths = name === 'import_assets' ? args.paths : [rawPath];
-  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 100
-    || !paths.every((path): path is string => typeof path === 'string' && path.trim().length > 0)) {
-    return { error: 'path is required; provide one non-empty path or 1-100 paths for import_assets' };
-  }
   const api = desktopApi();
   if (!api?.importAgentPaths) {
     return {
@@ -124,12 +121,34 @@ export async function execAgentPathImportTool(
         + 'use the media pool upload UI or watched folders in the browser',
     };
   }
+  return importLocalPaths(name, args, ctx, api);
+}
+
+/**
+ * Import local paths into the project. The host supplies the importer — the
+ * desktop ships it over IPC, the server (offline MCP / occ CLI) calls the same
+ * core in-process — so validation, conversion and pool landing are one
+ * implementation for every host.
+ */
+export async function importLocalPaths(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: AgentContext,
+  api: PathImportApi,
+): Promise<Record<string, unknown>> {
+  if (!AGENT_PATH_IMPORT_TOOL_NAMES.has(name)) return { error: `unknown tool ${name}` };
+  const rawPath = typeof args.path === 'string' ? args.path.trim() : '';
+  const paths = name === 'import_assets' ? args.paths : [rawPath];
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 100
+    || !paths.every((path): path is string => typeof path === 'string' && path.trim().length > 0)) {
+    return { error: 'path is required; provide one non-empty path or 1-100 paths for import_assets' };
+  }
   return importPathsIntoProject(paths, api, ctx);
 }
 
 async function importPathsIntoProject(
   paths: string[],
-  api: DesktopPathImportApi,
+  api: PathImportApi,
   ctx: AgentContext,
 ): Promise<Record<string, unknown>> {
   const projectId = ctx.getProjectId?.();

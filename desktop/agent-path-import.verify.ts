@@ -3,7 +3,7 @@ import {
   appendAgentImportRoot,
   importAgentPathsWithGrant,
   pathAllowedByRoots,
-} from './agent-path-import.ts';
+} from '../server/local-path-import.ts';
 import type { AgentPathImportResult } from '../shared/directory-import.ts';
 
 // AGENT_IMPORT_ROOTS whitelist semantics: only explicit roots authorize a

@@ -11,7 +11,7 @@ import {
   importLocalMedia,
   isTransparentMovProbe,
   transparentMovProxyArgs,
-} from './local-media-import.ts';
+} from '../server/local-media-import.ts';
 import {
   createLocalMediaImportHandler,
   importLocalMediaFromFile,

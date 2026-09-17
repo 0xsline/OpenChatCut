@@ -4,12 +4,12 @@ import {
   DirectoryWatchSession,
   type DirectoryEntry,
   type DirectoryWatchDependencies,
-} from './directory-watch.ts';
+} from '../server/directory-watch.ts';
 import type {
   DirectoryCandidateRequest,
   DirectoryCandidateResult,
   DirectoryFileFingerprint,
-} from './directory-watch-import.ts';
+} from '../server/directory-watch-import.ts';
 
 export const ROOT = '/watch-root';
 export const UPLOADS = '/media/uploads';

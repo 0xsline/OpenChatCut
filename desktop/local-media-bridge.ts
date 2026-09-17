@@ -1,5 +1,5 @@
 import { basename, isAbsolute } from 'node:path';
-import type { LocalMediaImport } from './local-media-import.ts';
+import type { LocalMediaImport } from '../server/local-media-import.ts';
 
 export const LOCAL_MEDIA_IMPORT_CHANNEL = 'openchatcut:import-local-media';
 

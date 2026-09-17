@@ -5,6 +5,7 @@ import {
 } from '../../src/agent/external-tool-shape.js';
 import { isExternalServerDirectTool } from '../../src/agent/external-tool-policy.js';
 import { AGENT_RUNTIME_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/agent-runtime-tools.js';
+import { AGENT_PATH_IMPORT_SCHEMAS } from '../../src/agent/tools/agent-path-import-tools.js';
 import { CORE_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/core-tools.js';
 import { CAPTIONS_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/captions-tools.js';
 import { EDIT_ITEM_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/edit-item-tools.js';
@@ -34,6 +35,7 @@ const OFFLINE_SESSION_TOOL_NAMES = new Set([
 
 const OFFLINE_SCHEMA_GROUPS = [
   AGENT_RUNTIME_TOOL_SCHEMAS,
+  AGENT_PATH_IMPORT_SCHEMAS,
   CORE_TOOL_SCHEMAS,
   EDIT_ITEM_TOOL_SCHEMAS,
   EFFECT_TOOL_SCHEMAS,

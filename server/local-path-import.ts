@@ -5,7 +5,7 @@
 import { basename, dirname, isAbsolute } from 'node:path';
 import { realpath, stat, readdir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
-import { getKey } from '../server/keystore.ts';
+import { getKey } from './keystore.ts';
 import type {
   AgentPathImportRequest,
   AgentPathImportError,

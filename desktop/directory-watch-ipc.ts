@@ -15,11 +15,11 @@ import {
   normalizeDirectoryImportHashes,
 } from '../shared/directory-import.ts';
 import { assertTrustedDesktopSenderUrl } from './page-origin.ts';
-import { canonicalCurrentUploadDirectory } from './directory-watch-import.ts';
+import { canonicalCurrentUploadDirectory } from '../server/directory-watch-import.ts';
 import {
   DirectoryWatchSession,
   type DirectoryWatchSessionOptions,
-} from './directory-watch.ts';
+} from '../server/directory-watch.ts';
 import {
   DirectoryWatchController,
   type DirectoryWatchSender,

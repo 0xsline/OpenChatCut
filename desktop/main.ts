@@ -15,7 +15,7 @@ import {
 } from 'electron';
 import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
-import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
+import { createTransparentMovProxy, importLocalMedia } from '../server/local-media-import.ts';
 import {
   createLocalMediaImportHandler,
   LOCAL_MEDIA_IMPORT_CHANNEL,
@@ -30,7 +30,7 @@ import { installDirectoryWatchIpc } from './directory-watch-ipc.ts';
 import {
   AGENT_IMPORT_ROOTS_KEY,
   importAgentPathsWithGrant,
-} from './agent-path-import.ts';
+} from '../server/local-path-import.ts';
 import { getKey, setKeys } from '../server/keystore.ts';
 import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
 import { AGENT_LOCAL_MEDIA_CHANNEL } from '../shared/agent-local-media.ts';
