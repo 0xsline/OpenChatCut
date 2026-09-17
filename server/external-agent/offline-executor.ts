@@ -31,6 +31,36 @@ async function executeGlBackedTool(name: string, args: Args, ctx: AgentContext):
   return execEffectTool(name, args, ctx);
 }
 
+const CATALOG_TOOL_NAMES: Record<string, true> = {
+  list_templates: true,
+  search_templates: true,
+  add_motion_graphic: true,
+  list_audio: true,
+  add_audio: true,
+  browse_library: true,
+};
+
+/**
+ * Catalog-driven tools. Loaded lazily for the same reason as the GL-backed pair:
+ * core-tools pulls the template sandbox and the model client, which the desktop
+ * server bundle has no other reason to carry until one of these is called.
+ */
+async function executeCatalogTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
+  if (name === 'list_audio' || name === 'add_audio') {
+    const { execAudioAssetTool } = await import('../../src/agent/tools/audio-asset-tools.js');
+    return execAudioAssetTool(name, args, ctx);
+  }
+  if (name === 'browse_library') {
+    const { execLibraryTool } = await import('../../src/agent/tools/library-tools.js');
+    return execLibraryTool(name, args, ctx);
+  }
+  const [{ execCoreTool }, { offlineExternalToolSchemas }] = await Promise.all([
+    import('../../src/agent/tools/core-tools.js'),
+    import('./offline-tools.js'),
+  ]);
+  return execCoreTool(name, args, ctx, offlineExternalToolSchemas());
+}
+
 /**
  * Execute only the dependency-closed tools reviewed for server-side EditorCore use.
  * This separate dispatch keeps GL, media, network, IndexedDB, generation, and
@@ -42,6 +72,7 @@ export async function executeOfflineTool(
   ctx: AgentContext,
 ): Promise<unknown> {
   if (name === 'edit_item' || name === 'manage_effects') return executeGlBackedTool(name, args, ctx);
+  if (CATALOG_TOOL_NAMES[name] === true) return executeCatalogTool(name, args, ctx);
   if (name === 'read_agent_artifact') return execAgentRuntimeTool(name, args, ctx);
   if (CORE_DATA_TOOL_NAMES.has(name)) return execCoreDataTool(name, args, ctx);
   if (name === 'manage_timelines') return execTimelineTool(name, args, ctx);

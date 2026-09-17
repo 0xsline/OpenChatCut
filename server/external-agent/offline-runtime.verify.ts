@@ -16,18 +16,21 @@ import { verifyOfflineCommitAndProjectionScenarios } from './offline-runtime-saf
 
 const toolNames = new Set(offlineExternalToolSchemas().map((schema) => schema.name));
 
-for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline', 'edit_item', 'manage_effects']) {
+for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline', 'edit_item', 'manage_effects', 'list_templates', 'search_templates', 'list_audio', 'browse_library', 'add_motion_graphic', 'add_audio']) {
   assert.equal(toolNames.has(allowed), true, `${allowed} is server-direct`);
 }
-// edit_item and manage_effects moved into the server-direct set once their GL
-// catalogs became loadable outside Vite (cli/raw-hooks.mjs for the CLI,
-// scripts/esbuild-raw-plugin.mjs for the desktop bundle); the tools below remain
-// browser-bound and must stay out.
+// edit_item / manage_effects / the catalog tools moved into the server-direct set
+// once their GL catalogs became loadable outside Vite (the generated *.frag.ts
+// twins) and the offline editor context started carrying the bundled template and
+// audio catalogs. The tools below remain browser-bound.
 for (const excluded of [
   'list_edit_sessions',
   'recover_edit_session',
   'view_timeline_frames',
-  'add_motion_graphic',
+  'view_asset_frames',
+  'place_graphics_in_safe_zone',
+  'auto_reframe',
+  'create_motion_graphic_from_code',
   'submit_image',
   'import_media',
   'download_media',

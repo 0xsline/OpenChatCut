@@ -257,7 +257,43 @@ try {
   const editedClip = edited.doc.timelines[0]?.items.find((item) => item.id === target);
   assert.equal(editedClip?.transform?.opacity, 0.42, 'edit_item must write through the offline session');
 
-  // 12. media ls reads the pool without touching it
+  // 12. catalog tools read the bundled registries, not empty arrays
+  const templateList = occJson<CallJson>(['tools', 'call', 'list_templates', '--args', '{}', '--project', created.id, '--json']);
+  const templateResult: unknown = templateList.ops[0]?.result;
+  const templateTotal = templateResult !== null && typeof templateResult === 'object'
+    && 'total' in templateResult && typeof templateResult.total === 'number'
+    ? templateResult.total
+    : 0;
+  assert.ok(templateTotal > 100, `the bundled template catalog must reach the offline context (got ${templateTotal})`);
+
+  const audioList = occJson<CallJson>(['tools', 'call', 'list_audio', '--args', '{}', '--project', created.id, '--json']);
+  const audioResult: unknown = audioList.ops[0]?.result;
+  const builtinAudio = Array.isArray(audioResult)
+    ? audioResult.filter((entry) => (
+      entry !== null && typeof entry === 'object' && 'source' in entry && entry.source === 'builtin'
+    ))
+    : [];
+  assert.ok(builtinAudio.length > 0, 'the built-in audio library must reach the offline context');
+
+  const searchResult: unknown = occJson<CallJson>([
+    'tools', 'call', 'search_templates', '--args', '{"query":"title"}', '--project', created.id, '--json',
+  ]).ops[0]?.result;
+  const hits = Array.isArray(searchResult)
+    ? searchResult.filter((entry): entry is { name: string } => (
+      entry !== null && typeof entry === 'object' && 'name' in entry && typeof entry.name === 'string'
+    ))
+    : [];
+  assert.ok(hits.length > 0, 'search_templates must find bundled templates');
+
+  const beforeAdd = items().length;
+  occOk([
+    'tools', 'call', 'add_motion_graphic',
+    '--args', JSON.stringify({ templateName: hits[0]?.name, track: 'V1' }),
+    '--project', created.id, '--apply',
+  ]);
+  assert.equal(items().length, beforeAdd + 1, 'add_motion_graphic must place a bundled template headlessly');
+
+  // 13. media ls reads the pool without touching it
   const media = occJson<{ assets: unknown[] }>(['media', 'ls', created.id, '--json']);
   assert.deepEqual(media.assets, []);
 

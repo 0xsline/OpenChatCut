@@ -117,6 +117,13 @@ try {
     arguments: { editSessionId, ratio: '9:16', fit: 'contain' },
   });
   assert.notEqual(edit.isError, true);
+  // Catalog-driven tools must work over the real MCP transport too: the offline
+  // session's context carries the bundled template registry.
+  const templates = await client.callTool({ name: 'list_templates', arguments: { editSessionId } });
+  assert.notEqual(templates.isError, true);
+  const total = resultField(templates, 'total');
+  assert.equal(typeof total, 'number');
+  assert.ok(total > 100, `expected the bundled template catalog, got ${String(total)}`);
   const review = await client.callTool({
     name: 'review_edit_session',
     arguments: { editSessionId, summary: 'Vertical edit' },

@@ -30,6 +30,14 @@ const SERVER_DIRECT_READ_TOOL_NAMES: Record<string, true> = {
   read_project: true,
   read_transcript: true,
   find_transcript: true,
+  // Catalog reads: bundled templates, the built-in audio library (plus the
+  // project's own audio assets) and the built-in library index. They need the
+  // offline editor context to carry those catalogs — server/external-agent/
+  // offline-catalogs.ts does, from the same modules the renderer uses.
+  list_templates: true,
+  search_templates: true,
+  list_audio: true,
+  browse_library: true,
 };
 
 const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
@@ -55,6 +63,11 @@ const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
   // for these two lives in the commit that added them.
   edit_item: true,
   manage_effects: true,
+  // Catalog-driven adds: a bundled template or a built-in audio asset placed on a
+  // track through the draft's commands. Plugin-pack templates are not part of the
+  // headless catalog, so those adds fail explicitly.
+  add_motion_graphic: true,
+  add_audio: true,
 };
 
 const SERVER_DIRECT_BROWSER_ACTIONS: Record<string, true> = {

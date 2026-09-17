@@ -12,6 +12,7 @@ import {
   type ExternalEditSessionTerminalStatus,
 } from '../../src/agent/external-edit-session.ts';
 import { assertOfflineToolAllowed } from './offline-tool-authorization.ts';
+import { OFFLINE_AUDIO, OFFLINE_TEMPLATES } from './offline-catalogs.ts';
 import type { AgentContext } from '../../src/agent/context.ts';
 import { ExternalEditorCallError, isProjectConnected } from './broker.ts';
 import { executeOfflineTool } from './offline-executor.ts';
@@ -440,8 +441,8 @@ export class OfflineExternalEditRuntime {
       getState: session.draft.getState,
       getDoc: session.draft.getDoc,
       getCreativeMode: () => null,
-      templates: [],
-      audio: [],
+      templates: OFFLINE_TEMPLATES,
+      audio: OFFLINE_AUDIO,
       getProjectId: () => this.projectId,
       getApprovalMode: () => 'auto',
     };
