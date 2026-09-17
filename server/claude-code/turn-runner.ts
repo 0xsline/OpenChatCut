@@ -42,6 +42,20 @@ const CHILD_ENV_NAMES = [
 // Keeping a private name makes this turn's server independent of the user's own.
 const MCP_SERVER_NAME = 'openchatcut-builtin';
 const ALLOWED_TOOLS = `mcp__${MCP_SERVER_NAME}__*`;
+/**
+ * The only tools this turn may use are the editor's own MCP tools. Everything
+ * the CLI ships that can run code, touch the filesystem or reach the network is
+ * denied by name: `--restricted` already drops the code-running built-ins and
+ * WebFetch and confines the file tools to the (throwaway) working directory, but
+ * deny rules are the one rule type that is still honored in every mode, so the
+ * list stays as the explicit second line of defence. Without it the CLI's own
+ * Bash/Write/Edit run unapproved as the server user — in dev, inside the
+ * checkout that holds `.env.local`.
+ */
+const DENIED_TOOLS = [
+  'Bash', 'BashOutput', 'KillShell', 'Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit',
+  'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task', 'Agent',
+].join(' ');
 const RUNTIME_RULES = [
   'You are the built-in Agent inside the OpenChatCut video editor, driving the currently open project',
   `through the "${MCP_SERVER_NAME}" MCP server. Prefer the ${ALLOWED_TOOLS} tools over any general-purpose`,
@@ -255,7 +269,16 @@ export async function runClaudeCodeTurn(
       '--mcp-config', mcpConfigPath,
       '--strict-mcp-config',
       '--allowedTools', ALLOWED_TOOLS,
-      '--permission-mode', 'bypassPermissions',
+      '--disallowedTools', DENIED_TOOLS,
+      // Restricted mode ignores the user's own ~/.claude settings and hooks,
+      // confines the file tools to the working directory and refuses
+      // bypassPermissions (verified against 2.1.263), so the permission mode is
+      // left at its default and the allow rule above is what pre-approves the
+      // editor's MCP tools. `--permission-prompts none` fails closed for anything
+      // that would otherwise ask a human: nobody can answer a -p turn, so those
+      // calls are denied instead of hanging.
+      '--restricted',
+      '--permission-prompts', 'none',
       '--append-system-prompt-file', systemPromptPath,
     ];
     if (request.model) args.push('--model', request.model);
@@ -263,6 +286,11 @@ export async function runClaudeCodeTurn(
     const command = claudeCodeCommand(claudePath, args);
     const child = spawn(command.executable, command.args, {
       env: childEnvironment(),
+      // Restricted mode scopes the CLI's file tools to its working directory.
+      // Point that at the same throwaway directory as the MCP config (removed in
+      // the finally below) instead of inheriting the app's checkout, where the
+      // CLI would otherwise also auto-load AGENTS.md/CLAUDE.md.
+      cwd: dirname(mcpConfigPath),
       windowsHide: true,
       windowsVerbatimArguments: command.windowsVerbatimArguments,
       stdio: ['ignore', 'pipe', 'pipe'],
