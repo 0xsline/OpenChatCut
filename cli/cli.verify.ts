@@ -410,6 +410,31 @@ try {
   assert.equal(again.applied, false, 'an all-duplicate import stages nothing and must not fail review');
   assert.equal(occJson<{ assets: unknown[] }>(['media', 'ls', created.id, '--json']).assets.length, 1);
 
+  // 18. render builds a real export plan (the render itself needs Chrome; CI has
+  // none, so the suite pins the plan, the frame math and the refusals)
+  const plan = occJson<{
+    codec: string;
+    extension: string;
+    totalFrames: number;
+    frameRange: number[] | null;
+  }>(['render', created.id, '--out', join(HOME, 'out.mp4'), '--dry-run', '--json']);
+  assert.equal(plan.codec, 'h264');
+  assert.equal(plan.extension, 'mp4');
+  const spanFrames = items().reduce((end, item) => Math.max(end, item.startFrame + item.durationFrames), 0);
+  assert.equal(plan.totalFrames, spanFrames, 'an unrestricted export renders the whole timeline');
+  const ranged = occJson<{ frameRange: number[] | null; totalFrames: number }>(
+    ['render', created.id, '--out', join(HOME, 'range.mp4'), '--from', '15', '--to', '45', '--dry-run', '--json'],
+  );
+  // The CLI takes a half-open --from/--to; the plan carries Remotion's inclusive range.
+  assert.deepEqual(ranged.frameRange, [15, 44]);
+  assert.equal(ranged.totalFrames, 30, 'an explicit range limits the render');
+  const missingOut = occ(['render', created.id, '--dry-run']);
+  assert.equal(missingOut.status, 2);
+  assert.match(missingOut.stderr, /--out/);
+  const badTimeline = occ(['render', created.id, '--out', join(HOME, 'x.mp4'), '--timeline', 'nope', '--dry-run']);
+  assert.equal(badTimeline.status, 1);
+  assert.match(badTimeline.stderr, /no timeline nope/);
+
   process.stdout.write('occ cli verify: ok\n');
 } finally {
   rmSync(HOME, { recursive: true, force: true });

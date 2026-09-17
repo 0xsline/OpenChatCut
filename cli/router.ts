@@ -8,6 +8,7 @@ import { runEditCommand } from './commands/edit.ts';
 import { runItemCommand } from './commands/item.ts';
 import { runMediaCommand } from './commands/media.ts';
 import { runProjectCommand } from './commands/project.ts';
+import { runRenderCommand } from './commands/render.ts';
 import { runTimelineCommand } from './commands/timeline.ts';
 import { runToolsCommand } from './commands/tools.ts';
 import { runWhereCommand } from './commands/where.ts';
@@ -29,6 +30,8 @@ export async function runCommand(commandLine: CommandLine): Promise<void> {
       return runItemCommand(positionals, commandLine, json);
     case 'media':
       return runMediaCommand(positionals, commandLine, json);
+    case 'render':
+      return runRenderCommand(subLine(commandLine, positionals), json);
     case 'where':
       return runWhereCommand(commandLine, json);
     case undefined:
