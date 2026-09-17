@@ -7,8 +7,8 @@ import {
   type AgentLocalMediaEntry,
   type AgentLocalMediaResult,
 } from '../shared/agent-local-media.ts';
-import { resolveAgentMediaPath } from '../server/local-path-import.ts';
-import { directoryMediaKind } from '../server/directory-watch-import.ts';
+import { resolveAgentMediaPath } from './local-path-import.ts';
+import { directoryMediaKind } from './directory-watch-import.ts';
 
 export async function browseLocalMedia(request: unknown): Promise<AgentLocalMediaResult> {
   if (!isAgentLocalMediaRequest(request)) throw new Error('invalid local media browse request');

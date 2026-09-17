@@ -98,6 +98,29 @@ function desktopApi(): DesktopPathImportApi | null {
   return bridge?.openChatCutDesktop ?? null;
 }
 
+/** The subset the browse path needs, so a non-Electron host can supply it too. */
+export type LocalMediaBrowseApi = Pick<DesktopPathImportApi, 'browseLocalMedia'>;
+
+/**
+ * Browse local media directories. The host supplies the browser — the desktop
+ * ships it over IPC, the server (offline MCP / occ CLI) calls the same core
+ * in-process — so argument validation and the response envelope are shared.
+ */
+export async function browseLocalMediaResult(
+  name: string,
+  args: Record<string, unknown>,
+  api: LocalMediaBrowseApi,
+): Promise<Record<string, unknown>> {
+  if (name !== 'browse_local_media') return { error: `unknown tool ${name}` };
+  if (!isAgentLocalMediaRequest(args)) return { error: 'invalid local media browse request' };
+  if (!api.browseLocalMedia) return { error: 'browse_local_media is available in the desktop app only' };
+  try {
+    return { ok: true, ...await api.browseLocalMedia(args) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export async function execAgentPathImportTool(
   name: string,
   args: Record<string, unknown>,
@@ -105,14 +128,7 @@ export async function execAgentPathImportTool(
 ): Promise<Record<string, unknown>> {
   if (!AGENT_PATH_IMPORT_TOOL_NAMES.has(name)) return { error: `unknown tool ${name}` };
   if (name === 'browse_local_media') {
-    if (!isAgentLocalMediaRequest(args)) return { error: 'invalid local media browse request' };
-    const api = desktopApi();
-    if (!api?.browseLocalMedia) return { error: 'browse_local_media is available in the desktop app only' };
-    try {
-      return { ok: true, ...await api.browseLocalMedia(args) };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) };
-    }
+    return browseLocalMediaResult(name, args, desktopApi() ?? {});
   }
   const api = desktopApi();
   if (!api?.importAgentPaths) {

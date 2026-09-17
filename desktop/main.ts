@@ -34,7 +34,7 @@ import {
 import { getKey, setKeys } from '../server/keystore.ts';
 import { AGENT_PATH_IMPORT_CHANNEL } from '../shared/directory-import.ts';
 import { AGENT_LOCAL_MEDIA_CHANNEL } from '../shared/agent-local-media.ts';
-import { browseLocalMedia } from './agent-local-media.ts';
+import { browseLocalMedia } from '../server/agent-local-media.ts';
 import { modelCachePath } from '../shared/model-cache-path.ts';
 import { isTranscriptWindowPayload, TRANSCRIPT_WINDOW_CHANNELS, type TranscriptWindowPayload } from '../shared/transcript-window.ts';
 import {

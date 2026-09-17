@@ -83,6 +83,17 @@ export async function executeOfflineTool(
     const { executeOfflinePathImport } = await import('./offline-path-import.js');
     return executeOfflinePathImport(name, args, ctx);
   }
+  if (name === 'browse_local_media') {
+    const [{ browseLocalMediaResult }, { browseLocalMedia }] = await Promise.all([
+      import('../../src/agent/tools/agent-path-import-tools.js'),
+      import('../agent-local-media.js'),
+    ]);
+    return browseLocalMediaResult(name, args, { browseLocalMedia });
+  }
+  if (name === 'export_jianying_draft') {
+    const { executeOfflineJianyingExport } = await import('./offline-jianying-export.js');
+    return executeOfflineJianyingExport(name, args, ctx);
+  }
   if (name === 'read_agent_artifact') return execAgentRuntimeTool(name, args, ctx);
   if (CORE_DATA_TOOL_NAMES.has(name)) return execCoreDataTool(name, args, ctx);
   if (name === 'manage_timelines') return execTimelineTool(name, args, ctx);

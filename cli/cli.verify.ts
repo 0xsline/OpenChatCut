@@ -11,11 +11,12 @@
 //   * browser-only tools are refused, with a non-zero exit code;
 //   * unknown flags and unknown projects fail loudly instead of silently no-oping.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ffmpegBin } from '../server/media-binaries.ts';
 import { CURRENT_PROJECT_VERSION } from '../shared/project-version.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -65,10 +66,10 @@ interface RunResult {
   readonly stderr: string;
 }
 
-function occ(args: readonly string[]): RunResult {
+function occ(args: readonly string[], extraEnv: NodeJS.ProcessEnv = {}): RunResult {
   const result = spawnSync(process.execPath, ['--import', 'tsx', MAIN, ...args], {
     cwd: ROOT,
-    env: ENV,
+    env: { ...ENV, ...extraEnv },
     encoding: 'utf8',
   });
   if (result.error) throw result.error;
@@ -79,14 +80,14 @@ function occ(args: readonly string[]): RunResult {
   };
 }
 
-function occOk(args: readonly string[]): string {
-  const result = occ(args);
+function occOk(args: readonly string[], extraEnv: NodeJS.ProcessEnv = {}): string {
+  const result = occ(args, extraEnv);
   assert.equal(result.status, 0, `occ ${args.join(' ')} exited ${result.status}:\n${result.stderr}`);
   return result.stdout;
 }
 
-function occJson<T>(args: readonly string[]): T {
-  const stdout = occOk(args);
+function occJson<T>(args: readonly string[], extraEnv: NodeJS.ProcessEnv = {}): T {
+  const stdout = occOk(args, extraEnv);
   try {
     return JSON.parse(stdout) as T;
   } catch {
@@ -434,6 +435,62 @@ try {
   const badTimeline = occ(['render', created.id, '--out', join(HOME, 'x.mp4'), '--timeline', 'nope', '--dry-run']);
   assert.equal(badTimeline.status, 1);
   assert.match(badTimeline.stderr, /no timeline nope/);
+
+  // 19. browse_local_media lists the directories the importer reads
+  const browsed = occJson<CallJson>([
+    'tools', 'call', 'browse_local_media', '--args', JSON.stringify({ path: importDir }),
+    '--project', created.id, '--json',
+  ]);
+  const browseResult: unknown = browsed.ops[0]?.result;
+  const entries = browseResult !== null && typeof browseResult === 'object' && 'entries' in browseResult
+    && Array.isArray(browseResult.entries)
+    ? browseResult.entries
+    : [];
+  assert.ok(
+    entries.some((entry) => entry !== null && typeof entry === 'object' && 'name' in entry && entry.name === 'occ-tone.wav'),
+    'browse_local_media must list the importer-visible files',
+  );
+
+  // 20. jianying draft export: image clip → capcut-cli stub → draft path
+  const pngPath = join(importDir, 'occ-frame.png');
+  execFileSync(ffmpegBin(), ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=8x8', '-frames:v', '1', pngPath]);
+  const imageImport = occJson<CallJson>([
+    'tools', 'call', 'import_assets', '--args', JSON.stringify({ paths: [pngPath] }),
+    '--project', created.id, '--apply', '--json',
+  ]);
+  const importedImage = imageImport.ops[0]?.result;
+  const imageAssetId = importedImage !== null && typeof importedImage === 'object' && 'imported' in importedImage
+    && Array.isArray(importedImage.imported) && importedImage.imported.length > 0
+    && importedImage.imported[0] !== null && typeof importedImage.imported[0] === 'object'
+    && 'id' in importedImage.imported[0]
+    ? importedImage.imported[0].id
+    : undefined;
+  assert.equal(typeof imageAssetId, 'string', 'the image must land in the pool');
+  occOk([
+    'tools', 'call', 'edit_item',
+    '--args', JSON.stringify({ adds: [{ type: 'image', assetId: imageAssetId }] }),
+    '--project', created.id, '--apply',
+  ]);
+  const stubPath = join(HOME, 'capcut-stub.mjs');
+  const stubDraftPath = join(HOME, 'stubbed-draft');
+  writeFileSync(stubPath, [
+    '#!/usr/bin/env node',
+    'const args = process.argv.slice(2);',
+    `const draftPath = ${JSON.stringify(stubDraftPath)};`,
+    "process.stdout.write(JSON.stringify(args[0] === 'quickstart' ? { ok: true, draft_path: draftPath } : { ok: true }) + '\\n');",
+    '',
+  ].join('\n'));
+  chmodSync(stubPath, 0o755);
+  const draft = occJson<CallJson>(
+    ['export', 'jianying', '--draft-name', 'occ-verify', '--project', created.id, '--json'],
+    { CAPCUT_CLI: stubPath },
+  );
+  const draftResult: unknown = draft.ops[0]?.result;
+  const draftPath = draftResult !== null && typeof draftResult === 'object' && 'draftPath' in draftResult
+    ? draftResult.draftPath
+    : undefined;
+  assert.equal(draftPath, stubDraftPath, 'export jianying must drive the exporter and report its draft');
+  assert.equal(draft.applied, false, 'a draft export stages nothing in the project');
 
   process.stdout.write('occ cli verify: ok\n');
 } finally {

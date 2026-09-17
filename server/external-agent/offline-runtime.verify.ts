@@ -16,7 +16,7 @@ import { verifyOfflineCommitAndProjectionScenarios } from './offline-runtime-saf
 
 const toolNames = new Set(offlineExternalToolSchemas().map((schema) => schema.name));
 
-for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline', 'edit_item', 'manage_effects', 'list_templates', 'search_templates', 'list_audio', 'browse_library', 'add_motion_graphic', 'add_audio', 'import_asset', 'import_assets', 'import_folder']) {
+for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline', 'edit_item', 'manage_effects', 'list_templates', 'search_templates', 'list_audio', 'browse_library', 'add_motion_graphic', 'add_audio', 'import_asset', 'import_assets', 'import_folder', 'browse_local_media', 'export_jianying_draft']) {
   assert.equal(toolNames.has(allowed), true, `${allowed} is server-direct`);
 }
 // edit_item / manage_effects / the catalog tools moved into the server-direct set

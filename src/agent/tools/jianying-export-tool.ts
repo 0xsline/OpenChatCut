@@ -63,11 +63,22 @@ export function captionCues(state: { fps: number; items: TimelineItem[] }, capti
   return cues;
 }
 
-export async function execJianyingExport(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
-  if (name !== JIANYING_EXPORT_TOOL_NAME) return undefined;
+export interface JianyingExportResponse {
+  ok?: boolean;
+  error?: string;
+  draftName?: string;
+  draftPath?: string;
+  addedVideos?: number;
+  addedAudios?: number;
+  captions?: number;
+  warnings?: string[];
+}
+
+/** The exporter request body, built from the draft state (shared by both hosts). */
+export function jianyingExportBody(args: Args, ctx: AgentContext): Record<string, unknown> {
   const state = ctx.getState();
   const items = mediaItems(state.items);
-  const body: Record<string, unknown> = {
+  return {
     draftName: typeof args.draftName === 'string' && args.draftName.trim() ? String(args.draftName).trim().slice(0, 60) : '',
     draftsDir: typeof args.draftsDir === 'string' && args.draftsDir.trim() ? String(args.draftsDir).trim() : '',
     fps: state.fps,
@@ -81,17 +92,15 @@ export async function execJianyingExport(name: string, args: Args, ctx: AgentCon
     })),
     captions: captionCues(state, state.captions),
   };
-  const response = await fetch('/api/external-agent/jianying-export', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = (await response.json().catch(() => null)) as {
-    ok?: boolean; error?: string; draftName?: string; draftPath?: string;
-    addedVideos?: number; addedAudios?: number; captions?: number; warnings?: string[];
-  } | null;
-  if (!response.ok || !data?.ok) {
-    throw new Error(data?.error ?? `jianying export failed (${response.status})`);
+}
+
+/** Shape an exporter response for the tool result — HTTP status or in-process. */
+export function jianyingExportOutcome(
+  data: JianyingExportResponse | null,
+  status: number,
+): Record<string, unknown> {
+  if (status >= 400 || !data?.ok) {
+    throw new Error(data?.error ?? `jianying export failed (${status})`);
   }
   return {
     ok: true,
@@ -103,4 +112,15 @@ export async function execJianyingExport(name: string, args: Args, ctx: AgentCon
     warnings: data.warnings ?? [],
     note: 'Draft written to the CapCut/JianYing store. Restart CapCut/JianYing if the project list does not refresh.',
   };
+}
+
+export async function execJianyingExport(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
+  if (name !== JIANYING_EXPORT_TOOL_NAME) return undefined;
+  const response = await fetch('/api/external-agent/jianying-export', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(jianyingExportBody(args, ctx)),
+  });
+  const data = (await response.json().catch(() => null)) as JianyingExportResponse | null;
+  return jianyingExportOutcome(data, response.status);
 }

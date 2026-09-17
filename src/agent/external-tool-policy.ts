@@ -41,6 +41,9 @@ const SERVER_DIRECT_READ_TOOL_NAMES: Record<string, true> = {
   search_templates: true,
   list_audio: true,
   browse_library: true,
+  // Local media discovery: the same core the desktop app browses with, gated by
+  // AGENT_IMPORT_ROOTS like the import tools below.
+  browse_local_media: true,
 };
 
 const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
@@ -78,6 +81,9 @@ const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
   import_asset: true,
   import_assets: true,
   import_folder: true,
+  // Draft export writes into the CapCut/JianYing store through capcut-cli; it
+  // touches no project state, so no draft commit is involved.
+  export_jianying_draft: true,
 };
 
 const SERVER_DIRECT_BROWSER_ACTIONS: Record<string, true> = {

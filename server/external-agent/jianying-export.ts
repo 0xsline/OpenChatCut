@@ -8,6 +8,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { uploadReadDirs } from '../media-dir.ts';
+import { resolveMediaReference } from '../media-references.ts';
 
 /** dev / worktree upload root; isolated profiles read only their own store but
  * dev media commonly lives here too. */
@@ -57,21 +58,30 @@ const DEFAULT_CAPCUT_STORE = join(
   'com.lveditor.draft',
 );
 
-/** Resolve a clip src (/media/uploads/<name> or absolute path) to a local file. */
+/** Resolve a clip src (/media/uploads/<name> or absolute path) to a local file.
+ *  `options.mediaDir` injects an explicit upload root (verification seam). */
 export function expandHomeDir(dir: string): string {
   return dir.replace(/^~(?=\/|$)/, process.env.HOME ?? '');
 }
 
-export function resolveMediaPath(src: string): string | undefined {
+export function resolveMediaPath(
+  src: string,
+  options: { mediaDir?: string } = {},
+): string | undefined {
   const clean = String(src || '').trim();
   if (!clean) return undefined;
   if (clean.startsWith('/media/uploads/')) {
     const name = clean.slice('/media/uploads/'.length);
     if (!name || name.includes('/') || name.includes('\\')) return undefined;
-    const roots = [...new Set([...uploadReadDirs(), WORKTREE_UPLOAD_DIR])];
+    const roots = [...new Set([...uploadReadDirs(undefined, options.mediaDir), WORKTREE_UPLOAD_DIR])];
     for (const dir of roots) {
       const candidate = join(dir, name);
       if (existsSync(candidate)) return candidate;
+      // Path imports store a pointer under .references/ when the master stays on
+      // disk, so the asset has no copy in uploads. resolveUploadFile follows that
+      // pointer; a plain join() would leave those clips "not found locally".
+      const referenced = resolveMediaReference(dir, name);
+      if (referenced) return referenced;
     }
     return undefined;
   }
