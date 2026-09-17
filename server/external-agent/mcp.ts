@@ -8,17 +8,13 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import {
   cancelEditorCallsForOwner,
-  connectedProjectIds,
   editSessionOwnerMatches,
-  editorStatuses,
   ExternalEditorCallError,
   invokeEditorTool,
   onRegisteredToolsChanged,
-  registeredTools,
   type EditorBinding,
 } from './broker.ts';
 import {
@@ -33,20 +29,17 @@ import {
   validateOfflineBinding,
   type McpBindingSession,
 } from './mcp-binding.ts';
-import { MCP_CONTROL_TOOL_NAMES, MCP_CONTROL_TOOLS } from './mcp-controls.ts';
-import { offlineExternalToolSchemas } from './offline-tools.ts';
+import { MCP_CONTROL_TOOL_NAMES } from './mcp-controls.ts';
 import type { OfflineEditorBinding } from './offline-runtime.ts';
 import { createExternalProject, listExternalProjects } from './projects.ts';
 import { mcpServerInstructions } from './mcp-instructions.ts';
 import { registerMcpPrompts } from './mcp-prompts.ts';
-import { mcpSessionStatus } from './mcp-session-status.ts';
+import { currentToolList, fullMcpTools, mcpStatus, mcpTools } from './mcp-tool-catalog.ts';
+export { mcpTools } from './mcp-tool-catalog.ts';
 import {
   activateMcpToolExposure,
   activatedMcpToolNames,
   initialMcpToolExposure,
-  mcpToolExposureStatus,
-  mcpToolListDigest,
-  projectMcpToolExposure,
   requestedMcpToolExposure,
   sendMcpToolListChangedIfChanged,
   type McpToolExposure,
@@ -64,12 +57,7 @@ export const MCP_SESSION_IDLE_LIMIT_MS = 60 * 60 * 1000;
 export const MCP_SESSION_COUNT_LIMIT = 64;
 export const MCP_POST_BODY_LIMIT_BYTES = 2 * 1024 * 1024;
 
-const PROJECT_SELECTOR = {
-  type: 'string',
-  description: 'OpenChatCut project id. It must match the project bound to this MCP transport session.',
-};
-
-interface McpSession extends McpBindingSession {
+export interface McpSession extends McpBindingSession {
   server: Server | null;
   transport: StreamableHTTPServerTransport;
   toolListDigest: string;
@@ -84,53 +72,6 @@ const sessions = new Map<string, McpSession>();
 function editorUrl(args: Record<string, unknown>, projectId: string, fallbackBase: string): string {
   const base = String(args.editorBaseUrl ?? '').trim() || fallbackBase;
   return `${base.replace(/\/+$/, '')}/#/editor/${encodeURIComponent(projectId)}`;
-}
-
-function fullMcpTools(session?: McpSession): Tool[] {
-  const browserTools = registeredTools();
-  const hasConnectedBrowser = connectedProjectIds().length > 0;
-  const catalog = session?.offline
-    ? offlineExternalToolSchemas()
-    : hasConnectedBrowser || session?.binding
-      ? browserTools
-      : offlineExternalToolSchemas();
-  const editorTools = catalog.filter((tool) => MCP_CONTROL_TOOL_NAMES[tool.name] !== true).map((tool): Tool => ({
-    name: tool.name,
-    description: tool.description,
-    annotations: tool.annotations,
-    inputSchema: {
-      ...tool.input_schema,
-      properties: {
-        ...tool.input_schema.properties,
-        editorProjectId: PROJECT_SELECTOR,
-      },
-    },
-  }));
-  return [...MCP_CONTROL_TOOLS, ...editorTools];
-}
-
-export function mcpTools(session?: McpSession): Tool[] {
-  const tools = fullMcpTools(session);
-  return session
-    ? projectMcpToolExposure(session.exposure, tools, MCP_CONTROL_TOOL_NAMES)
-    : tools;
-}
-function currentToolList(session: McpSession): Tool[] {
-  const tools = mcpTools(session);
-  session.toolListDigest = mcpToolListDigest(tools);
-  return tools;
-}
-
-function mcpStatus(session: McpSession): Record<string, unknown> {
-  const tools = mcpTools(session);
-  return mcpSessionStatus({
-    connectedProjectIds: connectedProjectIds(),
-    editors: editorStatuses(),
-    binding: session.binding ?? session.offline?.binding() ?? null,
-    bindingMode: bindingMode(session),
-    toolCount: tools.length,
-    exposure: mcpToolExposureStatus(session.exposure, tools.length, fullMcpTools(session).length),
-  });
 }
 
 async function callControlTool(
