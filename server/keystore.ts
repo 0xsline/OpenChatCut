@@ -1,10 +1,8 @@
 // Server-side in-memory API-key store backing the settings UI. Seeded at Vite
 // startup, live-updated by POST /api/keys, and persisted to the active runtime
 // profile's private settings file. Secret values never appear in responses; the
-// browser sees booleans only (keyStatus / caps). Model ids and vendor
-// routing are configuration, not credentials: the explicit NON_SECRET_NAMES whitelist
-// lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
-// show and edit them.
+// browser sees booleans only (keyStatus / caps). NON_SECRET_NAMES allows model ids
+// and vendor routing in keyStatus().models so the settings UI can edit them.
 import { readFile } from "node:fs/promises";
 import { atomicWriteFile } from "./plugins/project-store-durable.ts";
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from "./llm-config.ts";
