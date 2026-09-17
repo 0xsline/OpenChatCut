@@ -2,6 +2,13 @@
 // into another tool must never pick up a hint line. `process.stdout.write` over
 // console.* keeps the CLI's output path explicit and lint-clean.
 
+// A reader that goes away first — `occ tools ls | head` — must end the command
+// quietly, the way any shell tool does, not with an unhandled EPIPE stack trace.
+process.stdout.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EPIPE') process.exit(0);
+  throw error;
+});
+
 export function writeStdout(text: string): void {
   process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
 }

@@ -2,6 +2,7 @@
 node_modules/
 dist/
 desktop-dist/
+cli-dist/
 release/
 coverage/
 .nyc_output/
