@@ -1,20 +1,27 @@
 // Trusted editor guide for the authenticated Streamable HTTP endpoint.
-// Clients connect through the one-click server-side writer; no copy-paste.
+// Most clients connect through the one-click server-side writer; clients that keep
+// custom MCP servers in their own store get a JSON snippet to paste instead.
 import { useEffect, useState, type ReactElement } from 'react';
 import { editorBootstrapInfo } from '../../agent/editor-credential';
 import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
+import { qwenWorkConnectJson } from './mcpClientConfig';
 import claudeSvg from '../../../assets/vendor-icons/claude-color.svg?raw';
 import codexPng from '../../../assets/vendor-icons/codex-color.png';
 import cursorPng from '../../../assets/vendor-icons/cursor-color.png';
 import antigravityPng from '../../../assets/vendor-icons/antigravity-color.png';
+import qwenSvg from '../../../assets/vendor-icons/qwen-color.svg?raw';
 
 interface ClientSnippet {
-  client: 'claude' | 'codex' | 'cursor' | 'antigravity';
+  client: 'claude' | 'codex' | 'cursor' | 'antigravity' | 'qoder' | 'qwenwork';
   logo: ReactElement;
   name: string;
   desc: string;
+  /** 'connect' = OpenChatCut writes the config file for you; 'paste' = the client
+   *  keeps custom MCP servers in its own store, so there is no file to write and
+   *  the snippet is copied instead. */
+  mode: 'connect' | 'paste';
 }
 
 function clientSnippets(): ClientSnippet[] {
@@ -24,24 +31,42 @@ function clientSnippets(): ClientSnippet[] {
       logo: <span aria-hidden className="cc-vendor-icon" style={{ color: '#d97757', width: 26, height: 26, fontSize: 26, display: 'inline-flex' }} dangerouslySetInnerHTML={{ __html: claudeSvg }} />,
       name: 'Claude Code',
       desc: 'Anthropic 官方 CLI，Claude 订阅用户直连。',
+      mode: 'connect',
     },
     {
       client: 'codex',
       logo: <ClientLogo src={codexPng} alt="Codex" />,
       name: 'Codex',
       desc: 'OpenAI CLI，通过环境变量携带令牌。',
+      mode: 'connect',
     },
     {
       client: 'cursor',
       logo: <ClientLogo src={cursorPng} alt="Cursor" />,
       name: 'Cursor',
       desc: '写入 ~/.cursor/mcp.json 的全局配置。',
+      mode: 'connect',
     },
     {
       client: 'antigravity',
       logo: <ClientLogo src={antigravityPng} alt="Antigravity" />,
       name: 'Antigravity',
       desc: '写入 ~/.gemini/antigravity/mcp_config.json。',
+      mode: 'connect',
+    },
+    {
+      client: 'qoder',
+      logo: <ClientMonogram letter="Q" ariaLabel="Qoder" />,
+      name: 'Qoder',
+      desc: '写入 ~/.qoder/settings.json，国内版同时写 ~/.qoder-cn。',
+      mode: 'connect',
+    },
+    {
+      client: 'qwenwork',
+      logo: <span aria-hidden className="cc-vendor-icon" style={{ width: 26, height: 26, fontSize: 26, display: 'inline-flex' }} dangerouslySetInnerHTML={{ __html: qwenSvg }} />,
+      name: '千问办公',
+      desc: '自定义 MCP 只存在应用内，复制 JSON 后在连接器里粘贴。',
+      mode: 'paste',
     },
   ];
 }
@@ -54,6 +79,22 @@ function ClientLogo({ src, alt }: { src: string; alt: string }) {
       aria-hidden
       style={{ width: 26, height: 26, borderRadius: 6, objectFit: 'contain', flex: '0 0 auto', background: theme.panel, border: `0.5px solid ${theme.borderLight}` }}
     />
+  );
+}
+
+function ClientMonogram({ letter, ariaLabel }: { letter: string; ariaLabel: string }) {
+  return (
+    <span
+      aria-label={ariaLabel}
+      style={{
+        width: 26, height: 26, borderRadius: 6, flex: '0 0 auto',
+        background: theme.inset, border: `0.5px solid ${theme.borderLight}`,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        color: theme.textMuted, fontSize: 13, fontWeight: 700,
+      }}
+    >
+      {letter}
+    </span>
   );
 }
 
@@ -113,6 +154,40 @@ function ConnectButton({ client, onStatus }: { client: ClientSnippet['client']; 
   );
 }
 
+function CopySnippetButton({ getSnippet, onStatus }: { getSnippet: () => string; onStatus: (message: string, ok: boolean) => void }) {
+  const t = useT();
+  const [state, setState] = useState<'idle' | 'done' | 'error'>('idle');
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard
+          .writeText(getSnippet())
+          .then(() => {
+            setState('done');
+            onStatus(t('配置已复制，粘贴到客户端的自定义 MCP 输入框。'), true);
+            setTimeout(() => setState('idle'), 2500);
+          })
+          .catch(() => {
+            setState('error');
+            onStatus(t('复制失败，请手动选择配置文本。'), false);
+          });
+      }}
+      style={{
+        flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '4px 10px', border: '0.5px solid transparent', borderRadius: 5,
+        background: state === 'error' ? theme.hover : `linear-gradient(135deg, ${theme.accent}, ${theme.accentDeep})`,
+        boxShadow: state === 'error' ? 'none' : themeAlpha.shadow(0.25),
+        color: state === 'error' ? theme.danger : theme.onAccent,
+        fontSize: 11, fontWeight: 600, cursor: 'pointer',
+      }}
+    >
+      <Icon name={state === 'done' ? 'check' : 'copy'} size={11} />
+      {state === 'done' ? t('已复制') : t('复制配置')}
+    </button>
+  );
+}
+
 const cardStyle: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 8,
   background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
@@ -124,6 +199,12 @@ const endpointStyle: React.CSSProperties = {
   background: theme.inset, color: theme.textMuted, fontSize: 11.5, lineHeight: 1.5,
   fontFamily: 'Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
   whiteSpace: 'nowrap', overflowX: 'auto', userSelect: 'text',
+};
+
+/** Pretty-printed connect JSON: wraps instead of scrolling sideways. */
+const snippetStyle: React.CSSProperties = {
+  ...endpointStyle,
+  margin: 0, whiteSpace: 'pre-wrap', overflowX: 'visible',
 };
 
 export function McpGuideDialog({ onClose }: { onClose: () => void }) {
@@ -183,16 +264,24 @@ export function McpGuideDialog({ onClose }: { onClose: () => void }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {snippet.logo}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>{snippet.name}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{t(snippet.name)}</span>
                     <span style={{ color: theme.textMuted, fontSize: 11.5 }}>{t(snippet.desc)}</span>
                   </div>
                   <div style={{ marginLeft: 'auto' }}>
-                    <ConnectButton
-                      client={snippet.client}
-                      onStatus={(message, ok) => setConnectStatus((prev) => ({ ...prev, [snippet.client]: { message, ok } }))}
-                    />
+                    {snippet.mode === 'connect' ? (
+                      <ConnectButton
+                        client={snippet.client}
+                        onStatus={(message, ok) => setConnectStatus((prev) => ({ ...prev, [snippet.client]: { message, ok } }))}
+                      />
+                    ) : (
+                      <CopySnippetButton
+                        getSnippet={() => qwenWorkConnectJson(endpoint, mcpToken)}
+                        onStatus={(message, ok) => setConnectStatus((prev) => ({ ...prev, [snippet.client]: { message, ok } }))}
+                      />
+                    )}
                   </div>
                 </div>
+                {snippet.mode === 'paste' ? <pre style={snippetStyle}>{qwenWorkConnectJson(endpoint, mcpToken)}</pre> : null}
                 {connectStatus[snippet.client]?.message ? (
                   <div style={{ color: connectStatus[snippet.client].ok ? theme.accent : theme.danger, fontSize: 11 }}>
                     {connectStatus[snippet.client].message}

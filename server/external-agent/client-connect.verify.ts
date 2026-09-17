@@ -60,7 +60,35 @@ async function main(): Promise<void> {
     assert.equal(claudeConfig.mcpServers.openchatcut.type, 'http');
     assert.equal(claudeConfig.mcpServers.openchatcut.url, ENDPOINT);
 
-    // 6. Codex: stub CLI must receive the right args; .zshrc export is added,
+    // 6. Qoder: neither build home exists yet, so the documented ~/.qoder wins.
+    const qoderFirst = await connectExternalClient('qoder', ENDPOINT, TOKEN, { baseDir: home });
+    assert.equal(qoderFirst.ok, true);
+    if (qoderFirst.ok) assert.deepEqual(qoderFirst.paths, ['~/.qoder/settings.json']);
+    const qoderConfig = JSON.parse(await readFile(path.join(home, '.qoder/settings.json'), 'utf8'));
+    assert.equal(qoderConfig.mcpServers.openchatcut.type, 'http');
+    assert.equal(qoderConfig.mcpServers.openchatcut.url, ENDPOINT);
+    assert.equal(qoderConfig.mcpServers.openchatcut.headers.Authorization, `Bearer ${TOKEN}`);
+    // An unrelated entry survives the merge. Qoder's settings.json is the app's
+    // whole settings file rather than a dedicated MCP config, so keys outside
+    // mcpServers must survive too.
+    qoderConfig.mcpServers.keeps = { command: 'keep-me' };
+    qoderConfig.theme = 'dark';
+    await writeFile(path.join(home, '.qoder/settings.json'), JSON.stringify(qoderConfig, null, 2));
+    // Once a China build home is installed too, both settings files get the entry.
+    await mkdir(path.join(home, '.qoder-cn'), { recursive: true });
+    const qoderBoth = await connectExternalClient('qoder', ENDPOINT, 'tok_QOD2', { baseDir: home });
+    assert.equal(qoderBoth.ok, true);
+    if (qoderBoth.ok) assert.deepEqual(qoderBoth.paths, ['~/.qoder/settings.json', '~/.qoder-cn/settings.json']);
+    const qoderInternational = JSON.parse(await readFile(path.join(home, '.qoder/settings.json'), 'utf8'));
+    assert.deepEqual(qoderInternational.mcpServers.keeps, { command: 'keep-me' }, 'unrelated server preserved');
+    assert.equal(qoderInternational.theme, 'dark', 'unrelated settings preserved');
+    for (const file of ['.qoder/settings.json', '.qoder-cn/settings.json']) {
+      const config = JSON.parse(await readFile(path.join(home, file), 'utf8'));
+      assert.equal(config.mcpServers.openchatcut.url, ENDPOINT, `${file} points at OpenChatCut`);
+      assert.equal(config.mcpServers.openchatcut.headers.Authorization, 'Bearer tok_QOD2', `${file} refreshed`);
+    }
+
+    // 7. Codex: stub CLI must receive the right args; .zshrc export is added,
     //    then updated (not duplicated) when the token changes.
     const stubDir = path.join(home, 'bin');
     await mkdir(stubDir, { recursive: true });
@@ -95,7 +123,7 @@ async function main(): Promise<void> {
       assert.match(codexFail.detail ?? '', /boom/);
     }
 
-    // 8. Validation: unknown client and malformed token are rejected.
+    // 9. Validation: unknown client and malformed token are rejected.
     const badClient = await connectExternalClient('evil', ENDPOINT, TOKEN, { baseDir: home });
     assert.equal(badClient.ok, false);
     const badToken = await connectExternalClient('cursor', ENDPOINT, "'; rm -rf ~", { baseDir: home });
