@@ -10,7 +10,9 @@ import { runClaudeCodeTurn, translateClaudeCodeLine } from './turn-runner.ts';
 // -- version parsing / support gate -----------------------------------------
 assert.equal(isSupportedClaudeCodeVersion(MINIMUM_CLAUDE_CODE_VERSION), true);
 assert.equal(isSupportedClaudeCodeVersion('1.9.9'), false, 'below the floor is unsupported');
-assert.equal(isSupportedClaudeCodeVersion('2.1.260'), true, 'the installed dev version is supported');
+assert.equal(isSupportedClaudeCodeVersion('2.1.262'), false, 'one build below the sandbox-flag floor is unsupported');
+assert.equal(isSupportedClaudeCodeVersion('2.1.263'), true, 'the verified version is supported');
+assert.equal(isSupportedClaudeCodeVersion('2.2.0'), true, 'newer versions stay supported');
 assert.equal(isSupportedClaudeCodeVersion(null), false);
 
 // -- Windows command-escaping safety (mirrors server/codex/command.ts) ------
@@ -107,7 +109,19 @@ function valueAfter(flag) {
 }
 if (!has('--strict-mcp-config')) process.exit(61);
 if (!has('--allowedTools') || valueAfter('--allowedTools') !== 'mcp__openchatcut-builtin__*') process.exit(62);
-if (!has('--permission-mode') || valueAfter('--permission-mode') !== 'bypassPermissions') process.exit(63);
+// The turn must run sandboxed: restricted mode + deny list + fail-closed prompts.
+// bypassPermissions is refused by --restricted (2.1.263) and must never come back.
+if (has('--permission-mode')) process.exit(63);
+if (!has('--restricted')) process.exit(65);
+if (valueAfter('--permission-prompts') !== 'none') process.exit(66);
+if (!has('--disallowedTools')) process.exit(67);
+for (const denied of ['Bash', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'Task']) {
+  if (!valueAfter('--disallowedTools').split(' ').includes(denied)) process.exit(68);
+}
+// Restricted mode scopes file tools to the working directory, so the child must
+// not inherit the app checkout as its cwd. Compare the directory NAME (the
+// mkdtemp prefix) — tmpdir() and cwd() disagree on macOS through /var symlinks.
+if (!process.cwd().split(/[\\/]/).pop().startsWith('occ-claude-code-')) process.exit(69);
 if (!has('--mcp-config')) process.exit(64);
 // Regression guard: the MCP server this turn spawns must NOT be named plain
 // "openchatcut". Claude Code caches auth failures by server NAME in

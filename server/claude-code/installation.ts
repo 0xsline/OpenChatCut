@@ -7,8 +7,13 @@ import { claudeCodeCommand } from './command.ts';
 
 const VERSION_TIMEOUT_MS = 10_000;
 const VERSION_OUTPUT_LIMIT = 16 * 1024;
-/** Floor covering --mcp-config/--strict-mcp-config/--output-format stream-json, all present in 2.1.260. */
-export const MINIMUM_CLAUDE_CODE_VERSION = '2.0.0';
+/**
+ * Floor covering every flag this backend passes: --mcp-config / --strict-mcp-config /
+ * --output-format stream-json, plus the sandbox flags added for the hardened turn
+ * run (--restricted, --disallowedTools, --permission-prompts). 2.1.263 is the version
+ * that combination was verified against; an older CLI must not be driven with it.
+ */
+export const MINIMUM_CLAUDE_CODE_VERSION = '2.1.263';
 
 export interface ClaudeCodeInstallation {
   readonly installed: boolean;
