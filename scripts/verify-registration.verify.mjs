@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Verifies deliberately left out of the suite, each with the reason it cannot
@@ -18,7 +19,9 @@ import { readFileSync } from 'node:fs';
  */
 const EXCLUDED = new Map([]);
 
-const root = new URL('..', import.meta.url).pathname;
+// fileURLToPath, not .pathname: on Windows the latter yields "/D:/repo", which is
+// not a usable cwd — spawnSync died with ENOENT and this check never ran there.
+const root = fileURLToPath(new URL('..', import.meta.url));
 const tracked = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
   .split('\n')
   .filter((file) => /\.verify\.(ts|tsx|mjs)$/.test(file));
