@@ -1,0 +1,2 @@
+// GENERATED from src/gl/fx/ascii-rain-composite.frag by scripts/sync-shader-sources.mjs — do not edit.
+export default "#version 300 es\nprecision highp float;\nuniform sampler2D u_input;\nuniform sampler2D u_bloom;\nuniform float u_glow;\nin vec2 v_texCoord;\nout vec4 fragColor;\n\nvoid main() {\n  vec4 base = texture(u_input, v_texCoord);\n  vec4 bloom = texture(u_bloom, v_texCoord);\n  vec3 color = base.rgb + bloom.rgb * u_glow;\n  float alpha = clamp(base.a + bloom.a * u_glow, 0.0, 1.0);\n  fragColor = vec4(clamp(color, 0.0, 1.0), alpha);\n}\n";

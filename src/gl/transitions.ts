@@ -4,22 +4,22 @@
 // color defaults aren't in that table — chosen by eye.
 import type { GlslTransitionType, TransitionDirection } from '../editor/types';
 import type { UniformValue } from './runtime';
-import pageCurl from './shaders/page-curl.frag?raw';
-import rackFocus from './shaders/rack-focus.frag?raw';
-import organicDissolve from './shaders/organic-dissolve.frag?raw';
-import impactShake from './shaders/impact-shake.frag?raw';
-import anticipationZoom from './shaders/anticipation-zoom.frag?raw';
-import cleanLineWipe from './shaders/clean-line-wipe.frag?raw';
-import crossDissolve from './shaders/cross-dissolve.frag?raw';
-import dipToBlack from './shaders/dip-to-black.frag?raw';
-import flash from './shaders/flash.frag?raw';
-import lumaBlend from './shaders/luma-blend.frag?raw';
-import softWipe from './shaders/soft-wipe.frag?raw';
-import whipPan from './shaders/whip-pan.frag?raw';
-import circleWipe from './shaders/circle-wipe.frag?raw';
-import radialBlur from './shaders/radial-blur.frag?raw';
-import glitchCut from './shaders/glitch-cut.frag?raw';
-import dipToColor from './shaders/dip-to-color.frag?raw';
+import pageCurl from './shaders/page-curl.frag.ts';
+import rackFocus from './shaders/rack-focus.frag.ts';
+import organicDissolve from './shaders/organic-dissolve.frag.ts';
+import impactShake from './shaders/impact-shake.frag.ts';
+import anticipationZoom from './shaders/anticipation-zoom.frag.ts';
+import cleanLineWipe from './shaders/clean-line-wipe.frag.ts';
+import crossDissolve from './shaders/cross-dissolve.frag.ts';
+import dipToBlack from './shaders/dip-to-black.frag.ts';
+import flash from './shaders/flash.frag.ts';
+import lumaBlend from './shaders/luma-blend.frag.ts';
+import softWipe from './shaders/soft-wipe.frag.ts';
+import whipPan from './shaders/whip-pan.frag.ts';
+import circleWipe from './shaders/circle-wipe.frag.ts';
+import radialBlur from './shaders/radial-blur.frag.ts';
+import glitchCut from './shaders/glitch-cut.frag.ts';
+import dipToColor from './shaders/dip-to-color.frag.ts';
 
 export interface GlslTransitionDef {
   frag: string;

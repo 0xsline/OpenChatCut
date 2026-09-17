@@ -1,5 +1,5 @@
 // Runtime registry for submit_shader-generated custom TRANSITION shaders
-// (submit_shader type=transition). PURE — no `.frag?raw` imports — so it loads under tsx.
+// (submit_shader type=transition). PURE — no shader source imports — so it loads under tsx.
 //
 // It is only a BRIDGE: submit_shader registers the generated two-input GLSL + props here and
 // returns an id; edit_item adds:[{type:'transition',assetId:'custom:tr-*'}] looks it up and

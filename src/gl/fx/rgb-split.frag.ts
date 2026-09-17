@@ -1,0 +1,2 @@
+// GENERATED from src/gl/fx/rgb-split.frag by scripts/sync-shader-sources.mjs — do not edit.
+export default "#version 300 es\nprecision highp float;\nuniform sampler2D u_input;\nuniform float u_amount;\nuniform float u_angle;\nin vec2 v_texCoord;\nout vec4 fragColor;\nvoid main() {\n  vec2 dir = vec2(cos(u_angle), sin(u_angle)) * u_amount;\n  float r = texture(u_input, v_texCoord + dir).r;\n  float g = texture(u_input, v_texCoord).g;\n  float b = texture(u_input, v_texCoord - dir).b;\n  float a = texture(u_input, v_texCoord).a;\n  fragColor = vec4(r, g, b, a);\n}\n";

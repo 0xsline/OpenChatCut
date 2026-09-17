@@ -1,0 +1,2 @@
+// GENERATED from src/gl/fx/posterize.frag by scripts/sync-shader-sources.mjs — do not edit.
+export default "#version 300 es\nprecision highp float;\nuniform sampler2D u_input;\nuniform float u_levels;\nuniform float u_contrast;\nin vec2 v_texCoord;\nout vec4 fragColor;\nvoid main() {\n  vec4 c = texture(u_input, v_texCoord);\n  float lv = max(u_levels, 2.0);\n  vec3 g = (c.rgb - 0.5) * u_contrast + 0.5;\n  vec3 p = floor(clamp(g, 0.0, 1.0) * (lv - 1.0) + 0.5) / (lv - 1.0);\n  fragColor = vec4(p, c.a);\n}\n";

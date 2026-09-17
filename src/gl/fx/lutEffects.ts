@@ -1,21 +1,21 @@
 // Camera-log → Rec.709 LUT catalog, split out of effects.ts (which re-exports
 // it, so no import site changes).
 
-import lutFrag from './lut.frag?raw';
-import lookTealOrangeFrag from './look-teal-orange.frag?raw';
-import lookMonoFrag from './look-mono.frag?raw';
-import lookWarmFrag from './look-warm.frag?raw';
-import lookCoolFrag from './look-cool.frag?raw';
-import lookSunsetFrag from './look-sunset.frag?raw';
-import lookCyberFrag from './look-cyber.frag?raw';
-import lookBleachFrag from './look-bleach.frag?raw';
-import lookFujiChromeFrag from './look-fuji-chrome.frag?raw';
-import lookFujiPortraFrag from './look-fuji-portra.frag?raw';
-import lookFujiVelviaFrag from './look-fuji-velvia.frag?raw';
-import lookRicohGrFrag from './look-ricoh-gr.frag?raw';
-import lookKodakGoldFrag from './look-kodak-gold.frag?raw';
-import lookDisposableFrag from './look-disposable.frag?raw';
-import lookCinestillFrag from './look-cinestill.frag?raw';
+import lutFrag from './lut.frag.ts';
+import lookTealOrangeFrag from './look-teal-orange.frag.ts';
+import lookMonoFrag from './look-mono.frag.ts';
+import lookWarmFrag from './look-warm.frag.ts';
+import lookCoolFrag from './look-cool.frag.ts';
+import lookSunsetFrag from './look-sunset.frag.ts';
+import lookCyberFrag from './look-cyber.frag.ts';
+import lookBleachFrag from './look-bleach.frag.ts';
+import lookFujiChromeFrag from './look-fuji-chrome.frag.ts';
+import lookFujiPortraFrag from './look-fuji-portra.frag.ts';
+import lookFujiVelviaFrag from './look-fuji-velvia.frag.ts';
+import lookRicohGrFrag from './look-ricoh-gr.frag.ts';
+import lookKodakGoldFrag from './look-kodak-gold.frag.ts';
+import lookDisposableFrag from './look-disposable.frag.ts';
+import lookCinestillFrag from './look-cinestill.frag.ts';
 import type { FxDef } from './uniforms';
 
 // LUTs: camera-log → Rec.709 color transforms. Kept

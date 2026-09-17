@@ -230,16 +230,43 @@ try {
   occOk(['item', 'rm', 'clip-fixture', '--apply']);
   assert.equal(items().length, 2, 'remove_item drops exactly one clip');
 
-  // 11. media ls reads the pool without touching it
+  // 11. GL-backed tools: edit_item and manage_effects run headless
+  const catalogTools = occJson<ToolJson[]>(['tools', 'ls', '--json']);
+  assert.ok(catalogTools.some((tool) => tool.name === 'edit_item'), 'edit_item must be headless');
+  assert.ok(catalogTools.some((tool) => tool.name === 'manage_effects'), 'manage_effects must be headless');
+  const effects = occJson<CallJson>([
+    'tools', 'call', 'manage_effects', '--args', '{"action":"list"}', '--project', created.id, '--json',
+  ]);
+  const effectResult = effects.ops[0]?.result as
+    | { effects?: unknown[]; archived?: boolean }
+    | undefined;
+  assert.ok(
+    effectResult?.archived === true || (effectResult?.effects?.length ?? 0) > 10,
+    'the GL effect catalog must load in this process (large results come back archived)',
+  );
+  const target = items()[0]?.id;
+  assert.ok(target, 'a clip must survive the remove step');
+  occOk([
+    'tools', 'call', 'edit_item',
+    '--args', `{"updates":[{"type":"solid","itemId":"${target}","transform":{"opacity":0.42}}]}`,
+    '--project', created.id, '--apply',
+  ]);
+  const edited = occJson<{ doc: { timelines: { items: { id: string; transform?: { opacity?: number } }[] }[] } }>(
+    ['project', 'show', created.id, '--doc', '--json'],
+  );
+  const editedClip = edited.doc.timelines[0]?.items.find((item) => item.id === target);
+  assert.equal(editedClip?.transform?.opacity, 0.42, 'edit_item must write through the offline session');
+
+  // 12. media ls reads the pool without touching it
   const media = occJson<{ assets: unknown[] }>(['media', 'ls', created.id, '--json']);
   assert.deepEqual(media.assets, []);
 
-  // 12. browser-backed tools are refused, and the failure is observable
+  // 13. browser-backed tools are refused, and the failure is observable
   const refused = occ(['tools', 'call', 'import_media', '--args', '{}', '--project', created.id]);
   assert.equal(refused.status, 1);
   assert.match(refused.stderr, /headless tool subset/);
 
-  // 13. bad references and bad flags fail loudly
+  // 14. bad references and bad flags fail loudly
   const missingProject = occ(['timeline', 'show', 'no-such-project']);
   assert.equal(missingProject.status, 1);
   assert.match(missingProject.stderr, /No project matches/);

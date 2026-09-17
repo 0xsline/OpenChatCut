@@ -15,6 +15,23 @@ import { execTimelineImportTool } from '../../src/agent/tools/timeline-import-to
 type Args = Record<string, unknown>;
 
 /**
+ * edit_item and manage_effects validate against the GL catalogs, which import
+ * shader sources with Vite's `?raw` suffix. Hosts that can resolve that — vite
+ * dev, the desktop bundle (scripts/esbuild-raw-plugin.mjs) and the CLI
+ * (cli/raw-hooks.mjs) — run them; a bare tsx host cannot load the module at all,
+ * so the import stays lazy and only a real call pays for it. Same pattern as
+ * src/agent/tools/shader-tools.ts.
+ */
+async function executeGlBackedTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
+  if (name === 'edit_item') {
+    const { execEditItemTool } = await import('../../src/agent/tools/edit-item-tools.js');
+    return execEditItemTool(name, args, ctx);
+  }
+  const { execEffectTool } = await import('../../src/agent/tools/effect-tools.js');
+  return execEffectTool(name, args, ctx);
+}
+
+/**
  * Execute only the dependency-closed tools reviewed for server-side EditorCore use.
  * This separate dispatch keeps GL, media, network, IndexedDB, generation, and
  * render modules out of the desktop server bundle.
@@ -24,6 +41,7 @@ export async function executeOfflineTool(
   args: Args,
   ctx: AgentContext,
 ): Promise<unknown> {
+  if (name === 'edit_item' || name === 'manage_effects') return executeGlBackedTool(name, args, ctx);
   if (name === 'read_agent_artifact') return execAgentRuntimeTool(name, args, ctx);
   if (CORE_DATA_TOOL_NAMES.has(name)) return execCoreDataTool(name, args, ctx);
   if (name === 'manage_timelines') return execTimelineTool(name, args, ctx);

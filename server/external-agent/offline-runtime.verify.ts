@@ -16,15 +16,18 @@ import { verifyOfflineCommitAndProjectionScenarios } from './offline-runtime-saf
 
 const toolNames = new Set(offlineExternalToolSchemas().map((schema) => schema.name));
 
-for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline']) {
+for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline', 'edit_item', 'manage_effects']) {
   assert.equal(toolNames.has(allowed), true, `${allowed} is server-direct`);
 }
+// edit_item and manage_effects moved into the server-direct set once their GL
+// catalogs became loadable outside Vite (cli/raw-hooks.mjs for the CLI,
+// scripts/esbuild-raw-plugin.mjs for the desktop bundle); the tools below remain
+// browser-bound and must stay out.
 for (const excluded of [
   'list_edit_sessions',
   'recover_edit_session',
-  'edit_item',
-  'manage_effects',
   'view_timeline_frames',
+  'add_motion_graphic',
   'submit_image',
   'import_media',
   'download_media',

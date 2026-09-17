@@ -1,0 +1,2 @@
+// GENERATED from src/gl/fx/invert.frag by scripts/sync-shader-sources.mjs — do not edit.
+export default "#version 300 es\nprecision highp float;\nuniform sampler2D u_input;\nuniform float u_intensity;\nin vec2 v_texCoord;\nout vec4 fragColor;\nvoid main() {\n  vec4 c = texture(u_input, v_texCoord);\n  vec3 inv = 1.0 - c.rgb;\n  fragColor = vec4(mix(c.rgb, inv, clamp(u_intensity, 0.0, 1.0)), c.a);\n}\n";

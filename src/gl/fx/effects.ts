@@ -4,7 +4,7 @@
 // built on them. Everything the catalogs export is re-exported here, so every
 // existing `from '.../gl/fx/effects'` import keeps working unchanged.
 
-import lutFrag from './lut.frag?raw';
+import lutFrag from './lut.frag.ts';
 import type { FxDef, SerializableFxDef } from './uniforms';
 import { FX_EFFECTS } from './shaderEffects';
 import { LUT_EFFECTS } from './lutEffects';

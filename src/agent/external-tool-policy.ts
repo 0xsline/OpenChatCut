@@ -48,6 +48,13 @@ const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
   update_watermark: true,
   manage_markers: true,
   import_timeline: true,
+  // Reviewed for server-side execution: both run against the draft's EditorCore
+  // commands with state/doc only. Their GL catalogs import shaders with Vite's
+  // `?raw` suffix, which the CLI host now resolves (cli/raw-hooks.mjs) and the
+  // desktop bundle resolves through scripts/esbuild-raw-plugin.mjs; the review
+  // for these two lives in the commit that added them.
+  edit_item: true,
+  manage_effects: true,
 };
 
 const SERVER_DIRECT_BROWSER_ACTIONS: Record<string, true> = {

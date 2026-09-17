@@ -254,7 +254,8 @@ export function normalizeShaderArgs(args: Args): { kind: 'effect' | 'transition'
 export interface ShaderCodeRef { id: string; kind: 'effect' | 'transition'; label: string; frag: string }
 export interface ShaderRefs { imageAssets: MediaAsset[]; codeRef: ShaderCodeRef | null }
 
-/** Effects.ts pulls.frag?raw (only Vite/browser can parse) → dynamic import, silently unavailable under node/tsx.*/
+/** GL catalogs are browser-side runtime state, so the lookup stays lazy: node hosts
+ *  (tsx checks, the CLI) never pay for the GL modules unless they ask for a reference. */
 async function lookupFxRef(id: string): Promise<ShaderCodeRef | null> {
   if (typeof document === 'undefined') return null;
   try {
@@ -406,8 +407,8 @@ export async function execShaderTool(name: string, args: Args, ctx: AgentContext
 
   const def: FxDef = { ...buildCustomFxDef(displayName, glsl, rawProps), desc: prompt.slice(0, 200) };
   try {
-    // effects.ts contains.frag?raw import (only Vite/browser can parse); dynamic import allows this module to
-    // The Node/tsx validation environment is not polluted and registration only occurs when the browser executes the tool.
+    // Registration writes to the GL runtime's in-memory registry, which only exists
+    // where GL runs; the import stays lazy so this module remains node-safe.
     const { registerCustomFx } = await import('../../gl/fx/effects');
     registerCustomFx(def);
   } catch (e) {

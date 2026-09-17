@@ -1,8 +1,7 @@
 // 色度键（chroma-key）效果的独立自检。
-// 不 import effects.ts —— 它的 `.frag?raw` 导入依赖 Vite 的 raw-loader，裸
-// `npx tsx` 解析不了（会把 .frag 当 JS 解析报错），这里跟 fx.check.ts 一样
-// 手动镜像 FX_EFFECTS['builtin:fx-chroma-key'] 的 id/props（须与 effects.ts 保持一致），
-// frag 源码则用 fs 直接读文本校验契约。
+// 刻意不 import effects.ts（避免把 GL 运行时/着色器目录拉进 tsx 自检），这里跟
+// fx.check.ts 一样手动镜像 FX_EFFECTS['builtin:fx-chroma-key'] 的 id/props
+// （须与 effects.ts 保持一致），frag 源码则用 fs 直接读文本校验契约。
 // 跑法: npx tsx src/gl/fx/chroma-key.check.ts
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';

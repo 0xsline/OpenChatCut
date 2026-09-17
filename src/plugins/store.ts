@@ -300,7 +300,7 @@ export function transitionDefOf(pack: PluginPack, item: PluginTransitionItem): C
 }
 
 /** Single packages are registered into the runtime registry (fx/lut → ALL_FX, transition → custom registry).
- * effects.ts contains.frag?raw import, which can only be imported dynamically (browser side).*/
+ * The GL catalogs are browser-side runtime state, so the imports stay dynamic (browser side).*/
 export async function registerPack(pack: InstalledPack): Promise<void> {
   if (!pack.enabled) return;
   const [fx, tr] = await Promise.all([

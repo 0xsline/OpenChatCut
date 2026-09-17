@@ -82,8 +82,9 @@ assert.strictEqual(compileCheck(VALID), null, 'compileCheck skips (returns null)
 
 // ── registration contract ──
 // registerCustomFx (effects.ts) does exactly `CUSTOM_FX[def.id] = def; ALL_FX[def.id] = def`.
-// effects.ts can't be imported under tsx (it pulls .frag?raw), so we assert the contract
-// that manage_effects relies on: the built id is a stable string key discoverable via `in`.
+// effects.ts can be imported under tsx, but this check keeps mirroring the contract
+// on purpose: it must fail when the registry shape `manage_effects` relies on
+// changes, which importing the module under test would hide.
 const registry: Record<string, typeof def> = {};
 registry[def.id] = def;
 assert.ok(def.id in registry, 'registered effect discoverable by id (manage_effects `assetId in FX_EFFECTS`)');

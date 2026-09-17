@@ -1,0 +1,2 @@
+// GENERATED from src/gl/fx/pixelate.frag by scripts/sync-shader-sources.mjs — do not edit.
+export default "#version 300 es\nprecision highp float;\nuniform sampler2D u_input;\nuniform float u_blockSize;\nuniform vec2 u_resolution;\nin vec2 v_texCoord;\nout vec4 fragColor;\nvoid main() {\n  float b = max(u_blockSize, 1.0);\n  vec2 res = max(u_resolution, vec2(1.0));\n  vec2 blocks = res / b;\n  vec2 uv = (floor(v_texCoord * blocks) + 0.5) / blocks;\n  fragColor = texture(u_input, uv);\n}\n";

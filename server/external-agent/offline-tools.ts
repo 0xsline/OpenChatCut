@@ -7,6 +7,8 @@ import { isExternalServerDirectTool } from '../../src/agent/external-tool-policy
 import { AGENT_RUNTIME_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/agent-runtime-tools.js';
 import { CORE_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/core-tools.js';
 import { CAPTIONS_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/captions-tools.js';
+import { EDIT_ITEM_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/edit-item-tools.js';
+import { EFFECT_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/effect-tools.js';
 import { MARKERS_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/markers-tools.js';
 import { READ_PROJECT_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/read-project-tools.js';
 import { SCRIPT_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/script-tools.js';
@@ -32,6 +34,8 @@ const OFFLINE_SESSION_TOOL_NAMES = new Set([
 const OFFLINE_SCHEMA_GROUPS = [
   AGENT_RUNTIME_TOOL_SCHEMAS,
   CORE_TOOL_SCHEMAS,
+  EDIT_ITEM_TOOL_SCHEMAS,
+  EFFECT_TOOL_SCHEMAS,
   TIMELINE_TOOL_SCHEMAS,
   TRACK_TOOL_SCHEMAS,
   SCRIPT_TOOL_SCHEMAS,
