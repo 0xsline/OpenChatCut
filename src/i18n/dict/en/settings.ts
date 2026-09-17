@@ -136,6 +136,7 @@ export default {
   '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。': 'Each provider keeps its own endpoint, key, and model. Test the connection, then choose from the models returned by that API.',
   '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。': 'Enter the complete API prefix. You can use the official endpoint, your own gateway, or a compatible relay.',
   '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。': 'After testing, choose a returned model or enter a model ID manually.',
+  '也可以手动填写厂商的其它模型 ID，建议列表仅为常用模型。': 'You can also enter any other model ID from this vendor; the suggestion list covers common models only.',
   '选择服务实际支持的协议；OpenAI 使用 Responses API，兼容服务使用 Chat Completions API。': 'Choose the protocol your service actually supports. OpenAI uses the Responses API; compatible services use Chat Completions.',
   '选择厂商后会自动使用官方 API 地址、接口格式和推荐模型，也可以在下方覆盖。': 'Choose a provider to use its official endpoint, protocol, and recommended model automatically, or override them below.',
   '填写完整 API 前缀（可含 /v1、/v1beta/openai 等路径）；切换厂商会重置地址与模型，并立即生效。': 'Enter the full API prefix, including paths such as /v1 or /v1beta/openai. Switching providers resets the Base URL and model and takes effect immediately.',

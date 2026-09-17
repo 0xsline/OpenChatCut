@@ -74,7 +74,11 @@ export const modelText = (
 ): SettingsField => ({ name, label, kind: 'text', defaultLabel, note, discoverableModel });
 export const directory = (name: string, label: string, defaultLabel: string, note?: string): SettingsField =>
   ({ name, label, kind: 'directory', defaultLabel, note });
-export const modelSelect = (
+/** Vendor model id: free text with the known ids as autocomplete suggestions.
+ *  A plain <select> could only hold one of its own options, so a model the
+ *  vendor shipped after this list was written was unreachable until we
+ *  released a new build. */
+export const modelPicker = (
   name: string,
   label: string,
   defaultLabel: string,
@@ -82,8 +86,9 @@ export const modelSelect = (
 ): SettingsField => ({
   name,
   label,
-  kind: 'select',
+  kind: 'text',
   defaultLabel,
+  note: '也可以手动填写厂商的其它模型 ID，建议列表仅为常用模型。',
   options: values.map((value) => ({ value, label: value })),
 });
 

@@ -99,6 +99,7 @@ const overrides: Record<string, string> = {
   '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。': 'Ogni provider salva endpoint, chiave e modello separatamente. Testa la connessione, poi scegli tra i modelli restituiti dall’API.',
   '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。': 'Inserisci il prefisso API completo. Puoi usare endpoint ufficiali, gateway personali o relay compatibili.',
   '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。': 'Dopo il test puoi scegliere un modello restituito dall’API o inserire manualmente un ID modello.',
+  '也可以手动填写厂商的其它模型 ID，建议列表仅为常用模型。': 'Puoi anche inserire manualmente un altro ID modello di questo provider; l’elenco suggerito copre solo i modelli più comuni.',
   '选择服务实际支持的协议；OpenAI 使用 Responses API，兼容服务使用 Chat Completions API。': 'Scegli il protocollo realmente supportato dal servizio. OpenAI usa Responses API; i servizi compatibili usano Chat Completions.',
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'Una sola chiave MiniMax copre immagini, voce, video e musica.',
   'Key 同时用于音效生成（submit_sound）。': 'La chiave viene usata anche per generare effetti sonori (submit_sound).',

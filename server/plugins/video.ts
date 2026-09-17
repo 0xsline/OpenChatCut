@@ -297,7 +297,7 @@ export function isMinimaxSubjectModel(modelName: string): boolean {
   return /s2v/i.test(modelName);
 }
 
-type MinimaxVideoFamily = 'subject' | 'hailuo02' | 'hailuo23' | 'hailuo23-fast' | 'legacy-t2v' | 'legacy-i2v';
+type MinimaxVideoFamily = 'subject' | 'hailuo02' | 'hailuo23' | 'hailuo23-fast' | 'legacy-t2v' | 'legacy-i2v' | 'unknown';
 
 function minimaxVideoFamily(modelName: string): MinimaxVideoFamily {
   if (/^s2v-01$/i.test(modelName)) return 'subject';
@@ -306,7 +306,11 @@ function minimaxVideoFamily(modelName: string): MinimaxVideoFamily {
   if (/hailuo-02/i.test(modelName)) return 'hailuo02';
   if (/^t2v-01(?:-director)?$/i.test(modelName)) return 'legacy-t2v';
   if (/^i2v-01(?:-director|-live)?$/i.test(modelName)) return 'legacy-i2v';
-  throw new Error(`unsupported MiniMax video model: ${modelName}`);
+  // Settings now accept any MiniMax video model id, so an id newer than this
+  // list must reach MiniMax instead of being rejected here. 'unknown'
+  // invents no capability constraints: an uncategorized model gets the
+  // current-generation request shape and the vendor answers for itself.
+  return 'unknown';
 }
 
 export function validateMinimaxVideoMode(input: ValidVideoRequest, modelName: string): MinimaxVideoFamily {
@@ -318,9 +322,9 @@ export function validateMinimaxVideoMode(input: ValidVideoRequest, modelName: st
     if (input.fastPretreatment !== undefined) throw new Error('MiniMax S2V does not accept fastPretreatment');
   }
   if (family === 'hailuo23-fast' && !input.firstFramePath) throw new Error('MiniMax-Hailuo-2.3-Fast is image-to-video only and requires firstFrame');
-  if (input.lastFramePath && family !== 'hailuo02') throw new Error('MiniMax first-and-last-frame mode requires MiniMax-Hailuo-02');
+  if (input.lastFramePath && family !== 'hailuo02' && family !== 'unknown') throw new Error('MiniMax first-and-last-frame mode requires MiniMax-Hailuo-02');
   if (input.lastFramePath && input.fastPretreatment !== undefined) throw new Error('MiniMax first-and-last-frame mode does not accept fastPretreatment');
-  if (input.resolution === '512p' && family !== 'hailuo02') throw new Error('hailuo 512p requires the MiniMax-Hailuo-02 model');
+  if (input.resolution === '512p' && family !== 'hailuo02' && family !== 'unknown') throw new Error('hailuo 512p requires the MiniMax-Hailuo-02 model');
   const legacy = family === 'legacy-t2v' || family === 'legacy-i2v';
   if (legacy && (input.durationSeconds !== 6 || (input.resolution && input.resolution !== '720p'))) throw new Error('legacy MiniMax video models support 6s at 720p only');
   if (legacy && input.fastPretreatment !== undefined) throw new Error('legacy MiniMax video models do not accept fastPretreatment');
