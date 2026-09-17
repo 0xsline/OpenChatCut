@@ -250,6 +250,12 @@ export async function executeServerClaudeCodeTurn(
   let turnError: unknown = null;
   const runTurn = deps.runTurn ?? runServerClaudeCodeTurn;
   const attempt = async (sessionId: string | null): Promise<void> => {
+    // The turn gets its own abort signal so the timeout can terminate the CLI
+    // subprocess (runClaudeCodeTurn kills the child on abort); the run's own
+    // signal still aborts it immediately.
+    const controller = new AbortController();
+    const forwardAbort = () => controller.abort();
+    input.signal.addEventListener('abort', forwardAbort, { once: true });
     try {
       await withTimeout(runTurn(
         {
@@ -264,10 +270,12 @@ export async function executeServerClaudeCodeTurn(
           ...(sessionId ? { sessionId } : {}),
         },
         emit,
-        input.signal,
-      ), CLAUDE_CODE_TURN_TIMEOUT_MS);
+        controller.signal,
+      ), CLAUDE_CODE_TURN_TIMEOUT_MS, () => controller.abort());
     } catch (error) {
       turnError = error;
+    } finally {
+      input.signal.removeEventListener('abort', forwardAbort);
     }
   };
   await attempt(resumeSessionId);
@@ -310,9 +318,12 @@ export async function executeServerClaudeCodeTurn(
   };
 }
 
-function withTimeout(promise: Promise<void>, timeoutMs: number): Promise<void> {
+function withTimeout(promise: Promise<void>, timeoutMs: number, onTimeout: () => void): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
+      // Stop the work, do not just stop waiting for it: a timed-out turn must
+      // not leave the CLI holding a live MCP token and editing the project.
+      onTimeout();
       reject(new Error(`Claude Code turn timed out after ${Math.round(timeoutMs / 1000)}s.`));
     }, timeoutMs);
     promise.then(
