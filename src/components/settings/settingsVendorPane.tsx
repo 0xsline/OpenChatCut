@@ -9,6 +9,8 @@ import type { CodexAgentModel } from '../../../shared/codex-agent';
 import type { CodexSettingsController } from './useCodexSettings';
 import { copilotReasoningOptions } from './copilotReasoning';
 import type { CopilotSettingsController } from './useCopilotSettings';
+import type { ClaudeCodeSettingsController } from './useClaudeCodeSettings';
+import { ClaudeCodeVendorPane } from './ClaudeCodeVendorPane';
 import { shouldRenderModelPicker } from './codexReasoning';
 import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
@@ -42,6 +44,7 @@ export interface FieldCtx {
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
   codex: CodexSettingsController;
   copilot: CopilotSettingsController;
+  claudeCode: ClaudeCodeSettingsController;
   /** Re-read /api/keys and push the result to the agent runtime (used by connection-style pages after login/logout). */
   refreshStatus: () => Promise<void>;
 }
@@ -73,10 +76,16 @@ export function VendorPane({ page, hint, ctx }: {
       {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
     </CopilotVendorPane>
   );
+  if (page.connection === 'claude-code') return (
+    <ClaudeCodeVendorPane page={page} hint={hint} ctx={ctx} rawOverrides={capabilityOverridesValue(ctx)}
+      onOverridesChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)}>
+      {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
+    </ClaudeCodeVendorPane>
+  );
   if (page.connection === 'xai-oauth') return <XaiOauthVendorPane page={page} hint={hint} ctx={ctx} />;
   if (page.key === 'llm/vision') return <VisionModelPane />;
   if (page.kind === 'local-models') return <LocalModelsPane page={page} fields={page.fields} ctx={ctx} />;
-  const on = vendorConfigured(ctx.status, page, ctx.codex.status, ctx.copilot.status);
+  const on = vendorConfigured(ctx.status, page, ctx.codex.status, ctx.copilot.status, ctx.claudeCode.status);
   return (
     <div style={pane}>
       <div>
@@ -294,7 +303,9 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
     ? ctx.codex.models.map((model) => model.id)
     : field.name === 'COPILOT_MODEL'
       ? ctx.copilot.models.filter((model) => model.supportsTools).map((model) => model.id)
-      : field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
+      : field.name === 'CLAUDE_CODE_MODEL'
+        ? ctx.claudeCode.models.map((model) => model.id)
+        : field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
   const options = field.name === 'CODEX_REASONING_EFFORT'
     ? codexReasoningOptions(ctx, (effort) => effort
       ? t('模型默认（{name}）', { name: effort })
@@ -321,7 +332,8 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
         : shouldRenderModelPicker(field, discovered.length)
           ? <ModelInput field={field} shown={shown} models={discovered} reveal={reveal}
               loading={(field.name === 'CODEX_MODEL' && ctx.codex.modelBusy)
-                || (field.name === 'COPILOT_MODEL' && ctx.copilot.modelBusy)}
+                || (field.name === 'COPILOT_MODEL' && ctx.copilot.modelBusy)
+                || (field.name === 'CLAUDE_CODE_MODEL' && ctx.claudeCode.modelBusy)}
               configured={configured} stagedClear={stagedClear} onStage={onStage} />
           : field.kind === 'select'
           ? <SelectInput field={field} status={status} shown={shown} options={options} onStage={onStage} />

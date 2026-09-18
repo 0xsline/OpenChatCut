@@ -106,7 +106,7 @@ export interface ServerRunController {
   readonly stop: () => void;
 }
 
-export type ServerRunBackend = 'api' | 'codex' | 'copilot';
+export type ServerRunBackend = 'api' | 'codex' | 'copilot' | 'claude-code';
 
 export interface ServerRunPayload {
   readonly projectId: string;
@@ -127,6 +127,8 @@ export interface ServerRunPayload {
   readonly maxAcceptanceIterations: number;
   readonly externalSessionId?: string;
   readonly openAiApiMode?: string;
+  /** claude-code only: the composer's auto-apply state, enforced on that turn's MCP server. */
+  readonly approvalMode?: 'manual' | 'auto';
 }
 
 interface ServerRunTransportContext {
@@ -142,6 +144,7 @@ interface ServerRunTransportContext {
   readonly maxAcceptanceIterations?: number;
   readonly openAiApiMode?: string;
   readonly externalSessionId?: string;
+  readonly approvalMode?: 'manual' | 'auto';
 }
 function createServerRunIdentity(): Pick<ServerRunPayload, 'runId' | 'capability'> {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -329,6 +332,7 @@ export function buildServerRunPayload(
     ...(transport.externalSessionId
       ? { externalSessionId: transport.externalSessionId }
       : {}),
+    ...(transport.approvalMode ? { approvalMode: transport.approvalMode } : {}),
   };
   const retainedHistory = budgetedHistory(payloadWithoutHistory, history);
   return {

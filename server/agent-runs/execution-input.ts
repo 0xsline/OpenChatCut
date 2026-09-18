@@ -24,11 +24,13 @@ export function resolveRunExecution(
   const readKey = (name: string): string => getKey(name as KeyName);
   const config = backend === 'codex'
     ? { provider: 'openai', model: '' }
-    : backend === 'copilot'
-      ? { provider: copilotProviderForModel(requestedModel), model: '' }
-      : resolveLlmProviderConfig(requireLlmProvider(
-        provider === undefined || provider === null || provider === '' ? getKey('LLM_PROVIDER') : provider,
-      ), readKey);
+    : backend === 'claude-code'
+      ? { provider: 'anthropic', model: '' }
+      : backend === 'copilot'
+        ? { provider: copilotProviderForModel(requestedModel), model: '' }
+        : resolveLlmProviderConfig(requireLlmProvider(
+          provider === undefined || provider === null || provider === '' ? getKey('LLM_PROVIDER') : provider,
+        ), readKey);
   const effectiveProvider = normalizeLlmProvider(config.provider);
   const effectiveModel = backend === 'copilot'
     ? requestedModel
@@ -51,6 +53,8 @@ export function resolveRunExecution(
     origin,
     tools,
     instructions: input.instructions,
+    ...(backend === 'claude-code' && (body.approvalMode === 'auto' || body.approvalMode === 'manual')
+      ? { approvalMode: body.approvalMode } : {}),
   };
 }
 
@@ -75,6 +79,8 @@ export function runRequestDigests(
       model: execution.model,
       ...(execution.backend === 'copilot'
         ? { backend: execution.backend, reasoningEffort: execution.reasoningEffort ?? null } : {}),
+      ...(execution.backend === 'claude-code'
+        ? { approvalMode: execution.approvalMode ?? null } : {}),
       openAiApiMode: execution.openAiApiMode,
       cacheMode: execution.cacheMode,
       maxOutputTokens: execution.maxOutputTokens,

@@ -6,8 +6,9 @@ import { ComposerPopover } from './ComposerPopover';
 import type { ComposerModelView } from './useComposerModelView';
 import codexPng from '../../../assets/vendor-icons/codex-color.png';
 import copilotSvg from '../../../assets/vendor-icons/copilot.svg?raw';
+import claudeSvg from '../../../assets/vendor-icons/claude-color.svg';
 
-function ChoiceLogo({ backend }: { backend: 'api' | 'codex' | 'copilot' }) {
+function ChoiceLogo({ backend }: { backend: 'api' | 'codex' | 'copilot' | 'claude-code' }) {
   if (backend === 'copilot') {
     return (
       <span
@@ -18,10 +19,10 @@ function ChoiceLogo({ backend }: { backend: 'api' | 'codex' | 'copilot' }) {
       />
     );
   }
-  if (backend !== 'codex') return null;
+  if (backend !== 'codex' && backend !== 'claude-code') return null;
   return (
     <img
-      src={codexPng}
+      src={backend === 'codex' ? codexPng : claudeSvg}
       alt=""
       aria-hidden
       style={{ width: 18, height: 18, borderRadius: 5, objectFit: 'contain', flex: '0 0 auto', background: theme.panel, border: `0.5px solid ${theme.borderLight}` }}

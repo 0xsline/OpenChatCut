@@ -11,6 +11,7 @@ import {
 } from '../../../shared/llm-providers';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
 import type { CopilotAgentStatus } from '../../../shared/copilot-agent';
+import type { ClaudeCodeAgentStatus } from '../../../shared/claude-code-agent';
 import type { VendorId } from './vendorIcons';
 import {
   directory,
@@ -322,12 +323,16 @@ export function vendorConfigured(
   page: SettingsVendorPage,
   codexStatus?: CodexAgentStatus | null,
   copilotStatus?: CopilotAgentStatus | null,
+  claudeCodeStatus?: ClaudeCodeAgentStatus | null,
 ): boolean {
   if (page.connection === 'codex') {
     return Boolean(codexStatus?.installed && codexStatus.account?.type === 'chatgpt');
   }
   if (page.connection === 'copilot') {
     return Boolean(copilotStatus?.installed && copilotStatus.supported && copilotStatus.authenticated);
+  }
+  if (page.connection === 'claude-code') {
+    return Boolean(claudeCodeStatus?.installed && claudeCodeStatus.account?.loggedIn);
   }
   if (page.connection === 'xai-oauth') {
     return Boolean(status?.keys?.LLM_XAI_OAUTH_API_KEY?.configured);
@@ -347,9 +352,11 @@ export function groupConfigured(
   group: SettingsGroup,
   codexStatus?: CodexAgentStatus | null,
   copilotStatus?: CopilotAgentStatus | null,
+  claudeCodeStatus?: ClaudeCodeAgentStatus | null,
 ): boolean {
   if (group.key === 'llm' || group.key === 'proxy') {
-    return group.vendors.some((page) => vendorConfigured(status, page, codexStatus, copilotStatus));
+    return group.vendors.some((page) =>
+      vendorConfigured(status, page, codexStatus, copilotStatus, claudeCodeStatus));
   }
   return status ? Boolean(status.caps[group.key]) : false;
 }
@@ -360,10 +367,12 @@ export function categoryGroupStats(
   category: SettingsCategory,
   codexStatus?: CodexAgentStatus | null,
   copilotStatus?: CopilotAgentStatus | null,
+  claudeCodeStatus?: ClaudeCodeAgentStatus | null,
 ): { done: number; total: number } {
   return {
     done: category.groups
-      .filter((group) => groupConfigured(status, group, codexStatus, copilotStatus)).length,
+      .filter((group) =>
+        groupConfigured(status, group, codexStatus, copilotStatus, claudeCodeStatus)).length,
     total: category.groups.length,
   };
 }
