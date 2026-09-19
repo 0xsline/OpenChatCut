@@ -4,6 +4,7 @@ import { extname, join } from 'node:path';
 import { ffmpegBin } from '../media-binaries.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { isSafeUploadName } from '../media-dir.ts';
+import { H264_HARDWARE_MAX_DIMENSION } from '../../src/export/mediaSettings.ts';
 import {
   h264EncoderAttempts,
   h264EncoderFallbackReason,
@@ -272,6 +273,7 @@ export async function retimeFps(
   targetFps: number,
   codec: 'h264' | 'vp8',
   targetBitrate: number,
+  outputSize?: { width: number; height: number },
   signal?: AbortSignal,
 ): Promise<H264EncoderOutcome | undefined> {
   await unlink(output).catch(() => {});
@@ -288,7 +290,7 @@ export async function retimeFps(
       ], signal);
       return undefined;
     }
-    return await retimeH264(base, input, output, targetFps, targetBitrate, signal);
+    return await retimeH264(base, input, output, targetFps, targetBitrate, outputSize, signal);
   } catch (error) {
     await unlink(output).catch(() => {});
     throw error;
@@ -301,11 +303,22 @@ async function retimeH264(
   output: string,
   targetFps: number,
   targetBitrate: number,
+  outputSize: { width: number; height: number } | undefined,
   signal?: AbortSignal,
 ): Promise<H264EncoderOutcome> {
-  const preferred = await resolveH264Encoder(ffmpegBin());
+  const probed = await resolveH264Encoder(ffmpegBin());
   let fallbackReason: string | undefined;
   let lastError: unknown;
+  // Same cap the render pass applies (remotion/render.mjs): a hardware
+  // encoder cannot take a frame above 4096 px per side, so trying it here only
+  // wastes a full pass and replaces the render's accurate "frame too large"
+  // reason with a misleading "device unavailable".
+  const oversized = outputSize !== undefined
+    && (outputSize.width > H264_HARDWARE_MAX_DIMENSION || outputSize.height > H264_HARDWARE_MAX_DIMENSION);
+  const preferred = oversized ? 'libx264' : probed;
+  if (oversized && probed !== 'libx264') {
+    fallbackReason = `${probed}: frame ${outputSize.width}x${outputSize.height} exceeds the hardware H.264 limit of ${H264_HARDWARE_MAX_DIMENSION}`;
+  }
   for (const encoder of h264EncoderAttempts(preferred)) {
     try {
       const args = [

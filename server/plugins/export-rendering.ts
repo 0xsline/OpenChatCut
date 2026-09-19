@@ -91,6 +91,7 @@ export async function renderExportPlan(
         plan.retimeFps,
         plan.media.codec as 'h264' | 'vp8',
         plan.videoBitrate ?? resolveH264TargetBitrate({ ...outputSize, fps: plan.retimeFps }),
+        outputSize,
         signal,
       ));
       signal?.throwIfAborted();

@@ -3,10 +3,11 @@ import { resolveTimelineRenderPlan, sequenceGraphError } from '../../src/editor/
 import { isTimelineState } from '../../src/persist/migrations/normalize.ts';
 import { runProjectMigrations } from '../../src/persist/migrations/index.ts';
 import { normalizeFrameRange } from '../../src/export/range.ts';
+import { createExportFailure, ExportFailureError } from '../../src/export/exportFailure.ts';
 import {
   EXPORT_FPS_OPTIONS,
   EXPORT_RESOLUTIONS,
-  exportScale,
+  serverScaledExportDimensions,
   type ExportResolution,
 } from '../../src/export/mediaSettings.ts';
 import { MAX_VIDEO_BITRATE_BPS, MIN_VIDEO_BITRATE_BPS } from '../../src/export/bitrate.ts';
@@ -181,6 +182,21 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     && body?.fps !== undefined && body.fps !== fps
     ? body.fps
     : undefined;
+  const size = serverScaledExportDimensions(state, body?.resolution);
+  if (format === 'video' && !size.representable) {
+    // Remotion multiplies the canvas by `scale` and rejects a fractional
+    // product, so this renderer can only hit even multiples of the reduced
+    // aspect ratio; the nearest one is a different resolution, not this
+    // preset. The browser route (WebCodecs, ceil-based sizing) can still
+    // export it, which is what the client's route planner picks first.
+    throw new ExportFailureError(createExportFailure({
+      stage: 'preflight',
+      code: 'export_resolution_unsupported',
+      retryable: false,
+      message: `本机渲染器无法将 ${state.width}x${state.height} 画布精确缩放到 ${String(body?.resolution)}`
+        + `（最接近的可渲染尺寸为 ${size.width}x${size.height}）；请使用浏览器导出或更改分辨率。`,
+    }));
+  }
   return {
     state,
     project,
@@ -192,7 +208,7 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     filename: exportFilename(body?.name, media.ext),
     // The fps filter drops or duplicates frames while preserving duration.
     durationSeconds: frames / fps,
-    scale: exportScale(state, body?.resolution),
+    scale: size.scale,
     retimeFps,
     videoBitrate: format === 'video' && codec !== 'prores' ? body?.videoBitrate : undefined,
   };

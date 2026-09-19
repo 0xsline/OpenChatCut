@@ -3,7 +3,7 @@ import type { ComponentType } from 'react';
 import type { TimelineCompositionProps } from '../editor/TimelineComposition';
 import { timelineDuration, type ProjectDoc, type TimelineState } from '../editor/types';
 import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
-import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
+import { H264_HARDWARE_MAX_DIMENSION, webScaledExportDimensions, type ExportResolution } from './mediaSettings';
 // The local renderer's per-frame budget, shared so both engines agree.
 import { DEFAULT_RENDER_TIMEOUT_MS } from '../../remotion/render-timeout.mjs';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
@@ -86,6 +86,8 @@ interface BrowserRenderConfig {
   renderer: WebRendererModule;
   container: 'mp4' | 'webm';
   audioCodec: 'aac' | 'opus';
+  width: number;
+  height: number;
   scale: number;
   videoBitrate: number | 'high';
   issues: string[];
@@ -121,7 +123,7 @@ async function loadBrowserRenderConfig(
   if (!capability.canRender) {
     return { status: 'unsupported', reason: issues[0] ?? '当前浏览器不支持此编码配置', issues };
   }
-  return { renderer, container, audioCodec, scale, videoBitrate: resolvedVideoBitrate, issues };
+  return { renderer, container, audioCodec, width, height, scale, videoBitrate: resolvedVideoBitrate, issues };
 }
 function staticBrowserBlocker(
   options: BrowserExportOptions,
@@ -210,7 +212,13 @@ async function executeBrowserRender(
       scale: config.scale,
       signal,
       onProgress,
-      hardwareAcceleration: 'prefer-hardware',
+      // The GPU behind WebCodecs shares the hardware H.264 encoder's 4096 px
+      // per-dimension cap (see remotion/performance.mjs); asking it for a
+      // larger frame fails after the frames are rendered. Software is slower
+      // but finishes.
+      hardwareAcceleration: config.width > H264_HARDWARE_MAX_DIMENSION || config.height > H264_HARDWARE_MAX_DIMENSION
+        ? 'prefer-software'
+        : 'prefer-hardware',
       pageResponsiveness: 'medium',
       // Without this, @remotion/web-renderer falls back to Remotion's 30s
       // default and delayRender reports 30s minus its own 2s buffer — the

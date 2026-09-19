@@ -43,12 +43,11 @@ const state: TimelineState = {
 };
 
 /**
- * Every export size must satisfy both renderers at once:
- *  - the product `source x scale` is an integer AS JAVASCRIPT COMPUTES IT,
- *    because Remotion validates that product and throws
- *    "must be an integer, but is 5808.403361344537" otherwise;
- *  - both dimensions are even, or H.264 fails "width not divisible by 2" and
- *    writes a zero-byte file.
+ * The browser renders through @remotion/web-renderer, which sizes its canvas
+ * with Math.ceil(dimension * scale): any scale is fine as long as both ceilings
+ * are even (H.264 with yuv420p rejects an odd side). Unlike the local renderer,
+ * this route is not limited to exact multiples of the aspect ratio, which is why
+ * it can export canvases like 1366x768 at 480p when the server cannot.
  */
 function assertRenderable(
   source: { width: number; height: number },
@@ -56,10 +55,11 @@ function assertRenderable(
   label: string,
 ): { width: number; height: number; scale: number } {
   const actual = browserScaledExportDimensions(source, resolution);
-  assert.equal(source.width * actual.scale, actual.width, `${label}: width product is exact`);
-  assert.equal(source.height * actual.scale, actual.height, `${label}: height product is exact`);
+  assert.equal(Math.ceil(source.width * actual.scale), actual.width, `${label}: width ceiling lands on the plan`);
+  assert.equal(Math.ceil(source.height * actual.scale), actual.height, `${label}: height ceiling lands on the plan`);
   assert.equal(actual.width % 2, 0, `${label}: width is even`);
   assert.equal(actual.height % 2, 0, `${label}: height is even`);
+  assert.ok(actual.scale <= 16, `${label}: web-renderer rejects scale > 16`);
   return actual;
 }
 
@@ -72,27 +72,30 @@ function assertBrowserDimensions(
   assert.deepEqual({ width: actual.width, height: actual.height }, expected);
 }
 
-// Standard 16:9 sizes are reachable exactly and are unchanged.
 assertBrowserDimensions(state, '4k', { width: 3840, height: 2160 });
 assertBrowserDimensions(state, '1080p', { width: 1920, height: 1080 });
 assertBrowserDimensions(state, '720p', { width: 1280, height: 720 });
+assertBrowserDimensions(state, '480p', { width: 854, height: 480 });
 assertBrowserDimensions({ width: 1080, height: 1920 }, '4k', { width: 2160, height: 3840 });
+assertBrowserDimensions({ width: 1080, height: 1920 }, '480p', { width: 480, height: 854 });
 
-// 854x480 is NOT reachable from 1920x1080 by any exact scale (854/16 is not an
-// integer), so 480p resolves to the nearest size that is. The old search
-// accepted 854 by rounding, which is exactly what handed Remotion a fractional
-// width and made every such server render fail.
-assertBrowserDimensions(state, '480p', { width: 864, height: 486 });
-assertBrowserDimensions({ width: 1080, height: 1920 }, '480p', { width: 486, height: 864 });
+// Canvases whose reduced aspect ratio leaves the local renderer no exact size
+// near the preset (1366x768 has gcd 2, so it can only render at integer
+// scales) still downscale here.
+assertBrowserDimensions({ width: 1366, height: 768 }, '480p', { width: 854, height: 480 });
+assertBrowserDimensions({ width: 1366, height: 768 }, '720p', { width: 1280, height: 720 });
+assertBrowserDimensions({ width: 750, height: 1334 }, '1080p', { width: 1080, height: 1920 });
+assertBrowserDimensions({ width: 1000, height: 563 }, '480p', { width: 852, height: 480 });
 
-// The regression that started this: a 2.69:1 anamorphic scope timeline. The
-// requested 4k short side asks for 1920 x 3.0252... = 5808.403361344537, which
-// no renderer can encode.
+// A 2.69:1 anamorphic scope timeline at 4k: the 5808x2160 frame is fine here
+// (ceil sizing), but exceeds the 4096 px hardware H.264 cap, so the encoder
+// is asked for software rather than failing after the frames are rendered.
 const scope4k = assertRenderable({ width: 1920, height: 714 }, '4k', 'scope 4k');
-assert.deepEqual({ width: scope4k.width, height: scope4k.height }, { width: 5760, height: 2142 });
+assert.deepEqual({ width: scope4k.width, height: scope4k.height }, { width: 5808, height: 2160 });
 
-// Awkward sources still resolve, including one where the arithmetic is exact
-// but the float product is not (25 * 86.4 === 2160.0000000000005).
+// Tiny canvases clamp at the largest scale the renderer accepts instead of throwing.
+assertBrowserDimensions({ width: 100, height: 100 }, '4k', { width: 1600, height: 1600 });
+
 assertRenderable({ width: 854, height: 480 }, '4k', '480p source upscaled');
 assertRenderable({ width: 100, height: 138 }, '4k', 'odd portrait');
 assertRenderable({ width: 25, height: 45 }, '4k', 'tiny narrow');

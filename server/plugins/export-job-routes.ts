@@ -164,10 +164,13 @@ export function registerExportJobRoute(server: ViteDevServer): void {
             // HTTP response. When the client then falls back to the browser and
             // that fails too, the browser's error is what surfaces and the
             // server's real cause is lost — which made an unexportable project
-            // look like a browser codec problem.
-            server.config.logger.error(
-              `[export] render failed (${failure.stage}/${failure.code}): ${failure.message}`,
-            );
+            // look like a browser codec problem. A cancel is the user's doing,
+            // not a failure, so it stays out of the error log.
+            if (failure.stage !== 'cancel' && !controller.signal.aborted) {
+              server.config.logger.error(
+                `[export] render failed (${failure.stage}/${failure.code}): ${failure.message}`,
+              );
+            }
             throw new ExportFailureError(failure);
           } finally {
             await cleanupRenderMedia();
@@ -284,6 +287,7 @@ export function registerExportRoute(server: ViteDevServer): void {
             plan.retimeFps,
             media.codec as 'h264' | 'vp8',
             plan.videoBitrate ?? resolveH264TargetBitrate({ ...outputSize, fps: plan.retimeFps }),
+            outputSize,
             requestAbort.controller.signal,
           );
           requestAbort.controller.signal.throwIfAborted();
