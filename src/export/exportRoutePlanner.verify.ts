@@ -33,6 +33,13 @@ try {
   assert.equal(chooseSupportedRoute(unsupported, hardware).route, 'server');
   assert.equal(chooseSupportedRoute(efficient, software).route, 'browser');
   assert.equal(chooseSupportedRoute(compatible, hardware).route, 'server');
+  // A canvas the local renderer cannot scale to the preset (its exact-scale
+  // grid has nothing near it) goes to the browser even when hardware would
+  // otherwise win; without a browser it still has to go to the server.
+  const unrepresentable = chooseSupportedRoute(compatible, hardware, false);
+  assert.equal(unrepresentable.route, 'browser');
+  assert.equal(unrepresentable.reason, '本机渲染器无法将此画布精确缩放到所选分辨率');
+  assert.equal(chooseSupportedRoute(unsupported, hardware, false).route, 'server');
 
   values.set('cc.exportPerformance.v1', JSON.stringify({
     'browser:webcodecs': { samples: 2, workPerMillisecond: 20 },

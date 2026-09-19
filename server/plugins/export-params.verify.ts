@@ -3,32 +3,70 @@
 import assert from 'node:assert/strict';
 import { exportScale, validateVideoParams } from './export.ts';
 import { requestedVideoBitrateBps, resolveVideoBitrateBps } from '../../src/export/bitrate.ts';
+import { exportFailureFrom } from '../../src/export/exportFailure.ts';
+import { serverScaledExportDimensions } from '../../src/export/mediaSettings.ts';
 import { planExport } from './export-plan';
 
+const planState = {
+  fps: 30, width: 1920, height: 1080, selectedId: null,
+  items: [{ id: 'clip', name: 'clip', kind: 'video', track: 'V1', src: '/media/uploads/clip.mp4', startFrame: 0, durationInFrames: 120 }],
+} as const;
+
 // Short-edge presets preserve orientation; 4K means a 2160 px short edge.
+// 854x480 is unreachable from 1920x1080 by any scale that lands both axes on
+// an integer (854/16 is not whole), and Remotion rejects a fractional product
+// outright — so 480p resolves to the nearest exactly-representable size.
 const scale480p = exportScale({ width: 1920, height: 1080 }, '480p');
-assert.deepEqual([Math.round(1920 * scale480p), Math.round(1080 * scale480p)], [854, 480]);
+assert.deepEqual([1920 * scale480p, 1080 * scale480p], [864, 486]);
 assert.equal(exportScale({ width: 1080, height: 1920 }, '720p'), 720 / 1080);
 assert.equal(exportScale({ width: 1920, height: 1080 }, '1080p'), 1);
 assert.equal(exportScale({ width: 1920, height: 1080 }, '4k'), 2);
 assert.equal(exportScale({ width: 1080, height: 1920 }, '4k'), 2);
 assert.equal(exportScale({ width: 1920, height: 1080 }, undefined), 1, '省略=不缩放');
-// Presets target their exact short edge even for unusually small timelines.
+// Presets target their exact short edge even for unusually small timelines,
+// up to the scale both Remotion renderers accept (16): a 100 px canvas asked
+// for 4k renders at 1600 px instead of throwing "scale must be <= 16".
 assert.equal(exportScale({ width: 1280, height: 720 }, '1080p'), 1.5);
 assert.equal(exportScale({ width: 100, height: 100 }, '1080p'), 10.8);
-assert.equal(exportScale({ width: 100, height: 100 }, '4k'), 21.6);
-const upscaled480p = exportScale({ width: 854, height: 480 }, '4k');
-assert.equal(Math.round(480 * upscaled480p), 2160);
-assert.equal(Math.round(854 * upscaled480p) % 2, 0);
-const portraitCustomScale = exportScale({ width: 100, height: 138 }, '4k');
-assert.deepEqual(
-  [Math.round(100 * portraitCustomScale), Math.round(138 * portraitCustomScale)],
-  [2160, 2980],
-);
-const narrowCustomScale = exportScale({ width: 25, height: 45 }, '4k');
-assert.deepEqual(
-  [Math.round(25 * narrowCustomScale), Math.round(45 * narrowCustomScale)],
-  [2160, 3888],
+assert.equal(exportScale({ width: 100, height: 100 }, '4k'), 16);
+assert.equal(exportScale({ width: 25, height: 45 }, '4k'), 16);
+
+/** The local renderer's plan must be exact as JavaScript computes it, and even. */
+function assertServerRenderable(source: { width: number; height: number }, resolution: '480p' | '720p' | '1080p' | '4k') {
+  const plan = serverScaledExportDimensions(source, resolution);
+  assert.equal(source.width * plan.scale, plan.width, `${source.width}x${source.height} ${resolution}: width product is exact`);
+  assert.equal(source.height * plan.scale, plan.height, `${source.width}x${source.height} ${resolution}: height product is exact`);
+  assert.equal(plan.width % 2, 0);
+  assert.equal(plan.height % 2, 0);
+  assert.ok(plan.scale <= 16);
+  return plan;
+}
+assertServerRenderable({ width: 1920, height: 714 }, '4k');
+assertServerRenderable({ width: 100, height: 138 }, '4k');
+assertServerRenderable({ width: 1500, height: 800 }, '1080p');
+// Square canvases: the nearest double to 480/1272 gives 480.00000000000006,
+// so the exact scale has to be searched for, not derived.
+assertServerRenderable({ width: 1272, height: 1272, }, '480p');
+// The achievable sizes are even multiples of the reduced aspect ratio, which
+// for a small gcd is a coarse grid: 1366x768 (gcd 2) can only render at integer
+// scales, so "480p" has no exact size within reach and the plan says so
+// instead of quietly rendering the canvas at 1x.
+assert.equal(serverScaledExportDimensions({ width: 1920, height: 1080 }, '480p').representable, true);
+assert.equal(serverScaledExportDimensions({ width: 1366, height: 768 }, '480p').representable, false);
+assert.equal(serverScaledExportDimensions({ width: 1000, height: 563 }, '480p').representable, false);
+assert.equal(serverScaledExportDimensions({ width: 750, height: 1334 }, '1080p').representable, false);
+assert.equal(serverScaledExportDimensions({ width: 1366, height: 768 }, '4k').representable, true);
+// Ties between two equally distant exact scales prefer the one a hardware
+// H.264 encoder can still take (both sides within 4096).
+const tied = assertServerRenderable({ width: 854, height: 480 }, '4k');
+assert.deepEqual([tied.width, tied.height], [3416, 1920]);
+assert.equal(tied.representable, false, '11% off the preset is a different resolution');
+// A video export the local renderer cannot honour fails preflight with a code
+// the client can act on, rather than reaching Remotion's integer check.
+assert.throws(
+  () => planExport({ state: { ...planState, width: 1366, height: 768 }, format: 'video', codec: 'h264', resolution: '480p' }),
+  (error: unknown) => exportFailureFrom(error)?.code === 'export_resolution_unsupported'
+    && exportFailureFrom(error)?.stage === 'preflight',
 );
 
 validateVideoParams({ resolution: '4k', fps: 60, videoBitrate: 40_000_000 }, 'video');
