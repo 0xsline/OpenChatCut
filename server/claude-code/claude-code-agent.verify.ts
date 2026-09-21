@@ -180,10 +180,10 @@ if (args.join(' ').length > 8000) process.exit(69);
 const promptIndex = args.indexOf('-p');
 const prompt = promptIndex === -1 ? '' : args[promptIndex + 1];
 if (prompt.startsWith('hang-forever:')) {
-  // Report the pid and never exit: the caller aborts the turn and checks that
-  // the child is actually gone.
-  writeFileSync(prompt.slice('hang-forever:'.length), String(process.pid));
+  // Announce the session first, then report the pid: the caller waits for both
+  // before aborting, so the abort cannot race the parent's read of this line.
   process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'fake-session-hang' }) + '\n');
+  writeFileSync(prompt.slice('hang-forever:'.length), String(process.pid));
   setInterval(() => {}, 1000);
 } else if (prompt !== 'trigger-error') {
   const send = (event) => process.stdout.write(JSON.stringify(event) + '\n');
@@ -286,7 +286,10 @@ try {
       controller.signal,
     );
     let pid = 0;
-    for (let attempt = 0; attempt < 400 && !pid; attempt += 1) {
+    // Both conditions matter: the child must exist to be killed, and its first
+    // line must already have reached the parent, or the abort races the read
+    // and the stream assertion below sees nothing.
+    for (let attempt = 0; attempt < 400 && !(pid && events.length); attempt += 1) {
       await sleep(25);
       pid = Number(await readFile(pidFile, 'utf8').catch(() => '0'));
     }
