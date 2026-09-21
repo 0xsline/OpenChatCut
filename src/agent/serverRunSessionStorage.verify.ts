@@ -4,7 +4,8 @@ import {
   bindServerRunEvents,
   ServerRunToolRequestQueue,
 } from './serverRunEvents.ts';
-import { restoreServerRunToolActivation } from './serverRunProtocol.ts';
+import { restoreServerRunToolActivation, SERVER_RUN_CAPABILITY_HEADER } from './serverRunProtocol.ts';
+import { clearServerRunDraft } from './serverRunDraftStore.ts';
 import { finishRecoveredRun } from './serverRunRecovery.ts';
 import { ServerRunTerminalHandoffs } from './serverRunTerminalHandoff.ts';
 import { startAgentRun } from './runtime-ledger.ts';
@@ -23,9 +24,20 @@ import {
 } from './serverRunSessionStorage.ts';
 // The settle endpoint is server-side; emulate its effect locally (patch the
 // sidecar) so verifies exercise the full settlement path without a server.
+const draftClears: Array<{ runId: string; capability: string | null }> = [];
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
+  if (url.includes('/draft/clear') && init?.method === 'POST') {
+    const headers = (init.headers ?? {}) as Record<string, string>;
+    draftClears.push({
+      runId: url.split('/').filter(Boolean).at(-3) ?? '',
+      capability: headers[SERVER_RUN_CAPABILITY_HEADER] ?? null,
+    });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  }
   if (url.includes('/settle') && init?.method === 'POST') {
     const body = JSON.parse(String(init.body)) as {
       projectId: string; status: string;
@@ -135,6 +147,15 @@ assert.deepEqual(findStoredToolAttempt(projectId, 'call-1'), {
 });
 clearStoredToolAttempt(projectId, 'call-1');
 assert.equal(findStoredToolAttempt(projectId, 'call-1'), undefined);
+// A terminal that arrives with no in-memory turn (server restart, reload,
+// detached tab) is the only path where nothing else clears the run's recovery
+// draft. It has to happen here, while the stored run still carries the
+// capability the request authenticates with — `finishRecoveredRun` drops that
+// record immediately afterwards, and the abandon hook that used to do this ran
+// after the drop, so its request could only be rejected as 403.
+const detachedCapability = readStoredServerRun(projectId)?.capability;
+assert.ok(detachedCapability, 'the detached run still has a stored capability before finalizing');
+draftClears.length = 0;
 const transientDisposition = await finishRecoveredRun({
   projectId,
   runId,
@@ -143,8 +164,14 @@ const transientDisposition = await finishRecoveredRun({
 });
 assert.equal(transientDisposition, 'finalized',
   'a terminal run without a terminal handler is settled by the server settle fallback');
+assert.deepEqual(draftClears, [{ runId, capability: detachedCapability }],
+  'the orphaned recovery draft is cleared once, with the run capability attached');
 assert.equal(readStoredServerRun(projectId), null,
   'a terminal run without a terminal handler settles server-side and clears recovery');
+draftClears.length = 0;
+await clearServerRunDraft(projectId, runId);
+assert.deepEqual(draftClears, [],
+  'a clear attempted after the stored run is gone sends nothing: it could only 403');
 
 const terminalOrder: string[] = [];
 assert(saveStoredServerRun(projectId, {

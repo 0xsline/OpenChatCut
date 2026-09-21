@@ -1,5 +1,6 @@
 import type { DisplayMessage } from './agent-session';
 import type { RecoveredServerTool } from './serverRunToolExecutor';
+import { clearServerRunDraft } from './serverRunDraftStore';
 import { settleServerRun } from './serverRunSettleClient';
 import type {
   ServerRunSession,
@@ -158,6 +159,12 @@ export async function finishRecoveredRun(
         : input.status === 'awaiting_user' ? 'completed' : input.status,
       summary: input.assistantText || 'server run recovered terminal',
     });
+    // No terminal handler owned this run (server restart, reload, detached
+    // tab), so nothing cleared its recovery draft. Do it here, while the
+    // stored run still carries the capability the request authenticates with:
+    // `clearStoredServerRun` below removes it and any later attempt is
+    // unauthenticated.
+    await clearServerRunDraft(input.projectId, input.runId);
     disposition = 'finalized';
   }
   if (disposition && stored?.content) {
