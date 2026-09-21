@@ -94,6 +94,19 @@ function latestUserPrompt(messages: readonly ModelMessage[]): string {
   return serializeMessagesForPrompt([...messages]);
 }
 
+/**
+ * A CLI `assistant` line carries a COMPLETE message, so the text before a tool
+ * call and the text after it arrive as two whole chunks. Appending them
+ * directly renders one run-on paragraph ("…properly.Now adding…"), so a new
+ * message opens a new paragraph — without stacking blank lines when the
+ * previous message already ended with one. Exported for verify tests.
+ */
+export function claudeCodeMessageSeparator(tail: string): string {
+  if (!tail) return '';
+  if (tail.endsWith('\n\n')) return '';
+  return tail.endsWith('\n') ? '\n' : '\n\n';
+}
+
 async function prepareClaudeCodeContext(
   input: ServerClaudeCodeTurnInput,
 ): Promise<Awaited<ReturnType<typeof prepareContext>>> {
@@ -170,6 +183,10 @@ export async function executeServerClaudeCodeTurn(
   let text = '';
   let pending = '';
   let pendingThinking = '';
+  // Only the last two characters of the reasoning stream are kept: enough to
+  // decide whether a new message needs a paragraph break, without holding a
+  // second copy of the whole reasoning text in memory.
+  let thinkingTail = '';
   let done = false;
   let errorMessage: string | null = null;
   const toolHistory: ModelMessage[] = [];
@@ -188,13 +205,22 @@ export async function executeServerClaudeCodeTurn(
 
   const emit = (event: ClaudeCodeTurnStreamEvent): void => {
     switch (event.type) {
-      case 'text-delta':
-        text += event.delta;
-        pending = flushTextEvents(input.run, pending + event.delta, false);
+      case 'text-delta': {
+        const delta = event.startsMessage
+          ? claudeCodeMessageSeparator(text) + event.delta
+          : event.delta;
+        text += delta;
+        pending = flushTextEvents(input.run, pending + delta, false);
         break;
-      case 'thinking-delta':
-        pendingThinking = flushThinkingEvents(input.run, pendingThinking + event.delta, false);
+      }
+      case 'thinking-delta': {
+        const delta = event.startsMessage
+          ? claudeCodeMessageSeparator(thinkingTail) + event.delta
+          : event.delta;
+        thinkingTail = (thinkingTail + delta).slice(-2);
+        pendingThinking = flushThinkingEvents(input.run, pendingThinking + delta, false);
         break;
+      }
       case 'tool-start':
         // Deliberately does NOT push a 'tool-request' event. That event type is
         // a request for the BROWSER to execute a tool and settle it back (see
