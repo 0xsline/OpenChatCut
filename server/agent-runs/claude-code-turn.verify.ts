@@ -210,6 +210,32 @@ function sequence(events: readonly ClaudeCodeTurnStreamEvent[]): ServerClaudeCod
   );
 }
 
+// ── The CLI gets a signal the turn can abort on its own ──────────────────────
+{
+  // A timed-out turn used to fail without terminating `claude -p`, leaving a
+  // process holding a live MCP bearer token and still editing the project. The
+  // timeout can only kill it through a signal the turn owns, so the signal
+  // handed to the CLI must not be the run's own — while a run abort must still
+  // reach the child.
+  const run = makeRun();
+  const runController = new AbortController();
+  const input = { ...makeInput(run), signal: runController.signal };
+  let cliSignal: AbortSignal | null = null;
+  let abortReachedCli = false;
+  await executeServerClaudeCodeTurn(input, {
+    runTurn: async (_request, emit, signal) => {
+      cliSignal = signal;
+      runController.abort();
+      abortReachedCli = signal.aborted;
+      emit({ type: 'done' });
+    },
+  });
+  assert.ok(cliSignal, 'the CLI runner receives an abort signal');
+  assert.notEqual(cliSignal, runController.signal,
+    'the turn owns a separate signal, so its timeout can terminate the CLI on its own');
+  assert.equal(abortReachedCli, true, 'aborting the run still aborts the CLI');
+}
+
 // ── Failed tool-end is recorded as a display error, not a thrown failure ──────
 {
   const run = makeRun();

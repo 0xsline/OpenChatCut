@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ClaudeCodeTurnStreamEvent } from '../../shared/claude-code-agent.ts';
@@ -121,9 +121,16 @@ assert.deepEqual(posixCommand, { executable: '/usr/local/bin/claude', args: ['--
   assert.deepEqual(failure, [{ type: 'error', message: 'ran out of turns' }, { type: 'done' }]);
 }
 
+
+function sleep(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+}
+
 // -- runClaudeCodeTurn: full subprocess pipeline via a fake `claude` CLI ----
 const FAKE_CLI = String.raw`
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
 function has(flag) { return args.includes(flag); }
 function valueAfter(flag) {
@@ -171,7 +178,14 @@ if (!readFileSync(promptFile, 'utf8').includes('OpenChatCut')) process.exit(68);
 // Guard the whole command line, not just the system prompt.
 if (args.join(' ').length > 8000) process.exit(69);
 const promptIndex = args.indexOf('-p');
-if (promptIndex === -1 || args[promptIndex + 1] !== 'trigger-error') {
+const prompt = promptIndex === -1 ? '' : args[promptIndex + 1];
+if (prompt.startsWith('hang-forever:')) {
+  // Report the pid and never exit: the caller aborts the turn and checks that
+  // the child is actually gone.
+  writeFileSync(prompt.slice('hang-forever:'.length), String(process.pid));
+  process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'fake-session-hang' }) + '\n');
+  setInterval(() => {}, 1000);
+} else if (prompt !== 'trigger-error') {
   const send = (event) => process.stdout.write(JSON.stringify(event) + '\n');
   send({ type: 'system', subtype: 'init', session_id: 'fake-session-1' });
   send({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }] } });
@@ -254,6 +268,44 @@ try {
     assert.equal(events[0].type, 'error');
     assert.match((events[0] as { message: string }).message, /fake failure reason/);
     assert.equal(events[1].type, 'done');
+  }
+  {
+    // The turn timeout kills the CLI by aborting this signal
+    // (server/agent-runs/claude-code-turn.ts). A child that outlives its turn
+    // keeps a live MCP bearer token and write access to the project, so the
+    // abort has to actually terminate the process, not just stop reading it.
+    const pidFile = join(directory, 'hang.pid');
+    const controller = new AbortController();
+    const events: ClaudeCodeTurnStreamEvent[] = [];
+    const turn = runClaudeCodeTurn(
+      shimPath,
+      { requestId: 'req-hang', system: 'sys', prompt: `hang-forever:${pidFile}`, projectId: 'proj-1' },
+      'http://127.0.0.1:1/api/external-mcp/mcp',
+      'fake-token',
+      (event) => events.push(event),
+      controller.signal,
+    );
+    let pid = 0;
+    for (let attempt = 0; attempt < 400 && !pid; attempt += 1) {
+      await sleep(25);
+      pid = Number(await readFile(pidFile, 'utf8').catch(() => '0'));
+    }
+    assert.ok(pid > 0, 'the fake CLI reported its pid before the abort');
+    controller.abort();
+    await turn;
+    assert.deepEqual(events, [{ type: 'session', sessionId: 'fake-session-hang' }],
+      'an aborted turn emits no terminal error: the caller already knows it aborted');
+    // Windows spawns through a cmd.exe shim, so the pid here is a grandchild
+    // that `child.kill()` does not necessarily reach; assert the guarantee on
+    // the platforms where the CLI is the direct child.
+    if (process.platform !== 'win32') {
+      let alive = true;
+      for (let attempt = 0; attempt < 400 && alive; attempt += 1) {
+        await sleep(25);
+        try { process.kill(pid, 0); } catch { alive = false; }
+      }
+      assert.equal(alive, false, 'aborting the turn terminates the CLI child');
+    }
   }
 } finally {
   await rm(directory, { recursive: true, force: true }).catch(() => {});
