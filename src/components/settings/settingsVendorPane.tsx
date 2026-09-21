@@ -11,6 +11,7 @@ import { copilotReasoningOptions } from './copilotReasoning';
 import type { CopilotSettingsController } from './useCopilotSettings';
 import type { ClaudeCodeSettingsController } from './useClaudeCodeSettings';
 import { ClaudeCodeVendorPane } from './ClaudeCodeVendorPane';
+import { FalModelNote } from './FalModelNote';
 import { shouldRenderModelPicker } from './codexReasoning';
 import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
@@ -102,13 +103,14 @@ export function VendorPane({ page, hint, ctx }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((f) => <FieldRow key={f.name} field={f} ctx={ctx} />)}
         </div>
+        <FalModelNote page={page} status={ctx.status} values={ctx.values} />
         {page.key.startsWith('llm/') && (
           <ModelCapabilityEditor backend="api" provider={normalizeLlmProvider(page.vendor)}
             modelId={apiModelId(page, ctx)} rawOverrides={capabilityOverridesValue(ctx)}
             onChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)} />
         )}
       </section>
-      <TestConnectionRow page={page} ctx={ctx} />
+      {page.vendor !== 'fal' && <TestConnectionRow page={page} ctx={ctx} />}
     </div>
   );
 }

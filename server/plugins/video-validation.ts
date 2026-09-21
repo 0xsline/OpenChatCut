@@ -1,10 +1,13 @@
+import { buildFalCatalogVideoRequest } from './fal-catalog-input.ts';
 export interface MultiPrompt { prompt: string; duration: number | string; index: number }
-export type VideoResolution = '480p' | '512p' | '720p' | '1080p' | '4k';
+export type VideoResolution = '360p' | '480p' | '512p' | '540p' | '720p' | '768p' | '1080p' | '480P' | '768P' | '1080P' | '4k';
 export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal';
+  /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
+  falModel?: string;
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -34,10 +37,13 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal';
+  /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
+  falModel?: string;
   prompt: string;
   durationSeconds: number;
   durationSpecified: boolean;
+  ratioSpecified?: boolean;
   ratio: string;
   refImagePaths: string[];
   refVideoPaths: string[];
@@ -87,6 +93,7 @@ function common(input: VideoRequest, model: ValidVideoRequest['model']): ValidVi
     ...input, model, prompt: String(input.prompt ?? '').trim(), ratio: String(input.ratio ?? '16:9'),
     durationSeconds: videoSeconds(input.durationSeconds, model === 'hailuo' ? 6 : 5),
     durationSpecified: input.durationSeconds !== undefined,
+    ratioSpecified: input.ratio !== undefined,
     refImagePaths: input.refImagePaths ?? [], refVideoPaths: input.refVideoPaths ?? [], refAudioPaths: input.refAudioPaths ?? [],
   };
 }
@@ -230,8 +237,17 @@ function validateOfox(input: ValidVideoRequest): ValidVideoRequest {
 }
 
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
+  if (input.model === 'fal') {
+    if (!input.falModel?.trim()) throw new Error('Choose a Fal video model in Settings or specify falModel');
+    for (const key of ['mode', 'refVideoMode', 'promptOptimizer', 'fastPretreatment', 'seed', 'cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority', 'multiPrompts', 'shotType'] as const) {
+      if (input[key] !== undefined) throw new Error(`${key} is not supported by the Fal video integration`);
+    }
+    const normalized = common(input, 'fal');
+    buildFalCatalogVideoRequest(falVideoCatalogInput(normalized));
+    return normalized;
+  }
   if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox') {
-    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, or ofox');
+    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, ofox, or fal');
   }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);
@@ -240,4 +256,24 @@ export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
   if (normalized.model === 'grok-imagine-video') return validateGrok(normalized);
   if (normalized.model === 'ofox') return validateOfox(normalized);
   return validateSeedance(normalized);
+}
+
+/** Shared pure mapping: validation and submission must send identical settings. */
+export function falVideoCatalogInput(input: ValidVideoRequest) {
+  return {
+    falModel: input.falModel!, prompt: input.prompt,
+    duration: input.durationSpecified ? input.durationSeconds : undefined,
+    aspectRatio: input.ratioSpecified ? input.ratio : undefined, resolution: input.resolution,
+    imageUrls: input.refImagePaths, videoUrls: input.refVideoPaths, audioUrls: input.refAudioPaths,
+    firstFrame: input.firstFramePath, lastFrame: input.lastFramePath, generateAudio: input.generateAudio,
+  };
+}
+
+/** Restore omitted model defaults when revalidating a persisted Fal job. */
+export function validateSavedVideoRequest(saved: VideoRequest & { durationSpecified?: boolean; ratioSpecified?: boolean }): ValidVideoRequest {
+  return validateVideoRequest(saved.model === 'fal' ? {
+    ...saved,
+    durationSeconds: saved.durationSpecified === false ? undefined : saved.durationSeconds,
+    ratio: saved.ratioSpecified === false ? undefined : saved.ratio,
+  } : saved);
 }
