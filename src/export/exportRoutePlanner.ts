@@ -1,5 +1,6 @@
 import { inspectBrowserExport, isAbortError, type BrowserExportInspection, type BrowserExportOptions } from './browserExport';
 import type { ExportEngineInfo } from './exportWorkflowTypes';
+import { serverScaledExportDimensions } from './mediaSettings';
 
 const PERFORMANCE_STORAGE_KEY = 'cc.exportPerformance.v1';
 const MIN_SAMPLE_MS = 250;
@@ -92,10 +93,20 @@ function measuredRoute(browser: ExportEngineInfo, server: ExportEngineInfo): 'br
   return browserSample.workPerMillisecond >= serverSample.workPerMillisecond ? 'browser' : 'server';
 }
 
-export function chooseSupportedRoute(browser: BrowserExportInspection, server: ExportEngineInfo) {
+export function chooseSupportedRoute(
+  browser: BrowserExportInspection,
+  server: ExportEngineInfo,
+  serverCanRender = true,
+) {
   const web = browserEngine(browser.status === 'supported' ? browser.powerEfficient : undefined);
   if (browser.status === 'unsupported') {
     return { route: 'server' as const, engine: server, reason: browser.reason };
+  }
+  // The local renderer can only scale by even multiples of the reduced aspect
+  // ratio (see serverScaledExportDimensions); a canvas whose grid has no size
+  // near the preset must not be sent there, whatever the measured speeds say.
+  if (!serverCanRender) {
+    return { route: 'browser' as const, engine: web, reason: '本机渲染器无法将此画布精确缩放到所选分辨率' };
   }
   const measured = measuredRoute(web, server);
   if (measured === 'browser') return { route: measured, engine: web, reason: '历史实测显示浏览器路径更快' };
@@ -129,11 +140,12 @@ export async function planVideoExportRoute(options: BrowserExportOptions): Promi
       reason: 'ProRes 母带仅支持本机渲染',
     };
   }
+  const serverCanRender = serverScaledExportDimensions(options.state, options.resolution).representable;
   return {
     browser,
     browserEngine: browserEngineInfo,
     serverEngine: server,
-    ...chooseSupportedRoute(browser, server),
+    ...chooseSupportedRoute(browser, server, serverCanRender),
   };
 }
 
