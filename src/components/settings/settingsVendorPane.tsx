@@ -1,4 +1,3 @@
-import { FAL_MODELS, falModelSummary } from '../../../shared/fal-models';
 // Provider configuration page, field rendering, and connection tests.
 import { useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
@@ -12,6 +11,7 @@ import { copilotReasoningOptions } from './copilotReasoning';
 import type { CopilotSettingsController } from './useCopilotSettings';
 import type { ClaudeCodeSettingsController } from './useClaudeCodeSettings';
 import { ClaudeCodeVendorPane } from './ClaudeCodeVendorPane';
+import { FalModelNote } from './FalModelNote';
 import { shouldRenderModelPicker } from './codexReasoning';
 import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
@@ -87,10 +87,6 @@ export function VendorPane({ page, hint, ctx }: {
   if (page.key === 'llm/vision') return <VisionModelPane />;
   if (page.kind === 'local-models') return <LocalModelsPane page={page} fields={page.fields} ctx={ctx} />;
   const on = vendorConfigured(ctx.status, page, ctx.codex.status, ctx.copilot.status, ctx.claudeCode.status);
-  const falField = page.key === 'image/fal' ? 'FAL_IMAGE_MODEL' : 'FAL_VIDEO_MODEL';
-  const falModel = page.vendor === 'fal'
-    ? FAL_MODELS.find((model) => model.id === (ctx.values[falField] ?? modelValue(ctx.status, falField)))
-    : undefined;
   return (
     <div style={pane}>
       <div>
@@ -107,7 +103,7 @@ export function VendorPane({ page, hint, ctx }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((f) => <FieldRow key={f.name} field={f} ctx={ctx} />)}
         </div>
-        {falModel && <div style={pageNote}>{falModelSummary(falModel)}</div>}
+        <FalModelNote page={page} status={ctx.status} values={ctx.values} />
         {page.key.startsWith('llm/') && (
           <ModelCapabilityEditor backend="api" provider={normalizeLlmProvider(page.vendor)}
             modelId={apiModelId(page, ctx)} rawOverrides={capabilityOverridesValue(ctx)}
