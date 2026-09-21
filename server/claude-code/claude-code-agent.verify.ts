@@ -44,13 +44,36 @@ assert.deepEqual(posixCommand, { executable: '/usr/local/bin/claude', args: ['--
     { type: 'assistant', message: { content: [{ type: 'text', text: 'hello world' }] } },
     pending,
   );
-  assert.deepEqual(assistantText, [{ type: 'text-delta', delta: 'hello world' }]);
+  assert.deepEqual(assistantText, [{ type: 'text-delta', delta: 'hello world', startsMessage: true }]);
 
   const assistantThinking = translateClaudeCodeLine(
     { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'reasoning...' }] } },
     pending,
   );
-  assert.deepEqual(assistantThinking, [{ type: 'thinking-delta', delta: 'reasoning...' }]);
+  assert.deepEqual(assistantThinking, [{ type: 'thinking-delta', delta: 'reasoning...', startsMessage: true }]);
+
+  // Only the FIRST chunk of each kind opens a message: blocks inside one
+  // `assistant` line are contiguous prose and must not gain a paragraph break.
+  const multiBlock = translateClaudeCodeLine(
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'first thought' },
+          { type: 'text', text: 'first half' },
+          { type: 'thinking', thinking: 'second thought' },
+          { type: 'text', text: ' second half' },
+        ],
+      },
+    },
+    pending,
+  );
+  assert.deepEqual(multiBlock, [
+    { type: 'thinking-delta', delta: 'first thought', startsMessage: true },
+    { type: 'text-delta', delta: 'first half', startsMessage: true },
+    { type: 'thinking-delta', delta: 'second thought' },
+    { type: 'text-delta', delta: ' second half' },
+  ]);
 
   const toolUse = translateClaudeCodeLine(
     {
@@ -188,7 +211,7 @@ try {
     );
     assert.deepEqual(events, [
       { type: 'session', sessionId: 'fake-session-1' },
-      { type: 'text-delta', delta: 'ok' },
+      { type: 'text-delta', delta: 'ok', startsMessage: true },
       { type: 'context-usage', inputTokens: 3, contextWindowTokens: 200000, outputTokens: 1, cacheReadTokens: undefined },
       { type: 'done' },
     ], 'a successful fake turn translates init/text/usage/done in order');

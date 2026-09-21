@@ -46,8 +46,13 @@ export interface ClaudeCodeTurnRequest {
  */
 export type ClaudeCodeTurnStreamEvent =
   | { readonly type: 'session'; readonly sessionId: string }
-  | { readonly type: 'text-delta'; readonly delta: string }
-  | { readonly type: 'thinking-delta'; readonly delta: string }
+  // `startsMessage` marks the first text/thinking chunk of a NEW CLI assistant
+  // message. Each `assistant` line the CLI prints is a complete message rather
+  // than a partial delta, so two messages either side of a tool call have to be
+  // separated on display; without it they render as one run-on paragraph
+  // ("…properly.Now adding…").
+  | { readonly type: 'text-delta'; readonly delta: string; readonly startsMessage?: true }
+  | { readonly type: 'thinking-delta'; readonly delta: string; readonly startsMessage?: true }
   | {
       readonly type: 'tool-start';
       readonly callId: string;

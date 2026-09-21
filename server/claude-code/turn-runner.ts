@@ -139,13 +139,27 @@ export function translateClaudeCodeLine(
   }
   if (type === 'assistant') {
     const message = record(line.message);
+    // One `assistant` line is one complete message (the CLI's own aggregate),
+    // so the first chunk of each kind opens a new display paragraph.
+    let startsText = true;
+    let startsThinking = true;
     for (const block of array(message?.content)) {
       const b = record(block);
       if (!b) continue;
       if (b.type === 'thinking' && typeof b.thinking === 'string' && b.thinking) {
-        events.push({ type: 'thinking-delta', delta: b.thinking });
+        events.push({
+          type: 'thinking-delta',
+          delta: b.thinking,
+          ...(startsThinking ? { startsMessage: true as const } : {}),
+        });
+        startsThinking = false;
       } else if (b.type === 'text' && typeof b.text === 'string' && b.text) {
-        events.push({ type: 'text-delta', delta: b.text });
+        events.push({
+          type: 'text-delta',
+          delta: b.text,
+          ...(startsText ? { startsMessage: true as const } : {}),
+        });
+        startsText = false;
       } else if (b.type === 'tool_use' && typeof b.id === 'string' && typeof b.name === 'string') {
         pendingTools.set(b.id, { name: b.name, args: b.input });
         events.push({ type: 'tool-start', callId: b.id, name: b.name, args: b.input });

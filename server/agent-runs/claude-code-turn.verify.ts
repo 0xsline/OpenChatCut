@@ -143,6 +143,73 @@ function sequence(events: readonly ClaudeCodeTurnStreamEvent[]): ServerClaudeCod
   assert.equal(histories.length, 1, 'merged tool history entry is rebuilt for conversation continuity');
 }
 
+// ── Consecutive CLI assistant messages are separated, not run together ───────
+{
+  // Every `assistant` line the CLI prints is a COMPLETE message, so the text
+  // before a tool call and the text after it arrive as two whole chunks.
+  // Appending them directly produced "…properly.Now adding…" in one bubble.
+  const run = makeRun();
+  const input = makeInput(run);
+  const outcome = await executeServerClaudeCodeTurn(input, sequence([
+    { type: 'text-delta', delta: 'I will add the title properly.', startsMessage: true },
+    { type: 'tool-start', callId: 'call-3', name: 'mcp__openchatcut__search_media', args: {} },
+    {
+      type: 'tool-end', callId: 'call-3', name: 'mcp__openchatcut__search_media',
+      args: {}, result: { items: [] }, success: true,
+    },
+    { type: 'text-delta', delta: 'Now adding the clip.', startsMessage: true },
+    { type: 'done' },
+  ]));
+  assert.equal(
+    outcome.text,
+    'I will add the title properly.\n\nNow adding the clip.',
+    'a second CLI assistant message opens its own paragraph',
+  );
+}
+
+// ── The separator never stacks blank lines the model already wrote ────────────
+{
+  const run = makeRun();
+  const input = makeInput(run);
+  const outcome = await executeServerClaudeCodeTurn(input, sequence([
+    { type: 'text-delta', delta: 'Step one.\n', startsMessage: true },
+    { type: 'text-delta', delta: 'Step two.\n\n', startsMessage: true },
+    { type: 'text-delta', delta: 'Step three.', startsMessage: true },
+    { type: 'done' },
+  ]));
+  assert.equal(
+    outcome.text,
+    'Step one.\n\nStep two.\n\nStep three.',
+    'an existing trailing newline is completed, not doubled',
+  );
+}
+
+// ── Reasoning text gets the same treatment as visible text ───────────────────
+{
+  const run = makeRun();
+  const input = makeInput(run);
+  await executeServerClaudeCodeTurn(input, sequence([
+    { type: 'thinking-delta', delta: 'First I check the pool.', startsMessage: true },
+    { type: 'thinking-delta', delta: 'Now I place the clip.', startsMessage: true },
+    { type: 'done' },
+  ]));
+  await flushRunPersistence(run);
+  const thinking = run.events
+    .filter((event) => event.type === 'thinking-delta')
+    .map((event) => {
+      const data = event.data;
+      return data && typeof data === 'object' && 'text' in data && typeof data.text === 'string'
+        ? data.text
+        : '';
+    })
+    .join('');
+  assert.equal(
+    thinking,
+    'First I check the pool.\n\nNow I place the clip.',
+    'consecutive reasoning messages are separated too',
+  );
+}
+
 // ── Failed tool-end is recorded as a display error, not a thrown failure ──────
 {
   const run = makeRun();
