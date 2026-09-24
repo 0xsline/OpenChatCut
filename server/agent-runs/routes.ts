@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { activateOfflineAgentRuntimeBackend } from '../external-agent/agent-runtime-persistence';
-import { executeRun, type ServerRunInput } from './executor';
 import { resolveRunExecution, runRequestDigests } from './execution-input';
 import {
   cancelRun,
@@ -36,6 +35,12 @@ import {
   validateCreateInput,
 } from './request';
 import { CursorProtocolError, resolveCursor, sseForRun } from './sse';
+import {
+  deferRunExecution,
+  discardDeferredRun,
+  ensureDeferredRunExecution,
+  startDeferredRun,
+} from './run-admission';
 import { projectStoreHttpAuthorized, projectStoreReadAuthorized } from '../project-store-http-auth';
 const MAX_TOOL_RESULT_BODY_BYTES = 1024 * 1024;
 /**
@@ -52,42 +57,6 @@ const MAX_TOOL_RESULT_BODY_BYTES = 1024 * 1024;
  */
 export const MAX_DRAFT_BODY_BYTES = MAX_ARTIFACT_BYTES * 2 + 64 * 1024;
 const SERVER_RUN_CAPABILITY_HEADER = 'x-openchatcut-run-capability';
-const SERVER_RUN_ADMISSION_TIMEOUT_MS = 60_000;
-interface DeferredRun {
-  readonly input: ServerRunInput;
-  readonly timeout: NodeJS.Timeout;
-}
-const deferredRuns = new Map<string, DeferredRun>();
-const startedRuns = new Set<string>();
-
-function deferRunExecution(run: ServerRun, input: ServerRunInput): void {
-  const timeout = setTimeout(() => {
-    if (!deferredRuns.delete(run.id)) return;
-    void cancelRun(run);
-  }, SERVER_RUN_ADMISSION_TIMEOUT_MS);
-  deferredRuns.set(run.id, { input, timeout });
-}
-
-function startDeferredRun(run: ServerRun): 'started' | 'already_started' | 'unavailable' {
-  const deferred = deferredRuns.get(run.id);
-  if (!deferred) {
-    return startedRuns.has(run.id) || run.status !== 'queued'
-      ? 'already_started'
-      : 'unavailable';
-  }
-  deferredRuns.delete(run.id);
-  clearTimeout(deferred.timeout);
-  startedRuns.add(run.id);
-  void executeRun(run, deferred.input).finally(() => startedRuns.delete(run.id));
-  return 'started';
-}
-
-function discardDeferredRun(runId: string): void {
-  const deferred = deferredRuns.get(runId);
-  if (deferred) clearTimeout(deferred.timeout);
-  deferredRuns.delete(runId);
-}
-
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -159,12 +128,6 @@ function sendCreatedRun(
     context: run.context ?? null,
   });
 }
-
-function ensureDeferredRunExecution(run: ServerRun, input: ServerRunInput): void {
-  if (run.status !== 'queued' || deferredRuns.has(run.id) || startedRuns.has(run.id)) return;
-  deferRunExecution(run, input);
-}
-
 
 
 async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<void> {
