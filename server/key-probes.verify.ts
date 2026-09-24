@@ -117,6 +117,41 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   }
 }
 
+// 7b. Requesty checks the key on /models, then lists the curated /models/managed ids; a rejected key stops there.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string | null }> = [];
+  let keyStatus = 200;
+  let managedStatus = 200;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    calls.push({ url, auth: new Headers(init?.headers).get('authorization') });
+    if (url.endsWith('/models/managed')) {
+      return Response.json({ data: [{ id: 'gpt-5.4-mini' }] }, { status: managedStatus });
+    }
+    return Response.json({ data: [{ id: 'openai/gpt-4o-mini' }] }, { status: keyStatus });
+  };
+  try {
+    const ok = await runProbe('llm/requesty', { LLM_REQUESTY_API_KEY: 'rq-test' });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.models, ['gpt-5.4-mini']);
+    assert.deepEqual(calls, [
+      { url: 'https://router.requesty.ai/v1/models', auth: 'Bearer rq-test' },
+      { url: 'https://router.requesty.ai/v1/models/managed', auth: null },
+    ]);
+    managedStatus = 500;
+    const fallback = await runProbe('llm/requesty', { LLM_REQUESTY_API_KEY: 'rq-test' });
+    assert.deepEqual(fallback.models, ['openai/gpt-4o-mini']);
+    calls.length = 0;
+    keyStatus = 403;
+    const rejected = await runProbe('llm/requesty', { LLM_REQUESTY_API_KEY: 'rq-bad' });
+    assert.equal(rejected.ok, false);
+    assert.equal(calls.length, 1, 'a rejected key never reaches the managed list');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 
 // 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
 // Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.
