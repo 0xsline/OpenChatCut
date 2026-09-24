@@ -17,6 +17,7 @@ const PROVIDERS = {
   mistral: 'mistral',
   xai: 'xai',
   openrouter: 'openrouter',
+  requesty: 'requesty',
 };
 // BytePlus ModelArk has no models.dev provider. Hand-vendored from the
 // OpenRouter bytedance-seed entries (same Seed models behind ModelArk's
