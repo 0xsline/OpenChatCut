@@ -136,6 +136,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'orcarouter/auto',
   },
   {
+    id: 'requesty',
+    label: 'Requesty',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://router.requesty.ai/v1',
+    defaultModel: 'claude-sonnet-5',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',
