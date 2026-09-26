@@ -6,6 +6,8 @@
 // Every clip carries the source window the preview actually plays — srcInFrame
 // and playbackRate, read the way MediaFill / AudioClip read them — so the exporter
 // can trim its draft segment instead of starting every clip at source 0.
+import { captionPages } from '../captions/exportCaptions';
+import { joinCaptionWords } from '../captions/types';
 import { activeTimeline, type ProjectDoc, type TimelineItem, type TimelineState } from '../editor/types';
 import { sourceFrameAt, timelineFramesToSourceFrames } from '../editor/sourceLimit';
 import { transcriptSegments } from './fcpxml';
@@ -90,44 +92,15 @@ function draftClip(item: TimelineItem & { kind: JianyingDraftClipKind }, span: P
   };
 }
 
-/** Caption cues from the active captions overlay: merge transcript words into
- * phrase cues (timeline ms). Falls back to the source item's transcript. */
-export function captionCues(state: { fps: number; items: TimelineItem[] }, captions: { enabled?: boolean; sourceItemId?: string | null; sourceMode?: 'item' | 'timeline'; sources?: string[] } | null | undefined): JianyingDraftCaption[] {
+/** A timeline's caption cues, in its own ms: the pages of its default caption
+ * track exactly as the preview shows them and the subtitle (.srt) export writes
+ * them — words projected through their clip's position, in-point, speed and
+ * transcript edits, so they stay on the trimmed clips the draft now holds. */
+function timelineCaptionCues(timeline: TimelineState): JianyingDraftCaption[] {
+  const captions = timeline.captions;
   if (!captions?.enabled) return [];
-  const cueWords = (item: TimelineItem | undefined): { start: number; end: number; text: string }[] | undefined => {
-    if (!item?.transcript || item.transcript.length === 0) return undefined;
-    return item.transcript;
-  };
-  let words: { start: number; end: number; text: string }[] = [];
-  if (captions.sourceMode === 'timeline') {
-    for (const item of state.items) {
-      const candidate = cueWords(item);
-      if (candidate) words = [...words, ...candidate];
-    }
-  } else if (captions.sourceItemId) {
-    words = cueWords(state.items.find((item) => item.id === captions.sourceItemId)) ?? [];
-  }
-  if (words.length === 0) return [];
-  words = [...words].sort((a, b) => a.start - b.start);
-  const cues: JianyingDraftCaption[] = [];
-  let current: JianyingDraftCaption | null = null;
-  for (const word of words) {
-    if (!word.text.trim()) continue;
-    if (!current) {
-      current = { startMs: word.start, endMs: word.end, text: word.text.trim() };
-      continue;
-    }
-    const gap = word.start - current.endMs;
-    if (gap <= 450) {
-      current.endMs = Math.max(current.endMs, word.end);
-      current.text = `${current.text} ${word.text.trim()}`;
-    } else {
-      cues.push(current);
-      current = { startMs: word.start, endMs: word.end, text: word.text.trim() };
-    }
-  }
-  if (current) cues.push(current);
-  return cues;
+  return captionPages(captions, timeline.items, timeline.fps)
+    .map((page) => ({ startMs: page.start, endMs: page.end, text: joinCaptionWords(page.words) }));
 }
 
 function timelineClips(timeline: TimelineState): JianyingDraftClip[] {
@@ -142,6 +115,6 @@ export function jianyingDraftPayload(project: ProjectDoc): JianyingDraftPayload 
   return {
     fps: timeline.fps,
     items: timelineClips(timeline),
-    captions: captionCues(timeline, timeline.captions),
+    captions: timelineCaptionCues(timeline),
   };
 }

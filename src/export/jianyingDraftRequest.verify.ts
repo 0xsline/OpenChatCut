@@ -80,6 +80,26 @@ const project = (timelines: Timeline[], activeTimelineId = timelines[0]!.id): Pr
   ], 'svg / text are not exported; every other clip keeps its source window');
 }
 
+// ── captions follow the projection the preview and the .srt export use ────────
+{
+  const talk = clip('talk', 'video', 30, 60, {
+    srcInFrame: 60,
+    transcript: [
+      { text: 'early', start: 500, end: 900 },
+      { text: 'hello', start: 2000, end: 2400 },
+      { text: 'world', start: 2500, end: 2900 },
+    ],
+  });
+  const captioned = (enabled: boolean) => timeline('captioned', [talk], {
+    captions: { enabled, template: 'plain', pacing: 'phrase', sourceItemId: 'talk' },
+  });
+  const payload = jianyingDraftPayload(project([captioned(true)]));
+  assert.deepEqual(payload.captions, [{ startMs: 1000, endMs: 1900, text: 'hello world' }],
+    'cues sit where the trimmed clip plays the words (clip at 1 s, in-point 2 s); "early" is never heard');
+  assert.deepEqual(payload.items.map((item) => [item.startFrame, item.srcInFrame]), [[30, 60]]);
+  assert.deepEqual(jianyingDraftPayload(project([captioned(false)])).captions, []);
+}
+
 // ── the agent tool and the dialog share the builder ───────────────────────────
 {
   const doc = project([
