@@ -477,7 +477,7 @@ try {
     '#!/usr/bin/env node',
     'const args = process.argv.slice(2);',
     `const draftPath = ${JSON.stringify(stubDraftPath)};`,
-    "process.stdout.write(JSON.stringify(args[0] === 'quickstart' ? { ok: true, draft_path: draftPath } : { ok: true }) + '\\n');",
+    "process.stdout.write(JSON.stringify(args[0] === 'init' ? { ok: true, draft_path: draftPath } : { ok: true }) + '\\n');",
     '',
   ].join('\n'));
   chmodSync(stubPath, 0o755);

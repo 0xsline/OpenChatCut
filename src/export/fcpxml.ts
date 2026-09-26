@@ -87,8 +87,9 @@ export function resolveAssetSrc(src: string, mediaDir?: string): string {
  * Otherwise, NLE will play according to the continuous source interval, and the deleted words will be played back, and the entire subsequent content will be lost.
  * Share keptSegments with the rendering layer to ensure that both sides always have the same true source.
  * Deleting words from video files does not change the picture (plays continuously forever), so only audio needs to be segmented.
+ * The JianYing draft request splits word-driven audio with this same function.
  */
-function transcriptSegments(
+export function transcriptSegments(
   item: TimelineItem,
   fps: number,
 ): ReturnType<typeof keptSegments> | null {
