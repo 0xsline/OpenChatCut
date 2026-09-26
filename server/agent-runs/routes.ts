@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { activateOfflineAgentRuntimeBackend } from '../external-agent/agent-runtime-persistence';
-import { executeRun, type ServerRunInput } from './executor';
 import { resolveRunExecution, runRequestDigests } from './execution-input';
 import {
   cancelRun,
@@ -19,6 +18,7 @@ import {
   type ToolClaimOutcome,
   type ToolResultOutcome,
 } from './store';
+import type { EditorPersistenceSignal } from './store-types';
 import {
   settleServerRun,
   type ProposalRuntimeStatus,
@@ -35,6 +35,12 @@ import {
   validateCreateInput,
 } from './request';
 import { CursorProtocolError, resolveCursor, sseForRun } from './sse';
+import {
+  deferRunExecution,
+  discardDeferredRun,
+  ensureDeferredRunExecution,
+  startDeferredRun,
+} from './run-admission';
 import { projectStoreHttpAuthorized, projectStoreReadAuthorized } from '../project-store-http-auth';
 const MAX_TOOL_RESULT_BODY_BYTES = 1024 * 1024;
 /**
@@ -51,42 +57,6 @@ const MAX_TOOL_RESULT_BODY_BYTES = 1024 * 1024;
  */
 export const MAX_DRAFT_BODY_BYTES = MAX_ARTIFACT_BYTES * 2 + 64 * 1024;
 const SERVER_RUN_CAPABILITY_HEADER = 'x-openchatcut-run-capability';
-const SERVER_RUN_ADMISSION_TIMEOUT_MS = 60_000;
-interface DeferredRun {
-  readonly input: ServerRunInput;
-  readonly timeout: NodeJS.Timeout;
-}
-const deferredRuns = new Map<string, DeferredRun>();
-const startedRuns = new Set<string>();
-
-function deferRunExecution(run: ServerRun, input: ServerRunInput): void {
-  const timeout = setTimeout(() => {
-    if (!deferredRuns.delete(run.id)) return;
-    void cancelRun(run);
-  }, SERVER_RUN_ADMISSION_TIMEOUT_MS);
-  deferredRuns.set(run.id, { input, timeout });
-}
-
-function startDeferredRun(run: ServerRun): 'started' | 'already_started' | 'unavailable' {
-  const deferred = deferredRuns.get(run.id);
-  if (!deferred) {
-    return startedRuns.has(run.id) || run.status !== 'queued'
-      ? 'already_started'
-      : 'unavailable';
-  }
-  deferredRuns.delete(run.id);
-  clearTimeout(deferred.timeout);
-  startedRuns.add(run.id);
-  void executeRun(run, deferred.input).finally(() => startedRuns.delete(run.id));
-  return 'started';
-}
-
-function discardDeferredRun(runId: string): void {
-  const deferred = deferredRuns.get(runId);
-  if (deferred) clearTimeout(deferred.timeout);
-  deferredRuns.delete(runId);
-}
-
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -158,12 +128,6 @@ function sendCreatedRun(
     context: run.context ?? null,
   });
 }
-
-function ensureDeferredRunExecution(run: ServerRun, input: ServerRunInput): void {
-  if (run.status !== 'queued' || deferredRuns.has(run.id) || startedRuns.has(run.id)) return;
-  deferRunExecution(run, input);
-}
-
 
 
 async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -255,6 +219,17 @@ async function handleToolClaim(req: IncomingMessage, res: ServerResponse, runId:
   });
 }
 
+/** Validate the editor's durability report; anything malformed is simply ignored. */
+function editorPersistenceSignal(value: unknown): EditorPersistenceSignal | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const shaped = value as Record<string, unknown>;
+  if (typeof shaped.pending !== 'boolean' || typeof shaped.failed !== 'boolean') return null;
+  const revision = Number.isSafeInteger(shaped.revision) && Number(shaped.revision) >= 0
+    ? Number(shaped.revision)
+    : 0;
+  return { revision, pending: shaped.pending, failed: shaped.failed };
+}
+
 async function handleToolResult(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
   const body = await readJson(req, MAX_TOOL_RESULT_BODY_BYTES);
   const projectId = requireProjectId(body.projectId);
@@ -267,6 +242,8 @@ async function handleToolResult(req: IncomingMessage, res: ServerResponse, runId
   if (hasResult === hasError || (hasError && error === undefined)) {
     throw new Error('provide exactly one of result or string error');
   }
+  const persistence = editorPersistenceSignal(body.persistence);
+  if (persistence) run.editorPersistence = persistence;
   const outcome = settleToolResult(run, {
     ...binding,
     ...(error === undefined ? { result: body.result } : { error }),

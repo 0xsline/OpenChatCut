@@ -1,6 +1,7 @@
 import { SERVER_RUN_CAPABILITY_HEADER } from './serverRunProtocol';
 import { permanentServerRunRecoveryError } from './serverRunRecovery';
 import { projectServerRunToolResult } from './serverRunToolResult';
+import { projectPersistenceSignal } from '../persist/projectStore';
 import { permanentToolHttpStatus, type ToolClaimResponse } from './serverRunToolTransport';
 import type { RecoveredServerTool } from './serverRunToolRecovery';
 
@@ -55,6 +56,10 @@ export async function postServerRunToolResult(
     ? {
       projectId, toolCallId, argsDigest: outcome.argsDigest, claimId: session.claimId,
       result: projectServerRunToolResult(outcome.result),
+      // Durability of the edit this tool just made. The server fails mutating
+      // tools whose writes are not landing, instead of letting the agent build
+      // an entire cut on top of state that never reaches disk.
+      persistence: projectPersistenceSignal(projectId),
     }
     : {
       projectId, toolCallId, argsDigest: outcome.argsDigest, claimId: session.claimId,
