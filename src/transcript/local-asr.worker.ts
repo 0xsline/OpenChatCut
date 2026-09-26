@@ -110,7 +110,7 @@ function isWasmAllocationFailure(error: unknown): boolean {
 
 function allocationFailureMessage(modelId: string): string {
   return `本地转写模型 ${modelId} 超出浏览器 wasm 引擎的内存上限（分配失败）。`
-    + '请在 设置 → 转写 → 本地模型 选择更小的模型（Base / Small），'
+    + '请在 设置 → 本地模型 → 本地转写 选择更小的模型（Base / Small），'
     + '或在桌面端开启本地原生推理（whisper.cpp，无此限制）。';
 }
 

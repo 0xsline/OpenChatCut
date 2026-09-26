@@ -1,5 +1,5 @@
 // On-device ASR model management endpoints — users download/delete models from
-// Settings → 转写 → 本地模型. Downloads reuse hf-proxy's multi-source
+// Settings → 本地模型 → 本地转写. Downloads reuse hf-proxy's multi-source
 // accelerated fetch into the shared disk cache; progress is per-file
 // granularity (bytes of completed files / total bytes).
 //

@@ -124,8 +124,9 @@ export default {
   '启用': 'On',
   '停用': 'Off',
   '本地模型（whisper）': 'Local model (Whisper)',
-  '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。':
-    'Transcription runs on this machine: free, offline, and private. Download models on demand below. OpenChatCut selects the best available backend and falls back to CPU when WebGPU is unavailable. Local transcription does not support speaker diarization.',
+  '转写在本机完成：免费、离线、素材不出本机。模型需先下载，下载与删除在 本地模型 → 本地转写 页（点下方按钮前往）。自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。':
+    'Transcription runs on this machine: free, offline, and private. Models must be downloaded first; download or delete them on the Local models → Local transcription page (use the button below). OpenChatCut selects the best available backend and falls back to CPU when WebGPU is unavailable. Local transcription does not support speaker diarization.',
+  '下载 / 管理本地模型': 'Download / manage local models',
 
   // ──Page Note/Field Note──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
@@ -506,7 +507,7 @@ export default {
     'Settings → Connectors → Add custom connector, then paste the endpoint above.',
   '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
     'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
-  // Local ASR model management (Settings → 转写 → 本地模型)
+  // Local ASR model management (Settings → 本地模型 → 本地转写)
   '本地转写': 'Local transcription',
   '节拍与音乐分析': 'Beat and music analysis',
   '画面语义搜索': 'Visual semantic search',

@@ -48,6 +48,8 @@ export interface FieldCtx {
   claudeCode: ClaudeCodeSettingsController;
   /** Re-read /api/keys and push the result to the agent runtime (used by connection-style pages after login/logout). */
   refreshStatus: () => Promise<void>;
+  /** Show another settings page, addressed by its vendor key (e.g. 'local/asr'). */
+  openPage: (route: string) => void;
 }
 const CAPABILITY_OVERRIDE_FIELD: SettingsField = {
   name: MODEL_CAPABILITY_OVERRIDES_KEY, label: '模型能力', kind: 'text', defaultLabel: '',
@@ -99,7 +101,7 @@ export function VendorPane({ page, hint, ctx }: {
       </div>
       <section style={fieldCardBox}>
         {page.note && <div style={pageNote}>{t(page.note)}</div>}
-        {page.noteAction && <SettingsNoteAction config={page.noteAction} />}
+        {page.noteAction && <SettingsNoteAction config={page.noteAction} onOpenPage={ctx.openPage} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((f) => <FieldRow key={f.name} field={f} ctx={ctx} />)}
         </div>
@@ -143,7 +145,7 @@ function CodexVendorPane({ page, hint, ctx }: {
       <CodexAccountCard controller={ctx.codex} />
       <section style={fieldCardBox}>
         {page.note && <div style={pageNote}>{t(page.note)}</div>}
-        {page.noteAction && <SettingsNoteAction config={page.noteAction} />}
+        {page.noteAction && <SettingsNoteAction config={page.noteAction} onOpenPage={ctx.openPage} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
         </div>
@@ -183,7 +185,6 @@ function LocalModelsPane({ page, fields, ctx }: {
     </div>
   );
 }
-
 
 // ── Test connection ───────────────────────────────────────────────────────
 
@@ -287,7 +288,6 @@ function codexReasoningOptions(
     })) ?? []),
   ];
 }
-
 
 export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }) {
   const t = useT();

@@ -29,6 +29,7 @@ import {
   type SettingsVendorPage,
 } from './settingsFields';
 import {
+  LOCAL_ASR_SETTINGS_ROUTE,
   ROUTE_NEEDS,
   TRANSCRIPTION_SETTINGS_GROUP,
   VOICE_SETTINGS_GROUP,
@@ -298,7 +299,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     groups: [
       { key: 'local', title: '本地模型', hint: '本地转写、节拍与音乐分析、画面语义搜索。模型按需安装，数据不出本机。',
         vendors: [
-          { key: 'local/asr', vendor: 'localasr', title: '本地转写', icon: 'mic', kind: 'local-models', fields: localAsrPage.fields },
+          { key: LOCAL_ASR_SETTINGS_ROUTE, vendor: 'localasr', title: '本地转写', icon: 'mic', kind: 'local-models', fields: localAsrPage.fields },
           { key: 'local/music/packs', vendor: 'localasr', title: '节拍与音乐分析', icon: 'music', kind: 'local-models', fields: [] },
           { key: 'local/semantic/setup', vendor: 'localasr', title: '画面语义搜索', icon: 'search', kind: 'local-models', fields: [] },
         ] },
