@@ -5,6 +5,18 @@ import { MODEL_PACKS, type ModelPackId } from '../shared/model-packs/catalog.ts'
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 const ASR_RUNTIME_MULTIPLIER = 3;
+/**
+ * The desktop ASR engine is whisper.cpp. It keeps the quantized GGML weights
+ * resident as they are and allocates KV caches and compute graphs on top, and
+ * those buffers grow with the model's dimensions, which the file size tracks
+ * across the catalog tiers. whisper.cpp's model-load log puts them at roughly
+ * 1.0-1.2 GB for medium and large-v3-turbo without flash attention, and
+ * 0.2-0.5 GB for tiny to small. Three times the file plus a fixed allowance
+ * (whisper-server itself, the decoded PCM, decoder state) stays above those
+ * totals for every tier while still fitting an 8 GB machine's budget.
+ */
+const WHISPER_CPP_FILE_MULTIPLIER = 3;
+const WHISPER_CPP_FIXED_BYTES = 256 * MIB;
 const MIN_ASR_RESIDENT_BYTES = 512 * MIB;
 const UNKNOWN_ASR_RESIDENT_BYTES = 2 * GIB;
 const MIN_RESIDENT_LIMIT = 1 * GIB;
@@ -27,6 +39,15 @@ export function defaultNativeResidencyLimit(totalMemory = totalmem()): number {
 export function estimateAsrResidentBytes(modelId: string, revision: string): number {
   const model = ASR_MODELS.find((entry) => entry.modelId === modelId && entry.revision === revision);
   if (!model) return UNKNOWN_ASR_RESIDENT_BYTES;
+  // whisper.cpp loads only the companion. Sizing it from the browser engine's
+  // ONNX export (1.4-5.7x larger) refused small, medium and large-v3-turbo on
+  // 8-12 GB machines and sent them to the wasm engine instead.
+  if (model.ggmlFile) {
+    return Math.max(
+      MIN_ASR_RESIDENT_BYTES,
+      model.ggmlFile.sizeBytes * WHISPER_CPP_FILE_MULTIPLIER + WHISPER_CPP_FIXED_BYTES,
+    );
+  }
   const installedBytes = model.files.reduce((total, file) => total + file.sizeBytes, 0);
   return Math.max(MIN_ASR_RESIDENT_BYTES, installedBytes * ASR_RUNTIME_MULTIPLIER);
 }
