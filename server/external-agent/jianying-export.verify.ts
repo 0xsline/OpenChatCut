@@ -2,7 +2,25 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expandHomeDir, resolveMediaPath } from './jianying-export.ts';
+import {
+  CAPCUT_CLI_PACKAGE,
+  capcutCommand,
+  expandHomeDir,
+  resolveMediaPath,
+} from './jianying-export.ts';
+
+// capcut-cli runs through `npx --yes` at export time; an unpinned spec would
+// fetch and execute whatever release is newest on npm.
+assert.match(CAPCUT_CLI_PACKAGE, /^capcut-cli@\d+\.\d+\.\d+$/, 'the default capcut-cli is an exact release');
+if (!process.env.CAPCUT_CLI) {
+  assert.deepEqual(capcutCommand(), ['npx', '--yes', CAPCUT_CLI_PACKAGE], 'the default runs the pinned release');
+}
+assert.deepEqual(capcutCommand('capcut-cli@0.27.0'), ['npx', '--yes', 'capcut-cli@0.27.0'],
+  'a CAPCUT_CLI package spec still goes through npx');
+assert.deepEqual(capcutCommand('/opt/capcut/bin/capcut-cli'), ['/opt/capcut/bin/capcut-cli'],
+  'a CAPCUT_CLI path runs directly');
+assert.deepEqual(capcutCommand('C:\\tools\\capcut-cli.cmd'), ['C:\\tools\\capcut-cli.cmd'],
+  'a Windows CAPCUT_CLI path runs directly');
 
 assert.equal(expandHomeDir(''), '');
 assert.equal(expandHomeDir('/plain/path'), '/plain/path');
