@@ -282,11 +282,28 @@ the legacy shared development store.
 
 ### Built-in Agent authentication
 
+- **GitHub Copilot (desktop):** open **Settings → Agent model → GitHub Copilot**,
+  click **Sign in with GitHub**, and enter the displayed code using **Open GitHub**.
+  The desktop app bundles the Copilot runtime; neither `gh` nor a separate CLI
+  installation is required. Your account must have Copilot access. Credentials
+  stay in the desktop process and are encrypted using the operating system's
+  secure storage (macOS Keychain-backed encryption), outside project exports.
+  Device-flow tokens refresh automatically when supported; expired or revoked
+  authorization requires signing in again. **Sign out of OpenChatCut** removes
+  this app's saved login and prevents automatic fallback to a terminal account;
+  it does not sign you out of GitHub or revoke other applications.
+  Plain web development retains its existing CLI-login path rather than storing
+  OAuth credentials without secure storage.
 - **API keys:** open **Settings → Agent model**, choose a provider, and save its API key and model. Keys remain server-side.
 - **ChatGPT subscription:** install the official Codex CLI 0.146.0 or newer, then open **Settings → Agent model → OpenAI · Codex**. Sign in through the browser or device-code flow, load the account's models, choose a model-specific reasoning effort (or keep its default), and select Codex from the chat model picker. OpenChatCut uses a dedicated Codex profile; the official CLI owns credential storage, token renewal, and logout, while OAuth tokens are never exposed to the browser.
 - **Claude subscription:** OpenChatCut does not collect Claude OAuth credentials. Use Claude Code through the local MCP connection below. The built-in Agent can use Anthropic through an API key.
 
 The built-in Agent always runs the model loop on the local server. Chat, drafts, and proposals survive page refreshes and local service restarts. Timeline changes still go through the active editor's validated, undoable commands.
+
+For a custom distribution, register a GitHub OAuth App with **Enable Device
+Flow** selected and set `OPENCHATCUT_COPILOT_CLIENT_ID` on the desktop process.
+The Client ID is public; **never bundle a client secret**. The default Client ID
+belongs to this fork's OpenChatCut desktop OAuth application.
 
 ### Agent local-path access (advanced)
 
