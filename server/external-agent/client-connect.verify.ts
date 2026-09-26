@@ -1,14 +1,30 @@
 // One-click client connect: JSON config merges are idempotent and never
 // clobber existing servers; broken JSON is refused; the Codex path drives the
-// CLI and keeps the shell export in sync. Runs entirely inside a temp HOME.
+// CLI and keeps the token where Codex reads it: the shell export on macOS/Linux,
+// the Windows user environment on win32 (#161). Runs entirely inside a temp
+// HOME; the Windows cases record commands through an injected runner, so no
+// PowerShell, registry or real Codex CLI is ever touched.
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, chmod, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, chmod, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { connectExternalClient } from './client-connect';
+import { connectExternalClient, type ConnectCommand, type ConnectCommandRunner } from './client-connect';
 
 const ENDPOINT = 'http://localhost:5199/api/external-mcp/mcp';
 const TOKEN = 'tok_AbC123-_xyz';
+const CODEX_ARGS = ['mcp', 'add', 'openchatcut', '--url', ENDPOINT, '--bearer-token-env-var', 'OPENCHATCUT_MCP_TOKEN'];
+
+/** Records every command; `reply` decides each exit code (default: success). */
+function recordingRunner(
+  reply: (command: ConnectCommand) => { code: number | null; stderr: string } = () => ({ code: 0, stderr: '' }),
+): { calls: ConnectCommand[]; run: ConnectCommandRunner } {
+  const calls: ConnectCommand[] = [];
+  return { calls, run: async (command) => { calls.push(command); return reply(command); } };
+}
+
+async function assertMissing(file: string, message: string): Promise<void> {
+  await assert.rejects(stat(file), { code: 'ENOENT' }, message);
+}
 
 async function main(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'occ-connect-'));
@@ -112,7 +128,7 @@ async function main(): Promise<void> {
     assert.match(zshrcSecond, /export OPENCHATCUT_MCP_TOKEN='tok_NEW456'/);
     assert.equal((zshrcSecond.match(/OPENCHATCUT_MCP_TOKEN=/g) ?? []).length, 1, 'no duplicate export');
 
-    // 7. Codex CLI failure surfaces as codex-cli-failed.
+    // 8. Codex CLI failure surfaces as codex-cli-failed.
     const failStub = path.join(stubDir, 'codex-fail');
     await writeFile(failStub, '#!/bin/sh\necho boom >&2\nexit 3\n');
     await chmod(failStub, 0o755);
@@ -123,7 +139,103 @@ async function main(): Promise<void> {
       assert.match(codexFail.detail ?? '', /boom/);
     }
 
-    // 9. Validation: unknown client and malformed token are rejected.
+    // 9. macOS/Linux lookup: bare `codex`, then ~/.local/bin, then the CLI in
+    //    the ChatGPT app, each run with the plain argv, and the token lands in
+    //    ~/.zshrc with nothing Windows-specific run.
+    const unixHome = path.join(home, 'unix');
+    const unix = recordingRunner((command) => (
+      command.executable === '/Applications/ChatGPT.app/Contents/Resources/codex'
+        ? { code: 0, stderr: '' }
+        : { code: null, stderr: 'spawn failed' }
+    ));
+    const unixCodex = await connectExternalClient('codex', ENDPOINT, TOKEN, { baseDir: unixHome, platform: 'darwin', runCommand: unix.run });
+    assert.deepEqual(unixCodex, { ok: true, paths: ['~/.codex/config.toml', '~/.zshrc'] });
+    assert.deepEqual(unix.calls.map((call) => call.executable), [
+      'codex',
+      path.join(unixHome, '.local/bin/codex'),
+      '/Applications/ChatGPT.app/Contents/Resources/codex',
+    ]);
+    for (const call of unix.calls) {
+      assert.deepEqual(call.args, CODEX_ARGS);
+      assert.equal(call.windowsVerbatimArguments, undefined);
+      assert.equal(call.env.CODEX_HOME, path.join(unixHome, '.codex'));
+    }
+    assert.match(await readFile(path.join(unixHome, '.zshrc'), 'utf8'), /^export OPENCHATCUT_MCP_TOKEN='tok_AbC123-_xyz'$/m);
+
+    // 10. Windows: the CLI comes from the shared lookup, an npm `codex.cmd`
+    //     shim runs through cmd.exe, and the token becomes a user environment
+    //     variable via PowerShell. It travels only in that child's environment,
+    //     never on a command line, and ~/.zshrc is not written.
+    const envBefore = process.env.OPENCHATCUT_MCP_TOKEN;
+    const winHome = path.join(home, 'win');
+    const shim = 'C:\\Users\\me\\AppData\\Roaming\\npm\\codex.cmd';
+    const win = recordingRunner();
+    const winCodex = await connectExternalClient('codex', ENDPOINT, TOKEN, {
+      baseDir: winHome,
+      platform: 'win32',
+      runCommand: win.run,
+      resolveCodexBin: async () => shim,
+    });
+    assert.deepEqual(winCodex, {
+      ok: true,
+      paths: ['~/.codex/config.toml', 'HKCU\\Environment\\OPENCHATCUT_MCP_TOKEN'],
+      notice: 'restart-codex',
+    });
+    assert.equal(win.calls.length, 2, 'codex mcp add, then the user environment write');
+    const [winAdd, winSave] = win.calls;
+    assert.match(winAdd.executable, /cmd\.exe$/i, 'a .cmd shim needs cmd.exe');
+    assert.equal(winAdd.windowsVerbatimArguments, true);
+    assert.match(winAdd.args[3], /codex\.cmd \^"mcp\^" \^"add\^" \^"openchatcut\^"/);
+    assert.match(winAdd.args[3], /\^"--bearer-token-env-var\^" \^"OPENCHATCUT_MCP_TOKEN\^"/);
+    assert.equal(winAdd.env.CODEX_HOME, path.join(winHome, '.codex'));
+    assert.match(winSave.executable, /^[A-Z]:\\Windows\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/i,
+      'Windows PowerShell by absolute path, not whatever PATH offers');
+    assert.deepEqual(winSave.args.slice(0, 3), ['-NoProfile', '-NonInteractive', '-Command']);
+    const script = winSave.args[3] ?? '';
+    assert.match(script, /\[Environment\]::SetEnvironmentVariable\('OPENCHATCUT_MCP_TOKEN', \$token, 'User'\)/);
+    assert.match(script, /GetEnvironmentVariable\('OPENCHATCUT_MCP_TOKEN', 'User'\) -cne \$token\) \{ exit 3 \}/,
+      'the saved value is read back before reporting success');
+    assert.equal(winSave.env.OPENCHATCUT_MCP_TOKEN, TOKEN, 'the token is handed over through the environment');
+    for (const call of win.calls) {
+      assert.ok(call.args.every((arg) => !arg.includes(TOKEN)), `${call.executable} never gets the token as an argument`);
+    }
+    assert.equal(process.env.OPENCHATCUT_MCP_TOKEN, envBefore, 'the server process environment is left alone');
+    await assertMissing(path.join(winHome, '.zshrc'), 'no ~/.zshrc on Windows');
+
+    // 11. Windows: a failed save (PowerShell error) or an unverified one (the
+    //     read-back exit 3) is an error, never "connected", and the token is
+    //     scrubbed from the detail. A codex.exe runs directly, without cmd.exe.
+    const exe = 'C:\\Users\\me\\.local\\bin\\codex.exe';
+    for (const [saveReply, expectedDetail] of [
+      [{ code: 1, stderr: `SetEnvironmentVariable failed for ${TOKEN}` }, 'SetEnvironmentVariable failed for <redacted>'],
+      [{ code: 3, stderr: '' }, 'exit code 3'],
+    ] as const) {
+      const winFail = recordingRunner((command) => (command.executable === exe ? { code: 0, stderr: '' } : saveReply));
+      const winSaveFailed = await connectExternalClient('codex', ENDPOINT, TOKEN, {
+        baseDir: winHome,
+        platform: 'win32',
+        runCommand: winFail.run,
+        resolveCodexBin: async () => exe,
+      });
+      assert.deepEqual(winSaveFailed, { ok: false, error: 'token-env-write-error', detail: expectedDetail });
+      assert.equal(winFail.calls[0]?.executable, exe);
+      assert.deepEqual(winFail.calls[0]?.args, CODEX_ARGS);
+      assert.equal(winFail.calls.length, 2);
+    }
+    await assertMissing(path.join(winHome, '.zshrc'), 'no ~/.zshrc fallback when the save fails');
+
+    // 12. Windows without a Codex CLI: nothing runs, nothing is written.
+    const winNone = recordingRunner();
+    const winMissing = await connectExternalClient('codex', ENDPOINT, TOKEN, {
+      baseDir: winHome,
+      platform: 'win32',
+      runCommand: winNone.run,
+      resolveCodexBin: async () => null,
+    });
+    assert.deepEqual(winMissing, { ok: false, error: 'codex-cli-failed', detail: 'codex CLI not found' });
+    assert.equal(winNone.calls.length, 0);
+
+    // 13. Validation: unknown client and malformed token are rejected.
     const badClient = await connectExternalClient('evil', ENDPOINT, TOKEN, { baseDir: home });
     assert.equal(badClient.ok, false);
     const badToken = await connectExternalClient('cursor', ENDPOINT, "'; rm -rf ~", { baseDir: home });
@@ -132,7 +244,7 @@ async function main(): Promise<void> {
   } finally {
     await rm(home, { recursive: true, force: true });
   }
-  console.log('✓ client-connect: merges idempotent, broken JSON refused, codex CLI + env var synced');
+  console.log('✓ client-connect: merges idempotent, broken JSON refused, codex CLI + token saved per platform');
 }
 
 void main();
