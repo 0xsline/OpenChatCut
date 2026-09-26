@@ -5,10 +5,13 @@
 //
 // Every clip carries the source window the preview actually plays — srcInFrame
 // and playbackRate, read the way MediaFill / AudioClip read them — so the exporter
-// can trim its draft segment instead of starting every clip at source 0.
+// can trim its draft segment instead of starting every clip at source 0. A draft
+// cannot nest, so sequence items are flattened into the clips and captions they
+// show (sequenceFlatten).
 import { captionPages } from '../captions/exportCaptions';
 import { joinCaptionWords } from '../captions/types';
 import { activeTimeline, type ProjectDoc, type TimelineItem, type TimelineState } from '../editor/types';
+import { placeRange, timelinePlacements, type TimelinePlacement } from '../editor/sequenceFlatten';
 import { sourceFrameAt, timelineFramesToSourceFrames } from '../editor/sourceLimit';
 import { transcriptSegments } from './fcpxml';
 
@@ -79,17 +82,25 @@ function playbackSpans(item: TimelineItem & { kind: JianyingDraftClipKind }, fps
   }];
 }
 
-function draftClip(item: TimelineItem & { kind: JianyingDraftClipKind }, span: PlaybackSpan): JianyingDraftClip {
-  return {
-    kind: item.kind,
-    src: item.src ?? '',
-    startFrame: span.startFrame,
-    durationInFrames: span.endFrame - span.startFrame,
-    srcInFrame: span.srcInFrame,
-    playbackRate: span.playbackRate,
-    volume: item.volume,
-    name: item.name,
-  };
+// A span clipped by its sequence window starts that many frames later in its
+// source; rates compose through the nesting. Stills stay stills.
+function placedClips(placement: TimelinePlacement): JianyingDraftClip[] {
+  const { timeline } = placement;
+  return timeline.items.filter(isDraftClipItem).flatMap((item) => playbackSpans(item, timeline.fps).flatMap((span) => {
+    const placed = placeRange(placement, span.startFrame, span.endFrame);
+    if (!placed) return [];
+    const still = item.kind === 'image' || item.kind === 'gif';
+    return [{
+      kind: item.kind,
+      src: item.src ?? '',
+      startFrame: placed.rootStart,
+      durationInFrames: placed.rootDuration,
+      srcInFrame: still ? 0 : sourceFrameAt(span, placed.localStart - span.startFrame),
+      playbackRate: still ? 1 : span.playbackRate * placement.rate,
+      volume: item.volume,
+      name: item.name,
+    }];
+  }));
 }
 
 /** A timeline's caption cues, in its own ms: the pages of its default caption
@@ -103,18 +114,33 @@ function timelineCaptionCues(timeline: TimelineState): JianyingDraftCaption[] {
     .map((page) => ({ startMs: page.start, endMs: page.end, text: joinCaptionWords(page.words) }));
 }
 
-function timelineClips(timeline: TimelineState): JianyingDraftClip[] {
-  return timeline.items
-    .filter(isDraftClipItem)
-    .flatMap((item) => playbackSpans(item, timeline.fps).map((span) => draftClip(item, span)));
+// A nested timeline's captions render inside its sequence (NestedSequenceLayer
+// draws the child's own caption layer), so they are clipped to the sequence
+// window and re-timed onto the root like its clips. Cues are timed in ms, so
+// the placement is converted rather than round-tripping ms through frames; the
+// graph check rejects fps mismatches, so one fps serves child and root frames.
+function placedCaptions(placement: TimelinePlacement): JianyingDraftCaption[] {
+  const ms = (frames: number) => (frames * 1000) / placement.timeline.fps;
+  const inMs: TimelinePlacement = {
+    ...placement,
+    fromFrame: ms(placement.fromFrame),
+    toFrame: ms(placement.toFrame),
+    rootFrame: ms(placement.rootFrame),
+  };
+  return timelineCaptionCues(placement.timeline).flatMap((cue) => {
+    const placed = placeRange(inMs, cue.startMs, cue.endMs);
+    return placed ? [{ startMs: placed.rootStart, endMs: placed.rootStart + placed.rootDuration, text: cue.text }] : [];
+  });
 }
 
-/** The clips and captions of the project's active timeline, as the exporter takes them. */
+/** The clips and captions of the project's active timeline, as the exporter
+ * takes them, with nested sequences flattened onto it in timeline order. */
 export function jianyingDraftPayload(project: ProjectDoc): JianyingDraftPayload {
   const timeline = activeTimeline(project);
+  const placements = timelinePlacements(project, timeline.id);
   return {
     fps: timeline.fps,
-    items: timelineClips(timeline),
-    captions: timelineCaptionCues(timeline),
+    items: placements.flatMap(placedClips).sort((a, b) => a.startFrame - b.startFrame),
+    captions: placements.flatMap(placedCaptions).sort((a, b) => a.startMs - b.startMs),
   };
 }
