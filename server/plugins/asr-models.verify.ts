@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { ASR_MODELS, asrModelEntry, asrModelFile, type AsrModelEntry } from '../../shared/asr-models';
+import { ggmlCachePath, legacyGgmlCachePath, resolveGgmlPath } from '../../shared/asr-ggml-cache';
 import { __resetAsrTasks, handleAsrModelsRequest, inspectAsrModel } from './asr-models';
 
 const server = createServer((req, res) => {
@@ -142,6 +144,57 @@ try {
   const complete = await inspectAsrModel(ggmlEntry, root);
   assert.equal(complete.downloaded, true, 'onnx + ggml present counts as downloaded');
   assert.equal(complete.bytes, expectedContent.length + ggmlBytes.length, 'bytes include the ggml file');
+}
+
+// The GGML companion is written by the downloader and read by inspection and
+// by the desktop whisper.cpp worker. Those must name the same file: a download
+// that lands anywhere else leaves every GGML-bearing tier permanently
+// "not downloaded" and silently disables the desktop native engine.
+{
+  const cacheDir = await mkdtemp(join(tmpdir(), 'asr-ggml-'));
+  try {
+    const fileName = 'ggml-companion-test.bin';
+    assert.equal(
+      ggmlCachePath(cacheDir, fileName),
+      join(cacheDir, 'ggml', fileName),
+      'the canonical companion path is <cache>/ggml/<file>',
+    );
+    assert.notEqual(
+      legacyGgmlCachePath(cacheDir, fileName),
+      ggmlCachePath(cacheDir, fileName),
+      'the pre-fix hf-proxy layout is a different directory',
+    );
+
+    // A stranded legacy download is adopted in place rather than re-fetched.
+    const legacy = legacyGgmlCachePath(cacheDir, fileName);
+    await mkdir(dirname(legacy), { recursive: true });
+    await writeFile(legacy, 'ggml-bytes');
+    const adopted = resolveGgmlPath(cacheDir, fileName);
+    assert.equal(adopted, ggmlCachePath(cacheDir, fileName));
+    assert.equal(existsSync(adopted), true, 'the legacy companion is moved to the canonical path');
+    assert.equal(existsSync(legacy), false, 'the legacy copy is not left behind');
+    assert.equal(await readFile(adopted, 'utf8'), 'ggml-bytes', 'adoption preserves the bytes');
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
+}
+
+// Every catalog companion must be a real whisper.cpp artifact name. A tier
+// that names a file the upstream repo does not publish can never load
+// natively, which is how `ggml-medium-q5_1.bin` disabled the medium tier.
+for (const entry of ASR_MODELS) {
+  if (!entry.ggmlFile) continue;
+  const { fileName, sizeBytes, sha256, revision } = entry.ggmlFile;
+  assert.match(fileName, /^ggml-[a-z0-9._-]+\.bin$/, `${entry.id}: implausible ggml file name ${fileName}`);
+  assert.ok(sizeBytes > 0, `${entry.id}: ggml size must be positive`);
+  assert.match(sha256, /^[a-f0-9]{64}$/, `${entry.id}: ggml sha256 must be a lowercase digest`);
+  assert.match(revision, /^[a-f0-9]{40}$/, `${entry.id}: ggml revision must be a pinned commit`);
+}
+
+// The tiers the desktop engine is expected to serve must all carry a companion,
+// otherwise they silently fall back to the browser wasm engine.
+for (const id of ['tiny', 'base', 'small', 'medium', 'large-v3-turbo']) {
+  assert.ok(asrModelEntry(id)?.ggmlFile, `tier ${id} must record a GGML companion for the desktop engine`);
 }
 
 console.log('asr-models.verify: mutation authorization and JSON contract OK');
