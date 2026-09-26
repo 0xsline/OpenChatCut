@@ -36,4 +36,12 @@ export default {
   '({i}/{total}) 上传 {label}…': '({i}/{total}) Caricamento {label}...',
   '({i}/{total}) 转写 {label}…': '({i}/{total}) Trascrizione {label}...',
   '已完成 {ok}/{total} 段；失败：{fails}': 'Completati {ok}/{total} clip; errori: {fails}',
+  '桌面引擎的模型文件未下载，本次使用浏览器引擎': 'Il file del modello del motore desktop non è scaricato: questa volta si usa il motore del browser',
+  '桌面原生推理不可用，已回退浏览器引擎': 'Inferenza nativa desktop non disponibile: si passa al motore del browser',
+  '桌面原生推理（whisper.cpp）未能完成转写：{reason}。回退到浏览器引擎需要 {model} 的 ONNX 模型文件，但尚未下载完整。请到 设置 → 本地模型 → 本地转写 下载该模型后重试。':
+    'L’inferenza nativa desktop (whisper.cpp) non ha completato la trascrizione: {reason}. Per ripiegare sul motore del browser servono i file ONNX di {model}, che non sono stati scaricati per intero. Scarica il modello in Impostazioni → Modelli locali → Trascrizione locale e riprova.',
+  '本地转写模型 {model} 尚未下载：桌面引擎需要的 whisper.cpp 模型文件（GGML）和浏览器引擎需要的 ONNX 模型文件都未就绪。请到 设置 → 本地模型 → 本地转写 下载该模型后再试。':
+    'Il modello di trascrizione locale {model} non è scaricato: non sono pronti né il file whisper.cpp (GGML) del motore desktop né i file ONNX del motore del browser. Scarica il modello in Impostazioni → Modelli locali → Trascrizione locale e riprova.',
+  '本地转写模型 {model} 的浏览器引擎文件（ONNX）未下载完整或校验失败。请到 设置 → 本地模型 → 本地转写 下载该模型后再试。':
+    'I file del motore del browser (ONNX) del modello di trascrizione locale {model} sono incompleti o non hanno superato la verifica. Scarica il modello in Impostazioni → Modelli locali → Trascrizione locale e riprova.',
 } as Record<string, string>;

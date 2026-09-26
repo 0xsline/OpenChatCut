@@ -527,6 +527,9 @@ export default {
   '未下载': 'Not downloaded',
   '删除': 'Delete',
   '下载': 'Download',
+  '补全': 'Complete',
+  '桌面引擎已就绪；补全浏览器引擎文件，供桌面推理失败时回退':
+    'The desktop engine is ready. Download the browser-engine files too, as a fallback when desktop inference fails.',
   '模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。':
     'Models are downloaded to this machine on demand — they are not bundled with the app. Downloads use the accelerated pipeline automatically.',
   '桌面原生推理加速': 'Native desktop inference acceleration',

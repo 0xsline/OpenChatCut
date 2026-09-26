@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { __resetLocalAsrClient, LocalAsrClient, warmUpLocalAsr } from './local-asr';
 import type { AsrConfig } from './local-asr-types';
+import type { LocalAsrModelStatus } from './local-asr-readiness';
+
+/** A catalog row with every engine's files verified. */
+function installed(modelId: string): LocalAsrModelStatus {
+  return { modelId, downloaded: true, onnxDownloaded: true, ggmlDownloaded: true };
+}
 
 interface LoadRequest {
   id: number;
@@ -80,10 +86,18 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: s
 
 try {
   storage.setItem('cc.asrModel', 'tiny');
-  await warmUpLocalAsr(['Xenova/whisper-base']);
+  await warmUpLocalAsr([installed('Xenova/whisper-base')]);
   assert.equal(FakeWorker.instances.length, 0, 'missing selected model must not start a worker');
+  // Without a desktop bridge only the browser engine can warm up, and it loads
+  // the ONNX export: a companion alone must not start the browser worker.
+  await warmUpLocalAsr([{
+    modelId: 'Xenova/whisper-tiny', downloaded: false, onnxDownloaded: false, ggmlDownloaded: true,
+  }]);
+  assert.equal(FakeWorker.instances.length, 0, 'a browser warm-up needs the ONNX export, not the companion');
 
-  const tinyWarmup = warmUpLocalAsr(['Xenova/whisper-tiny']);
+  const tinyWarmup = warmUpLocalAsr([{
+    modelId: 'Xenova/whisper-tiny', downloaded: false, onnxDownloaded: true, ggmlDownloaded: false,
+  }]);
   await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
   const worker = FakeWorker.instances[0]!;
   assert.equal(worker.requests[0]?.modelId, 'Xenova/whisper-tiny');
@@ -91,17 +105,17 @@ try {
   worker.resolveNext();
   await tinyWarmup;
 
-  await warmUpLocalAsr(['Xenova/whisper-tiny']);
+  await warmUpLocalAsr([installed('Xenova/whisper-tiny')]);
   assert.equal(worker.requests.length, 1, 'already-loaded model must be reused');
 
   __resetLocalAsrClient();
   FakeWorker.instances.length = 0;
   storage.setItem('cc.asrModel', 'tiny');
-  const first = warmUpLocalAsr(['Xenova/whisper-tiny']);
+  const first = warmUpLocalAsr([installed('Xenova/whisper-tiny')]);
   await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
   const switchingWorker = FakeWorker.instances[0]!;
   storage.setItem('cc.asrModel', 'small');
-  const second = warmUpLocalAsr(['Xenova/whisper-small']);
+  const second = warmUpLocalAsr([installed('Xenova/whisper-small')]);
   assert.equal(FakeWorker.instances.length, 1, 'model switch must wait for current load');
   switchingWorker.resolveNext();
   await waitFor(() => FakeWorker.instances[1]?.requests.length === 1);
