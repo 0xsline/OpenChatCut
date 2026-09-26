@@ -1,9 +1,9 @@
 // On-device ASR model management endpoints — users download/delete models from
-// Settings → 转写 → 本地模型. Downloads reuse hf-proxy's multi-source
+// Settings → 本地模型 → 本地转写. Downloads reuse hf-proxy's multi-source
 // accelerated fetch into the shared disk cache; progress is per-file
 // granularity (bytes of completed files / total bytes).
 //
-//   GET  /api/asr-models              → catalog + per-model downloaded state
+//   GET  /api/asr-models              → catalog + per-model, per-engine downloaded state
 //   POST /api/asr-models/download     → { id } start background download
 //   GET  /api/asr-models/download/:id → task status { status, progress, … }
 //   POST /api/asr-models/delete       → { id } remove cached files
@@ -21,18 +21,40 @@ import {
   type AsrModelFile,
 } from '../../shared/asr-models.ts';
 import {
-  GGML_SOURCE_MODEL_ID, legacyGgmlCachePath, resolveGgmlPath,
+  GGML_SOURCE_MODEL_ID, ggmlCachePath, legacyGgmlCachePath, resolveGgmlPath,
 } from '../../shared/asr-ggml-cache.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
-import { downloadModelFile, modelCacheDir } from './hf-proxy.ts';
+import { downloadModelFile, modelCacheDir, type ProxyTarget } from './hf-proxy.ts';
 
 const MAX_JSON = 8 * 1024;
 
 const tasks = new Map<string, AsrDownloadTask>();
-const inspections = new Map<string, {
-  fingerprint: string;
-  result: { downloaded: boolean; bytes: number };
-}>();
+/** Last sha256 verdict per file group, reused while the files' stat fingerprint holds. */
+const inspections = new Map<string, { fingerprint: string; verified: boolean }>();
+
+/**
+ * Per-engine readiness of one tier. Each flag means every file of that group is
+ * present with its catalog size and sha256.
+ */
+export interface AsrModelInspection {
+  /** The ONNX export the browser (transformers.js) engine loads. */
+  readonly onnxDownloaded: boolean;
+  /** The GGML companion desktop whisper.cpp loads; false for a tier without one. */
+  readonly ggmlDownloaded: boolean;
+  /** Every file the tier lists. The only flag clients had before #168; kept for them. */
+  readonly downloaded: boolean;
+  /** Bytes of the verified groups. */
+  readonly bytes: number;
+}
+
+function inspectionKey(cacheDir: string, entry: AsrModelEntry, group: 'onnx' | 'ggml'): string {
+  return `${cacheDir}\0${entry.modelId}\0${group}`;
+}
+
+function forgetInspections(cacheDir: string, entry: AsrModelEntry): void {
+  inspections.delete(inspectionKey(cacheDir, entry, 'onnx'));
+  inspections.delete(inspectionKey(cacheDir, entry, 'ggml'));
+}
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -91,7 +113,7 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 async function modelFileVerified(
   path: string,
-  file: AsrModelFile,
+  file: Pick<AsrModelFile, 'sizeBytes' | 'sha256'>,
   signal?: AbortSignal,
 ): Promise<boolean> {
   throwIfAborted(signal);
@@ -120,58 +142,74 @@ async function modelFileVerified(
     return false;
   }
 }
+
+/**
+ * Whether every file is present with its catalog size and sha256. Hashing is
+ * skipped while the files' stat fingerprint matches the last verdict for `key`.
+ */
+async function filesVerified(
+  key: string,
+  files: readonly AsrModelDownload[],
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const stats: string[] = [];
+  for (const file of files) {
+    throwIfAborted(signal);
+    try {
+      const info = await stat(file.destination);
+      throwIfAborted(signal);
+      if (!info.isFile() || info.size !== file.sizeBytes) return false;
+      stats.push(`${file.destination}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`);
+    } catch {
+      throwIfAborted(signal);
+      return false;
+    }
+  }
+  throwIfAborted(signal);
+  const fingerprint = stats.join('|');
+  const cached = inspections.get(key);
+  if (cached?.fingerprint === fingerprint) return cached.verified;
+  const verified = (await Promise.all(files.map((file) =>
+    modelFileVerified(file.destination, file, signal)))).every(Boolean);
+  inspections.set(key, { fingerprint, verified });
+  return verified;
+}
+
+function totalBytes(files: readonly AsrModelDownload[]): number {
+  return files.reduce((total, file) => total + file.sizeBytes, 0);
+}
+
 export async function inspectAsrModel(
   entry: AsrModelEntry,
   cacheDir = modelCacheDir(),
   signal?: AbortSignal,
-): Promise<{ downloaded: boolean; bytes: number }> {
+): Promise<AsrModelInspection> {
   throwIfAborted(signal);
-  const stats: string[] = [];
-  const ggmlPath = entry.ggmlFile
-    ? resolveGgmlPath(cacheDir, entry.ggmlFile.fileName)
-    : undefined;
-  const checkedFiles: Array<{ path: string; sizeBytes: number; sha256: string }> = [
-    ...entry.files.map((file) => ({
-      path: join(cacheDir, entry.modelId, file.path),
-      sizeBytes: file.sizeBytes,
-      sha256: file.sha256,
-    })),
-    ...(entry.ggmlFile && ggmlPath
-      ? [{ path: ggmlPath, sizeBytes: entry.ggmlFile.sizeBytes, sha256: entry.ggmlFile.sha256 }]
-      : []),
-  ];
-  for (const file of checkedFiles) {
-    throwIfAborted(signal);
-    try {
-      const info = await stat(file.path);
-      throwIfAborted(signal);
-      if (!info.isFile() || info.size !== file.sizeBytes) return { downloaded: false, bytes: 0 };
-      stats.push(`${file.path}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`);
-    } catch {
-      throwIfAborted(signal);
-      return { downloaded: false, bytes: 0 };
-    }
-  }
-  const key = `${cacheDir}\0${entry.modelId}`;
-  throwIfAborted(signal);
-  const fingerprint = stats.join('|');
-  const cached = inspections.get(key);
-  if (cached?.fingerprint === fingerprint) return cached.result;
-  const downloaded = (await Promise.all(checkedFiles.map((file) =>
-    modelFileVerified(file.path, file, signal)))).every(Boolean);
-  const result = { downloaded, bytes: downloaded ? entry.files.reduce(
-    (total, file) => total + file.sizeBytes, 0,
-  ) + (entry.ggmlFile ? entry.ggmlFile.sizeBytes : 0) : 0 };
-  inspections.set(key, { fingerprint, result });
-  return result;
+  // Adopt a companion an older build stranded before checking it.
+  if (entry.ggmlFile) resolveGgmlPath(cacheDir, entry.ggmlFile.fileName);
+  const files = asrModelDownloads(entry, cacheDir);
+  const onnx = files.filter((file) => file.target.modelId === entry.modelId);
+  const ggml = files.filter((file) => file.target.modelId === GGML_SOURCE_MODEL_ID);
+  // Each engine is judged on its own files only: a missing companion must not
+  // hide a complete ONNX export from the browser engine, nor the reverse (#168).
+  const [onnxDownloaded, ggmlDownloaded] = await Promise.all([
+    filesVerified(inspectionKey(cacheDir, entry, 'onnx'), onnx, signal),
+    ggml.length > 0 ? filesVerified(inspectionKey(cacheDir, entry, 'ggml'), ggml, signal) : false,
+  ]);
+  return {
+    onnxDownloaded,
+    ggmlDownloaded,
+    downloaded: onnxDownloaded && (ggmlDownloaded || ggml.length === 0),
+    bytes: (onnxDownloaded ? totalBytes(onnx) : 0) + (ggmlDownloaded ? totalBytes(ggml) : 0),
+  };
 }
 
-function catalogState(): Promise<Array<{
+function catalogState(cacheDir = modelCacheDir()): Promise<Array<AsrModelInspection & {
   id: string; modelId: string; label: string; sizeLabel: string; language: string;
-  downloaded: boolean; bytes: number; task?: AsrDownloadTask;
+  task?: AsrDownloadTask;
 }>> {
   return Promise.all(ASR_MODELS.map(async (entry) => {
-    const state = await inspectAsrModel(entry);
+    const state = await inspectAsrModel(entry, cacheDir);
     return {
       id: entry.id,
       modelId: entry.modelId,
@@ -179,20 +217,72 @@ function catalogState(): Promise<Array<{
       sizeLabel: entry.sizeLabel,
       language: entry.language,
       downloaded: state.downloaded,
+      onnxDownloaded: state.onnxDownloaded,
+      ggmlDownloaded: state.ggmlDownloaded,
       bytes: state.bytes,
       task: tasks.get(entry.id),
     };
   }));
 }
 
-async function startDownload(id: string): Promise<AsrDownloadTask> {
-  const entry = asrModelEntry(id);
-  if (!entry) throw new Error(`unknown model ${id}`);
-  const existing = tasks.get(id);
-  if (existing && existing.status === 'downloading') return existing;
+/** One catalog file: where the downloader fetches it from and writes it to. */
+export interface AsrModelDownload {
+  readonly target: ProxyTarget;
+  /** Always explicit, and always the path the inspection and the desktop worker read. */
+  readonly destination: string;
+  readonly sizeBytes: number;
+  readonly sha256: string;
+}
+
+/**
+ * Every file of a tier in download order: the browser engine's ONNX export,
+ * then the whisper.cpp companion. The companion comes from another repo, so
+ * hf-proxy's default destination — derived from the source repo id — is
+ * `<cache>/ggerganov/whisper.cpp/`, a directory no reader looks in. Leaving it
+ * implicit is how every GGML tier stayed "not downloaded" from v0.2.2 to v0.2.14.
+ */
+export function asrModelDownloads(entry: AsrModelEntry, cacheDir: string): AsrModelDownload[] {
+  const downloads: AsrModelDownload[] = entry.files.map((file) => ({
+    target: { modelId: entry.modelId, revision: entry.revision, filePath: file.path },
+    destination: join(cacheDir, entry.modelId, ...file.path.split('/')),
+    sizeBytes: file.sizeBytes,
+    sha256: file.sha256,
+  }));
   const ggml = entry.ggmlFile;
-  const task: AsrDownloadTask = {
-    id,
+  if (!ggml) return downloads;
+  return [...downloads, {
+    target: { modelId: GGML_SOURCE_MODEL_ID, revision: ggml.revision, filePath: ggml.fileName },
+    destination: ggmlCachePath(cacheDir, ggml.fileName),
+    sizeBytes: ggml.sizeBytes,
+    sha256: ggml.sha256,
+  }];
+}
+
+/** Fetch the files of `entry` that are missing or fail verification. */
+async function downloadAsrModel(
+  entry: AsrModelEntry,
+  task: AsrDownloadTask,
+  cacheDir: string,
+  download: typeof downloadModelFile,
+): Promise<void> {
+  // Adopt a companion an older build stranded before deciding to re-fetch it.
+  if (entry.ggmlFile) resolveGgmlPath(cacheDir, entry.ggmlFile.fileName);
+  for (const file of asrModelDownloads(entry, cacheDir)) {
+    if (!(await modelFileVerified(file.destination, file))) {
+      await rm(file.destination, { force: true });
+      await download(file.target, file.destination, {
+        expectedBytes: file.sizeBytes, expectedSha256: file.sha256,
+      });
+    }
+    task.filesDone += 1;
+    task.bytesDone += file.sizeBytes;
+  }
+}
+
+function newDownloadTask(entry: AsrModelEntry): AsrDownloadTask {
+  const ggml = entry.ggmlFile;
+  return {
+    id: entry.id,
     status: 'downloading',
     bytesDone: 0,
     bytesTotal: entry.files.reduce((total, file) => total + file.sizeBytes, 0)
@@ -200,48 +290,22 @@ async function startDownload(id: string): Promise<AsrDownloadTask> {
     filesDone: 0,
     filesTotal: entry.files.length + (ggml ? 1 : 0),
   };
-  inspections.delete(`${modelCacheDir()}\0${entry.modelId}`);
+}
+
+async function startDownload(id: string): Promise<AsrDownloadTask> {
+  const entry = asrModelEntry(id);
+  if (!entry) throw new Error(`unknown model ${id}`);
+  const existing = tasks.get(id);
+  if (existing && existing.status === 'downloading') return existing;
+  const task = newDownloadTask(entry);
+  forgetInspections(modelCacheDir(), entry);
   tasks.set(id, task);
-  void (async () => {
-    try {
-      for (const file of entry.files) {
-        const path = join(modelCacheDir(), entry.modelId, file.path);
-        if (await modelFileVerified(path, file)) {
-          task.filesDone += 1;
-          task.bytesDone += file.sizeBytes;
-          continue;
-        }
-        await rm(path, { force: true });
-        await downloadModelFile(
-          { modelId: entry.modelId, revision: entry.revision, filePath: file.path },
-          undefined,
-          { expectedBytes: file.sizeBytes, expectedSha256: file.sha256 },
-        );
-        task.filesDone += 1;
-        task.bytesDone += file.sizeBytes;
-      }
-      if (ggml) {
-        const ggmlPath = resolveGgmlPath(modelCacheDir(), ggml.fileName);
-        const ggmlFile = { path: ggmlPath, sizeBytes: ggml.sizeBytes, sha256: ggml.sha256 };
-        if (!(await modelFileVerified(ggmlPath, ggmlFile))) {
-          await rm(ggmlPath, { force: true });
-          // The destination is explicit: hf-proxy would otherwise derive it
-          // from the source repo id and strand the file where no reader looks.
-          await downloadModelFile(
-            { modelId: GGML_SOURCE_MODEL_ID, revision: ggml.revision, filePath: ggml.fileName },
-            ggmlPath,
-            { expectedBytes: ggml.sizeBytes, expectedSha256: ggml.sha256 },
-          );
-        }
-        task.filesDone += 1;
-        task.bytesDone += ggml.sizeBytes;
-      }
-      task.status = 'done';
-    } catch (error) {
-      task.status = 'error';
-      task.error = error instanceof Error ? error.message : String(error);
-    }
-  })();
+  void downloadAsrModel(entry, task, modelCacheDir(), downloadModelFile).then(() => {
+    task.status = 'done';
+  }, (error: unknown) => {
+    task.status = 'error';
+    task.error = error instanceof Error ? error.message : String(error);
+  });
   return task;
 }
 
@@ -256,7 +320,7 @@ async function deleteModel(id: string): Promise<boolean> {
     await rm(legacyGgmlCachePath(modelCacheDir(), entry.ggmlFile.fileName), { force: true });
   }
   tasks.delete(id);
-  inspections.delete(`${modelCacheDir()}\0${entry.modelId}`);
+  forgetInspections(modelCacheDir(), entry);
   return true;
 }
 
@@ -323,4 +387,20 @@ export function asrModelsPlugin(): Plugin {
 export function __resetAsrTasks(): void {
   tasks.clear();
   inspections.clear();
+}
+
+/** Test seam: the GET /api/asr-models rows for `cacheDir`. */
+export function __asrCatalogForVerify(cacheDir: string): ReturnType<typeof catalogState> {
+  return catalogState(cacheDir);
+}
+
+/** Test seam: run the real download routine against `cacheDir` with a stand-in transport. */
+export async function __downloadAsrModelForVerify(
+  entry: AsrModelEntry,
+  cacheDir: string,
+  download: typeof downloadModelFile,
+): Promise<AsrDownloadTask> {
+  const task = newDownloadTask(entry);
+  await downloadAsrModel(entry, task, cacheDir, download);
+  return task;
 }

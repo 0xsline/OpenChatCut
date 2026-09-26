@@ -8,7 +8,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { ASR_MODELS, asrModelEntry, asrModelFile, type AsrModelEntry } from '../../shared/asr-models';
 import { ggmlCachePath, legacyGgmlCachePath, resolveGgmlPath } from '../../shared/asr-ggml-cache';
-import { __resetAsrTasks, handleAsrModelsRequest, inspectAsrModel } from './asr-models';
+import {
+  __asrCatalogForVerify, __resetAsrTasks, handleAsrModelsRequest, inspectAsrModel,
+} from './asr-models';
 
 const server = createServer((req, res) => {
   const pathname = (req.url ?? '').split('?')[0] ?? '';
@@ -105,11 +107,14 @@ try {
   const modelRoot = join(root, entry.modelId);
   await mkdir(modelRoot, { recursive: true });
   await writeFile(join(modelRoot, entry.files[0]!.path), 'baad');
-  assert.deepEqual(await inspectAsrModel(entry, root), { downloaded: false, bytes: 0 },
-    'same-size corrupted files must not count as downloaded');
+  assert.deepEqual(await inspectAsrModel(entry, root), {
+    onnxDownloaded: false, ggmlDownloaded: false, downloaded: false, bytes: 0,
+  }, 'same-size corrupted files must not count as downloaded');
   await writeFile(join(modelRoot, entry.files[0]!.path), expectedContent);
   __resetAsrTasks();
-  assert.deepEqual(await inspectAsrModel(entry, root), { downloaded: true, bytes: expectedContent.length });
+  assert.deepEqual(await inspectAsrModel(entry, root), {
+    onnxDownloaded: true, ggmlDownloaded: false, downloaded: true, bytes: expectedContent.length,
+  }, 'a tier without a companion is complete once its ONNX export verifies');
   const canceledInspection = new AbortController();  canceledInspection.abort(new DOMException('canceled', 'AbortError'));
   await assert.rejects(
     inspectAsrModel(entry, root, canceledInspection.signal),
@@ -120,10 +125,11 @@ try {
   await rm(root, { recursive: true, force: true });
 }
 
-// GGML companion files participate in the downloaded state: missing ggml
-// keeps the tier not-downloaded even when every ONNX file is present.
+// Each engine is judged on its own files (#168): desktop whisper.cpp loads only
+// the companion and the browser engine only the ONNX export, so either half can
+// be ready without the other. `downloaded` still means the complete pack.
 {
-  const ggmlRoot = join(root, 'ggml');
+  const cacheDir = await mkdtemp(join(tmpdir(), 'openchatcut-asr-engines-'));
   const ggmlBytes = Buffer.from('ggml');
   const ggmlEntry: AsrModelEntry = {
     ...entry,
@@ -134,16 +140,54 @@ try {
       revision: 'b'.repeat(40),
     },
   };
-  // The previous block removed the temp root; restore the ONNX file.
-  await mkdir(join(root, ggmlEntry.modelId), { recursive: true });
-  await writeFile(join(root, ggmlEntry.modelId, ggmlEntry.files[0]!.path), expectedContent);
-  const onnxOnly = await inspectAsrModel(ggmlEntry, root);
-  assert.equal(onnxOnly.downloaded, false, 'missing ggml file keeps the tier not downloaded');
-  await mkdir(ggmlRoot, { recursive: true });
-  await writeFile(join(ggmlRoot, ggmlEntry.ggmlFile!.fileName), ggmlBytes);
-  const complete = await inspectAsrModel(ggmlEntry, root);
-  assert.equal(complete.downloaded, true, 'onnx + ggml present counts as downloaded');
-  assert.equal(complete.bytes, expectedContent.length + ggmlBytes.length, 'bytes include the ggml file');
+  const onnxPath = join(cacheDir, ggmlEntry.modelId, ggmlEntry.files[0]!.path);
+  const ggmlPath = ggmlCachePath(cacheDir, ggmlEntry.ggmlFile!.fileName);
+  const onnxOnly = {
+    onnxDownloaded: true, ggmlDownloaded: false, downloaded: false, bytes: expectedContent.length,
+  };
+  try {
+    await mkdir(dirname(ggmlPath), { recursive: true });
+    await writeFile(ggmlPath, ggmlBytes);
+    assert.deepEqual(await inspectAsrModel(ggmlEntry, cacheDir), {
+      onnxDownloaded: false, ggmlDownloaded: true, downloaded: false, bytes: ggmlBytes.length,
+    }, 'a verified companion alone is ready for the desktop engine');
+
+    await mkdir(dirname(onnxPath), { recursive: true });
+    await writeFile(onnxPath, expectedContent);
+    assert.deepEqual(await inspectAsrModel(ggmlEntry, cacheDir), {
+      onnxDownloaded: true, ggmlDownloaded: true, downloaded: true,
+      bytes: expectedContent.length + ggmlBytes.length,
+    }, 'onnx + ggml is the complete pack');
+
+    await writeFile(ggmlPath, 'gg!l');
+    __resetAsrTasks();
+    assert.deepEqual(await inspectAsrModel(ggmlEntry, cacheDir), onnxOnly,
+      'a same-size corrupted companion is not ready and does not affect the browser engine');
+    await rm(ggmlPath);
+    assert.deepEqual(await inspectAsrModel(ggmlEntry, cacheDir), onnxOnly,
+      'a missing companion leaves the browser engine ready');
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
+}
+
+// GET /api/asr-models reports both engines for every tier, so each client can
+// check the engine it is about to run.
+{
+  const cacheDir = await mkdtemp(join(tmpdir(), 'openchatcut-asr-catalog-'));
+  try {
+    const rows = await __asrCatalogForVerify(cacheDir);
+    assert.deepEqual(rows.map((row) => row.id), ASR_MODELS.map((model) => model.id));
+    for (const row of rows) {
+      assert.deepEqual(
+        [row.onnxDownloaded, row.ggmlDownloaded, row.downloaded, row.bytes],
+        [false, false, false, 0],
+        `${row.id}: an empty cache reports every engine as not downloaded`,
+      );
+    }
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
 }
 
 // The GGML companion is written by the downloader and read by inspection and

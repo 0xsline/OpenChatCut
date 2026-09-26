@@ -215,8 +215,12 @@ export class NativeAsrService {
     const model = ASR_MODELS.find((entry) =>
       entry.modelId === request.modelId && entry.revision === request.revision);
     if (!model) throw new Error('native ASR model is not in the verified catalog');
+    // whisper.cpp loads only the GGML companion; the browser engine's ONNX
+    // export is irrelevant here and must not gate the desktop engine (#168).
     const installed = await this.inspectModel(model, this.cacheDir, signal);
-    if (!installed.downloaded) throw new Error('native ASR model is not installed or failed verification');
+    if (!installed.ggmlDownloaded) {
+      throw new Error('native ASR model (whisper.cpp GGML) is not installed or failed verification');
+    }
   }
 
   private async run(

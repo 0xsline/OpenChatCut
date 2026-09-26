@@ -4,7 +4,7 @@
 // Models are loaded only through the same-origin proxy from immutable catalog revisions.
 import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
 import type {
-  AsrChunk, AsrResult, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
+  AsrChunk, AsrResult, LocalAsrWorkerFailure, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
 } from './local-asr-types';
 import { localAsrLoadError, localAsrModelHosts } from './local-asr-model-source';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
@@ -108,10 +108,14 @@ function isWasmAllocationFailure(error: unknown): boolean {
     .test(message);
 }
 
-function allocationFailureMessage(modelId: string): string {
-  return `本地转写模型 ${modelId} 超出浏览器 wasm 引擎的内存上限（分配失败）。`
-    + '请在 设置 → 转写 → 本地模型 选择更小的模型（Base / Small），'
-    + '或在桌面端开启本地原生推理（whisper.cpp，无此限制）。';
+/** Reported by kind: the client words it in the UI language (this worker has no dictionaries). */
+class LocalAsrWorkerFailureError extends Error {
+  readonly failure: LocalAsrWorkerFailure;
+
+  constructor(failure: LocalAsrWorkerFailure, message: string) {
+    super(message);
+    this.failure = failure;
+  }
 }
 
 interface WhisperOutput {
@@ -156,7 +160,7 @@ async function transcribe(
       const modelId = loadedModelId;
       asr = null;
       loadedModelId = '';
-      throw new Error(allocationFailureMessage(modelId));
+      throw new LocalAsrWorkerFailureError('wasm-out-of-memory', `${modelId} exhausted the wasm heap`);
     }
     throw error;
   }) as unknown as WhisperOutput;
@@ -198,6 +202,7 @@ workerScope.onmessage = (event: MessageEvent<unknown>) => {
     const message = reason instanceof Error ? reason.message : String(reason);
     const raw = event.data as { id?: unknown } | null;
     const id = raw && Number.isInteger(raw.id) ? Number(raw.id) : -1;
-    post({ id, type: 'error', message });
+    const failure = reason instanceof LocalAsrWorkerFailureError ? reason.failure : undefined;
+    post({ id, type: 'error', message, ...(failure ? { failure } : {}) });
   });
 };
