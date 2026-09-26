@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { __resetLocalAsrClient, LocalAsrClient, warmUpLocalAsr } from './local-asr';
-import type { AsrConfig } from './local-asr-types';
+import type { AsrConfig, LocalAsrWorkerFailure } from './local-asr-types';
+import type { LocalAsrModelStatus } from './local-asr-readiness';
+
+/** A catalog row with every engine's files verified. */
+function installed(modelId: string): LocalAsrModelStatus {
+  return { modelId, downloaded: true, onnxDownloaded: true, ggmlDownloaded: true };
+}
 
 interface LoadRequest {
   id: number;
@@ -34,11 +40,11 @@ class FakeWorker {
     }));
   }
 
-  rejectNext(message = 'load failed'): void {
+  rejectNext(message = 'load failed', failure?: LocalAsrWorkerFailure): void {
     const request = this.pending.shift();
     assert.ok(request, 'expected a pending worker request');
     queueMicrotask(() => this.onmessage?.({
-      data: { id: request.id, type: 'error', message },
+      data: { id: request.id, type: 'error', message, ...(failure ? { failure } : {}) },
     }));
   }
 
@@ -80,10 +86,18 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: s
 
 try {
   storage.setItem('cc.asrModel', 'tiny');
-  await warmUpLocalAsr(['Xenova/whisper-base']);
+  await warmUpLocalAsr([installed('Xenova/whisper-base')]);
   assert.equal(FakeWorker.instances.length, 0, 'missing selected model must not start a worker');
+  // Without a desktop bridge only the browser engine can warm up, and it loads
+  // the ONNX export: a companion alone must not start the browser worker.
+  await warmUpLocalAsr([{
+    modelId: 'Xenova/whisper-tiny', downloaded: false, onnxDownloaded: false, ggmlDownloaded: true,
+  }]);
+  assert.equal(FakeWorker.instances.length, 0, 'a browser warm-up needs the ONNX export, not the companion');
 
-  const tinyWarmup = warmUpLocalAsr(['Xenova/whisper-tiny']);
+  const tinyWarmup = warmUpLocalAsr([{
+    modelId: 'Xenova/whisper-tiny', downloaded: false, onnxDownloaded: true, ggmlDownloaded: false,
+  }]);
   await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
   const worker = FakeWorker.instances[0]!;
   assert.equal(worker.requests[0]?.modelId, 'Xenova/whisper-tiny');
@@ -91,17 +105,17 @@ try {
   worker.resolveNext();
   await tinyWarmup;
 
-  await warmUpLocalAsr(['Xenova/whisper-tiny']);
+  await warmUpLocalAsr([installed('Xenova/whisper-tiny')]);
   assert.equal(worker.requests.length, 1, 'already-loaded model must be reused');
 
   __resetLocalAsrClient();
   FakeWorker.instances.length = 0;
   storage.setItem('cc.asrModel', 'tiny');
-  const first = warmUpLocalAsr(['Xenova/whisper-tiny']);
+  const first = warmUpLocalAsr([installed('Xenova/whisper-tiny')]);
   await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
   const switchingWorker = FakeWorker.instances[0]!;
   storage.setItem('cc.asrModel', 'small');
-  const second = warmUpLocalAsr(['Xenova/whisper-small']);
+  const second = warmUpLocalAsr([installed('Xenova/whisper-small')]);
   assert.equal(FakeWorker.instances.length, 1, 'model switch must wait for current load');
   switchingWorker.resolveNext();
   await waitFor(() => FakeWorker.instances[1]?.requests.length === 1);
@@ -161,6 +175,41 @@ try {
   assert.equal(FakeWorker.instances.length, 2,
     'a webgpu request already loaded through wasm fallback must reuse that worker');
   fallbackClient.dispose();
+
+  // The worker has no locale dictionaries: it reports a wasm heap exhaustion by
+  // kind and the client words it, naming the model and the page that fixes it.
+  const medium: AsrConfig = {
+    device: 'wasm',
+    modelTier: 'medium',
+    modelId: 'Xenova/whisper-medium',
+    revision: '8c5b90880ab9f79487ab33613413431bf661d595',
+  };
+  async function outOfMemoryMessage(): Promise<string> {
+    FakeWorker.instances.length = 0;
+    const client = new LocalAsrClient();
+    const load = client.ensureLoaded(medium);
+    await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
+    FakeWorker.instances[0]!.resolveNext();
+    await load;
+    const run = client.transcribe(new Float32Array(16_000), 'zh');
+    await waitFor(() => FakeWorker.instances[0]?.requests.length === 2);
+    FakeWorker.instances[0]!.rejectNext('Xenova/whisper-medium exhausted the wasm heap', 'wasm-out-of-memory');
+    const error = await run.then(() => null, (reason: unknown) => reason);
+    client.dispose();
+    assert.ok(error instanceof Error);
+    return error.message;
+  }
+  const browserOom = await outOfMemoryMessage();
+  assert.match(browserOom, /Whisper Medium/, 'the message names the model the user sees in settings');
+  assert.match(browserOom, /设置 → 本地模型 → 本地转写/);
+  assert.match(browserOom, /桌面版/, 'a browser user is pointed at the desktop app');
+  assert.doesNotMatch(browserOom, /exhausted the wasm heap/, 'the raw worker text is replaced');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true, value: { openChatCutDesktop: { inference: {} } },
+  });
+  const desktopOom = await outOfMemoryMessage();
+  Reflect.deleteProperty(globalThis, 'window');
+  assert.match(desktopOom, /桌面原生推理加速/, 'a desktop user is pointed at the toggle that runs whisper.cpp');
 
   console.log('local-asr-warmup.verify: downloaded-only, reuse, and model switching passed');
 } finally {

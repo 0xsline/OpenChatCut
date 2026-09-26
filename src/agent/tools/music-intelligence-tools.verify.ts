@@ -428,8 +428,8 @@ function state(items: TimelineItem[], tracks: TimelineState['tracks'] = {}): Tim
       analysisRef: musicAnalysisRef(analysis),
     }, ctx) as { error?: string; modelPacks?: Array<{ id: string }> };
     assert.ok(result.error, 'missing packs must reject');
-    assert.ok(result.error!.includes('设置 → 转写 → 本地模型'), 'error must carry the settings guidance (zh)');
-    assert.ok(result.error!.includes('Settings → Transcription → Local models'), 'error must carry the settings guidance (en)');
+    assert.ok(result.error!.includes('设置 → 本地模型 → 节拍与音乐分析'), 'error must carry the settings guidance (zh)');
+    assert.ok(result.error!.includes('Settings → Local models → Beat and music analysis'), 'error must carry the settings guidance (en)');
     assert.equal(result.modelPacks?.length, 2, 'the missing pack ids must be reported');
   } finally {
     globalThis.fetch = previousFetch;

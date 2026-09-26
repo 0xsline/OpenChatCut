@@ -330,7 +330,7 @@ const overrides: Record<string, string> = {
   '转写语言': 'Lingua trascrizione',
   '说话人分离': 'Separazione parlanti',
   '本地模型（whisper）': 'Modello locale (Whisper)',
-  '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。': 'La trascrizione avviene su questo PC: gratuita, offline, con media che non lasciano la macchina. I modelli si scaricano su richiesta; se WebGPU non e disponibile torna alla CPU. La trascrizione locale non include la separazione parlanti.',
+  '转写在本机完成：免费、离线、素材不出本机。模型需先下载，下载与删除在 本地模型 → 本地转写 页（点下方按钮前往）。自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。': 'La trascrizione avviene su questo PC: gratuita, offline, con media che non lasciano la macchina. I modelli vanno prima scaricati: si scaricano ed eliminano nella pagina Modelli locali → Trascrizione locale (usa il pulsante qui sotto). Se WebGPU non è disponibile torna alla CPU. La trascrizione locale non include la separazione parlanti.',
   '导入后自动转写': 'Trascrivi automaticamente dopo l’importazione',
   '素材进入媒体池后是否立即转写。本地 Whisper 免费且在本机运行；云端付费供应商建议保持关闭或手动转写。': 'Decide se trascrivere subito i media quando entrano nel pool. Whisper locale e gratuito e gira su questo PC; con i provider cloud a pagamento e meglio lasciare spento o avviare la trascrizione manualmente.',
   '关闭（手动转写）': 'Disattivato (trascrizione manuale)',

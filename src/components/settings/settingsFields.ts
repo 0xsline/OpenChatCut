@@ -26,11 +26,14 @@ export interface SettingsVendorPage {
   readonly connection?: 'codex' | 'xai-oauth' | 'copilot' | 'claude-code';
   readonly kind?: 'provider' | 'settings' | 'local-models';
   readonly fields: readonly SettingsField[];
-  /** Renders as a button under the note, dispatching a global action. The note
+  /** Renders as a button under the note, dispatching a global action or opening
+   *  another settings page (`route`, a vendor key as for initialVendor). The note
    *  under Anthropic tells Claude Code subscribers where to go (the external
    *  MCP panel) without giving them any way to get there; naming a destination
-   *  the reader cannot reach is what made the only entry path undiscoverable. */
-  readonly noteAction?: { readonly label: string; readonly action: string };
+   *  the reader cannot reach is what made the only entry path undiscoverable.
+   *  The local Whisper page did the same with its model list (#126). */
+  readonly noteAction?: { readonly label: string }
+    & ({ readonly action: string } | { readonly route: string });
 }
 
 export interface SettingsGroup {

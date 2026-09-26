@@ -11,8 +11,14 @@ import {
 } from './assemblyai';
 import { downsampleMono, hasTranscribableSignal } from './client-asr-extract';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
+import { ASR_MODELS } from '../../shared/asr-models';
+import { t } from '../i18n/locale';
 import { tryDesktopNativeAsr, warmUpDesktopNativeAsr } from './desktop-native-asr';
 import { desktopNativeInferenceEnabled } from './desktop-inference-preference';
+import {
+  asrEngineReady, assertBrowserAsrReady, fetchLocalAsrCatalog, fetchLocalAsrModelStatus,
+  type LocalAsrModelStatus,
+} from './local-asr-readiness';
 
 const TARGET_SR = ASR_INFERENCE_CONTRACT.sampleRate;
 /** WebGPU load can hang on software renderers (headless/SwiftShader); force-fail
@@ -36,6 +42,19 @@ type ClientAsrRequest =
   | { type: 'transcribe'; samples: Float32Array; language: string };
 
 let sharedClient: LocalAsrClient | null = null;
+
+/**
+ * onnxruntime-web runs in a 32-bit wasm heap that medium and large tiers can
+ * exhaust. The worker only reports that it happened; say it in the UI language
+ * with the ways out that apply here: a smaller tier, or whisper.cpp, which the
+ * desktop app runs natively without that limit.
+ */
+function wasmOutOfMemoryMessage(modelId: string): string {
+  const model = ASR_MODELS.find((entry) => entry.modelId === modelId)?.label ?? modelId;
+  return typeof window !== 'undefined' && window.openChatCutDesktop?.inference
+    ? t('本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或开启「桌面原生推理加速」并下载该模型，改由没有此限制的 whisper.cpp 运行。', { model })
+    : t('本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或改用桌面版，由没有此限制的 whisper.cpp 原生运行。', { model });
+}
 
 export class LocalAsrClient {
   private worker: Worker | null = null;
@@ -63,7 +82,9 @@ export class LocalAsrClient {
       if (!pending) return;
       this.pending.delete(message.id);
       if (message.type === 'error') {
-        pending.reject(new Error(message.message));
+        pending.reject(new Error(message.failure === 'wasm-out-of-memory'
+          ? wasmOutOfMemoryMessage(this.config?.modelId ?? '')
+          : message.message));
       } else if (message.type === 'result') {
         pending.resolve(message.result);
       }
@@ -244,39 +265,40 @@ async function runTranscriptionStage<T>(stage: string, operation: () => Promise<
   } catch (error) {
     if (error instanceof TranscriptionError) throw error;
     const detail = error instanceof Error ? error.message : String(error);
-    throw new TranscriptionError('service-unavailable', `${stage}失败：${detail}`);
+    throw new TranscriptionError('service-unavailable', t('{stage}失败：{detail}', { stage, detail }));
   }
+}
+
+/**
+ * Run the desktop whisper.cpp engine unless the catalog says its GGML companion
+ * is missing. Returns the result, or why the engine could not produce one.
+ */
+async function tryNativeEngine(
+  path: string,
+  opts: TranscribeOptions,
+  config: AsrConfig,
+  status: LocalAsrModelStatus | null,
+  onWait?: (note?: string) => void,
+): Promise<{ readonly result?: AsrResult; readonly failure?: Error }> {
+  if (status && !asrEngineReady(status, 'native')) {
+    onWait?.(t('桌面引擎的模型文件未下载，本次使用浏览器引擎'));
+    return {};
+  }
+  let failure: Error | undefined;
+  const native = await tryDesktopNativeAsr({
+    sourcePath: await transcriptionSourceForPath(path, opts),
+    config,
+    language: opts.languageCode ?? 'zh',
+    onProgress: (progress, file) => reportModelProgress(onWait, progress, file),
+    onFallback: (reason) => {
+      failure = reason;
+      onWait?.(t('桌面原生推理不可用，已回退浏览器引擎'));
+    },
+  });
+  return native ? { result: native.result } : { failure };
 }
 
 /** Transcribe a same-origin media path with the on-device model. */
-/**
- * Refuse to transcribe with a partially downloaded model. A model whose
- * files are incomplete can load into a broken state and produce hallucinated
- * repeated text instead of failing; the server-side catalog reports the
- * sha-verified downloaded state (ONNX tier + GGML companion), so check it
- * before any local engine runs. Server unreachable or unknown model id does
- * not block (the worker layer still surfaces real load errors).
- */
-export async function assertAsrModelDownloaded(config: AsrConfig): Promise<void> {
-  try {
-    const response = await fetch('/api/asr-models', { cache: 'no-store' });
-    if (!response.ok) return;
-    const catalog = await response.json() as {
-      models?: readonly { modelId?: string; downloaded?: boolean }[];
-    };
-    const entry = catalog.models?.find((model) => model.modelId === config.modelId);
-    if (entry && entry.downloaded === false) {
-      throw new TranscriptionError(
-        'service-unavailable',
-        `本地转写模型未完整下载（${config.modelId}）。请到 设置 → 转写 → 本地模型 重新下载后再试。`,
-      );
-    }
-  } catch (error) {
-    if (error instanceof TranscriptionError) throw error;
-    // Catalog unavailable: let the worker surface the load error.
-  }
-}
-
 export async function localTranscribePathResumable(
   path: string,
   resume: LocalAsrCheckpoint = {},
@@ -291,32 +313,28 @@ export async function localTranscribePathResumable(
 
   const profile = await detectDeviceProfile();
   const config = chooseAsrConfig(profile);
-  await assertAsrModelDownloaded(config);
-  if (desktopNativeInferenceEnabled()) {
-    const nativeSource = await transcriptionSourceForPath(path, opts);
-    const native = await tryDesktopNativeAsr({
-      sourcePath: nativeSource,
-      config,
-      language: opts.languageCode ?? 'zh',
-      onProgress: (progress, file) => reportModelProgress(onWait, progress, file),
-      onFallback: () => onWait?.('桌面原生推理不可用，已回退浏览器引擎'),
-    });
-    if (native) {
-      await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
-      return toTranscriptResult(native.result);
-    }
+  // Each engine needs only its own files (#168), so readiness is checked per
+  // engine right before it runs: the companion for whisper.cpp, then the ONNX
+  // export for the browser fallback.
+  const status = await fetchLocalAsrModelStatus(config.modelId);
+  const nativeEnabled = desktopNativeInferenceEnabled();
+  const native = nativeEnabled ? await tryNativeEngine(path, opts, config, status, onWait) : {};
+  if (native.result) {
+    await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
+    return toTranscriptResult(native.result);
   }
-  const source = await runTranscriptionStage('音轨准备', () => transcriptionSourceForPath(path, opts, true));
-  const samples = await runTranscriptionStage('音频解码', () => decodeSourceToSamples(source));
+  assertBrowserAsrReady(config, status, { enabled: nativeEnabled, failure: native.failure });
+  const source = await runTranscriptionStage(t('音轨准备'), () => transcriptionSourceForPath(path, opts, true));
+  const samples = await runTranscriptionStage(t('音频解码'), () => decodeSourceToSamples(source));
   if (!hasTranscribableSignal(samples, TARGET_SR)) {
     await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
     return toTranscriptResult({ text: '', chunks: [] });
   }
   const client = getSharedClient();
   client.attachProgress((progress, file) => reportModelProgress(onWait, progress, file));
-  await runTranscriptionStage('模型加载', () => client.ensureLoaded(config));
+  await runTranscriptionStage(t('模型加载'), () => client.ensureLoaded(config));
   await onCheckpoint({ ...checkpoint, providerStatus: 'processing' });
-  const result = await runTranscriptionStage('模型推理', () => client.transcribe(samples, opts.languageCode ?? 'zh'));
+  const result = await runTranscriptionStage(t('模型推理'), () => client.transcribe(samples, opts.languageCode ?? 'zh'));
   await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
   return toTranscriptResult(result);
 }
@@ -335,32 +353,21 @@ export function __resetLocalAsrClient(): void {
   sharedClient = null;
 }
 
-async function fetchDownloadedModelIds(): Promise<string[]> {
-  const body: unknown = await fetch('/api/asr-models', { cache: 'no-store' })
-    .then((response) => (response.ok ? response.json() : null))
-    .catch(() => null);
-  if (typeof body !== 'object' || body === null || !('models' in body)
-    || !Array.isArray(body.models)) return [];
-  return body.models.flatMap((model): string[] => {
-    if (typeof model !== 'object' || model === null
-      || !('downloaded' in model) || model.downloaded !== true
-      || !('modelId' in model) || typeof model.modelId !== 'string') return [];
-    return [model.modelId];
-  });
-}
-
 /**
- * Initialize an already-downloaded model in the desktop utility process or
- * browser worker. Failures stay silent; a real transcription reports them.
+ * Initialize the configured model in the desktop utility process or browser
+ * worker, each only when its own engine files are verified. `catalog` reuses a
+ * GET /api/asr-models snapshot the caller already holds. Failures stay silent;
+ * a real transcription reports them.
  */
-export async function warmUpLocalAsr(downloadedModelIds?: readonly string[]): Promise<void> {
+export async function warmUpLocalAsr(catalog?: readonly LocalAsrModelStatus[]): Promise<void> {
   try {
     const profile = await detectDeviceProfile();
     const config = chooseAsrConfig(profile);
-    const available = downloadedModelIds ?? await fetchDownloadedModelIds();
-    if (!available.includes(config.modelId)) return;
-    if (await warmUpDesktopNativeAsr(config)) return;
-    await getSharedClient().ensureLoaded(config);
+    const models = catalog ?? await fetchLocalAsrCatalog() ?? [];
+    const status = models.find((model) => model.modelId === config.modelId);
+    if (!status) return;
+    if (asrEngineReady(status, 'native') && await warmUpDesktopNativeAsr(config)) return;
+    if (asrEngineReady(status, 'browser')) await getSharedClient().ensureLoaded(config);
   } catch {
     // Best-effort only.
   }

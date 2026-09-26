@@ -5,6 +5,25 @@ export default {
   '无法连接转写服务，请检查网络和 AssemblyAI 配置后重试': 'Cannot reach the transcription service. Check the network and AssemblyAI settings, then try again.',
   '本地转写失败：模型未就绪或音频无法处理，请检查模型下载后重试': 'Local transcription failed: the model is unavailable or the audio cannot be processed. Check the model download and try again.',
   '本地转写失败：{detail}': 'Local transcription failed: {detail}',
+  // local-asr / local-asr-readiness — which local engine can run
+  '桌面引擎的模型文件未下载，本次使用浏览器引擎': "The desktop engine's model file is not downloaded; using the browser engine this time",
+  '桌面原生推理不可用，已回退浏览器引擎': 'Native desktop inference is unavailable; fell back to the browser engine',
+  '桌面原生推理（whisper.cpp）未能完成转写：{reason}。回退到浏览器引擎需要 {model} 的 ONNX 模型文件，但尚未下载完整。请到 设置 → 本地模型 → 本地转写 下载该模型后重试。':
+    'Native desktop inference (whisper.cpp) could not finish the transcription: {reason}. Falling back to the browser engine needs the ONNX model files of {model}, which are not fully downloaded. Download the model in Settings → Local models → Local transcription, then try again.',
+  '本地转写模型 {model} 尚未下载：桌面引擎需要的 whisper.cpp 模型文件（GGML）和浏览器引擎需要的 ONNX 模型文件都未就绪。请到 设置 → 本地模型 → 本地转写 下载该模型后再试。':
+    'The local transcription model {model} is not downloaded: neither the whisper.cpp model file (GGML) the desktop engine needs nor the ONNX model files the browser engine needs are ready. Download the model in Settings → Local models → Local transcription, then try again.',
+  '本地转写模型 {model} 的浏览器引擎文件（ONNX）未下载完整或校验失败。请到 设置 → 本地模型 → 本地转写 下载该模型后再试。':
+    'The browser-engine files (ONNX) of the local transcription model {model} are incomplete or failed verification. Download the model in Settings → Local models → Local transcription, then try again.',
+  // local-asr — failures while the browser engine runs
+  '{stage}失败：{detail}': '{stage} failed: {detail}',
+  '音轨准备': 'Audio track preparation',
+  '音频解码': 'Audio decoding',
+  '模型加载': 'Model loading',
+  '模型推理': 'Model inference',
+  '本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或开启「桌面原生推理加速」并下载该模型，改由没有此限制的 whisper.cpp 运行。':
+    'The local transcription model {model} ran out of memory in the browser engine (wasm). In Settings → Local models → Local transcription, pick a smaller model (Base / Small), or turn on "Native desktop inference acceleration" and download this model so whisper.cpp, which has no such limit, runs it.',
+  '本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或改用桌面版，由没有此限制的 whisper.cpp 原生运行。':
+    'The local transcription model {model} ran out of memory in the browser engine (wasm). In Settings → Local models → Local transcription, pick a smaller model (Base / Small), or use the desktop app, which runs it natively with whisper.cpp and has no such limit.',
   // TranscriptPanel — Toolbar and pause pop-up layer
   '停顿': 'Pauses',
   '段落视图': 'Paragraph view',
