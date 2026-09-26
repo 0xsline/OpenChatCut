@@ -89,15 +89,24 @@ export function resolveMediaPath(
   return undefined;
 }
 
-function capcutBin(): string {
-  return process.env.CAPCUT_CLI || 'capcut-cli';
+/**
+ * Without a version, `npx --yes` fetches and runs whatever capcut-cli release
+ * is newest on npm at export time, so an unreviewed or breaking publish would
+ * execute on users' machines. Pin the release this exporter is known to work
+ * with; bump it deliberately. CAPCUT_CLI still overrides it with a path to a
+ * local build or another package spec.
+ */
+export const CAPCUT_CLI_PACKAGE = 'capcut-cli@0.26.0';
+
+/** Command prefix for a capcut-cli call: a local binary path, or npx with a package spec. */
+export function capcutCommand(executable = process.env.CAPCUT_CLI || CAPCUT_CLI_PACKAGE): string[] {
+  return executable.includes('/') || executable.includes('\\')
+    ? [executable]
+    : ['npx', '--yes', executable];
 }
 
 function runCapcut(args: string[], timeoutMs = 120_000): Promise<unknown> {
-  const executable = capcutBin();
-  const prefix = executable.includes('/') || executable.includes('\\')
-    ? [executable]
-    : ['npx', '--yes', executable];
+  const prefix = capcutCommand();
   return new Promise((resolve, reject) => {
     const child = spawn(prefix[0], [...prefix.slice(1), ...args], {
       env: { ...process.env, FORCE_COLOR: '0' },
