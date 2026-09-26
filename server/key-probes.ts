@@ -248,6 +248,21 @@ const cartesiaProbe: ProbeDef = {
   }),
 };
 
+/** Requesty: the authenticated /models call checks the key, then the model list
+ * comes from /models/managed, whose ids match the bundled capability catalog.
+ * Falls back to the full /models list if the managed list is unavailable. */
+const requestyLlmProbe = llmProbe('requesty');
+const requestyProbe: ProbeDef = {
+  ...requestyLlmProbe,
+  run: async (get) => {
+    const checked = await requestyLlmProbe.run(get);
+    if (!checked.ok) return checked;
+    const root = resolveLlmBaseUrl('requesty', get('LLM_REQUESTY_BASE_URL'), AI_SDK_BASE_URL_FORMAT);
+    const managed = await fetchWithProxy(`${root}/models/managed`, { signal: t() }).catch(() => null);
+    return managed?.ok ? managed : checked;
+  },
+};
+
 
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
@@ -255,6 +270,7 @@ export const PROBES: Record<string, ProbeDef> = {
     `llm/${preset.id}`,
     llmProbe(preset.id),
   ])),
+  'llm/requesty': requestyProbe,
   'image/openai': {
     needs: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
     run: (get) => fetch(`${base(get, 'IMAGE_BASE_URL', 'https://api.openai.com')}/v1/models`, {
