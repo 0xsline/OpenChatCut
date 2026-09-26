@@ -11,6 +11,7 @@ import {
 } from './assemblyai';
 import { downsampleMono, hasTranscribableSignal } from './client-asr-extract';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
+import { ASR_MODELS } from '../../shared/asr-models';
 import { t } from '../i18n/locale';
 import { tryDesktopNativeAsr, warmUpDesktopNativeAsr } from './desktop-native-asr';
 import { desktopNativeInferenceEnabled } from './desktop-inference-preference';
@@ -42,6 +43,19 @@ type ClientAsrRequest =
 
 let sharedClient: LocalAsrClient | null = null;
 
+/**
+ * onnxruntime-web runs in a 32-bit wasm heap that medium and large tiers can
+ * exhaust. The worker only reports that it happened; say it in the UI language
+ * with the ways out that apply here: a smaller tier, or whisper.cpp, which the
+ * desktop app runs natively without that limit.
+ */
+function wasmOutOfMemoryMessage(modelId: string): string {
+  const model = ASR_MODELS.find((entry) => entry.modelId === modelId)?.label ?? modelId;
+  return typeof window !== 'undefined' && window.openChatCutDesktop?.inference
+    ? t('本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或开启「桌面原生推理加速」并下载该模型，改由没有此限制的 whisper.cpp 运行。', { model })
+    : t('本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或改用桌面版，由没有此限制的 whisper.cpp 原生运行。', { model });
+}
+
 export class LocalAsrClient {
   private worker: Worker | null = null;
   private nextId = 1;
@@ -68,7 +82,9 @@ export class LocalAsrClient {
       if (!pending) return;
       this.pending.delete(message.id);
       if (message.type === 'error') {
-        pending.reject(new Error(message.message));
+        pending.reject(new Error(message.failure === 'wasm-out-of-memory'
+          ? wasmOutOfMemoryMessage(this.config?.modelId ?? '')
+          : message.message));
       } else if (message.type === 'result') {
         pending.resolve(message.result);
       }
@@ -249,7 +265,7 @@ async function runTranscriptionStage<T>(stage: string, operation: () => Promise<
   } catch (error) {
     if (error instanceof TranscriptionError) throw error;
     const detail = error instanceof Error ? error.message : String(error);
-    throw new TranscriptionError('service-unavailable', `${stage}失败：${detail}`);
+    throw new TranscriptionError('service-unavailable', t('{stage}失败：{detail}', { stage, detail }));
   }
 }
 
@@ -308,17 +324,17 @@ export async function localTranscribePathResumable(
     return toTranscriptResult(native.result);
   }
   assertBrowserAsrReady(config, status, { enabled: nativeEnabled, failure: native.failure });
-  const source = await runTranscriptionStage('音轨准备', () => transcriptionSourceForPath(path, opts, true));
-  const samples = await runTranscriptionStage('音频解码', () => decodeSourceToSamples(source));
+  const source = await runTranscriptionStage(t('音轨准备'), () => transcriptionSourceForPath(path, opts, true));
+  const samples = await runTranscriptionStage(t('音频解码'), () => decodeSourceToSamples(source));
   if (!hasTranscribableSignal(samples, TARGET_SR)) {
     await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
     return toTranscriptResult({ text: '', chunks: [] });
   }
   const client = getSharedClient();
   client.attachProgress((progress, file) => reportModelProgress(onWait, progress, file));
-  await runTranscriptionStage('模型加载', () => client.ensureLoaded(config));
+  await runTranscriptionStage(t('模型加载'), () => client.ensureLoaded(config));
   await onCheckpoint({ ...checkpoint, providerStatus: 'processing' });
-  const result = await runTranscriptionStage('模型推理', () => client.transcribe(samples, opts.languageCode ?? 'zh'));
+  const result = await runTranscriptionStage(t('模型推理'), () => client.transcribe(samples, opts.languageCode ?? 'zh'));
   await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
   return toTranscriptResult(result);
 }

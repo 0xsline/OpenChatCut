@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { __resetLocalAsrClient, LocalAsrClient, warmUpLocalAsr } from './local-asr';
-import type { AsrConfig } from './local-asr-types';
+import type { AsrConfig, LocalAsrWorkerFailure } from './local-asr-types';
 import type { LocalAsrModelStatus } from './local-asr-readiness';
 
 /** A catalog row with every engine's files verified. */
@@ -40,11 +40,11 @@ class FakeWorker {
     }));
   }
 
-  rejectNext(message = 'load failed'): void {
+  rejectNext(message = 'load failed', failure?: LocalAsrWorkerFailure): void {
     const request = this.pending.shift();
     assert.ok(request, 'expected a pending worker request');
     queueMicrotask(() => this.onmessage?.({
-      data: { id: request.id, type: 'error', message },
+      data: { id: request.id, type: 'error', message, ...(failure ? { failure } : {}) },
     }));
   }
 
@@ -175,6 +175,41 @@ try {
   assert.equal(FakeWorker.instances.length, 2,
     'a webgpu request already loaded through wasm fallback must reuse that worker');
   fallbackClient.dispose();
+
+  // The worker has no locale dictionaries: it reports a wasm heap exhaustion by
+  // kind and the client words it, naming the model and the page that fixes it.
+  const medium: AsrConfig = {
+    device: 'wasm',
+    modelTier: 'medium',
+    modelId: 'Xenova/whisper-medium',
+    revision: '8c5b90880ab9f79487ab33613413431bf661d595',
+  };
+  async function outOfMemoryMessage(): Promise<string> {
+    FakeWorker.instances.length = 0;
+    const client = new LocalAsrClient();
+    const load = client.ensureLoaded(medium);
+    await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
+    FakeWorker.instances[0]!.resolveNext();
+    await load;
+    const run = client.transcribe(new Float32Array(16_000), 'zh');
+    await waitFor(() => FakeWorker.instances[0]?.requests.length === 2);
+    FakeWorker.instances[0]!.rejectNext('Xenova/whisper-medium exhausted the wasm heap', 'wasm-out-of-memory');
+    const error = await run.then(() => null, (reason: unknown) => reason);
+    client.dispose();
+    assert.ok(error instanceof Error);
+    return error.message;
+  }
+  const browserOom = await outOfMemoryMessage();
+  assert.match(browserOom, /Whisper Medium/, 'the message names the model the user sees in settings');
+  assert.match(browserOom, /设置 → 本地模型 → 本地转写/);
+  assert.match(browserOom, /桌面版/, 'a browser user is pointed at the desktop app');
+  assert.doesNotMatch(browserOom, /exhausted the wasm heap/, 'the raw worker text is replaced');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true, value: { openChatCutDesktop: { inference: {} } },
+  });
+  const desktopOom = await outOfMemoryMessage();
+  Reflect.deleteProperty(globalThis, 'window');
+  assert.match(desktopOom, /桌面原生推理加速/, 'a desktop user is pointed at the toggle that runs whisper.cpp');
 
   console.log('local-asr-warmup.verify: downloaded-only, reuse, and model switching passed');
 } finally {
