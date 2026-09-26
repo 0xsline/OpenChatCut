@@ -460,10 +460,12 @@ export default {
   '已连接': 'Connected',
   '连接失败': 'Connect failed',
   '已写入 {paths}': 'Wrote {paths}',
+  '已写入 {paths}。请完全退出并重新打开 Codex，令牌才会生效。': 'Wrote {paths}. Fully quit and reopen Codex so it picks up the token.',
   '连接后重启对应客户端生效；Codex 需新开终端使环境变量生效。': 'Restart the client after connecting; Codex needs a new terminal for the env var.',
   '目标配置文件不是有效 JSON，为避免覆盖未写入。': 'Target config file is not valid JSON; nothing was written to avoid overwriting it.',
   '写入配置文件失败。': 'Failed to write the config file.',
   '执行 codex mcp add 失败。': 'Running codex mcp add failed.',
+  '已在 Codex 注册，但令牌未能保存为 Windows 用户环境变量，连接未完成。': 'Registered with Codex, but the token could not be saved as a Windows user environment variable, so the connection is incomplete.',
   'OpenChatCut 暴露一个 Streamable HTTP MCP 端点。Claude Code / Codex / Cursor 等外部 Agent 接入后,与内置 Agent 共用同一套编辑工具,可直接读写当前工程。':
     'OpenChatCut exposes a Streamable HTTP MCP endpoint. External agents such as Claude Code, Codex, and Cursor share the same editing tools as the built-in agent and can read and edit the current project directly.',
   '端点地址': 'Endpoint',
