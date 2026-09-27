@@ -190,6 +190,8 @@ export interface EditorCommands {
   deleteTimeline: (id: string) => void;
   renameTimeline: (id: string, name: string) => void;
   retargetTimeline: (id: string, width: number, height: number, fit?: AspectFit) => void;
+  /** Change the project frame rate; ignored once any timeline has content (see projectFrameRateLock). */
+  setProjectFps: (fps: number) => void;
   /** Hide/restore a timeline tab; the last visible one cannot be hidden. */
   setTimelineHidden: (id: string, hidden: boolean) => void;
   // ── Design style = project brand ────────────────────────────────────────

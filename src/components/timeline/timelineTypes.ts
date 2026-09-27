@@ -9,6 +9,8 @@ import type { TimelineShortcutApi } from '../../shortcuts/timelineApi';
 export interface TimelineProps {
   state: TimelineState;
   commands: EditorCommands;
+  /** projectFrameRateLock(doc): why the project frame rate is fixed, or null while it can change */
+  frameRateLock?: string | null;
   playerRef: RefObject<PlayerRef | null>;
   /** project id for playhead continuity across reloads */
   projectId?: string;
