@@ -7,6 +7,7 @@ import type {
   DesktopAsrRequest,
   DesktopInferenceProgress,
 } from '../shared/desktop-inference.ts';
+import type { AsrModelInspection } from '../server/plugins/asr-models.ts';
 import { NativeAsrService } from './native-asr-service.ts';
 import { NativeInferenceBudget } from './native-inference-budget.ts';
 import { NativeInferenceResidency } from './native-inference-residency.ts';
@@ -92,7 +93,11 @@ const serviceOptions = {
   transformerRuntime: true,
 };
 
-const verification = Promise.withResolvers<{ downloaded: boolean; bytes: number }>();
+const INSTALLED: AsrModelInspection = {
+  onnxDownloaded: true, ggmlDownloaded: true, downloaded: true, bytes: 1,
+};
+
+const verification = Promise.withResolvers<AsrModelInspection>();
 const verificationWorkers: FakeWorker[] = [];
 let verificationSignal: AbortSignal | undefined;
 let verificationCompleted = false;
@@ -147,8 +152,49 @@ const releaseAfterVerification = verificationResidency.claim(
 );
 assert.deepEqual(verificationEvictions, ['asr'], 'verification cancellation must release residency promptly');
 releaseAfterVerification();
-verification.resolve({ downloaded: true, bytes: 1 });
+verification.resolve(INSTALLED);
 assert.equal(verificationWorkers.length, 0, 'verification cancellation must abort before worker creation');
+
+// The desktop engine runs whisper.cpp, which loads only the GGML companion: an
+// incomplete browser ONNX export must not refuse it, and a complete ONNX export
+// cannot stand in for a missing companion (#168).
+{
+  const readinessWorkers: FakeWorker[] = [];
+  const inspections: AsrModelInspection[] = [
+    { onnxDownloaded: true, ggmlDownloaded: false, downloaded: false, bytes: 1 },
+    { onnxDownloaded: false, ggmlDownloaded: true, downloaded: false, bytes: 1 },
+  ];
+  const readinessService = new NativeAsrService(serviceOptions, {
+    inspectModel: async () => inspections.shift()!,
+    createWorker: () => {
+      const worker = new FakeWorker(505);
+      readinessWorkers.push(worker);
+      return asUtilityProcess(worker);
+    },
+    resolveSourcePath: () => '/verified/readiness-source.wav',
+    scheduleForceKill: () => () => {},
+    forceKillProcess: () => assert.fail('a fake worker must never be force-killed by PID'),
+  });
+  await assert.rejects(
+    readinessService.transcribe({ ...request, requestId: 'readiness-onnx-0001' }),
+    /whisper\.cpp GGML\) is not installed/,
+    'an ONNX-only install must be refused with the missing companion named',
+  );
+  assert.equal(readinessWorkers.length, 0, 'a refused install must not start a worker');
+  const ggmlOnly = readinessService.transcribe({ ...request, requestId: 'readiness-ggml-0001' });
+  for (let turn = 0; turn < 100 && readinessWorkers.length === 0; turn += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  const readinessWorker = readinessWorkers[0];
+  assert.ok(readinessWorker, 'a verified companion alone must reach the whisper.cpp worker');
+  await readinessWorker.waitForRequestCount(1);
+  readinessWorker.send({
+    type: 'result',
+    response: { requestId: 'readiness-ggml-0001', backend: 'native-cpu', text: 'ggml only', chunks: [] },
+  });
+  assert.equal((await ggmlOnly).text, 'ggml only');
+  readinessService.dispose();
+}
 
 const workers: FakeWorker[] = [];
 const workerWaiters = new Map<number, () => void>();
@@ -161,7 +207,7 @@ function waitForWorkerCount(count: number): Promise<void> {
 const forceKillTasks: ScheduledForceKill[] = [];
 const forcedPids: number[] = [];
 const service = new NativeAsrService(serviceOptions, {
-  inspectModel: async () => ({ downloaded: true, bytes: 1 }),
+  inspectModel: async () => INSTALLED,
   createWorker: () => {
     const worker = workers.length === 0
       ? new FakeWorker(101, 'refuse')
@@ -306,7 +352,7 @@ const timeoutWorkerWaiters = new Map<number, () => void>();
 const timeoutForceKillTasks: ScheduledForceKill[] = [];
 const timeoutForcedPids: number[] = [];
 const timeoutService = new NativeAsrService(serviceOptions, {
-  inspectModel: async () => ({ downloaded: true, bytes: 1 }),
+  inspectModel: async () => INSTALLED,
   createWorker: () => {
     const worker = new FakeWorker(timeoutWorkers.length === 0 ? 303 : 404, 'refuse');
     timeoutWorkers.push(worker);

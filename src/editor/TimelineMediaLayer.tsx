@@ -5,7 +5,7 @@ import {
   type AudioProps as BrowserAudioProps,
   type VideoProps as BrowserVideoProps,
 } from '@remotion/media';
-import { AbsoluteFill, Audio as ServerAudio, Img, Sequence, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Audio as ServerAudio, Img, OffthreadVideo, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
 import { ClipFx } from '../gl/ClipFx';
 import { firstGlEffect } from '../gl/clipEffects';
 import { selectEffectPreviewAdapter, type SelectedPreviewStatusListener } from '../gl/previewAdapter';
@@ -18,6 +18,7 @@ import { zoomAt } from './zoom';
 import { clipFadeFactor, clipOpacityAt } from './clipFade';
 import { volumeAtFrame } from './keyframes';
 import { sourceFrameAt } from './sourceLimit';
+import { offthreadTrimBefore, offthreadVideoTransparent, useRuntimeVideoDecoder } from './serverVideoDecoder';
 import type { AspectFit, TimelineItem, TransitionItem } from './types';
 import { isAudioTransition } from './types';
 import { clampVisualBorderRadius, objectFitInsideVisualFrame, visibleVisualFrameRect } from './visualFrameGeometry';
@@ -33,7 +34,14 @@ function RuntimeAudio({ browserRenderer, ...props }: BrowserAudioProps & { brows
 }
 
 function RuntimeVideo({ browserRenderer, style, ...props }: RuntimeVideoProps) {
-  void browserRenderer;
+  // The Player and browser export always use @remotion/media; only a server
+  // render the server marked 'offthread' (Windows, #162) decodes with FFmpeg.
+  const decoder = useRuntimeVideoDecoder(browserRenderer);
+  const { fps } = useVideoConfig();
+  if (decoder === 'offthread') {
+    return <OffthreadVideo {...props} trimBefore={offthreadTrimBefore(props.trimBefore, fps)} style={style}
+      transparent={offthreadVideoTransparent(props.src)} />;
+  }
   const { objectFit, ...browserStyle } = style ?? {};
   return <BrowserVideo {...props} style={browserStyle} objectFit={objectFit as BrowserVideoProps['objectFit']} />;
 }

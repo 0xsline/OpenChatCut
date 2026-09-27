@@ -23,7 +23,7 @@ export function ExportDialog({ state, project, projectId, projectName, exportJob
   return (
     <ExportDialogShell base={model.base} state={state} onClose={onClose}>
       <ExportSidebar tab={model.tab} busy={!!model.workflow.busy} onTabChange={selectTab} />
-      <ExportDialogMain state={state} model={model} />
+      <ExportDialogMain state={state} project={project} model={model} />
     </ExportDialogShell>
   );
 }

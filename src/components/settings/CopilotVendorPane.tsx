@@ -46,7 +46,7 @@ export function CopilotVendorPane({ page, hint, ctx, children, rawOverrides, onO
       <CopilotAccountCard controller={ctx.copilot} />
       <section style={fieldCardBox}>
         {showLegacyNote && <div style={pageNote}>{t(page.note!)}</div>}
-        {page.noteAction && <SettingsNoteAction config={page.noteAction} />}
+        {page.noteAction && <SettingsNoteAction config={page.noteAction} onOpenPage={ctx.openPage} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: showLegacyNote ? 9 : 0 }}>
           {children}
         </div>

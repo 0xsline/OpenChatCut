@@ -3,6 +3,20 @@ export type ExportResolution = keyof typeof EXPORT_RESOLUTIONS;
 
 export const EXPORT_FPS_OPTIONS = [24, 25, 30, 50, 60] as const;
 
+/**
+ * The export rate closest to a timeline's own. A 59.94 or 23.976 timeline
+ * (possible through MCP) then exports at 60 or 24 instead of dropping to the
+ * 30 fps default; ties go to the higher rate so no frames are merged away.
+ */
+export function nearestExportFps(timelineFps: number): number {
+  if (!Number.isFinite(timelineFps) || timelineFps <= 0) return 30;
+  return EXPORT_FPS_OPTIONS.reduce<number>((best, option) => {
+    const distance = Math.abs(option - timelineFps);
+    const bestDistance = Math.abs(best - timelineFps);
+    return distance < bestDistance || (distance === bestDistance && option > best) ? option : best;
+  }, EXPORT_FPS_OPTIONS[0]);
+}
+
 /** Both Remotion renderers (`@remotion/renderer`, `@remotion/web-renderer`) reject `scale > 16`. */
 export const MAX_RENDER_SCALE = 16;
 /**

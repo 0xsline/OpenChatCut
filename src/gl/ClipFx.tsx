@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AbsoluteFill, Img, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AbsoluteFill, Img, OffthreadVideo, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Video as MediaVideo } from '@remotion/media';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { cubeSettled, ensureCube } from './fx/cube';
@@ -9,6 +9,7 @@ import { glPreviewFailureReason } from './previewAdapter';
 import type { SelectedPreviewFallbackReason, SelectedPreviewStatusListener } from './previewAdapter';
 import type { AspectFit, TimelineItem } from '../editor/types';
 import { sourceFrameAt } from '../editor/sourceLimit';
+import { offthreadTrimBefore, offthreadVideoTransparent, useRuntimeVideoDecoder } from '../editor/serverVideoDecoder';
 import { glEffects } from './clipEffects';
 
 // One video/image clip rendered through a builtin:fx-* single-input WebGL pass.
@@ -65,6 +66,10 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
   const frame = useCurrentFrame() + frameOffset;
   const { fps } = useVideoConfig();
   const isRendering = getRemotionEnvironment().isRendering;
+  // Same decoder as the plain layers (RuntimeVideo): a Windows export must not
+  // reach the WebCodecs decode through an effect clip either (#162), and one
+  // decoder per export keeps effect inputs in lockstep with their neighbours.
+  const videoDecoder = useRuntimeVideoDecoder();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sourceLayerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<GlRuntime | null>(null);
@@ -99,6 +104,25 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
       stagedRenderKeyRef.current = renderKey;
     },
     [fit, renderKey, staging],
+  );
+  // <OffthreadVideo> reloads its image element whenever onVideoFrame changes
+  // identity, just as it revokes that frame's blob URL for the next frame —
+  // one failed-load warning per rendered frame. A stable callback stages under
+  // the latest key instead: a server render mounts the next frame's image only
+  // after this frame's key is committed.
+  const offthreadTargetRef = useRef({ fit, renderKey });
+  useLayoutEffect(() => {
+    offthreadTargetRef.current = { fit, renderKey };
+  }, [fit, renderKey]);
+  const onOffthreadVideoFrame = useCallback(
+    (source: CanvasImageSource) => {
+      const ctx = staging.getContext('2d');
+      if (!ctx) return;
+      const target = offthreadTargetRef.current;
+      drawFit(ctx, source, target.fit);
+      stagedRenderKeyRef.current = target.renderKey;
+    },
+    [staging],
   );
 
   useEffect(() => {
@@ -210,8 +234,12 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
         {item.kind === 'image'
           // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
           ? <Img ref={imageRef} src={item.src!} style={{ width: '100%', height: '100%', objectFit: fit }} />
-          : <MediaVideo src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted
-              headless={isRendering} onVideoFrame={onVideoFrame} style={{ width: '100%', height: '100%' }} objectFit={fit} />}
+          : videoDecoder === 'offthread'
+            ? <OffthreadVideo src={item.src!} trimBefore={offthreadTrimBefore(trimBefore, fps)} playbackRate={item.playbackRate ?? 1} muted
+                transparent={offthreadVideoTransparent(item.src!)} onVideoFrame={onOffthreadVideoFrame}
+                style={{ width: '100%', height: '100%', objectFit: fit }} />
+            : <MediaVideo src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted
+                headless={isRendering} onVideoFrame={onVideoFrame} style={{ width: '100%', height: '100%' }} objectFit={fit} />}
       </AbsoluteFill>
       <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: showingShaderFrame ? 1 : 0 }} />
     </AbsoluteFill>

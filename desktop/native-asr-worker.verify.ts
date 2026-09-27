@@ -17,7 +17,8 @@ assert.deepEqual(
     'ggml-tiny-q5_1.bin',
     'ggml-base-q5_1.bin',
     'ggml-small-q5_1.bin',
-    'ggml-medium-q5_1.bin',
+    // whisper.cpp publishes medium as q5_0; there is no q5_1 medium build.
+    'ggml-medium-q5_0.bin',
     'ggml-large-v3-turbo-q5_0.bin',
   ],
   'desktop-native GGML resolution covers every supported tier',

@@ -9,7 +9,7 @@ import { trackGenerationProgress } from '../../generate/progress';
 import { submitVideo, type VideoGenerationSubmission } from '../../generate/video';
 import { submitVoice } from '../../generate/voice';
 import { timelineToFcpxml, type NleFormat } from '../../export/fcpxml';
-import { exportMediaDir } from '../../export/mediaDir';
+import { fcpxmlMediaLocations } from '../../export/exportMediaSources';
 import { recordExport } from '../../persist/exportHistoryStore';
 import {
   applyGenerationJobReports,
@@ -327,7 +327,7 @@ async function exportXml(args: GenerateArgs, state: TimelineState): Promise<unkn
   const keys = Array.isArray(args.motionGraphicRenderKeys)
     ? args.motionGraphicRenderKeys.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
     : [];
-  const xml = timelineToFcpxml(state, { title: typeof args.name === 'string' ? args.name : undefined, nleFormat, motionGraphicRenderKeys: keys, mediaDir: await exportMediaDir() });
+  const xml = timelineToFcpxml(state, { title: typeof args.name === 'string' ? args.name : undefined, nleFormat, motionGraphicRenderKeys: keys, ...await fcpxmlMediaLocations(state) });
   const base = (typeof args.name === 'string' && args.name ? args.name : 'timeline').replace(/\.(?:fcpxml|xml)$/i, '');
   const filename = `${base}.fcpxml`;
   const blob = new Blob([xml], { type: 'application/xml' });

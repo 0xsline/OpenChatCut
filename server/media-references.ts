@@ -80,6 +80,11 @@ export function hasMediaReference(directory: string, name: string): boolean {
   return readMediaReference(directory, name) !== null;
 }
 
+/** The source path a reference recorded, whether or not that file is still there. */
+export function recordedMediaReferenceSource(directory: string, name: string): string | null {
+  return readMediaReference(directory, name)?.sourcePath ?? null;
+}
+
 export async function deleteMediaReference(directory: string, name: string): Promise<boolean> {
   try {
     await unlink(mediaReferenceManifestPath(directory, name));

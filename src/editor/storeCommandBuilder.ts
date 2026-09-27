@@ -122,6 +122,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       deleteTimeline: (id) => dispatch({ type: 'tl.delete', id }),
       renameTimeline: (id, name) => dispatch({ type: 'tl.rename', id, name }),
       retargetTimeline: (id, width, height, fit) => dispatch({ type: 'tl.retarget', id, width, height, fit }),
+      setProjectFps: (fps) => dispatch({ type: 'tl.setFps', fps }),
       setTimelineHidden: (id, hidden) => dispatch({ type: 'tl.setHidden', id, hidden }),
       applyDoc: (doc) => dispatch({ type: 'tl.setDoc', doc }),
       batch: (actions, label) => {

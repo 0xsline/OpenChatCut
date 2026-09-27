@@ -130,6 +130,8 @@ export default {
   '包含 WebGL 片段特效': 'Contains WebGL clip effects',
   '包含 WebGL 转场': 'Contains WebGL transitions',
   '浏览器快导暂不转换时间线帧率': 'Browser fast export cannot retime the timeline yet',
+  '浏览器编码器不支持此导出规格': "The browser's video encoder can't produce this export",
+  '浏览器快导未能完成': 'The browser export did not finish',
   '当前浏览器不支持此编码配置': 'This browser does not support the selected encoding settings',
   '浏览器快导失败': 'Browser fast export failed',
   '已取消导出': 'Export cancelled',

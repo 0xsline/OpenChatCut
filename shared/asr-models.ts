@@ -104,7 +104,12 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'onnx/decoder_model_merged_fp16.onnx', sizeBytes: 308615077, sha256: '8d0e347441bdac2a62b346bbcb6fc69548651658028ec7e424ecb76c0e09ab9a' },
       { path: 'onnx/encoder_model.onnx', sizeBytes: 352839389, sha256: '31a05a14d514440e43746fdaaa8d4e8102c9543e53c5ae1111910af142041406' },
     ],
-    label: 'Whisper Small', sizeLabel: '约 1.0GB', language: '中文 / English / Italiano / Русский', note: '推荐：多语言识别均衡，词级时间戳稳定。',
+    ggmlFile: {
+      fileName: 'ggml-small-q5_1.bin', sizeBytes: 190085487,
+      sha256: 'ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb',
+      revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
+    },
+    label: 'Whisper Small', sizeLabel: '约 1.2GB', language: '中文 / English / Italiano / Русский', note: '推荐：多语言识别均衡，词级时间戳稳定。',
   },
   {
     id: 'medium', modelId: 'Xenova/whisper-medium', revision: '8c5b90880ab9f79487ab33613413431bf661d595',
@@ -117,7 +122,12 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       { path: 'onnx/encoder_model_quantized.onnx', sizeBytes: 313468028, sha256: '7d6b4a00e441271646327f8a71b6e1bd1a305013cd914b51ddd76919c59ee3af' },
       { path: 'onnx/decoder_model_merged_quantized.onnx', sizeBytes: 462661606, sha256: '2cdd6d06ebdf9d993d21117bfeeb7e9b399521b7766d3df77c54a85d6dcf3c08' },
     ],
-    label: 'Whisper Medium', sizeLabel: '约 743MB', language: '中文 / English / Italiano / Русский', note: '精度最高但体积大、转写较慢；追求效果时选择。',
+    ggmlFile: {
+      fileName: 'ggml-medium-q5_0.bin', sizeBytes: 539212467,
+      sha256: '19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f',
+      revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
+    },
+    label: 'Whisper Medium', sizeLabel: '约 1.2GB', language: '中文 / English / Italiano / Русский', note: '精度最高但体积大；浏览器端 wasm 内存吃紧，桌面端本地推理体验最佳。',
   },
   {
     // Issue #127: the catalog capped out at medium. large-v3-turbo is the
@@ -143,13 +153,23 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Large v3 Turbo', sizeLabel: '约 1.1GB', language: '中文 / English / Italiano / Русский',
+    label: 'Whisper Large v3 Turbo', sizeLabel: '约 1.5GB', language: '中文 / English / Italiano / Русский',
     note: '多语言精度最强；浏览器端较慢，桌面端本地推理体验最佳。',
   },
 ];
 
 export const ASR_MODEL_FILES: readonly string[] = ASR_MODELS[0].files.map((file) => file.path);
-export const ASR_MODEL_TIERS: readonly string[] = ['', 'tiny', 'base', 'small', 'medium', 'large-v3-turbo'] as const;
+/**
+ * Selectable tiers, including '' for auto. Derived from the catalog so adding a
+ * tier cannot leave a hard-coded allow-list behind: `large-v3-turbo` shipped
+ * with exactly that drift and the settings sync silently discarded the user's
+ * choice, pinning them to whatever tier was selected before.
+ */
+export const ASR_MODEL_TIERS: readonly string[] = ['', ...ASR_MODELS.map((entry) => entry.id)];
+
+export function isAsrModelTier(value: unknown): value is AsrModelEntry['id'] | '' {
+  return typeof value === 'string' && ASR_MODEL_TIERS.includes(value);
+}
 
 export function asrModelEntry(id: string): AsrModelEntry | undefined {
   return ASR_MODELS.find((entry) => entry.id === id);

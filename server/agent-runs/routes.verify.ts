@@ -3,8 +3,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { createMiniConnect } from '../../desktop/mini-connect.ts';
-import { agentRunsPlugin } from './routes.ts';
+import { agentRunsPlugin, MAX_DRAFT_BODY_BYTES } from './routes.ts';
 import { loadAgentRuntimeSidecar } from '../../src/persist/agentRuntimeStore.ts';
+import { MAX_ARTIFACT_BYTES } from '../../src/persist/agentRuntimeTypes.ts';
 import {
   createRunWithCapability,
   digestToolArgs,
@@ -414,6 +415,28 @@ try {
   assert.match(source, /sendJson\(res, 403, \{ error: 'invalid run capability' \}\)/, 'draft without a valid capability is rejected 403');
   assert.match(source, /sendJson\(res, 404, \{ error: 'run not found' \}\)/, 'draft for an unknown run is rejected 404');
   assert.match(source, /sendJson\(res, 409, \{ error: 'draft artifact was rejected \(invalid, duplicate, or over the limit\)' \}\)/, 'malformed draft artifacts are rejected 409');
+
+  // The draft route must not inherit readJson's 1 MiB default: the producer,
+  // the snapshot validation and the durable store all contract at 8 MiB, so a
+  // smaller transport cap rejects drafts the client was told to send (413)
+  // while its own guard reported them as within the limit.
+  assert.match(
+    source,
+    /handleDraftStore[\s\S]{0,200}?readJson\(req,\s*MAX_DRAFT_BODY_BYTES\)/,
+    'the draft route must pass an explicit body limit sized for the artifact cap',
+  );
+  assert.ok(
+    MAX_DRAFT_BODY_BYTES > MAX_ARTIFACT_BYTES,
+    'the draft transport limit must exceed the artifact cap to leave room for JSON re-escaping',
+  );
+
+  // A maximum-size artifact must fit the transport limit once it is embedded in
+  // the request envelope, including worst-case re-escaping of a JSON body.
+  const worstCaseEnvelope = MAX_ARTIFACT_BYTES * 2;
+  assert.ok(
+    MAX_DRAFT_BODY_BYTES >= worstCaseEnvelope,
+    `an ${MAX_ARTIFACT_BYTES}-byte artifact must fit the ${MAX_DRAFT_BODY_BYTES}-byte transport limit after escaping`,
+  );
 }
 
 console.log('agent-runs/routes.verify: ordered SSE replay, reconnect, terminal closure, metadata and cap failure OK');

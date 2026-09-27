@@ -76,3 +76,9 @@ jobs:
       # Linux skips exact frame mapping; macOS executes every existing assertion.
       - name: Verify effect and transition frame synchronization
         run: node src/gl/clipFxExport.verify.mjs
+      # Windows server renders decode video with <OffthreadVideo> (#162). Pin
+      # that decoder's frame sync and Player parity here at full strength too.
+      - name: Verify frame synchronization through the Windows video decoder
+        run: node src/gl/clipFxExport.offthread.verify.mjs
+      - name: Verify both server video decoders show the Player's frames
+        run: node remotion/video-decoder-render.verify.mjs

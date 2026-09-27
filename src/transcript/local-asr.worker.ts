@@ -4,7 +4,7 @@
 // Models are loaded only through the same-origin proxy from immutable catalog revisions.
 import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
 import type {
-  AsrChunk, AsrResult, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
+  AsrChunk, AsrResult, LocalAsrWorkerFailure, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
 } from './local-asr-types';
 import { localAsrLoadError, localAsrModelHosts } from './local-asr-model-source';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
@@ -23,6 +23,7 @@ const LOAD_ATTEMPT_TIMEOUT_MS = 15 * 60_000;
 type ProgressInfo = { progress?: number; file?: string };
 
 let asr: AutomaticSpeechRecognitionPipeline | null = null;
+let loadedModelId = '';
 let loading: Promise<void> | null = null;
 const workerScope = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -78,6 +79,7 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
       // at every call site — and no longer exports the dynamic_time_warping the
       // patch was built on. The library owns this now.
       asr = next as AutomaticSpeechRecognitionPipeline;
+      loadedModelId = request.modelId;
     } catch (error) {
       throw localAsrLoadError(error);
     }
@@ -88,6 +90,32 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
 interface WhisperWordOutput {
   text: string;
   timestamp?: [number, number] | [null, null];
+}
+
+/**
+ * onnxruntime-web runs in a 32-bit wasm heap, so a tier whose weights plus
+ * attention intermediates do not fit reports a raw C++ allocator failure
+ * ("OrtRun ERROR_CODE: 6 … std::bad_alloc") that says nothing about the cause
+ * or the fix. Whisper medium/large exceed that heap on most machines; the
+ * desktop whisper.cpp engine has no such limit.
+ *
+ * Match the allocator wording only: ERROR_CODE 6 is ORT's generic
+ * RUNTIME_EXCEPTION and carries plenty of failures that are not memory.
+ */
+function isWasmAllocationFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /bad_alloc|out of memory|\bOOM\b|failed to allocate|allocation failed|Cannot enlarge memory/i
+    .test(message);
+}
+
+/** Reported by kind: the client words it in the UI language (this worker has no dictionaries). */
+class LocalAsrWorkerFailureError extends Error {
+  readonly failure: LocalAsrWorkerFailure;
+
+  constructor(failure: LocalAsrWorkerFailure, message: string) {
+    super(message);
+    this.failure = failure;
+  }
 }
 
 interface WhisperOutput {
@@ -125,6 +153,16 @@ async function transcribe(
     chunk_length_s: ASR_INFERENCE_CONTRACT.chunkSeconds,
     stride_length_s: ASR_INFERENCE_CONTRACT.strideSeconds,
     language: request.language,
+  }).catch((error: unknown) => {
+    // A failed run leaves the ORT session in an unusable state; drop it so the
+    // next request reloads instead of compounding the exhausted heap.
+    if (isWasmAllocationFailure(error)) {
+      const modelId = loadedModelId;
+      asr = null;
+      loadedModelId = '';
+      throw new LocalAsrWorkerFailureError('wasm-out-of-memory', `${modelId} exhausted the wasm heap`);
+    }
+    throw error;
   }) as unknown as WhisperOutput;
   return { text: output.text ?? '', chunks: toChunks(output) };
 }
@@ -164,6 +202,7 @@ workerScope.onmessage = (event: MessageEvent<unknown>) => {
     const message = reason instanceof Error ? reason.message : String(reason);
     const raw = event.data as { id?: unknown } | null;
     const id = raw && Number.isInteger(raw.id) ? Number(raw.id) : -1;
-    post({ id, type: 'error', message });
+    const failure = reason instanceof LocalAsrWorkerFailureError ? reason.failure : undefined;
+    post({ id, type: 'error', message, ...(failure ? { failure } : {}) });
   });
 };

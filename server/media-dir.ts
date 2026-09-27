@@ -32,6 +32,21 @@ export function isSafeUploadName(name: string): boolean {
   return true;
 }
 
+/** Safe upload name addressed by a `/media/uploads/<name>` source (query/hash dropped, %-decoded); null otherwise. */
+export function uploadNameOfSource(source: string): string | null {
+  const rawPathname = source.split(/[?#]/, 1)[0] ?? '';
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(rawPathname);
+  } catch {
+    return null;
+  }
+  const prefix = '/media/uploads/';
+  if (!pathname.startsWith(prefix)) return null;
+  const name = pathname.slice(prefix.length);
+  return isSafeUploadName(name) ? name : null;
+}
+
 /** Expand ~/ and require an absolute path; illegal (relative path) returns null. */
 export function expandMediaDir(raw: string): string | null {
   const t = raw.trim();

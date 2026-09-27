@@ -2,7 +2,7 @@
 // Each platform uses its own strengths (WebGPU on Metal/D3D12/Vulkan; model tier by
 // memory) — the shipped build is identical everywhere, the choice is made at runtime.
 // P0 note: thresholds are initial estimates; calibrate with real devices before release.
-import { asrModelEntry } from '../../shared/asr-models';
+import { asrModelEntry, isAsrModelTier } from '../../shared/asr-models';
 import type { AsrConfig, AsrDevice, AsrModelTier, DeviceProfile } from './local-asr-types';
 
 const DEFAULT_MEMORY_GB = 8;
@@ -64,8 +64,7 @@ export function chooseAsrConfig(profile: DeviceProfile): AsrConfig {
   } catch {
     preferred = '';
   }
-  const tier: AsrModelTier = preferred === 'tiny' || preferred === 'base'
-    || preferred === 'small' || preferred === 'medium' || preferred === 'large-v3-turbo'
+  const tier: AsrModelTier = isAsrModelTier(preferred) && preferred !== ''
     ? preferred
     : 'base';
   const model = asrModelEntry(tier);

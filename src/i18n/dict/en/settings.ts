@@ -124,8 +124,9 @@ export default {
   '启用': 'On',
   '停用': 'Off',
   '本地模型（whisper）': 'Local model (Whisper)',
-  '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。':
-    'Transcription runs on this machine: free, offline, and private. Download models on demand below. OpenChatCut selects the best available backend and falls back to CPU when WebGPU is unavailable. Local transcription does not support speaker diarization.',
+  '转写在本机完成：免费、离线、素材不出本机。模型需先下载，下载与删除在 本地模型 → 本地转写 页（点下方按钮前往）。自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。':
+    'Transcription runs on this machine: free, offline, and private. Models must be downloaded first; download or delete them on the Local models → Local transcription page (use the button below). OpenChatCut selects the best available backend and falls back to CPU when WebGPU is unavailable. Local transcription does not support speaker diarization.',
+  '下载 / 管理本地模型': 'Download / manage local models',
 
   // ──Page Note/Field Note──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
@@ -479,10 +480,12 @@ export default {
   '已连接': 'Connected',
   '连接失败': 'Connect failed',
   '已写入 {paths}': 'Wrote {paths}',
+  '已写入 {paths}。请完全退出并重新打开 Codex，令牌才会生效。': 'Wrote {paths}. Fully quit and reopen Codex so it picks up the token.',
   '连接后重启对应客户端生效；Codex 需新开终端使环境变量生效。': 'Restart the client after connecting; Codex needs a new terminal for the env var.',
   '目标配置文件不是有效 JSON，为避免覆盖未写入。': 'Target config file is not valid JSON; nothing was written to avoid overwriting it.',
   '写入配置文件失败。': 'Failed to write the config file.',
   '执行 codex mcp add 失败。': 'Running codex mcp add failed.',
+  '已在 Codex 注册，但令牌未能保存为 Windows 用户环境变量，连接未完成。': 'Registered with Codex, but the token could not be saved as a Windows user environment variable, so the connection is incomplete.',
   'OpenChatCut 暴露一个 Streamable HTTP MCP 端点。Claude Code / Codex / Cursor 等外部 Agent 接入后,与内置 Agent 共用同一套编辑工具,可直接读写当前工程。':
     'OpenChatCut exposes a Streamable HTTP MCP endpoint. External agents such as Claude Code, Codex, and Cursor share the same editing tools as the built-in agent and can read and edit the current project directly.',
   '端点地址': 'Endpoint',
@@ -525,7 +528,7 @@ export default {
     'Settings → Connectors → Add custom connector, then paste the endpoint above.',
   '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
     'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
-  // Local ASR model management (Settings → 转写 → 本地模型)
+  // Local ASR model management (Settings → 本地模型 → 本地转写)
   '本地转写': 'Local transcription',
   '节拍与音乐分析': 'Beat and music analysis',
   '画面语义搜索': 'Visual semantic search',
@@ -546,6 +549,9 @@ export default {
   '未下载': 'Not downloaded',
   '删除': 'Delete',
   '下载': 'Download',
+  '补全': 'Complete',
+  '桌面引擎已就绪；补全浏览器引擎文件，供桌面推理失败时回退':
+    'The desktop engine is ready. Download the browser-engine files too, as a fallback when desktop inference fails.',
   '模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。':
     'Models are downloaded to this machine on demand — they are not bundled with the app. Downloads use the accelerated pipeline automatically.',
   '桌面原生推理加速': 'Native desktop inference acceleration',

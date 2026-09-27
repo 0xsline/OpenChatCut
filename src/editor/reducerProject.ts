@@ -13,6 +13,7 @@ import { newTranscriptGeneration } from '../transcript/identity';
 import type { AnyAction, ProjectAction } from './reducerActions';
 import { isRelinkableMediaKind, relinkTiming, type RelinkableTimelineItem } from './reducerTimelineHelpers';
 import { reduce } from './reducerTimeline';
+import { withProjectFrameRate } from './timelineFrameRate';
 
 // ── project reducer (routes per-timeline actions to the active timeline) ───
 export const maxOrder = (p: ProjectDoc) => p.timelines.reduce((m, t) => Math.max(m, t.order), -1);
@@ -73,6 +74,8 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         if (width < 1 || height < 1) return p;
         return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, width, height, fit: a.fit ?? t.fit ?? 'contain' } : t)) };
       }
+      case 'tl.setFps':
+        return withProjectFrameRate(p, a.fps);
       case 'tl.setHidden': {
         // The last visible timeline cannot be hidden.
         const visible = p.timelines.filter((t) => !t.hidden);

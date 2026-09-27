@@ -22,6 +22,7 @@ import { browserScaledExportDimensions } from './browserExport';
 import {
   EXPORT_FPS_OPTIONS,
   EXPORT_RESOLUTIONS,
+  nearestExportFps,
   type ExportResolution,
 } from './mediaSettings';
 import {
@@ -139,8 +140,7 @@ export interface ExportDialogModel {
 function useVideoSettings(state: TimelineState, qualityMode: QualityMode): ExportVideoSettings {
   const [codec, setCodec] = useState<ExportVideoCodec>('h264');
   const [resolution, setResolution] = useState<ExportResolution>(() => exportResolutionForCanvas(state, qualityMode));
-  const initialFps = EXPORT_FPS.some((candidate) => candidate === state.fps) ? state.fps : 30;
-  const [fps, setFps] = useState(initialFps);
+  const [fps, setFps] = useState(() => nearestExportFps(state.fps));
   const [bitrateMode, setBitrateMode] = useState<VideoBitrateMode>(() => defaultBitrateModeForQuality(qualityMode));
   const [customBitrateMbps, setCustomBitrateMbps] = useState(DEFAULT_CUSTOM_BITRATE_MBPS);
   // Re-apply quality defaults when the user toggles balanced ↔ master.

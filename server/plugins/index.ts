@@ -11,6 +11,7 @@ import { extensionStorePlugin } from "./extension-store.ts";
 import { exportPlugin } from "./export.ts";
 import { exportQaPlugin } from "./export-qa.ts";
 import { exportDestinationPlugin } from "./export-destination.ts";
+import { exportMediaSourcesPlugin } from "./export-media-sources.ts";
 import { exportStagePlugin } from "./export-stage.ts";
 import { uploadPlugin } from "./upload.ts";
 import { mobileUploadPlugin } from "./mobile-upload.ts";
@@ -83,6 +84,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     exportStagePlugin(),
     exportPlugin(),
     exportDestinationPlugin(),
+    exportMediaSourcesPlugin(),
     exportQaPlugin(),
     uploadMultipartPlugin(),
     uploadPlugin(),

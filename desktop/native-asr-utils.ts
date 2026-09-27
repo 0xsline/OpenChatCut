@@ -5,16 +5,12 @@ import { ASR_MODELS } from '../shared/asr-models.ts';
 
 export const NATIVE_ASR_SAMPLE_RATE = ASR_INFERENCE_CONTRACT.sampleRate;
 
-// Preserve the desktop-native filenames supported before GGML companions were
-// recorded in the shared catalog. New companions should come from the catalog.
-const LEGACY_GGML_MODEL_FILES: Readonly<Record<string, string>> = {
-  'Xenova/whisper-small': 'ggml-small-q5_1.bin',
-  'Xenova/whisper-medium': 'ggml-medium-q5_1.bin',
-};
-
+// Every catalog tier that can run natively records its GGML companion in
+// shared/asr-models.ts. The map that used to patch small/medium here named a
+// `ggml-medium-q5_1.bin` that does not exist upstream (whisper.cpp ships
+// medium as q5_0), so the desktop engine could never load it.
 export function nativeGgmlFileName(modelId: string): string | undefined {
-  return ASR_MODELS.find((model) => model.modelId === modelId)?.ggmlFile?.fileName
-    ?? LEGACY_GGML_MODEL_FILES[modelId];
+  return ASR_MODELS.find((model) => model.modelId === modelId)?.ggmlFile?.fileName;
 }
 
 export interface WhisperWordToken {

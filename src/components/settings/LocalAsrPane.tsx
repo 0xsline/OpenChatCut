@@ -1,4 +1,4 @@
-// Settings → 转写 → 本地模型：模型选择 + 按需下载管理。
+// Settings → 本地模型 → 本地转写：模型选择 + 按需下载管理。
 // Models are NOT bundled — users pick and download them on demand through the
 // local hf-proxy (multi-source accelerated download into the disk cache).
 // Whisper is OpenAI's open-source model, so the official OpenAI mark is used.
@@ -9,6 +9,9 @@ import { warmUpLocalAsr } from '../../transcript/local-asr';
 import { asrBackendPreference } from '../../transcript/deviceProfile';
 import { VendorIcon } from './vendorIcons';
 import type { AsrDownloadStatus } from '../../../shared/asr-models';
+import { ASR_INFERENCE_CONTRACT } from '../../../shared/asr-inference-contract';
+import type { LocalAsrEngine } from '../../transcript/local-asr-readiness';
+import { localAsrModelRowState, type LocalAsrModelRowState } from './localAsrModelRow';
 import { FieldRow, type FieldCtx } from './settingsVendorPane';
 import type { SettingsField } from './settingsSchema';
 import { mutateLocalAsrModel } from './local-asr-model-mutation';
@@ -28,6 +31,8 @@ interface AsrModelState {
   sizeLabel: string;
   language: string;
   downloaded: boolean;
+  onnxDownloaded?: boolean;
+  ggmlDownloaded?: boolean;
   bytes: number;
   task?: {
     status: AsrDownloadStatus;
@@ -55,6 +60,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
   const hasDesktopInference = Boolean(window.openChatCutDesktop?.inference);
   const [nativeInference, setNativeInference] = useState(desktopNativeInferenceEnabled);
   const [desktopInferenceSupported, setDesktopInferenceSupported] = useState(false);
+  const [nativeAsrAvailable, setNativeAsrAvailable] = useState(false);
   const [webgpuAccel, setWebgpuAccel] = useState(() => asrBackendPreference() === 'webgpu');
   const [vadSilence, setVadSilence] = useState(vadSilenceRemovalEnabled);
   useEffect(() => {
@@ -68,12 +74,17 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
               capabilities.platform === 'darwin' || capabilities.platform === 'win32'
                 || capabilities.platform === 'linux',
             );
+            setNativeAsrAvailable(capabilities.asr.available
+              && capabilities.asr.contractId === ASR_INFERENCE_CONTRACT.id);
           }
         })
         .catch(() => undefined);
     }
     return () => { active = false; };
   }, []);
+  // "Downloaded" means ready for the engine this client runs first: whisper.cpp
+  // needs only the GGML companion, the browser engine only the ONNX export.
+  const engine: LocalAsrEngine = nativeInference && nativeAsrAvailable ? 'native' : 'browser';
   const toggleNativeInference = useCallback((enabled: boolean) => {
     void setDesktopNativeInferenceEnabled(enabled)
       .then(() => setNativeInference(enabled))
@@ -112,10 +123,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
       const current = new Set(models.filter((m) => m.task?.status === 'downloading').map((m) => m.id));
       // A download just finished: warm the configured model with this catalog
       // snapshot, avoiding a duplicate API request.
-      if (downloadingRef.current.size > 0 && current.size === 0) {
-        const downloadedIds = models.filter((model) => model.downloaded).map((model) => model.modelId);
-        void warmUpLocalAsr(downloadedIds);
-      }
+      if (downloadingRef.current.size > 0 && current.size === 0) void warmUpLocalAsr(models);
       downloadingRef.current = current;
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
@@ -153,7 +161,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
     }
   }, [refresh]);
 
-  const statusLabel = (m: AsrModelState): { text: string; color: string } => {
+  const statusLabel = (m: AsrModelState, row: LocalAsrModelRowState): { text: string; color: string } => {
     const task = m.task;
     if (task?.status === 'downloading') {
       // Byte totals are unknown before a file finishes; file-level progress
@@ -164,7 +172,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
       return { text: t('下载中 {pct}%', { pct }), color: theme.accent };
     }
     if (task?.status === 'error') return { text: t('下载失败'), color: theme.danger };
-    if (m.downloaded) return { text: t('已下载'), color: theme.success };
+    if (row.ready) return { text: t('已下载'), color: theme.success };
     return { text: t('未下载'), color: theme.textDim };
   };
 
@@ -232,7 +240,8 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
         {loadError && <div style={{ fontSize: 11.5, color: theme.danger }}>{t('无法读取模型列表：{err}', { err: loadError })}</div>}
         {!loadError && !models && <div style={{ fontSize: 11.5, color: theme.textDim }}>{t('读取中…')}</div>}
         {(models ?? []).map((m) => {
-          const status = statusLabel(m);
+          const row = localAsrModelRowState(m, engine);
+          const status = statusLabel(m, row);
           const downloading = m.task?.status === 'downloading';
           const busy = busyId === m.id;
           return (
@@ -251,12 +260,20 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
               <span style={{ fontSize: 11, color: status.color, whiteSpace: 'nowrap' }}>{status.text}</span>
               {downloading ? (
                 <span style={{ fontSize: 11, color: theme.textDim }}>…</span>
-              ) : m.downloaded ? (
-                <button type="button" disabled={busy} onClick={() => void deleteModel(m.id)}
-                  style={smallBtn}>{t('删除')}</button>
               ) : (
-                <button type="button" disabled={busy} onClick={() => void startDownload(m.id)}
-                  style={{ ...smallBtn, ...primaryBtn }}>{t('下载')}</button>
+                <>
+                  {row.canDownload && (
+                    <button type="button" disabled={busy} onClick={() => void startDownload(m.id)}
+                      title={row.ready ? t('桌面引擎已就绪；补全浏览器引擎文件，供桌面推理失败时回退') : undefined}
+                      style={row.ready ? smallBtn : { ...smallBtn, ...primaryBtn }}>
+                      {row.ready ? t('补全') : t('下载')}
+                    </button>
+                  )}
+                  {row.ready && (
+                    <button type="button" disabled={busy} onClick={() => void deleteModel(m.id)}
+                      style={smallBtn}>{t('删除')}</button>
+                  )}
+                </>
               )}
             </div>
           );

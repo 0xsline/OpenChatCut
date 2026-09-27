@@ -5,6 +5,7 @@ export default {
   '加载中…': 'Caricamento...',
   '工程不存在，返回…': 'Progetto non trovato, ritorno...',
   '· 我的工程': '· I miei progetti',
+  '示例工程': 'Progetto di esempio',
   '设置 · API 密钥': 'Impostazioni · chiavi API',
   '配置模型后开始使用 Agent': 'Configura un modello per iniziare a usare l\'Agent',
   '配置任一云端或本地模型，即可在编辑器中使用对话式剪辑。': 'Configura un modello cloud o locale per usare il montaggio conversazionale nell\'editor.',

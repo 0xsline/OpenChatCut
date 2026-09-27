@@ -54,6 +54,8 @@ export default {
   '放大时间轴 (⌘＋)': 'Zoom in timeline (⌘＋)',
   '适配视图 (⇧Z)': 'Fit to view (⇧Z)',
   '画幅比例': 'Aspect ratio',
+  '时间线帧率': 'Timeline frame rate',
+  '帧率需在时间线添加内容前设置': 'Set the frame rate before adding anything to the timeline',
   '内容适配': 'Content fit',
   '留边': 'Letterbox',
   '裁切': 'Crop',

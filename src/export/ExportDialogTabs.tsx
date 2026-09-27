@@ -1,8 +1,8 @@
-import type { TimelineState } from '../editor/types';
+import type { ProjectDoc, TimelineState } from '../editor/types';
 import { trackAlias } from '../editor/types';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
-import { captionCues, mediaItems } from '../agent/tools/jianying-export-tool';
+import { jianyingDraftPayload } from './jianyingDraftRequest';
 import {
   MAX_VIDEO_BITRATE_MBPS,
   MIN_VIDEO_BITRATE_MBPS,
@@ -220,7 +220,7 @@ interface JianyingExportOutcome {
   warnings: string[];
 }
 
-function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
+function JianyingTab({ project, base }: { project: ProjectDoc; base: string }) {
   const t = useT();
   const initial = loadJianYingDraftPreference();
   const [draftName, setDraftName] = useState(initial.draftName || base);
@@ -240,20 +240,7 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
     setError(null);
     setOutcome(null);
     try {
-      const body = {
-        draftName: draftName.trim(),
-        fps: state.fps,
-        items: mediaItems(state.items).map((item) => ({
-          kind: item.kind,
-          src: item.src ?? '',
-          startFrame: item.startFrame,
-          durationInFrames: item.durationInFrames,
-          volume: item.volume,
-          name: item.name,
-        })),
-        captions: captionCues(state, state.captions),
-        draftsDir,
-      };
+      const body = { draftName: draftName.trim(), ...jianyingDraftPayload(project), draftsDir };
       const response = await fetch('/api/external-agent/jianying-export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -338,6 +325,7 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
 export interface ExportTabContentProps extends VideoTabProps, XmlTabProps {
   tab: ExportTab;
   state: TimelineState;
+  project: ProjectDoc;
   subtitles: ExportSubtitleSettings;
   mgCount: number;
   base: string;
@@ -348,6 +336,6 @@ export function ExportTabContent(props: ExportTabContentProps) {
   if (props.tab === 'audio') return <AudioTab />;
   if (props.tab === 'mg') return <MotionGraphicsTab count={props.mgCount} />;
   if (props.tab === 'subtitles') return <SubtitlesTab state={props.state} subtitles={props.subtitles} />;
-  if (props.tab === 'jianying') return <JianyingTab state={props.state} base={props.base} />;
+  if (props.tab === 'jianying') return <JianyingTab project={props.project} base={props.base} />;
   return <XmlTab {...props} />;
 }

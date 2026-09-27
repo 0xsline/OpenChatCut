@@ -6,6 +6,7 @@ import {
   deleteMediaReference,
   listMediaReferences,
   mediaReferenceManifestPath,
+  recordedMediaReferenceSource,
   registerMediaReference,
   resolveMediaReference,
 } from './media-references.ts';
@@ -28,6 +29,17 @@ try {
     assert.equal((await stat(mediaReferenceManifestPath(uploads, name))).mode & 0o077, 0);
   }
 
+  // A moved source stops resolving, but exports can still name where it was.
+  const moved = join(root, 'moved clip.mp4');
+  await writeFile(moved, 'moved media bytes');
+  await registerMediaReference(uploads, 'asset-2.mp4', moved);
+  const recorded = await realpath(moved);
+  await rm(moved);
+  assert.equal(resolveMediaReference(uploads, 'asset-2.mp4'), null);
+  assert.equal(recordedMediaReferenceSource(uploads, 'asset-2.mp4'), recorded);
+  assert.equal(recordedMediaReferenceSource(uploads, 'missing.mp4'), null);
+  assert.equal(await deleteMediaReference(uploads, 'asset-2.mp4'), true);
+
   assert.equal(await deleteMediaReference(uploads, name), true);
   assert.equal(resolveMediaReference(uploads, name), null);
   assert.equal(await readFile(source, 'utf8'), 'external media bytes', 'deleting a reference must preserve its source');
@@ -36,4 +48,4 @@ try {
   await rm(root, { recursive: true, force: true });
 }
 
-process.stdout.write('media-references.verify: register, resolve, list, and source-safe delete passed\n');
+process.stdout.write('media-references.verify: register, resolve, recorded source, list, and source-safe delete passed\n');

@@ -19,6 +19,7 @@ import { renderDirectHardware } from './direct-hardware.mjs';
 import { assertMaterializedRenderSnapshot, normalizeH264Profile } from './render-contract.mjs';
 import { resolveRenderTimeout } from './render-timeout.mjs';
 import { getServeUrl } from './serve-bundle.mjs';
+import { resolveServerVideoDecoder } from './video-decoder.mjs';
 
 export { prebuildServeBundle, setUploadsDirProvider } from './serve-bundle.mjs';
 
@@ -38,6 +39,12 @@ function resolveRenderGlBackend() {
 }
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
 const binariesDirectory = () => process.env.CC_REMOTION_BINARIES_DIR || null;
+
+/** Every server render tells the composition which decoder feeds its video
+ *  frames (see video-decoder.mjs); the Player and browser export never set it. */
+function serverInputProps(props) {
+  return { ...props, serverVideoDecoder: resolveServerVideoDecoder() };
+}
 
 export function currentRenderConcurrency() {
   return resolveRenderConcurrency();
@@ -222,7 +229,7 @@ export async function renderTimeline({
 
   const serveUrl = await getServeUrl();
   signal?.throwIfAborted();
-  const inputProps = { state, project, timelineId };
+  const inputProps = serverInputProps({ state, project, timelineId });
   // Full-timeline mezzanine: ProRes 422 HQ (not 4444 alpha — that is clip/MG only).
   const proresOptions = codec === 'prores'
     ? { proResProfile: 'hq', imageFormat: 'png' }
@@ -300,7 +307,7 @@ export async function renderClip({
   const cancelSignal = remotionCancelSignal(signal);
   const serveUrl = await getServeUrl();
   signal?.throwIfAborted();
-  const inputProps = { state, transparent };
+  const inputProps = serverInputProps({ state, transparent });
   await withAbortableCompositionSelection({
     signal,
     selectionOptions: {
@@ -362,7 +369,7 @@ export async function renderTimelineStills({
   if (project) assertMaterializedRenderSnapshot(project, 'renderTimelineStills', timelineId);
   const serveUrl = await getServeUrl();
   signal?.throwIfAborted();
-  const inputProps = { state, project, timelineId };
+  const inputProps = serverInputProps({ state, project, timelineId });
   // Reuse one browser for the batch when caller doesn't pass one — opening Chrome
   // per frame was the dominant cost of view_*_frames.
   const ownBrowser = !puppeteerInstance;

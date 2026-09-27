@@ -22,6 +22,7 @@ import { AudioClip, BackgroundFillLayer, ContinuousVideoAudio, MediaFill, Shared
 import { firstGlEffect } from '../gl/clipEffects';
 import { continuousVideoAudioGroups, shareableVisualItem } from './transitionAudio';
 import { ItemLayer, SolidLayer, TextLayer, WatermarkLayer } from './TimelineGraphicLayers';
+import { isServerVideoDecoder, ServerVideoDecoderContext, type ServerVideoDecoder } from './serverVideoDecoder';
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
@@ -92,6 +93,8 @@ export type TimelineCompositionProps = Record<string, unknown> & {
   transparent?: boolean;
   /** Use @remotion/media so @remotion/web-renderer can decode media via WebCodecs. */
   browserRenderer?: boolean;
+  /** Headless server render only (set by remotion/render.mjs): the video frame decoder. */
+  serverVideoDecoder?: ServerVideoDecoder;
   /** The selected clip is the Player's explicit full-fidelity GL preview target. */
   selectedItemId?: string | null;
   onSelectedPreviewStatus?: SelectedPreviewStatusListener;
@@ -416,9 +419,12 @@ export function TimelineComposition(props: TimelineCompositionProps) {
         .map((id) => props.project!.timelines.find((timeline) => timeline.id === id))
         .filter((timeline): timeline is Timeline => !!timeline)
     : [];
+  const videoDecoder = isServerVideoDecoder(props.serverVideoDecoder) ? props.serverVideoDecoder : 'webcodecs';
   return (
-    <TimelineReadinessGate key={timelineReadinessKey(props.state, dependencies)} state={props.state} dependencies={dependencies}>
-      {() => <TimelineContent {...props} timelineId={timelineId} />}
-    </TimelineReadinessGate>
+    <ServerVideoDecoderContext.Provider value={videoDecoder}>
+      <TimelineReadinessGate key={timelineReadinessKey(props.state, dependencies)} state={props.state} dependencies={dependencies}>
+        {() => <TimelineContent {...props} timelineId={timelineId} />}
+      </TimelineReadinessGate>
+    </ServerVideoDecoderContext.Provider>
   );
 }
