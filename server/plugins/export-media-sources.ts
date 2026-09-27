@@ -1,6 +1,6 @@
-// POST /api/export-media-sources — disk locations of the timeline's upload-backed
-// media for one FCPXML export (issue #27). The renderer uses the answer only to
-// write that file; nothing here is persisted into the project.
+// POST /api/export-media-sources — disk locations and embedded start timecodes of
+// the timeline's upload-backed media for one FCPXML export (issue #27). The
+// renderer uses the answer only to write that file; nothing is persisted.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import {
@@ -10,20 +10,21 @@ import {
 } from '../../shared/export-media-sources.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
 import { resolveExportMediaSources } from '../export-media-sources.ts';
+import { probeMediaStart } from '../media-timecode.ts';
 import { readJsonBody, sendJson } from './export-http.ts';
 
 const MAX_SOURCE_LENGTH = 4096;
 
 export interface ExportMediaSourcesRouteDependencies {
   authorized(req: IncomingMessage): boolean;
-  resolve(sources: readonly string[]): ExportMediaSourceMap;
+  resolve(sources: readonly string[]): Promise<ExportMediaSourceMap>;
 }
 
 const defaultDependencies: ExportMediaSourcesRouteDependencies = {
   // The answer holds absolute source paths: same gate as upload mutations
   // (loopback socket, local Host, same-origin Origin), not just the shape gate.
   authorized: (req) => editorCredentialAuthorized(req, true),
-  resolve: (sources) => resolveExportMediaSources(sources),
+  resolve: (sources) => resolveExportMediaSources(sources, probeMediaStart),
 };
 
 function requestedSources(body: unknown): string[] | null {
@@ -62,7 +63,7 @@ export async function handleExportMediaSourcesRequest(
     sendJson(res, 400, { error: `sources must be an array of at most ${MAX_EXPORT_MEDIA_SOURCES} strings` });
     return;
   }
-  sendJson(res, 200, { ok: true, sources: dependencies.resolve(sources) });
+  sendJson(res, 200, { ok: true, sources: await dependencies.resolve(sources) });
 }
 
 export function exportMediaSourcesPlugin(): Plugin {

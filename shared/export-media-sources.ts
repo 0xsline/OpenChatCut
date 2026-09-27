@@ -15,11 +15,28 @@ export const MAX_EXPORT_MEDIA_SOURCES = 4096;
 /** Longest path accepted back from the server (Windows extended-length limit). */
 const MAX_PATH_LENGTH = 32_767;
 
+/**
+ * Where a media file's own timeline begins, exactly `value / timescale` seconds:
+ * an embedded start timecode (frames × rate denominator over the rate numerator)
+ * or a Broadcast WAV sample offset. NLEs conform clips against it.
+ */
+export interface ExportMediaStart {
+  readonly value: number;
+  readonly timescale: number;
+  /** The embedded label, e.g. "10:00:00:00" or drop-frame "01:00:00;00"; absent for a BWF sample offset. */
+  readonly timecode?: string;
+  readonly dropFrame: boolean;
+}
+
 export interface ExportMediaSource {
   /** The file behind the upload name: a managed copy, or the external source of an in-place reference. */
   readonly path?: string;
   /** The camera original, when the upload is an in-place reference or a working copy derived from one. */
   readonly originalPath?: string;
+  /** Embedded start of `path`, when it carries one. */
+  readonly pathStart?: ExportMediaStart;
+  /** Embedded start of the original; the working copy's stands in while the original is offline or unreadable. */
+  readonly originalStart?: ExportMediaStart;
 }
 
 /** Keyed by the exact `src` string the timeline item carries. */
@@ -42,11 +59,22 @@ function isAbsoluteDiskPath(value: unknown): value is string {
     && (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\'));
 }
 
+function isExportMediaStart(value: unknown): value is ExportMediaStart {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const start = value as Record<string, unknown>;
+  return Number.isSafeInteger(start.value) && (start.value as number) >= 0
+    && Number.isSafeInteger(start.timescale) && (start.timescale as number) > 0
+    && (start.timecode === undefined || (typeof start.timecode === 'string' && start.timecode.length <= 32))
+    && typeof start.dropFrame === 'boolean';
+}
+
 function isExportMediaSource(value: unknown): value is ExportMediaSource {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const { path, originalPath } = value as Record<string, unknown>;
+  const { path, originalPath, pathStart, originalStart } = value as Record<string, unknown>;
   return (path === undefined || isAbsoluteDiskPath(path))
-    && (originalPath === undefined || isAbsoluteDiskPath(originalPath));
+    && (originalPath === undefined || isAbsoluteDiskPath(originalPath))
+    && (pathStart === undefined || isExportMediaStart(pathStart))
+    && (originalStart === undefined || isExportMediaStart(originalStart));
 }
 
 export function isExportMediaSourceMap(value: unknown): value is ExportMediaSourceMap {

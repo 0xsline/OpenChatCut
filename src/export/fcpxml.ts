@@ -16,62 +16,11 @@ import { sourceWindowForTimelineRange, timelineFramesToSourceFrames } from '../e
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
 import { backgroundFillStrengthOf, isBackgroundFillActive } from '../editor/backgroundFill';
-import type { ExportMediaSource, ExportMediaSourceMap } from '../../shared/export-media-sources';
-import { rationalTime, retimedClipTimes } from './fcpxmlTime';
+import type { ExportMediaSourceMap, ExportMediaStart } from '../../shared/export-media-sources';
+import { planAssetMedia, type AssetMedia } from './fcpxmlMedia';
+import { mediaStartTime, mediaTime, rationalTime, retimedClipTimes, timecodeFormatAttr } from './fcpxmlTime';
 
-/** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
-const UPLOAD_PREFIX = '/media/uploads/';
-
-/**
- * Absolute disk path → `media-rep` `src` URL, UTF-8 percent-encoded per path
- * segment (drive-letter colons stay intact). FCPXML defines `src` as an
- * RFC 2396 URL and `media-rep` may only contain `bookmark`, so this attribute
- * is the one place an NLE reads the location. Final Cut Pro writes the same
- * form itself (NSURL: `%E4%B8%AD…`, `%20`), DaVinci Resolve's own FCPXML
- * export percent-encodes `src` too, and Resolve imports Final Cut's files.
- * Raw non-ASCII is not a URL; a raw `#` or `%` truncates or corrupts the path.
- */
-function toFileUrl(absPath: string): string {
-  const slashed = absPath.replace(/\\/g, '/');
-  if (slashed.startsWith('//')) {
-    const encoded = slashed.slice(2).split('/').map(encodeURIComponent).join('/');
-    return `file://${encoded}`;
-  }
-  const rooted = /^[A-Za-z]:/.test(slashed) ? `/${slashed}` : slashed;
-  const encoded = rooted
-    .split('/')
-    .map((seg) => (/^[A-Za-z]:$/.test(seg) ? seg : encodeURIComponent(seg)))
-    .join('/');
-  return `file://${encoded}`;
-}
-
-/**
- * Fragment src → absolute disk path when the fragment names a local file.
- * /media/uploads/<name> resolves against mediaDir (MEDIA_DIR can change);
- * Windows/POSIX absolute sources pass through; remote/inline sources return
- * null so callers never fabricate a local address for them.
- */
-export function resolveAssetAbsPath(src: string, mediaDir?: string): string | null {
-  if (/^(?:https?|file|data|blob):/i.test(src)) return null;
-  if (/^(?:[A-Za-z]:[\\/]|\\\\)/.test(src)) return src;
-  if (mediaDir && src.startsWith(UPLOAD_PREFIX)) {
-    const name = decodeURIComponent(src.slice(UPLOAD_PREFIX.length));
-    return `${mediaDir.replace(/[/\\]+$/, '')}/${name}`;
-  }
-  return src.startsWith('/') ? src : null;
-}
-
-/**
- * Fragment src → NLE address that can be relinked. `/media/uploads/<name>` is the same origin URL, the physical location is
- * mediaDir is determined (MEDIA_DIR can be changed) and must be converted into an absolute path, otherwise every asset in NLE is
- * Offline. Remote/inline addresses are passed through as is (NLE can't turn them off, but lying about local paths is worse).
- */
-export function resolveAssetSrc(src: string, mediaDir?: string): string {
-  if (/^(?:https?|file|data|blob):/i.test(src)) return src;
-  const abs = resolveAssetAbsPath(src, mediaDir);
-  if (abs) return toFileUrl(abs);
-  return `file://${src}`;
-}
+export { resolveAssetAbsPath, resolveAssetSrc } from './fcpxmlMedia';
 
 /**
  * Transcript editing of audio files (word deletion/mute/block rearrangement) is split into multiple segments at the playback layer
@@ -163,6 +112,11 @@ interface RenderedMotionGraphicInfo {
   durationFrames: number;
 }
 
+/** An asset with its media representations and clock settled for this export. */
+interface PlannedAsset extends AssetInfo {
+  readonly media: AssetMedia;
+}
+
 /** Press src to remove duplicates and collect asset resources: only one asset will be registered if the same asset is used multiple times on the timeline.*/
 function collectAssets(state: TimelineState): Map<string, AssetInfo> {
   const bySrc = new Map<string, AssetInfo>();
@@ -227,36 +181,30 @@ function mediaRepXml(
   return `<media-rep kind="${kind}" src="${escapeXml(src)}"${suggestedAttr}/>`;
 }
 
-/**
- * original-media is the camera file; proxy-media the working copy the editor
- * plays, when it is a different file. The server's export-time lookup wins:
- * an in-place reference (desktop folder/watched/agent import) has no file at
- * `<mediaDir>/<name>` and no originalFilePath in the project.
- */
-function assetResourceXml(
-  src: string,
-  info: AssetInfo,
-  fps: number,
-  formatId: string,
-  mediaDir?: string,
-  located?: ExportMediaSource,
-): string {
-  const hasVideo = info.kind !== 'audio';
-  const hasAudio = info.kind === 'audio' || info.kind === 'video';
-  const name = escapeXml(info.name || decodedBasename(src));
+/** Settle every asset's media representations and start timecode once. */
+function planAssets(
+  assets: Map<string, AssetInfo>,
+  mediaDir: string | undefined,
+  mediaSources: ExportMediaSourceMap | undefined,
+): Map<string, PlannedAsset> {
+  return new Map(Array.from(assets, ([src, info]) => {
+    const located = mediaSources && Object.hasOwn(mediaSources, src) ? mediaSources[src] : undefined;
+    return [src, { ...info, media: planAssetMedia(src, info.originalFilePath, mediaDir, located) }];
+  }));
+}
+
+function assetResourceXml(src: string, asset: PlannedAsset, fps: number, formatId: string): string {
+  const hasVideo = asset.kind !== 'audio';
+  const hasAudio = asset.kind === 'audio' || asset.kind === 'video';
+  const name = escapeXml(asset.name || decodedBasename(src));
   const formatAttr = hasVideo ? ` format="${formatId}"` : '';
-  const internalHref = located?.path ? toFileUrl(located.path) : resolveAssetSrc(src, mediaDir);
-  const originalAbs = located?.originalPath
-    || (typeof info.originalFilePath === 'string' && info.originalFilePath ? info.originalFilePath : undefined);
-  const originalHref = originalAbs ? toFileUrl(originalAbs) : undefined;
-  const filename = info.sourceFilename ?? info.name;
-  const representations = originalHref
-    ? [
-        mediaRepXml('original-media', originalHref, filename),
-        ...(originalHref === internalHref ? [] : [mediaRepXml('proxy-media', internalHref, filename)]),
-      ]
-    : [mediaRepXml('original-media', internalHref, filename)];
-  return `<asset id="${info.id}" name="${name}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}>\n      ${representations.join('\n      ')}\n    </asset>`;
+  const { originalHref, proxyHref, start } = asset.media;
+  const filename = asset.sourceFilename ?? asset.name;
+  const representations = [
+    mediaRepXml('original-media', originalHref, filename),
+    ...(proxyHref ? [mediaRepXml('proxy-media', proxyHref, filename)] : []),
+  ];
+  return `<asset id="${asset.id}" name="${name}" start="${mediaStartTime(start)}" duration="${rationalTime(asset.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}>\n      ${representations.join('\n      ')}\n    </asset>`;
 }
 
 function collectRenderedMotionGraphics(
@@ -325,13 +273,13 @@ interface Retime {
  * been round-tripped through Final Cut or Resolve here, so the intended rate
  * is also written as a comment for the integrator to sanity-check.
  */
-function retimeOf(item: TimelineItem, fps: number): Retime | null {
+function retimeOf(item: TimelineItem, fps: number, start: ExportMediaStart | undefined): Retime | null {
   const rate = item.playbackRate ?? 1;
   if (!Number.isFinite(rate) || rate === 1 || rate <= 0) return null;
   const sourceFrames = retimeSourceFrames(item);
   if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) return null;
   // The same floor timelineFramesToSourceFrames applies to playback.
-  const times = retimedClipTimes(item.srcInFrame ?? 0, item.durationInFrames, Math.max(0.01, rate), fps);
+  const times = retimedClipTimes(start, item.srcInFrame ?? 0, item.durationInFrames, Math.max(0.01, rate), fps);
   return {
     start: times.start,
     xml: [
@@ -348,7 +296,7 @@ function itemToSpineElement(
   item: TimelineItem,
   fps: number,
   lane: number,
-  assets: Map<string, AssetInfo>,
+  assets: Map<string, PlannedAsset>,
   renderedMotionGraphics: Map<string, RenderedMotionGraphicInfo>,
   backgroundFillActive: boolean,
 ): string {
@@ -356,17 +304,21 @@ function itemToSpineElement(
   const duration = rationalTime(item.durationInFrames, fps);
   const name = escapeXml(item.name);
   if (item.src) {
-    const ref = assets.get(item.src)?.id ?? '';
+    const asset = assets.get(item.src);
+    const ref = asset?.id ?? '';
+    // In-points count from the file's own start timecode (asset time).
+    const start = asset?.media.start;
+    const tcFormat = timecodeFormatAttr(start);
     const segs = transcriptSegments(item, fps);
     if (segs?.length) {
       // One clip for each reserved segment:offset is already the absolute frame of the timeline (keptSegments passed in startFrame)
       return segs
-        .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${rationalTime(seg.srcStartFrame, fps)}" name="${name}"/>`)
+        .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${mediaTime(start, seg.srcStartFrame, fps)}" name="${name}"${tcFormat}/>`)
         .join('\n        ');
     }
-    const retime = retimeOf(item, fps);
-    const clipStart = retime?.start ?? rationalTime(item.srcInFrame ?? 0, fps);
-    const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${clipStart}" name="${name}"`;
+    const retime = retimeOf(item, fps, start);
+    const clipStart = retime?.start ?? mediaTime(start, item.srcInFrame ?? 0, fps);
+    const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${clipStart}" name="${name}"${tcFormat}`;
     const children = [retime?.xml ?? '', backgroundFillActive ? backgroundFillMetadataXml(item) : '']
       .filter(Boolean)
       .join('\n        ');
@@ -411,7 +363,11 @@ export interface FcpxmlExportOptions {
   /** The absolute disk path of the asset directory (server uploadDir()); by default, /media/uploads is output as is,
    *NLE will mark all assets as offline. The caller should fetch from the mediaDir of /api/keys. */
   mediaDir?: string;
-  /** Export-time disk locations keyed by item src (POST /api/export-media-sources); override the mediaDir guess. */
+  /**
+   * Export-time disk locations and start timecodes keyed by item src (POST
+   * /api/export-media-sources); they override the mediaDir guess and put asset
+   * and clip times on each file's own timecode.
+   */
   mediaSources?: ExportMediaSourceMap;
 }
 
@@ -429,7 +385,7 @@ export function timelineToFcpxml(
   const title = escapeXml((opts.title ?? '').trim() || 'OpenChatCut Timeline');
   const nle: NleFormat = opts.nleFormat === 'fcp_xml_resolve' ? 'fcp_xml_resolve' : 'fcp_xml';
   const laneOf = buildLaneOf(state);
-  const assets = collectAssets(state);
+  const assets = planAssets(collectAssets(state), opts.mediaDir, opts.mediaSources);
   const renderedMotionGraphics = collectRenderedMotionGraphics(state, opts.motionGraphicRenderKeys ?? []);
 
   const formatId = 'fmt1';
@@ -438,11 +394,7 @@ export function timelineToFcpxml(
   const formatXml = nle === 'fcp_xml_resolve'
     ? `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}" colorSpace="1-1-1 (Rec. 709)"/>`
     : `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}"/>`;
-  const assetXmls = Array.from(assets.entries())
-    .map(([src, info]) => assetResourceXml(
-      src, info, fps, formatId, opts.mediaDir,
-      opts.mediaSources && Object.hasOwn(opts.mediaSources, src) ? opts.mediaSources[src] : undefined,
-    ));
+  const assetXmls = Array.from(assets, ([src, asset]) => assetResourceXml(src, asset, fps, formatId));
   const motionGraphicXmls = Array.from(renderedMotionGraphics.values())
     .map((info) => motionGraphicResourceXml(info, fps, formatId));
   const resourcesXml = [formatXml, ...assetXmls, ...motionGraphicXmls].join('\n    ');

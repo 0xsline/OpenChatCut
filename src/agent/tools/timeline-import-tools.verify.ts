@@ -169,6 +169,65 @@ FCM: DROP FRAME
   assert.deepEqual(roundTripped, original);
 }
 
+// ── Round trip on the files' own timecode (#27): timecoded assets and retimed clips keep their in-points ──
+{
+  const camera: MediaAsset = { id: 'camera', name: 'A001.mov', kind: 'video', src: '/media/uploads/camera.mov', durationInFrames: 1800 };
+  const ntsc: MediaAsset = { id: 'ntsc', name: 'B001.mov', kind: 'video', src: '/media/uploads/ntsc.mov', durationInFrames: 1800 };
+  const { draft, ctx } = context([camera, ntsc]);
+  const state: TimelineState = {
+    fps: 30,
+    width: 1920,
+    height: 1080,
+    selectedId: null,
+    trackOrder: ['V2', 'V1'],
+    tracks: { V2: { kind: 'video' }, V1: { kind: 'video' } },
+    assets: draft.getDoc().assets,
+    items: [
+      { id: 'a', track: 'V1', kind: 'video', name: 'A001.mov', src: camera.src, startFrame: 0, durationInFrames: 60, srcInFrame: 45 },
+      { id: 'b', track: 'V1', kind: 'video', name: 'A001.mov', src: camera.src, startFrame: 60, durationInFrames: 40, srcInFrame: 90, playbackRate: 2 },
+      { id: 'c', track: 'V2', kind: 'video', name: 'B001.mov', src: ntsc.src, startFrame: 10, durationInFrames: 30, srcInFrame: 33, playbackRate: 1.5 },
+      { id: 'd', track: 'V2', kind: 'video', name: 'clip.mp4', src: '/media/uploads/clip.mp4', startFrame: 50, durationInFrames: 30, srcInFrame: 60, playbackRate: 2 },
+      { id: 'e', track: 'V2', kind: 'video', name: 'clip.mp4', src: '/media/uploads/clip.mp4', startFrame: 90, durationInFrames: 40, srcInFrame: 12, playbackRate: 0.5 },
+    ],
+  };
+  // What /api/export-media-sources reports: 10:00:00:00 at 25 fps, 01:00:00;00 drop-frame at 29.97, and no timecode.
+  const pal = { value: 900_000, timescale: 25, timecode: '10:00:00:00', dropFrame: false };
+  const dropFrame = { value: 107_999_892, timescale: 30_000, timecode: '01:00:00;00', dropFrame: true };
+  const xml = timelineToFcpxml(state, {
+    title: 'Timecode Round Trip',
+    mediaDir: '/Users/test/media',
+    mediaSources: {
+      [camera.src]: { path: '/Volumes/A001/A001.mov', originalPath: '/Volumes/A001/A001.mov', pathStart: pal, originalStart: pal },
+      [ntsc.src]: { path: '/Volumes/B001/B001.mov', originalPath: '/Volumes/B001/B001.mov', pathStart: dropFrame, originalStart: dropFrame },
+      '/media/uploads/clip.mp4': { path: '/Users/test/clip.mp4' },
+    },
+  });
+  assert.match(xml, /<asset [^>]*name="A001\.mov" start="900000\/25s"/, 'the camera file exports on its timecode');
+  assert.match(xml, /<asset [^>]*name="B001\.mov" start="107999892\/30000s"/, 'drop-frame timecode exports exactly');
+  const result = await execTimelineImportTool('import_timeline', { format: 'fcpxml', content: xml }, ctx);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const imported = draft.getDoc().timelines.find((timeline) => timeline.id === result.timelineId)!;
+  const trackName = (id: string) => imported.tracks?.[id]?.name;
+  const trackOf: Record<string, string> = { V2: 'Imported V2', V1: 'Imported V1' };
+  const shape = (item: { sourceAssetId?: string; startFrame: number; durationInFrames: number; srcInFrame?: number; playbackRate?: number }) => ({
+    startFrame: item.startFrame,
+    durationInFrames: item.durationInFrames,
+    srcInFrame: item.srcInFrame ?? 0,
+    playbackRate: item.playbackRate ?? 1,
+  });
+  const byPosition = (left: { track?: string; startFrame: number }, right: { track?: string; startFrame: number }) => (
+    left.track!.localeCompare(right.track!) || left.startFrame - right.startFrame);
+  assert.deepEqual(
+    imported.items.map((item) => ({ track: trackName(item.track), asset: item.sourceAssetId, ...shape(item) })).sort(byPosition),
+    state.items.map((item) => ({
+      track: trackOf[item.track],
+      asset: draft.getDoc().assets.find((asset) => asset.src === item.src)?.id,
+      ...shape(item),
+    })).sort(byPosition),
+    'in-points count from each file\'s own start, through retime maps too',
+  );
+}
+
 // ── EDL-only options are ignored for FCPXML, with a warning ──
 {
   const { ctx } = context();

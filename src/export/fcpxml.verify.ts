@@ -3,7 +3,8 @@
 // ① Audio transcript editing must be split into multiple asset-clips that are consistent with the playback layer (keptSegments) segment by segment;
 // ② The assets are converted to the absolute file:// path under mediaDir, otherwise the NLE is full of offline assets.
 // Issue #27 blocks: every export validates against the FCPXML 1.10 DTD (fcpxml.verify-support.ts), src is an
-// RFC 3986 file URL, and in-place references (desktop folder/watched/agent imports) name the user's real file.
+// RFC 3986 file URL, in-place references (desktop folder/watched/agent imports) name the user's real file, and
+// media with an embedded start timecode exports on that clock (asset start = timecode, clip start = timecode + in).
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
@@ -16,7 +17,7 @@ import { exportMediaSources, fcpxmlMediaLocations } from './exportMediaSources';
 import { motionGraphicRenderKey } from './motionGraphicRefs';
 import { keptSegments } from '../transcript/edit';
 import type { TimelineItem, TimelineState } from '../editor/types';
-import { EXPORT_MEDIA_SOURCES_ROUTE } from '../../shared/export-media-sources';
+import { EXPORT_MEDIA_SOURCES_ROUTE, type ExportMediaStart } from '../../shared/export-media-sources';
 import { resolveExportMediaSources } from '../../server/export-media-sources';
 import { registerMediaReference } from '../../server/media-references';
 
@@ -403,7 +404,7 @@ function sourceFrameAt(xml: string, name: string, frame: number, fps: number): Q
         clip('tone', 'A1', '/media/uploads/c3d4.wav', 'audio', { originalFilePath: join(root, 'stale', 'tone.wav') }),
       ],
     };
-    const mediaSources = resolveExportMediaSources(state.items.map((item) => item.src!), [uploads]);
+    const mediaSources = await resolveExportMediaSources(state.items.map((item) => item.src!), async () => null, [uploads]);
     const xml = timelineToFcpxml(state, { mediaDir: uploads, mediaSources });
     const asset = (id: string): string => xml.match(new RegExp(`<asset id="id-${id}"[\\s\\S]*?</asset>`))?.[0] ?? '';
     const pathOf = (id: string, kind: 'original-media' | 'proxy-media'): string | undefined => {
@@ -437,6 +438,110 @@ function sourceFrameAt(xml: string, name: string, frame: number, fps: number): Q
   }
 }
 
+// ── Issue #27: asset start is the original's embedded timecode; clip starts and timeMaps count from it ──
+{
+  const tc = (value: number, timescale: number, timecode?: string, dropFrame = false): ExportMediaStart => (
+    { value, timescale, dropFrame, ...(timecode ? { timecode } : {}) });
+  const pal = tc(900_000, 25, '10:00:00:00');
+  const ntscDf = tc(107_999_892, 30_000, '01:00:00;00', true);
+  const bwf = tc(1_728_000_000, 48_000);
+  const exactly = (time: string, num: bigint, den: bigint): boolean => {
+    const [n = '', d = '1'] = time.replace(/s$/, '').split('/');
+    return BigInt(n) * den === num * BigInt(d);
+  };
+  const assetOf = (xml: string, id: string) => xml.match(new RegExp(`<asset id="id-${id}"[\\s\\S]*?</asset>`))?.[0] ?? '';
+  const assetStart = (xml: string, id: string) => assetOf(xml, id).match(/<asset [^>]*start="([^"]*)"/)?.[1];
+  const repKinds = (xml: string, id: string) => [...assetOf(xml, id).matchAll(/kind="([^"]*)" src="([^"]*)"/g)]
+    .map(([, kind, src]) => `${kind} ${fileURLToPath(src!)}`);
+  const timeline = (fps: number, items: TimelineItem[], assets?: TimelineState['assets']): TimelineState => ({
+    fps, width: 1920, height: 1080, selectedId: null, items, assets,
+    tracks: { V1: { kind: 'video' }, V2: { kind: 'video' }, A1: { kind: 'audio' } }, trackOrder: ['V2', 'V1', 'A1'],
+  });
+  const video = (id: string, src: string, srcInFrame: number, extra: Partial<TimelineItem> = {}): TimelineItem => ({
+    id, track: 'V1', src, srcInFrame, kind: 'video', startFrame: 40, durationInFrames: 20, name: id, ...extra,
+  });
+  const all: string[] = [];
+  const exportWith = (state: TimelineState, mediaSources: Record<string, object>) => {
+    const xml = timelineToFcpxml(state, { mediaDir: '/m', mediaSources: mediaSources as never });
+    all.push(xml);
+    return xml;
+  };
+
+  // 25 fps media at 10:00:00:00, two cuts: in-points count from the timecode, positions do not.
+  const pal25 = exportWith(timeline(25, [
+    video('cam', '/media/uploads/cam.mov', 0),
+    video('cam2', '/media/uploads/cam.mov', 50, { track: 'V2', startFrame: 0 }),
+  ]), { '/media/uploads/cam.mov': { path: '/Volumes/A001/cam.mov', pathStart: pal } });
+  assert.equal(assetStart(pal25, 'cam'), '900000/25s', 'asset start = 10:00:00:00 at 25 fps');
+  assert.deepEqual(clipsOf(pal25).map((clip) => [attr(clip, 'offset'), attr(clip, 'start'), attr(clip, 'tcFormat')]),
+    [['0/25s', '900050/25s', 'NDF'], ['40/25s', '900000/25s', 'NDF']], 'clip start = timecode + in-point; offset untouched');
+
+  // 29.97 drop-frame media: exact on a 30 fps timeline and on a 29.97 one.
+  const df30 = exportWith(timeline(30, [video('df', '/media/uploads/df.mov', 60)]),
+    { '/media/uploads/df.mov': { path: '/Volumes/B001/df.mov', originalPath: '/Volumes/B001/df.mov', pathStart: ntscDf, originalStart: ntscDf } });
+  assert.equal(assetStart(df30, 'df'), '107999892/30000s', '01:00:00;00 DF = frame 107892 × 1001/30000 s');
+  assert.equal(attr(clipsOf(df30)[0]!, 'start'), '108059892/30000s', '60 frames at 30 fps past 01:00:00;00');
+  assert.equal(attr(clipsOf(df30)[0]!, 'tcFormat'), 'DF');
+  const df2997 = exportWith(timeline(29.97, [video('df', '/media/uploads/df.mov', 0), video('df2', '/media/uploads/df.mov', 30, { track: 'V2' })]),
+    { '/media/uploads/df.mov': { path: '/Volumes/B001/df.mov', pathStart: ntscDf } });
+  const [late, early] = clipsOf(df2997).map((clip) => attr(clip, 'start'));
+  assert.equal(early, '107999892/30000s', 'in-point 0 is the timecode itself');
+  assert.ok(exactly(late!, 107_999_892n * 29_970n + 30_000n * 30_000n, 30_000n * 29_970n),
+    `30 frames at 29.97 past the timecode, exact (${late})`);
+
+  // Retime on a timecoded file: the map starts at the file's timecode, the clip start is in the retimed clock.
+  for (const [fps, source, rate] of [[25, pal, 2], [30, ntscDf, 1.5], [29.97, ntscDf, 0.5]] as const) {
+    const retimed = exportWith(timeline(fps, [video('fast', '/media/uploads/cam.mov', 48, { playbackRate: rate })]),
+      { '/media/uploads/cam.mov': { path: '/Volumes/A001/cam.mov', pathStart: source } });
+    const origin = `${source.value}/${source.timescale}s`;
+    assert.match(retimed, new RegExp(`<timept time="${origin}" value="${origin}" interp="linear"/>`),
+      `${rate}x at ${fps} fps: the map starts at the asset start (the file's timecode)`);
+    assert.ok(sameQ(sourceFrameAt(retimed, 'fast', 0, fps), qOf(48)),
+      `${rate}x at ${fps} fps: the first frame samples timecode + in-point (got ${showQ(sourceFrameAt(retimed, 'fast', 0, fps))})`);
+    assert.ok(sameQ(sourceFrameAt(retimed, 'fast', 19, fps), qOf(48 + 19 * rate)),
+      `${rate}x at ${fps} fps: the last frame samples timecode + in-point + 19 × speed`);
+  }
+
+  // Broadcast WAV: a sample-accurate start and no timecode label (no tcFormat); transcript segments count from it.
+  const transcript = [{ text: 'a', start: 0, end: 1000 }, { text: 'um', start: 1000, end: 3000 }, { text: 'b', start: 3000, end: 4000 }];
+  const segments = keptSegments(transcript, new Set([1]), 30, 0, {});
+  const wav = exportWith(timeline(30, [{
+    id: 'vo', track: 'A1', startFrame: 0, durationInFrames: segments.reduce((sum, seg) => sum + seg.durFrames, 0),
+    kind: 'audio', name: 'vo', src: '/media/uploads/vo.wav', transcript, deletedWordIdx: [1],
+  }]), { '/media/uploads/vo.wav': { path: '/Volumes/SD/vo.wav', pathStart: bwf } });
+  assert.equal(assetStart(wav, 'vo'), '1728000000/48000s');
+  assert.deepEqual(clipsOf(wav).map((clip) => [attr(clip, 'start'), attr(clip, 'tcFormat')]),
+    segments.map((seg) => [`${1_728_000_000 + seg.srcStartFrame * 1600}/48000s`, '']), 'each kept segment counts from the BWF start');
+
+  // One start per asset: the working copy is the proxy only when it runs on the original's clock.
+  const proxies = exportWith(timeline(25, [
+    video('moved', '/media/uploads/m.normalized.mp4', 0),
+    video('same', '/media/uploads/s.normalized.mp4', 0, { track: 'V2' }),
+    video('drop', '/media/uploads/d.mp4', 0, { originalFilePath: '/Users/me/card/d.mov' }),
+    video('bare', '/media/uploads/b.normalized.mp4', 0, { track: 'V2', startFrame: 0 }),
+  ]), {
+    '/media/uploads/m.normalized.mp4': { path: '/m/m.normalized.mp4', originalPath: '/Volumes/C/m.mov', pathStart: tc(90_000, 25, '01:00:00:00'), originalStart: pal },
+    '/media/uploads/s.normalized.mp4': { path: '/m/s.normalized.mp4', originalPath: '/Volumes/C/s.mov', pathStart: tc(36_000, 1, '10:00:00:00'), originalStart: pal },
+    '/media/uploads/d.mp4': { path: '/m/d.mp4', pathStart: pal },
+    '/media/uploads/b.normalized.mp4': { path: '/m/b.normalized.mp4', originalPath: '/Volumes/C/b.mov', pathStart: pal },
+  });
+  assert.deepEqual([assetStart(proxies, 'moved'), repKinds(proxies, 'moved')], ['900000/25s', ['original-media /Volumes/C/m.mov']],
+    'a copy on another clock is not offered as proxy; the asset keeps the original\'s start');
+  assert.deepEqual([assetStart(proxies, 'same'), repKinds(proxies, 'same')],
+    ['900000/25s', ['original-media /Volumes/C/s.mov', 'proxy-media /m/s.normalized.mp4']], 'the same instant in another timescale matches');
+  assert.deepEqual([assetStart(proxies, 'drop'), repKinds(proxies, 'drop')],
+    ['900000/25s', ['original-media /Users/me/card/d.mov', 'proxy-media /m/d.mp4']], 'a drag/drop original runs on its copy\'s clock');
+  assert.deepEqual([assetStart(proxies, 'bare'), repKinds(proxies, 'bare')], ['0s', ['original-media /Volumes/C/b.mov']],
+    'an original without a timecode starts at 0s, and a timecoded copy cannot be its proxy');
+
+  // Untagged media keeps the existing output.
+  const untagged = exportWith(timeline(25, [video('u', '/media/uploads/u.mp4', 50)]), { '/media/uploads/u.mp4': { path: '/m/u.mp4' } });
+  assert.equal(assetStart(untagged, 'u'), '0s');
+  assert.deepEqual([attr(clipsOf(untagged)[0]!, 'start'), attr(clipsOf(untagged)[0]!, 'tcFormat')], ['50/25s', '']);
+
+  for (const xml of all) assert.deepEqual(fcpxmlDtdViolations(xml), [], 'timecoded exports validate against the FCPXML 1.10 DTD');
+}
+
 // ── Issue #27: the renderer asks the server once per export and never trusts a malformed answer ──
 {
   const calls: Array<{ url: string; body: unknown }> = [];
@@ -456,6 +561,16 @@ function sourceFrameAt(xml: string, name: string, frame: number, fps: number): Q
     answer({ ok: true, sources: { '/media/uploads/a.mp4': { path: 'relative/a.mov' } } })), {}, 'relative paths are rejected');
   assert.deepEqual(await exportMediaSources(['/media/uploads/a.mp4'],
     (async () => { throw new TypeError('offline'); }) as typeof fetch), {}, 'network failure falls back to mediaDir');
+  const start = { value: 900_000, timescale: 25, timecode: '10:00:00:00', dropFrame: false };
+  const timed = { '/media/uploads/a.mp4': { path: '/Volumes/A/a.mov', pathStart: start, originalStart: { value: 1, timescale: 48_000, dropFrame: false } } };
+  assert.deepEqual(await exportMediaSources(['/media/uploads/a.mp4'], answer({ ok: true, sources: timed })), timed,
+    'start timecodes come through');
+  for (const bad of [{ ...start, value: 1.5 }, { ...start, value: -1 }, { ...start, timescale: 0 },
+    { value: 1, timescale: 25 }, { ...start, timecode: '0'.repeat(33) }, 'start']) {
+    assert.deepEqual(await exportMediaSources(['/media/uploads/a.mp4'],
+      answer({ ok: true, sources: { '/media/uploads/a.mp4': { path: '/Volumes/A/a.mov', pathStart: bad } } })), {},
+    `a malformed start is rejected: ${JSON.stringify(bad)}`);
+  }
   const locations = await fcpxmlMediaLocations({
     items: [{ id: 'v', track: 'V1', startFrame: 0, durationInFrames: 1, kind: 'video', name: 'v', src: '/media/uploads/a.mp4' }],
   }, answer({ ok: true, sources: located }));
@@ -474,4 +589,4 @@ function sourceFrameAt(xml: string, name: string, frame: number, fps: number): Q
   assert.ok(!timelineToFcpxml(state).includes('colorSpace'), '默认变体不带 colorSpace');
 }
 
-console.log('fcpxml.verify: ok (结构/转义/lane/分段/原始与代理媒体/FCPXML 1.10 DTD/src 编码/引用素材原片/Resolve 变体)');
+console.log('fcpxml.verify: ok (结构/转义/lane/分段/原始与代理媒体/FCPXML 1.10 DTD/src 编码/引用素材原片/起始时间码/Resolve 变体)');

@@ -1,7 +1,8 @@
-// Disk locations of a timeline's /media/uploads sources for one FCPXML export.
-// The server resolves in-place references (desktop folder, watched-folder and
-// agent-path imports) that never carry a path in the project, plus the managed
-// copies. The answer is used for this export only and is never stored.
+// Disk locations and start timecodes of a timeline's /media/uploads sources for
+// one FCPXML export. The server resolves in-place references (desktop folder,
+// watched-folder and agent-path imports) that never carry a path in the
+// project, plus the managed copies, and reads each file's embedded start
+// timecode. The answer is used for this export only and is never stored.
 import {
   EXPORT_MEDIA_SOURCES_ROUTE,
   isExportMediaSourceMap,
@@ -12,9 +13,10 @@ import type { TimelineState } from '../editor/types';
 import { exportMediaDir } from './mediaDir';
 
 const UPLOAD_PREFIX = '/media/uploads/';
-const REQUEST_TIMEOUT_MS = 15_000;
+/** Above the server's worst case: a 20 s probe budget plus one in-flight 10 s probe. */
+const REQUEST_TIMEOUT_MS = 45_000;
 
-/** Server-resolved locations for the upload-backed sources; {} when the server cannot say. */
+/** Server-resolved locations and starts for the upload-backed sources; {} when the server cannot say. */
 export async function exportMediaSources(
   sources: readonly string[],
   fetcher: typeof fetch = fetch,

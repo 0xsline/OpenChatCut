@@ -1,6 +1,9 @@
 // FCPXML rational time. Every FCPXML time is an exact fraction of a second
-// ("N/Ds"). Speed changes are computed exactly (bigint), so a retimed clip
-// never drifts off the frames it plays.
+// ("N/Ds"). Media that carries a start timecode lives on its own clock: an
+// asset's `start` is that timecode and a clip's `start` counts from it, so NLEs
+// conform the clip against the frames the file labels. Sums and speed changes
+// are computed exactly (bigint), so a clip never drifts off the file's frames.
+import type { ExportMediaStart } from '../../shared/export-media-sources';
 
 /** An exact non-negative fraction: frames or seconds. */
 interface Ratio {
@@ -42,7 +45,7 @@ function toRatio(value: number): Ratio {
     : reduced(BigInt(Math.round(value * SCALE)), BigInt(SCALE));
 }
 
-/** a + b over the least common denominator. */
+/** a + b over the least common denominator, so each clock's own timescale shows through. */
 function add(a: Ratio, b: Ratio): Ratio {
   if (b.num === 0n) return a;
   if (a.num === 0n) return b;
@@ -70,9 +73,24 @@ function format(time: Ratio): string {
   return `${(exact.num * FALLBACK_TIMESCALE + exact.den / 2n) / exact.den}/${FALLBACK_TIMESCALE}s`;
 }
 
-/** A frame count at the timeline rate as an FCPXML time. */
-function frameTime(frames: Ratio, fps: number): string {
-  return format(frameSeconds(frames, fps));
+function startRatio(start: ExportMediaStart): Ratio {
+  return { num: BigInt(start.value), den: BigInt(start.timescale) };
+}
+
+/** An asset's `start`: its embedded start timecode, else "0s". */
+export function mediaStartTime(start: ExportMediaStart | undefined): string {
+  return start ? format(startRatio(start)) : '0s';
+}
+
+/**
+ * The media position `frames` (at the timeline rate) past the file's own
+ * start, in the asset's time: what a clip `start` holds. Without a start and
+ * for a plain frame count this is exactly rationalTime(frames, fps).
+ */
+export function mediaTime(start: ExportMediaStart | undefined, frames: number | Ratio, fps: number): string {
+  if (!start && typeof frames === 'number') return rationalTime(frames, fps);
+  const offset = frameSeconds(typeof frames === 'number' ? toRatio(frames) : frames, fps);
+  return format(start ? add(startRatio(start), offset) : offset);
 }
 
 export interface RetimedClipTimes {
@@ -90,19 +108,38 @@ export interface RetimedClipTimes {
  * time and `value` the original media time (FCPXML DTD; Apple's timeMap
  * reference), and a clip's `start` and `duration` are in adjusted time. Like
  * Final Cut's and Resolve's own exports, the map starts at the media's origin
- * (which maps to itself), so the clip starts at in-point ÷ speed in adjusted
- * time, where the map samples the in-point: the frame the timeline shows. It
- * ends at the clip's end, where the map samples in-point + duration × speed.
+ * (the asset start maps to itself), so the clip starts at origin + in-point ÷
+ * speed in adjusted time, where the map samples origin + in-point: the frame
+ * the timeline shows. It ends at the clip's end, where the map samples
+ * origin + in-point + duration × speed.
  */
-export function retimedClipTimes(inFrame: number, durationFrames: number, rate: number, fps: number): RetimedClipTimes {
+export function retimedClipTimes(
+  start: ExportMediaStart | undefined,
+  inFrame: number,
+  durationFrames: number,
+  rate: number,
+  fps: number,
+): RetimedClipTimes {
   const speed = toRatio(rate);
   const inPoint = toRatio(inFrame);
   const adjustedIn = multiply(inPoint, { num: speed.den, den: speed.num });
   const duration = toRatio(durationFrames);
   return {
-    start: frameTime(adjustedIn, fps),
-    origin: '0s',
-    endTime: frameTime(add(adjustedIn, duration), fps),
-    endValue: frameTime(add(inPoint, multiply(duration, speed)), fps),
+    start: mediaTime(start, adjustedIn, fps),
+    origin: mediaStartTime(start),
+    endTime: mediaTime(start, add(adjustedIn, duration), fps),
+    endValue: mediaTime(start, add(inPoint, multiply(duration, speed)), fps),
   };
+}
+
+/** Whether two files start at the same instant (both without a start counts as equal). */
+export function sameMediaStart(a: ExportMediaStart | undefined, b: ExportMediaStart | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return BigInt(a.value) * BigInt(b.timescale) === BigInt(b.value) * BigInt(a.timescale);
+}
+
+/** `tcFormat` for clips of timecoded media; nothing for media without a timecode label. */
+export function timecodeFormatAttr(start: ExportMediaStart | undefined): string {
+  if (!start?.timecode) return '';
+  return ` tcFormat="${start.dropFrame ? 'DF' : 'NDF'}"`;
 }
