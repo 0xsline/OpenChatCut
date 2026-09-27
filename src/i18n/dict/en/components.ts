@@ -71,6 +71,7 @@ export default {
 
   // ---- Dashboard ----
   '· 我的工程': '· My Projects',
+  '示例工程': 'Example project',
   '设置 · API 密钥': 'Settings · API Keys',
   '联系作者': 'Contact author',
   'GitHub 仓库': 'GitHub repository',
