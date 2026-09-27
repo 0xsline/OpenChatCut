@@ -66,7 +66,7 @@ import {
 import {
   TIMELINE_IMPORT_TOOL_NAMES,
   TIMELINE_IMPORT_TOOL_SCHEMAS,
-} from './tools/timeline-import-tools';
+} from './tools/schemas/timeline-import-tools';
 import { withProgressTargets } from './tools/schemas/progress';
 import {
   AGENT_RUNTIME_TOOL_NAMES,
