@@ -306,8 +306,8 @@ function backgroundFillMetadataXml(item: TimelineItem): string {
         </metadata>`;
 }
 /** Entries with src (video/audio/image/gif) → asset-clip; entries without src
- * (motion-graphic/text, MG does not have real media files) → placeholder gap with name + annotation,
- * The integrator can use export_motion_graphic_prores to render the transparent video and replace this gap.*/
+ * (motion-graphic/text, MG does not have real media files) → a named placeholder gap in a connected
+ * storyline on the item's lane. export_motion_graphic_prores can render the transparent video to replace it.*/
 /** Source frames consumed by a rate-stretched clip: timeline frames × rate. */
 export function retimeSourceFrames(item: TimelineItem): number {
   return timelineFramesToSourceFrames(item, item.durationInFrames);
@@ -376,7 +376,11 @@ function itemToSpineElement(
       return `<asset-clip ref="${rendered.id}" lane="${lane}" offset="${offset}" duration="${duration}" start="0s" name="${name}"/>`;
     }
   }
-  return `<gap name="MG: ${name}" lane="${lane}" offset="${offset}" duration="${duration}">${xmlComment(`motion graphic placeholder, render before NLE import: ${name}`)}</gap>`;
+  // A gap cannot be anchored or carry a lane (it is a clip_item, not an
+  // anchor_item), so the placeholder rides in a connected secondary storyline,
+  // whose children are timed from the storyline's own start.
+  const placeholder = `<gap name="MG: ${name}" offset="0s" duration="${duration}">${xmlComment(`motion graphic placeholder, render before NLE import: ${name}`)}</gap>`;
+  return `<spine lane="${lane}" offset="${offset}" name="MG: ${name}">${placeholder}</spine>`;
 }
 
 /**

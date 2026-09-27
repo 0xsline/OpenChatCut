@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { resolveAssetSrc, timelineToFcpxml } from './fcpxml';
 import { fcpxmlDtdViolations } from './fcpxml.verify-support';
+import { motionGraphicRenderKey } from './motionGraphicRefs';
 import { keptSegments } from '../transcript/edit';
 import type { TimelineState } from '../editor/types';
 
@@ -50,6 +51,21 @@ const mediaRepSrc = (xml: string, kind: 'original-media' | 'proxy-media'): strin
   assert.equal((xml.match(/<gap name="MG:/g) ?? []).length, 2, '两个 MG 占位 gap');
   // Track → lane: video positive, audio negative
   assert.equal(attr(clipsOf(xml)[0]!, 'lane'), '-1', '音频挂负 lane');
+  // A gap is a clip_item, not an anchor_item, and has no lane attribute: the
+  // placeholder rides in a connected storyline timed from its own start.
+  const placeholders = [...xml.matchAll(
+    /<spine lane="([^"]*)" offset="([^"]*)" name="MG: [^"]*"><gap name="MG: [^"]*" offset="0s" duration="([^"]*)">/g,
+  )].map((match) => match.slice(1));
+  assert.deepEqual(placeholders, [['1', '0/30s', '60/30s'], ['1', '60/30s', '90/30s']],
+    'MG placeholders keep their lane, timeline position and length');
+  assert.deepEqual(fcpxmlDtdViolations(xml), [], 'MG placeholders validate against the FCPXML 1.10 DTD');
+
+  const rendered = state.items[0]!;
+  const renderedXml = timelineToFcpxml({ ...state, items: [rendered, state.items[2]!] }, {
+    motionGraphicRenderKeys: [motionGraphicRenderKey(rendered)],
+  });
+  assert.ok(renderedXml.includes('src="file:./mg-'), 'fixture exercises the rendered-MG asset path');
+  assert.deepEqual(fcpxmlDtdViolations(renderedXml), [], 'rendered MG references validate against the DTD');
 }
 
 // ── P0-①: Audio transcript editing → multiple paragraphs, aligned with keptSegments one by one ──
