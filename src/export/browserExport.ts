@@ -22,6 +22,9 @@ import { DEFAULT_RENDER_TIMEOUT_MS } from '../../remotion/render-timeout.mjs';
  * export failed.
  */
 export const BROWSER_ENCODER_UNSUPPORTED_REASON = '浏览器编码器不支持此导出规格';
+export const BROWSER_RENDER_INCOMPLETE_REASON = '浏览器快导未能完成';
+// Mediabunny's messages when WebCodecs refuses the encoder the render asked for.
+const ENCODER_REFUSED = /encoder configuration .* is not supported|VideoEncoder is not supported|cannot be encoded by this browser/i;
 
 
 export type BrowserVideoCodec = 'h264' | 'vp8';
@@ -64,6 +67,12 @@ function abortError(): DOMException {
 
 export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
+}
+
+/** The neutral notice for a browser render that threw before the local renderer took over. */
+export function browserFallbackReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return ENCODER_REFUSED.test(message) ? BROWSER_ENCODER_UNSUPPORTED_REASON : BROWSER_RENDER_INCOMPLETE_REASON;
 }
 
 /**
