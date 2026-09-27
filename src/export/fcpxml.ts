@@ -17,6 +17,7 @@ import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGra
 import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
 import { backgroundFillStrengthOf, isBackgroundFillActive } from '../editor/backgroundFill';
 import type { ExportMediaSource, ExportMediaSourceMap } from '../../shared/export-media-sources';
+import { rationalTime, retimedClipTimes } from './fcpxmlTime';
 
 /** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
 const UPLOAD_PREFIX = '/media/uploads/';
@@ -109,18 +110,6 @@ function xmlComment(text: string): string {
 /** FCPXML resource/element id must be legal NCName: illegal character replacement + fixed prefix guaranteed not to start with a number.*/
 function sanitizeId(raw: string): string {
   return `id-${raw.replace(/[^A-Za-z0-9_.-]/g, '_')}`;
-}
-
-/**
- * Frame → FCPXML rational number time "N/Ds". Integer frame rate directly uses frames/fps; non-integer frame rate
- * (For example, 29.97) Amplify to the integer denominator and then round to an integer to ensure that it is exactly equivalent to frames/fps seconds——
- * Here is the simplest way to ensure accurate round-trip conversion, without pursuing NTSC 1001/30000
- * industry practice denominator.
- */
-function rationalTime(frames: number, fps: number): string {
-  if (Number.isInteger(fps)) return `${frames}/${fps}s`;
-  const scale = 1000;
-  return `${Math.round(frames * scale)}/${Math.round(fps * scale)}s`;
 }
 
 function validateState(state: TimelineState): void {
@@ -320,30 +309,39 @@ export function retimeSourceFrames(item: TimelineItem): number {
   return timelineFramesToSourceFrames(item, item.durationInFrames);
 }
 
+/** A retimed clip's `start` and the `<timeMap>` that goes with it. */
+interface Retime {
+  readonly start: string;
+  readonly xml: string;
+}
+
 /**
  * `<timeMap>` for a constant speed change. The clip's rate was previously
  * dropped entirely, so a 2× clip imported at 1× and showed only the first half
- * of its source span.
- *
- * Mapping: `time` is the retimed (timeline) position, `value` the media
- * position it samples — a 2× clip covers `duration × 2` of source over its
- * timeline duration. Both are expressed relative to the clip's `start`
- * in-point. NOTE: the emitted XML has not been round-tripped through Final Cut
- * or Resolve here, so the intended rate is also written as a comment for the
- * integrator to sanity-check.
+ * of its source span; then the map started at 0 while `start` held the source
+ * in-point, so an NLE sampled speed × in-point. The map now starts at the
+ * media's origin and `start` is in the retimed clock (retimedClipTimes), so
+ * the clip's first frame samples the in-point. NOTE: the emitted XML has not
+ * been round-tripped through Final Cut or Resolve here, so the intended rate
+ * is also written as a comment for the integrator to sanity-check.
  */
-function retimeXml(item: TimelineItem, fps: number): string {
+function retimeOf(item: TimelineItem, fps: number): Retime | null {
   const rate = item.playbackRate ?? 1;
-  if (!Number.isFinite(rate) || rate === 1 || rate <= 0) return '';
+  if (!Number.isFinite(rate) || rate === 1 || rate <= 0) return null;
   const sourceFrames = retimeSourceFrames(item);
-  if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) return '';
-  return [
-    xmlComment(`speed change ${rate}x: ${item.durationInFrames} timeline frames consume ${Math.round(sourceFrames)} source frames`),
-    '<timeMap>',
-    '  <timept time="0s" value="0s" interp="linear"/>',
-    `  <timept time="${rationalTime(item.durationInFrames, fps)}" value="${rationalTime(Math.round(sourceFrames), fps)}" interp="linear"/>`,
-    '</timeMap>',
-  ].join('\n        ');
+  if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) return null;
+  // The same floor timelineFramesToSourceFrames applies to playback.
+  const times = retimedClipTimes(item.srcInFrame ?? 0, item.durationInFrames, Math.max(0.01, rate), fps);
+  return {
+    start: times.start,
+    xml: [
+      xmlComment(`speed change ${rate}x: ${item.durationInFrames} timeline frames consume ${Math.round(sourceFrames)} source frames`),
+      '<timeMap>',
+      `  <timept time="${times.origin}" value="${times.origin}" interp="linear"/>`,
+      `  <timept time="${times.endTime}" value="${times.endValue}" interp="linear"/>`,
+      '</timeMap>',
+    ].join('\n        '),
+  };
 }
 
 function itemToSpineElement(
@@ -366,9 +364,10 @@ function itemToSpineElement(
         .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${rationalTime(seg.srcStartFrame, fps)}" name="${name}"/>`)
         .join('\n        ');
     }
-    const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${rationalTime(item.srcInFrame ?? 0, fps)}" name="${name}"`;
-    const retime = retimeXml(item, fps);
-    const children = [retime, backgroundFillActive ? backgroundFillMetadataXml(item) : '']
+    const retime = retimeOf(item, fps);
+    const clipStart = retime?.start ?? rationalTime(item.srcInFrame ?? 0, fps);
+    const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${clipStart}" name="${name}"`;
+    const children = [retime?.xml ?? '', backgroundFillActive ? backgroundFillMetadataXml(item) : '']
       .filter(Boolean)
       .join('\n        ');
     return children

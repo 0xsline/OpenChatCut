@@ -26,6 +26,44 @@ const mediaRepSrc = (xml: string, kind: 'original-media' | 'proxy-media'): strin
   xml.match(new RegExp(`<media-rep kind="${kind}" src="([^"]*)"`))?.[1]
 );
 
+// Exact FCPXML times ("N/Ds") as bigint fractions.
+type Q = readonly [bigint, bigint];
+const q = (time: string): Q => {
+  const [num = '0', den = '1'] = time.replace(/s$/, '').split('/');
+  return [BigInt(num), BigInt(den)];
+};
+const qOf = (value: number): Q => (Number.isInteger(value) ? [BigInt(value), 1n] : [BigInt(Math.round(value * 1000)), 1000n]);
+const plus = (a: Q, b: Q): Q => [a[0] * b[1] + b[0] * a[1], a[1] * b[1]];
+const minus = (a: Q, b: Q): Q => [a[0] * b[1] - b[0] * a[1], a[1] * b[1]];
+const times = (a: Q, b: Q): Q => [a[0] * b[0], a[1] * b[1]];
+const over = (a: Q, b: Q): Q => [a[0] * b[1], a[1] * b[0]];
+const sameQ = (a: Q, b: Q): boolean => a[0] * b[1] === b[0] * a[1];
+const showQ = ([num, den]: Q): string => `${num}/${den}`;
+
+/**
+ * The source frame, counted from the file's own start, that clip `name` shows
+ * `frame` frames after its first: its `start` is in the clip's (retimed) clock,
+ * its <timeMap> takes that clock to media time (FCPXML: timept `time` is the
+ * adjusted clip time, `value` the original), and the asset `start` is where the
+ * file's frames begin. This is how Final Cut, Resolve and the #106 importer read it.
+ */
+function sourceFrameAt(xml: string, name: string, frame: number, fps: number): Q {
+  const open = xml.match(new RegExp(`<asset-clip [^>]*name="${name}"[^>]*>`));
+  const clip = !open ? '' : open[0].endsWith('/>')
+    ? open[0]
+    : xml.slice(open.index, xml.indexOf('</asset-clip>', open.index) + '</asset-clip>'.length);
+  const assetStart = xml.match(new RegExp(`<asset id="${attr(clip, 'ref')}"[^>]*start="([^"]*)"`))?.[1] ?? '';
+  assert.ok(clip && assetStart, `clip ${name} and its asset are in the export`);
+  const rate = qOf(fps);
+  const at = plus(q(attr(clip, 'start')), over(qOf(frame), rate));
+  const points = [...clip.matchAll(/<timept time="([^"]*)" value="([^"]*)"/g)].map(([, time, value]) => [q(time!), q(value!)] as const);
+  const [first, last] = [points[0], points.at(-1)];
+  const media = first && last && points.length > 1
+    ? plus(first[1], times(minus(at, first[0]), over(minus(last[1], first[1]), minus(last[0], first[0]))))
+    : at;
+  return times(minus(media, q(assetStart)), rate);
+}
+
 // ── Infrastructure: single root, required nodes, XML escaping, no undefined/NaN leaks ──
 {
   const state: TimelineState = {
@@ -128,6 +166,46 @@ const mediaRepSrc = (xml: string, kind: 'original-media' | 'proxy-media'): strin
     }],
   };
   assert.equal(clipsOf(timelineToFcpxml(state)).length, 1, 'video 件保持单段连续播放');
+}
+
+// ── Retime: <timeMap> and the clip start share one clock, so the first and last frames sample the right source ──
+{
+  const cases = [
+    { fps: 25, inFrame: 50, duration: 20, rate: 2 },
+    { fps: 25, inFrame: 9, duration: 20, rate: 1.5 },
+    { fps: 30, inFrame: 10, duration: 40, rate: 0.5 },
+    { fps: 29.97, inFrame: 45, duration: 30, rate: 2 },
+    { fps: 25, inFrame: 12.5, duration: 10, rate: 2.5 },
+    { fps: 25, inFrame: 0, duration: 20, rate: 2 },
+  ];
+  for (const { fps, inFrame, duration, rate } of cases) {
+    const xml = timelineToFcpxml({
+      fps, width: 1920, height: 1080, selectedId: null, tracks: { V1: { kind: 'video' } }, trackOrder: ['V1'],
+      items: [{
+        id: 'fast', track: 'V1', startFrame: 30, durationInFrames: duration, kind: 'video', name: 'fast',
+        src: '/media/uploads/fast.mp4', srcInFrame: inFrame, playbackRate: rate,
+      }],
+    }, { mediaDir: '/m' });
+    const label = `${rate}x from source frame ${inFrame} at ${fps} fps`;
+    assert.ok(sameQ(sourceFrameAt(xml, 'fast', 0, fps), qOf(inFrame)),
+      `${label}: the first frame samples the in-point, not speed × in-point (got ${showQ(sourceFrameAt(xml, 'fast', 0, fps))})`);
+    assert.ok(sameQ(sourceFrameAt(xml, 'fast', duration - 1, fps), qOf(inFrame + (duration - 1) * rate)),
+      `${label}: the last frame samples in-point + (duration - 1) × speed`);
+    assert.match(xml, /<timept time="0s" value="0s" interp="linear"\/>/, `${label}: the map starts at the media's origin`);
+    assert.doesNotMatch(xml, /="\d+\.\d+\/\d+s"/, `${label}: every time is an integer fraction`);
+    assert.deepEqual(fcpxmlDtdViolations(xml), [], `${label}: validates against the FCPXML 1.10 DTD`);
+  }
+  const fromZero = timelineToFcpxml({
+    fps: 30, width: 1920, height: 1080, selectedId: null,
+    items: [{ id: 'z', track: 'V1', startFrame: 0, durationInFrames: 90, kind: 'video', name: 'z', src: '/m.mp4', playbackRate: 2 }],
+  });
+  assert.match(fromZero, /start="0\/30s"[\s\S]*<timept time="0s" value="0s"[^>]*\/>\s*<timept time="90\/30s" value="180\/30s"/,
+    'a clip from the first frame keeps its previous output');
+  const fractional = timelineToFcpxml({
+    fps: 25, width: 1920, height: 1080, selectedId: null,
+    items: [{ id: 'h', track: 'V1', startFrame: 0, durationInFrames: 10, kind: 'video', name: 'h', src: '/m.mp4', srcInFrame: 12.5 }],
+  });
+  assert.equal(attr(clipsOf(fractional)[0]!, 'start'), '12500/25000s', 'a fractional in-point is still an integer fraction');
 }
 
 // ── P0-②: Convert the asset path to absolute file:// ──
