@@ -8,12 +8,14 @@
 // node remotion/video-decoder-render.verify.mjs
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { renderClip, renderTimeline, renderTimelineStills, setUploadsDirProvider } from './render.mjs';
+import { disposeServeBundle, getServeUrl } from './serve-bundle.mjs';
 import { resolveServerVideoDecoder } from './video-decoder.mjs';
 
 const run = promisify(execFile);
@@ -239,6 +241,18 @@ try {
     );
   }
   console.log('video-decoder-render.verify: the decoder choice reaches exports, GL effect inputs, clip renders and stills');
+
+  // The serve bundle's media/uploads links (a junction on Windows) to the
+  // uploads directory, which here holds the fixtures: disposing the bundle
+  // must delete it without following that link.
+  const serveUrl = await getServeUrl();
+  const uploads = (await readdir(directory)).sort();
+  await disposeServeBundle();
+  assert.equal(existsSync(serveUrl), false, 'disposeServeBundle deletes the webpacked serve bundle');
+  assert.deepEqual((await readdir(directory)).sort(), uploads, 'disposing the serve bundle leaves the linked uploads intact');
+  console.log('video-decoder-render.verify: the serve bundle is disposed without touching the linked uploads');
 } finally {
   await rm(directory, { recursive: true, force: true });
+  // The serve bundle this run webpacked (~150 MB in the OS temp dir).
+  await disposeServeBundle();
 }

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { renderTimeline, setUploadsDirProvider } from '../../remotion/render.mjs';
+import { disposeServeBundle } from '../../remotion/serve-bundle.mjs';
 import { resolveServerVideoDecoder } from '../../remotion/video-decoder.mjs';
 
 const run = promisify(execFile);
@@ -284,4 +285,6 @@ try {
   console.log(`clipFxExport.verify [${decoder}]: transition start preserves the outgoing effect (MSE ${transitionStartDistance.toFixed(2)}, inverse MSE ${transitionStartInverseDistance.toFixed(2)}${exactMappingSupported ? '' : '; frame-sync assertions skipped on Linux CI'})`);
 } finally {
   await rm(directory, { recursive: true, force: true });
+  // The serve bundle this run webpacked (~150 MB in the OS temp dir).
+  await disposeServeBundle();
 }
