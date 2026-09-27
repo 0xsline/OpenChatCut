@@ -86,11 +86,20 @@ for (const patch of [{ expires_in: -10 }, { access_token: '' }, { token_type: 'o
 responseStatus = 401;
 response = { secret: 'private-token' };
 await assert.rejects(api.identity('private-access-token', signal), (failure: unknown) =>
-  failure instanceof CopilotAuthError && failure.reauthorize && !failure.message.includes('private-token'));
+  failure instanceof CopilotAuthError && failure.reauthorize && !failure.transient && !failure.message.includes('private-token'));
 responseStatus = 502;
-await assert.rejects(api.start(signal), /HTTP 502/);
+await assert.rejects(api.start(signal), (failure: unknown) =>
+  failure instanceof CopilotAuthError && /HTTP 502/.test(failure.message) && failure.transient);
+responseStatus = 404;
+await assert.rejects(api.poll('device', signal), (failure: unknown) =>
+  failure instanceof CopilotAuthError && !failure.transient, 'a 4xx rejection is final, not retried');
+responseStatus = 200;
+response = { error: 'access_denied' };
+await assert.rejects(api.poll('device', signal), (failure: unknown) =>
+  failure instanceof CopilotAuthError && !failure.transient);
 const offline = new GitHubCopilotOAuth(COPILOT_OAUTH_CLIENT_ID, async () => { throw new Error('private network detail'); });
-await assert.rejects(offline.start(signal), /Could not reach GitHub/);
+await assert.rejects(offline.start(signal), (failure: unknown) =>
+  failure instanceof CopilotAuthError && /Could not reach GitHub/.test(failure.message) && failure.transient);
 await assert.rejects(new GitHubCopilotOAuth('invalid').start(signal), /Client ID is invalid/,
   'an invalid optional configuration must fail sign-in, not desktop startup');
 const abort = new AbortController();

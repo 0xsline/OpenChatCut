@@ -1,12 +1,15 @@
 export class CopilotAuthError extends Error {
   readonly statusCode: number;
   readonly reauthorize: boolean;
+  /** A network failure or GitHub 5xx: the same request may succeed if retried. */
+  readonly transient: boolean;
 
-  constructor(message: string, statusCode = 503, reauthorize = false) {
+  constructor(message: string, statusCode = 503, reauthorize = false, transient = false) {
     super(message);
     this.name = 'CopilotAuthError';
     this.statusCode = statusCode;
     this.reauthorize = reauthorize;
+    this.transient = transient;
   }
 }
 

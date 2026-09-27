@@ -293,7 +293,8 @@ the legacy shared development store.
   this app's saved login and prevents automatic fallback to a terminal account;
   it does not sign you out of GitHub or revoke other applications. A failed or
   cancelled sign-in never disables an existing terminal login; **Dismiss** clears
-  its error.
+  its error. Sign-in keeps retrying through brief network or GitHub outages until
+  the device code expires.
   Plain web development retains its existing CLI-login path rather than storing
   OAuth credentials without secure storage.
 - **API keys:** open **Settings → Agent model**, choose a provider, and save its API key and model. Keys remain server-side.

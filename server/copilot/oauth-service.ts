@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { CopilotAuthState, CopilotDeviceAuthorization } from '../../shared/copilot-auth.ts';
 import type { CopilotOAuthApi } from './oauth-api.ts';
-import { CopilotAuthError, type CopilotCredentialLease, type CopilotCredentialStore, type CopilotStoredAuth } from './oauth-types.ts';
+import {
+  CopilotAuthError, type CopilotCredentialLease, type CopilotCredentialStore,
+  type CopilotOAuthCredentials, type CopilotStoredAuth,
+} from './oauth-types.ts';
 
 interface PendingAuthorization {
   readonly id: string;
@@ -11,8 +14,13 @@ interface PendingAuthorization {
   readonly expiresAt: number;
   readonly abort: AbortController;
   intervalMs: number;
+  /** Device codes are single-use, so a granted token is kept while its profile lookup retries. */
+  granted?: Omit<CopilotOAuthCredentials, 'login'>;
+  retryError?: string;
 }
 
+const RETRY_MESSAGE = 'GitHub is temporarily unreachable. Retrying until the sign-in code expires; '
+  + 'check your connection or proxy if this persists.';
 // Once sent, a refresh may already have rotated the grant, so its request is never cancelled.
 const UNCANCELLED = new AbortController().signal;
 
@@ -66,7 +74,7 @@ export class CopilotOAuthService {
   private snapshot(stored: CopilotStoredAuth | null): CopilotAuthState {
     const available = this.options.store.available();
     const account = stored?.kind === 'oauth' ? { login: stored.login } : null;
-    let error = this.error;
+    let error = this.pending?.retryError ?? this.error;
     if (!available) error = 'Secure desktop credential storage is unavailable. Existing CLI sign-in can still be used.';
     if (stored?.kind === 'oauth' && stored.expiresAt !== undefined && stored.expiresAt <= this.now()
       && (!stored.refreshToken || (stored.refreshExpiresAt !== undefined && stored.refreshExpiresAt <= this.now()))) {
@@ -116,21 +124,26 @@ export class CopilotOAuthService {
     try {
       if (this.closed || this.pending !== pending || pending.abort.signal.aborted) return;
       if (this.now() >= pending.expiresAt) throw new CopilotAuthError('The GitHub sign-in code expired. Start sign-in again.');
-      const result = await this.options.api.poll(pending.deviceCode, pending.abort.signal);
-      if (this.pending !== pending || pending.abort.signal.aborted) return;
-      if (result.kind === 'slow-down') {
-        pending.intervalMs = Math.max(pending.intervalMs + 5000, (result.interval ?? 0) * 1000);
+      if (!pending.granted) {
+        const result = await this.options.api.poll(pending.deviceCode, pending.abort.signal);
+        if (this.pending !== pending || pending.abort.signal.aborted) return;
+        pending.retryError = undefined;
+        if (result.kind === 'slow-down') {
+          pending.intervalMs = Math.max(pending.intervalMs + 5000, (result.interval ?? 0) * 1000);
+        }
+        if (result.kind !== 'token') {
+          this.schedule(pending);
+          return;
+        }
+        pending.granted = result.credentials;
       }
-      if (result.kind !== 'token') {
-        this.schedule(pending);
-        return;
-      }
-      const login = await this.options.api.identity(result.credentials.accessToken, pending.abort.signal);
+      const credentials = pending.granted;
+      const login = await this.options.api.identity(credentials.accessToken, pending.abort.signal);
       await this.serialize(async () => {
         if (this.closed || this.pending !== pending || pending.abort.signal.aborted) return;
         if (this.now() >= pending.expiresAt) throw new CopilotAuthError('The GitHub sign-in code expired. Start sign-in again.');
         const previous = await this.options.store.read();
-        await this.options.store.write({ ...result.credentials, login });
+        await this.options.store.write({ ...credentials, login });
         // Cancel/sign-out may arrive while the atomic encrypted write is in progress.
         if (this.closed || this.pending !== pending || pending.abort.signal.aborted) {
           await this.options.store.write(previous);
@@ -146,6 +159,11 @@ export class CopilotOAuthService {
       });
     } catch (error) {
       if (this.pending !== pending || pending.abort.signal.aborted) return;
+      if (error instanceof CopilotAuthError && error.transient && this.now() < pending.expiresAt) {
+        pending.retryError = RETRY_MESSAGE;
+        this.schedule(pending);
+        return;
+      }
       this.pending = null;
       this.error = message(error);
     }

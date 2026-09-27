@@ -21,8 +21,10 @@ function fixture() {
   const polls: number[] = [];
   let poll: CopilotOAuthApi['poll'] = async () => ({ kind: 'pending' });
   let refresh: CopilotOAuthApi['refresh'] = async (previous) => ({ ...credentials(), accessToken: 'rotated-access', login: previous.login });
+  let identity: CopilotOAuthApi['identity'] = async () => 'test-user';
   let read: () => Promise<CopilotStoredAuth | null> = async () => stored;
   let write: (value: CopilotStoredAuth | null) => Promise<void> = async (value) => { stored = value; };
+  const identities: number[] = [];
   const options = {
     store: {
       available: () => available, read: () => read(),
@@ -33,19 +35,20 @@ function fixture() {
         deviceCode: 'private-device', userCode: 'ABCD-1234', verificationUri: COPILOT_DEVICE_URI, expiresIn: 900, interval: 5,
       }),
       poll: (device: string, signal: AbortSignal) => { polls.push(Date.now()); return poll(device, signal); },
-      identity: async () => 'test-user',
+      identity: (token: string, signal: AbortSignal) => { identities.push(Date.now()); return identity(token, signal); },
       refresh: (previous: Parameters<CopilotOAuthApi['refresh']>[0], signal: AbortSignal) => refresh(previous, signal),
     },
     isBusy: () => busy, credentialsChanged: () => notify(),
   };
   return {
-    service: new CopilotOAuthService(options), options, polls,
+    service: new CopilotOAuthService(options), options, polls, identities,
     stored: () => stored, changed: () => changed,
     setStored: (value: CopilotStoredAuth | null) => { stored = value; },
     setBusy: (value: boolean) => { busy = value; },
     setAvailable: (value: boolean) => { available = value; },
     setPoll: (value: typeof poll) => { poll = value; },
     setRefresh: (value: typeof refresh) => { refresh = value; },
+    setIdentity: (value: typeof identity) => { identity = value; },
     setRead: (value: typeof read) => { read = value; },
     setWrite: (value: typeof write) => { write = value; },
     setNotify: (value: typeof notify) => { notify = value; },
@@ -163,6 +166,46 @@ try {
   assert.deepEqual(unreadable.stored(), { version: 1, kind: 'signed-out' });
   assert.equal(unreadable.changed(), 1);
 
+  const outage = make();
+  let outages = 2;
+  outage.setPoll(async () => {
+    if (outages > 0) { outages -= 1; throw new CopilotAuthError('Could not reach GitHub.', 503, false, true); }
+    return { kind: 'token', credentials: credentials() };
+  });
+  let profileOutages = 1;
+  outage.setIdentity(async () => {
+    if (profileOutages > 0) { profileOutages -= 1; throw new CopilotAuthError('HTTP 502', 503, false, true); }
+    return 'test-user';
+  });
+  await outage.service.start();
+  mock.timers.tick(5000);
+  await settle();
+  const retrying = await outage.service.state();
+  assert.equal(retrying.status, 'pending', 'a transient poll failure keeps the device code alive');
+  assert.match(retrying.error ?? '', /Retrying/);
+  mock.timers.tick(5000);
+  await settle();
+  mock.timers.tick(5000);
+  await settle();
+  assert.equal(outage.polls.length, 3);
+  assert.equal((await outage.service.state()).status, 'pending', 'a transient profile failure keeps the grant');
+  mock.timers.tick(5000);
+  await settle();
+  assert.equal(outage.polls.length, 3, 'a single-use device code is not polled again after its grant');
+  assert.equal(outage.identities.length, 2);
+  const recovered = await outage.service.state();
+  assert.equal(recovered.status, 'signed-in');
+  assert.equal(recovered.error, undefined);
+  const offline = make();
+  offline.setPoll(async () => { throw new CopilotAuthError('Could not reach GitHub.', 503, false, true); });
+  await offline.service.start();
+  for (let elapsed = 0; elapsed < 900_000; elapsed += 5000) {
+    mock.timers.tick(5000);
+    await settle();
+  }
+  const gaveUp = await offline.service.state();
+  assert.equal(gaveUp.status, 'error', 'transient failures are retried only until the code expires');
+  assert.match(gaveUp.error ?? '', /expired/);
 
   const refresh = make();
   refresh.setStored({ ...credentials(), login: 'test-user', expiresAt: Date.now() + 30_000 });
@@ -311,4 +354,4 @@ try {
   fixtures.forEach(({ service }) => service.dispose());
   mock.timers.reset();
 }
-console.log('copilot-oauth-service.verify: polling, isolation, cancellation, expiry, rotation persistence, sign-out/dismiss and busy guards passed');
+console.log('copilot-oauth-service.verify: polling, transient retries, isolation, cancellation, expiry, rotation persistence, sign-out/dismiss and busy guards passed');

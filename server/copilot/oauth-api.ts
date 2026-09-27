@@ -82,14 +82,14 @@ export class GitHubCopilotOAuth implements CopilotOAuthApi {
       });
     } catch {
       if (signal.aborted) throw signal.reason;
-      throw new CopilotAuthError('Could not reach GitHub. Check your connection or proxy and try again.');
+      throw new CopilotAuthError('Could not reach GitHub. Check your connection or proxy and try again.', 503, false, true);
     }
     if (!response.ok) {
       throw new CopilotAuthError(
         response.status === 401
           ? 'GitHub sign-in expired or was revoked. Sign in again.'
           : `GitHub sign-in request failed (HTTP ${response.status}).`,
-        503, response.status === 401,
+        503, response.status === 401, response.status >= 500,
       );
     }
     let body: unknown;
