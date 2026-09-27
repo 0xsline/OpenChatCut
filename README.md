@@ -297,6 +297,8 @@ To restrict local access, set a comma-separated value such as `AGENT_IMPORT_ROOT
 
 Local H.264 exports automatically prefer VideoToolbox on macOS and NVENC on compatible Windows systems, then fall back to software encoding. Tune render concurrency and the heavy-export limit with `OPENCHATCUT_RENDER_CONCURRENCY` and `OPENCHATCUT_MAX_ACTIVE_EXPORTS`, disable hardware encoding with `OPENCHATCUT_DISABLE_HARDWARE_ENCODING`, or override FFmpeg-side encoder selection with `OPENCHATCUT_H264_ENCODER`; see [`.env.example`](.env.example).
 
+On Apple Silicon, more render workers can slow down video-heavy exports even when VideoToolbox encoding is active. See [macOS render tuning](MACOS-RENDER-TUNING.md) for an M4 Max benchmark and a way to test your own workload. These measurements do not establish a default for other Macs or Windows.
+
 ### Desktop development
 
 ```bash
