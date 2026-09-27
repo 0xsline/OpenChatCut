@@ -54,7 +54,7 @@ export class CopilotOAuthService {
       } catch (error) {
         return {
           available: this.options.store.available(), status: 'error',
-          account: null, device: null, error: message(error),
+          account: null, savedLogin: true, device: null, error: message(error),
         };
       }
     });
@@ -75,7 +75,7 @@ export class CopilotOAuthService {
       expiresAt: pending.expiresAt, intervalMs: pending.intervalMs,
     } : null;
     return {
-      available, account, device,
+      available, account, savedLogin: account !== null, device,
       status: pending ? 'pending' : error ? 'error' : account ? 'signed-in' : 'signed-out',
       ...(error ? { error } : {}),
     };
@@ -165,12 +165,25 @@ export class CopilotOAuthService {
     this.credentialAbort = new AbortController();
     return this.serialize(async () => {
       this.requireIdle();
+      // undefined: a saved login exists but is unreadable, so it still needs replacing.
+      const stored = await this.options.store.read().catch(() => undefined);
+      if (stored === null || stored?.kind === 'signed-out') {
+        // No saved app login: a sign-out marker here would lock out a working CLI login.
+        this.error = undefined;
+        return this.snapshot(stored);
+      }
       // Persist an explicit sign-out so a restart cannot silently switch to gh's account.
       await this.options.store.write({ version: 1, kind: 'signed-out' });
       this.error = undefined;
       await this.options.credentialsChanged();
       return this.snapshot({ version: 1, kind: 'signed-out' });
     });
+  }
+
+  /** Clears a failed sign-in message; saved credentials, and so any CLI fallback, are untouched. */
+  async dismiss(): Promise<CopilotAuthState> {
+    if (!this.pending) this.error = undefined;
+    return this.state();
   }
 
   /** undefined preserves legacy CLI auth only when this app has never managed a login. */
@@ -256,6 +269,6 @@ export function configureCopilotOAuth(next: CopilotOAuthService): void {
 export function copilotOAuth(): CopilotOAuthService | null { return service; }
 
 export const unavailableCopilotAuthState = (): CopilotAuthState => ({
-  available: false, status: 'signed-out', account: null, device: null,
+  available: false, status: 'signed-out', account: null, savedLogin: false, device: null,
   error: 'Browser-based GitHub sign-in is available in the desktop app. Web development can still use an existing CLI login.',
 });

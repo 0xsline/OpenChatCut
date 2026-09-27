@@ -11,6 +11,8 @@ export interface CopilotAuthState {
   readonly available: boolean;
   readonly status: 'signed-out' | 'pending' | 'signed-in' | 'error';
   readonly account: { readonly login: string } | null;
+  /** This app holds a saved GitHub login (possibly expired or unreadable), so signing out is meaningful. */
+  readonly savedLogin: boolean;
   readonly device: CopilotDeviceAuthorization | null;
   readonly error?: string;
 }

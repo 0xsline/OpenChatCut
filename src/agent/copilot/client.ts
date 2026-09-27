@@ -74,6 +74,10 @@ export function cancelCopilotAuth(id: string, signal?: AbortSignal): Promise<Cop
   return requestJson<CopilotAuthState>('/api/copilot/auth/cancel', postJson({ id }, requestSignal(signal)));
 }
 
+export function dismissCopilotAuthError(signal?: AbortSignal): Promise<CopilotAuthState> {
+  return requestJson<CopilotAuthState>('/api/copilot/auth/dismiss', postJson({}, requestSignal(signal)));
+}
+
 export function logoutCopilotAuth(signal?: AbortSignal): Promise<CopilotAuthState> {
   return requestJson<CopilotAuthState>('/api/copilot/auth/logout', postJson({}, requestSignal(signal)));
 }

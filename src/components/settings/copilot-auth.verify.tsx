@@ -6,14 +6,14 @@ import { createServer } from 'vite';
 import type { CopilotAgentModel, CopilotAgentStatus } from '../../../shared/copilot-agent';
 import type { CopilotAuthState } from '../../../shared/copilot-auth';
 import {
-  cancelCopilotAuth, fetchCopilotAuth, logoutCopilotAuth, startCopilotAuth,
+  cancelCopilotAuth, dismissCopilotAuthError, fetchCopilotAuth, logoutCopilotAuth, startCopilotAuth,
 } from '../../agent/copilot/client';
 import { getAgentModelSnapshot } from '../../agent/model-selection';
 import { ensureLocaleDict, setLocale } from '../../i18n/locale';
 import { createCopilotSettingsStore, type CopilotSettingsController } from './useCopilotSettings';
 
-const signedOut: CopilotAuthState = { available: true, status: 'signed-out', account: null, device: null };
-const signedIn: CopilotAuthState = { ...signedOut, status: 'signed-in', account: { login: 'octocat' } };
+const signedOut: CopilotAuthState = { available: true, status: 'signed-out', account: null, savedLogin: false, device: null };
+const signedIn: CopilotAuthState = { ...signedOut, status: 'signed-in', account: { login: 'octocat' }, savedLogin: true };
 const runtimeOut: CopilotAgentStatus = {
   installed: true, supported: true, version: '1.0.11', path: '/bundled/copilot',
   authenticated: false, account: null,
@@ -70,12 +70,16 @@ let deactivate: (() => void) | undefined;
 try {
   await ensureLocaleDict('en');
   setLocale('en');
-  const clientCalls = Promise.all([fetchCopilotAuth(), startCopilotAuth(), cancelCopilotAuth('attempt-1'), logoutCopilotAuth()]);
+  const clientCalls = Promise.all([
+    fetchCopilotAuth(), startCopilotAuth(), cancelCopilotAuth('attempt-1'), dismissCopilotAuthError(), logoutCopilotAuth(),
+  ]);
   const authGet = take('auth');
   assert.equal(authGet.init?.cache, 'no-store');
   assert.ok(authGet.init?.signal);
   authGet.respond(signedOut);
-  for (const [path, body] of [['auth/start', {}], ['auth/cancel', { id: 'attempt-1' }], ['auth/logout', {}]] as const) {
+  for (const [path, body] of [
+    ['auth/start', {}], ['auth/cancel', { id: 'attempt-1' }], ['auth/dismiss', {}], ['auth/logout', {}],
+  ] as const) {
     const request = take(path);
     assert.equal(request.init?.method, 'POST');
     assert.equal(new Headers(request.init?.headers).get('content-type'), 'application/json');
@@ -228,7 +232,7 @@ try {
   assert.equal(requests.length, 0, 'expiry is read from the server, then polling stops');
   for (const account of [null, { login: 'octocat' }]) {
     const failedAuth: CopilotAuthState = {
-      ...signedOut, status: 'error', account, error: 'Saved credentials are unavailable.',
+      ...signedOut, status: 'error', account, savedLogin: true, error: 'Saved credentials are unavailable.',
     };
     const checking = current().refresh();
     respond('status', runtimeOut);
@@ -245,10 +249,32 @@ try {
     assert.deepEqual(current().models, []);
     assert.deepEqual(copilotChoices(), []);
   }
+  const cliCheck = current().refresh();
+  respond('status', runtimeIn);
+  respond('auth', { ...signedOut, status: 'error', error: 'GitHub sign-in was denied.' });
+  await cliCheck;
+  const cliModels = current().discoverModels();
+  respond('status', runtimeIn);
+  respond('models', { models: [model] });
+  await cliModels;
+  const logouts = () => history.filter((request) => request.path.endsWith('/auth/logout')).length;
+  const logoutsBeforeDismiss = logouts();
+  const dismissing = current().dismissError();
+  assert.equal(current().authBusy, 'dismiss');
+  respond('auth/dismiss', signedOut);
+  await settle();
+  respond('status', runtimeIn);
+  await dismissing;
+  assert.deepEqual(current().auth, signedOut);
+  assert.equal(current().status?.authenticated, true);
+  assert.deepEqual(current().models, [model], 'dismissing a failed sign-in keeps the CLI login and its models');
+  assert.equal(copilotChoices().length, 1);
+  assert.equal(requests.length, 0);
+  assert.equal(logouts(), logoutsBeforeDismiss, 'dismiss never signs out');
   deactivate();
   deactivate = undefined;
   const modelRequests = history.filter((request) => request.path.endsWith('/models'));
-  assert.equal(modelRequests.length, 2, 'only completed sign-in and explicit discovery request models');
+  assert.equal(modelRequests.length, 3, 'only completed sign-in and explicit discovery request models');
 } finally {
   deactivate?.();
   mock.timers.reset();
@@ -285,6 +311,7 @@ try {
     discoverModels: async () => { calls.push('models'); return []; },
     startLogin: async () => { calls.push('start'); },
     cancelLogin: async () => { calls.push('cancel'); },
+    dismissError: async () => { calls.push('dismiss'); },
     logout: async () => { calls.push('logout'); },
   };
   function markup(patch: Partial<CopilotSettingsController> = {}): string {
@@ -342,14 +369,27 @@ try {
   assert.ok(click(CopilotAccountCard({ controller: authenticated }), 'Load models'));
   assert.deepEqual(calls, ['start', 'cancel', 'logout', 'refresh', 'models']);
   for (const account of [null, { login: 'octocat' }]) {
-    const auth: CopilotAuthState = { ...signedOut, status: 'error', account, error: 'Saved credentials are unavailable.' };
+    const auth: CopilotAuthState = {
+      ...signedOut, status: 'error', account, savedLogin: true, error: 'Saved credentials are unavailable.',
+    };
     const recovery = markup({ auth });
     assert.match(recovery, /Sign out of this app/);
     assert.match(recovery, /Saved credentials are unavailable/);
-    assert.doesNotMatch(recovery, /Signed in to GitHub Copilot|Load models/);
+    assert.doesNotMatch(recovery, /Signed in to GitHub Copilot|Load models|>Dismiss</);
     assert.ok(click(CopilotAccountCard({ controller: { ...base, auth } }), 'Sign out of this app'));
   }
   assert.deepEqual(calls.slice(-2), ['logout', 'logout']);
+  const failedFirstSignIn: CopilotAuthState = { ...signedOut, status: 'error', error: 'GitHub sign-in was denied.' };
+  const dismissable = markup({ auth: failedFirstSignIn, status: runtimeIn });
+  assert.match(dismissable, />Dismiss</);
+  assert.match(dismissable, /Sign in with GitHub/);
+  assert.match(dismissable, /GitHub sign-in was denied/);
+  assert.doesNotMatch(dismissable, /Sign out of this app|does not revoke GitHub authorization/,
+    'no sign-out, which would lock out a working CLI login, without a saved app login');
+  assert.ok(click(CopilotAccountCard({ controller: { ...base, auth: failedFirstSignIn } }), 'Dismiss'));
+  assert.equal(calls.at(-1), 'dismiss');
+  assert.doesNotMatch(markup(), />Dismiss</);
+  assert.doesNotMatch(markup(authenticated), />Dismiss</);
   assert.doesNotMatch(markup({ auth: { ...signedOut, available: false, status: 'error' } }), /Sign out of this app/);
 } finally {
   await vite.close();

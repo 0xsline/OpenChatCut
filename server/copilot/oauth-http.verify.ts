@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { ViteDevServer } from 'vite';
 import { copilotAgentPlugin } from '../plugins/copilot-agent.ts';
 import { configureCopilotOAuth, CopilotOAuthService } from './oauth-service.ts';
-import { COPILOT_DEVICE_URI } from './oauth-api.ts';
+import { COPILOT_DEVICE_URI, COPILOT_OAUTH_CLIENT_ID } from './oauth-api.ts';
 import type { CopilotStoredAuth } from './oauth-types.ts';
 import type { CopilotAuthState } from '../../shared/copilot-auth.ts';
 
@@ -79,6 +79,15 @@ try {
   assert.equal((await call('/cancel', { id: 'invalid' })).status, 400);
   assert.equal((await call('/cancel', { id: '00000000-0000-4000-8000-000000000000' })).status, 409);
   assert.equal((await call('/cancel', { id: state.device!.id })).status, 200);
+  assert.equal((await call('/logout')).status, 200);
+  assert.equal(stored, null, 'signing out without a saved app login writes no lockout marker');
+  assert.equal(await auth.accessToken(), undefined, 'the CLI login stays usable');
+  assert.equal((await call('/dismiss', { clear: true })).status, 400);
+  const dismissed = await call('/dismiss');
+  assert.equal(dismissed.status, 200);
+  assert.equal((await dismissed.json() as CopilotAuthState).status, 'signed-out');
+  assert.equal(stored, null, 'dismiss never touches saved credentials');
+  stored = { version: 1, kind: 'oauth', clientId: COPILOT_OAUTH_CLIENT_ID, login: 'test-user', accessToken: 'private-access' };
   assert.equal((await call('/logout')).status, 200);
   await assert.rejects(auth.accessToken(), /Sign in with GitHub/);
   const status = await fetch(`${origin}/api/copilot/auth`);

@@ -2,13 +2,13 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { CopilotAgentModel, CopilotAgentStatus } from '../../../shared/copilot-agent';
 import type { CopilotAuthState } from '../../../shared/copilot-auth';
 import {
-  cancelCopilotAuth, fetchCopilotAuth, fetchCopilotModels, fetchCopilotStatus,
+  cancelCopilotAuth, dismissCopilotAuthError, fetchCopilotAuth, fetchCopilotModels, fetchCopilotStatus,
   logoutCopilotAuth, startCopilotAuth,
 } from '../../agent/copilot/client';
 import { applyCopilotAgentStatus } from '../../agent/model-selection';
 import { t } from '../../i18n/locale';
 
-type AuthAction = 'start' | 'cancel' | 'logout';
+type AuthAction = 'start' | 'cancel' | 'dismiss' | 'logout';
 
 export interface CopilotSettingsController {
   readonly status: CopilotAgentStatus | null;
@@ -25,6 +25,8 @@ export interface CopilotSettingsController {
   readonly discoverModels: () => Promise<readonly CopilotAgentModel[]>;
   readonly startLogin: () => Promise<void>;
   readonly cancelLogin: () => Promise<void>;
+  /** Clears a failed sign-in without signing out, so a working CLI login stays usable. */
+  readonly dismissError: () => Promise<void>;
   readonly logout: () => Promise<void>;
 }
 
@@ -47,6 +49,7 @@ export function createCopilotSettingsStore() {
     refresh, discoverModels,
     startLogin: () => mutateAuth('start'),
     cancelLogin: () => mutateAuth('cancel'),
+    dismissError: () => mutateAuth('dismiss'),
     logout: () => mutateAuth('logout'),
   };
 
@@ -184,7 +187,8 @@ export function createCopilotSettingsStore() {
     try {
       const auth = await (action === 'start' ? startCopilotAuth(request.signal)
         : action === 'cancel' ? cancelCopilotAuth(device!.id, request.signal)
-          : logoutCopilotAuth(request.signal));
+          : action === 'dismiss' ? dismissCopilotAuthError(request.signal)
+            : logoutCopilotAuth(request.signal));
       if (!active || authRequest !== request) return;
       authRequest = null;
       acceptAuth(auth);

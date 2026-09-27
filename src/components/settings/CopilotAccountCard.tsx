@@ -38,7 +38,9 @@ export function CopilotAccountCard({ controller }: {
   const status = controller.status;
   const auth = controller.auth;
   const appSignedIn = auth?.status === 'signed-in';
-  const canSignOut = auth?.available && (appSignedIn || auth.status === 'error');
+  const canSignOut = auth?.available && auth.savedLogin;
+  // With no saved app login there is nothing to sign out of; dismissing keeps a CLI login usable.
+  const canDismiss = auth?.available && !auth.savedLogin && auth.status === 'error';
   const device = auth?.available && auth.status === 'pending' ? auth.device : null;
   const expired = !!device && device.expiresAt <= Date.now();
   const verificationUri = device?.verificationUri === 'https://github.com/login/device'
@@ -127,6 +129,12 @@ export function CopilotAccountCard({ controller }: {
           <button type="button" style={button} disabled={!!controller.authBusy}
             onClick={() => { void controller.logout(); }}>
             {controller.authBusy === 'logout' ? t('正在退出…') : t('退出此应用的登录')}
+          </button>
+        )}
+        {canDismiss && (
+          <button type="button" style={button} disabled={!!controller.authBusy}
+            onClick={() => { void controller.dismissError(); }}>
+            {t('忽略')}
           </button>
         )}
         <button type="button" style={button}

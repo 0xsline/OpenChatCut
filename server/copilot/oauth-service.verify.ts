@@ -21,10 +21,11 @@ function fixture() {
   const polls: number[] = [];
   let poll: CopilotOAuthApi['poll'] = async () => ({ kind: 'pending' });
   let refresh: CopilotOAuthApi['refresh'] = async (previous) => ({ ...credentials(), accessToken: 'rotated-access', login: previous.login });
+  let read: () => Promise<CopilotStoredAuth | null> = async () => stored;
   let write: (value: CopilotStoredAuth | null) => Promise<void> = async (value) => { stored = value; };
   const options = {
     store: {
-      available: () => available, read: async () => stored,
+      available: () => available, read: () => read(),
       write: (value: CopilotStoredAuth | null) => write(value),
     },
     api: {
@@ -45,6 +46,7 @@ function fixture() {
     setAvailable: (value: boolean) => { available = value; },
     setPoll: (value: typeof poll) => { poll = value; },
     setRefresh: (value: typeof refresh) => { refresh = value; },
+    setRead: (value: typeof read) => { read = value; },
     setWrite: (value: typeof write) => { write = value; },
     setNotify: (value: typeof notify) => { notify = value; },
   };
@@ -86,6 +88,7 @@ try {
   const signedIn = await f.service.state();
   assert.equal(signedIn.status, 'signed-in');
   assert.equal(signedIn.account?.login, 'test-user');
+  assert.equal(signedIn.savedLogin, true);
   assertPublic(signedIn);
   assert.equal(await f.service.accessToken(), 'private-access');
   assert.equal(f.changed(), 1);
@@ -93,7 +96,11 @@ try {
   assert.equal(await restarted.accessToken(), 'private-access');
   await restarted.logout();
   assert.equal((await restarted.state()).status, 'signed-out');
+  assert.equal((await restarted.state()).savedLogin, false);
   await assert.rejects(f.service.accessToken(), /Sign in with GitHub/);
+  const changedBeforeRepeat = f.changed();
+  await restarted.logout();
+  assert.equal(f.changed(), changedBeforeRepeat, 'signing out again does not restart the SDK');
   restarted.dispose();
 
   const cancelled = make();
@@ -118,8 +125,9 @@ try {
   await logout.service.logout();
   late.resolve({ kind: 'token', credentials: credentials() });
   await settle();
-  assert.deepEqual(logout.stored(), { version: 1, kind: 'signed-out' });
-  await assert.rejects(logout.service.accessToken(), /Sign in with GitHub/);
+  assert.equal(logout.stored(), null, 'signing out of an unfinished first sign-in must not lock out the CLI login');
+  assert.equal(await logout.service.accessToken(), undefined);
+  assert.equal(logout.changed(), 0);
 
   const expiry = make();
   await expiry.service.start();
@@ -132,7 +140,29 @@ try {
   await denied.service.start();
   mock.timers.tick(5000);
   await settle();
-  assert.match((await denied.service.state()).error ?? '', /denied/);
+  const deniedState = await denied.service.state();
+  assert.match(deniedState.error ?? '', /denied/);
+  assert.equal(deniedState.savedLogin, false, 'a failed first sign-in leaves nothing to sign out of');
+  assert.equal(denied.polls.length, 1, 'a definitive GitHub rejection is not retried');
+  assert.equal((await denied.service.dismiss()).status, 'signed-out');
+  assert.equal(denied.stored(), null);
+  assert.equal(await denied.service.accessToken(), undefined, 'dismissing keeps the CLI login usable');
+  const resetting = make();
+  resetting.setPoll(async () => { throw new CopilotAuthError('GitHub sign-in was denied.'); });
+  await resetting.service.start();
+  mock.timers.tick(5000);
+  await settle();
+  assert.equal((await resetting.service.logout()).status, 'signed-out');
+  assert.equal(resetting.stored(), null, 'sign-out after a failed first sign-in only clears the error');
+  assert.equal(await resetting.service.accessToken(), undefined);
+  assert.equal(resetting.changed(), 0);
+  const unreadable = make();
+  unreadable.setRead(async () => { throw new CopilotAuthError('Could not unlock the saved Copilot sign-in.'); });
+  assert.equal((await unreadable.service.state()).savedLogin, true, 'an unreadable saved login still offers sign-out');
+  await unreadable.service.logout();
+  assert.deepEqual(unreadable.stored(), { version: 1, kind: 'signed-out' });
+  assert.equal(unreadable.changed(), 1);
+
 
   const refresh = make();
   refresh.setStored({ ...credentials(), login: 'test-user', expiresAt: Date.now() + 30_000 });
@@ -214,6 +244,7 @@ try {
   assert.deepEqual(refreshRace.stored(), { version: 1, kind: 'signed-out' },
     'a late refresh cannot undo sign-out');
 
+
   const shutdownRace = make();
   const shutdownStarted = Promise.withResolvers<void>();
   const finishShutdown = Promise.withResolvers<void>();
@@ -243,4 +274,4 @@ try {
   fixtures.forEach(({ service }) => service.dispose());
   mock.timers.reset();
 }
-console.log('copilot-oauth-service.verify: polling, isolation, cancellation, expiry, rotation, sign-out and busy guards passed');
+console.log('copilot-oauth-service.verify: polling, isolation, cancellation, expiry, rotation, sign-out/dismiss and busy guards passed');

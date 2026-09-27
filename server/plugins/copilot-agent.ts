@@ -302,7 +302,7 @@ export async function handleCopilotAuthRequest(req: IncomingMessage, res: Server
   const auth = copilotOAuth();
   if (reading) return sendJson(res, 200, auth ? await auth.state() : unavailableCopilotAuthState());
   if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
-  if (!['/auth/start', '/auth/cancel', '/auth/logout'].includes(path)) throw new HttpError(404, 'not found');
+  if (!['/auth/start', '/auth/cancel', '/auth/dismiss', '/auth/logout'].includes(path)) throw new HttpError(404, 'not found');
   if (!auth) throw new HttpError(503, 'GitHub sign-in requires the desktop app with secure credential storage.');
   if (req.headers['content-type']?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
     throw new HttpError(415, 'content-type must be application/json');
@@ -314,6 +314,7 @@ export async function handleCopilotAuthRequest(req: IncomingMessage, res: Server
     return sendJson(res, 200, await auth.cancel(body.id));
   }
   if (Object.keys(body).length) throw new HttpError(400, 'unexpected sign-in parameters');
+  if (path === '/auth/dismiss') return sendJson(res, 200, await auth.dismiss());
   return sendJson(res, 200, path === '/auth/start' ? await auth.start() : await auth.logout());
 }
 
