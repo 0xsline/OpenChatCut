@@ -244,6 +244,43 @@ try {
   assert.deepEqual(refreshRace.stored(), { version: 1, kind: 'signed-out' },
     'a late refresh cannot undo sign-out');
 
+  const rotateRace = make();
+  rotateRace.setStored({ ...credentials(), login: 'test-user', expiresAt: Date.now() - 1 });
+  rotateRace.setRefresh(async () => ({ ...credentials(), login: 'test-user', refreshToken: 'rotated-refresh' }));
+  const rotateWrites: Array<string | undefined> = [];
+  const rotateWriteStarted = Promise.withResolvers<void>();
+  const finishRotateWrite = Promise.withResolvers<void>();
+  rotateRace.setWrite(async (value) => {
+    rotateWrites.push(value?.kind === 'oauth' ? value.refreshToken : value?.kind);
+    if (value?.kind === 'oauth') { rotateWriteStarted.resolve(); await finishRotateWrite.promise; }
+    rotateRace.setStored(value);
+  });
+  const rotating = assert.rejects(rotateRace.service.accessToken(), /cancelled/);
+  await rotateWriteStarted.promise;
+  const logoutDuringRotation = rotateRace.service.logout();
+  finishRotateWrite.resolve();
+  await Promise.all([rotating, logoutDuringRotation]);
+  assert.deepEqual(rotateWrites, ['rotated-refresh', 'signed-out'], 'a revoked token pair is never written back');
+
+  const quitting = make();
+  quitting.setStored({ ...credentials(), login: 'test-user', expiresAt: Date.now() - 1 });
+  const quitRefreshStarted = Promise.withResolvers<AbortSignal>();
+  const finishQuitRefresh = Promise.withResolvers<void>();
+  quitting.setRefresh(async (_previous, refreshSignal) => {
+    quitRefreshStarted.resolve(refreshSignal);
+    await finishQuitRefresh.promise;
+    return { ...credentials(), login: 'test-user', refreshToken: 'rotated-refresh' };
+  });
+  const quitRefresh = assert.rejects(quitting.service.accessToken(), /cancelled/);
+  const refreshSignal = await quitRefreshStarted.promise;
+  quitting.service.dispose();
+  assert.equal(refreshSignal.aborted, false, 'quitting does not abandon a refresh GitHub may already have rotated');
+  finishQuitRefresh.resolve();
+  await quitRefresh;
+  const kept = quitting.stored();
+  assert.equal(kept?.kind === 'oauth' ? kept.refreshToken : kept?.kind, 'rotated-refresh',
+    'quitting mid-refresh persists the rotated pair');
+  assert.equal(quitting.changed(), 0, 'a closed service does not restart the SDK');
 
   const shutdownRace = make();
   const shutdownStarted = Promise.withResolvers<void>();
@@ -274,4 +311,4 @@ try {
   fixtures.forEach(({ service }) => service.dispose());
   mock.timers.reset();
 }
-console.log('copilot-oauth-service.verify: polling, isolation, cancellation, expiry, rotation, sign-out/dismiss and busy guards passed');
+console.log('copilot-oauth-service.verify: polling, isolation, cancellation, expiry, rotation persistence, sign-out/dismiss and busy guards passed');

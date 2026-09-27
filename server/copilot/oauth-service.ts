@@ -13,6 +13,9 @@ interface PendingAuthorization {
   intervalMs: number;
 }
 
+// Once sent, a refresh may already have rotated the grant, so its request is never cancelled.
+const UNCANCELLED = new AbortController().signal;
+
 export interface CopilotOAuthOptions {
   readonly store: CopilotCredentialStore;
   readonly api: CopilotOAuthApi;
@@ -224,14 +227,12 @@ export class CopilotOAuthService {
     }
     const abort = this.credentialAbort;
     try {
-      const next = await this.options.api.refresh(stored, abort.signal);
-      if (abort.signal.aborted || this.closed) throw new CopilotAuthError('GitHub sign-in was cancelled.', 409);
+      const next = await this.options.api.refresh(stored, UNCANCELLED);
       if (next.login !== stored.login) throw new CopilotAuthError('GitHub returned a different account. Sign in again.', 401, true);
+      // The old pair is revoked now. Persist the new one even when cancelled or quitting;
+      // cancellation only withholds the token, and a queued sign-out still overwrites it.
       await this.options.store.write(next);
-      if (abort.signal.aborted || this.closed) {
-        await this.options.store.write(stored);
-        throw new CopilotAuthError('GitHub sign-in was cancelled.', 409);
-      }
+      if (abort.signal.aborted || this.closed) throw new CopilotAuthError('GitHub sign-in was cancelled.', 409);
       await this.options.credentialsChanged();
       if (abort.signal.aborted || this.closed) throw new CopilotAuthError('GitHub sign-in was cancelled.', 409);
       this.error = undefined;
