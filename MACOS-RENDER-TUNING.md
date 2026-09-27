@@ -28,6 +28,19 @@ measurements. All test exports reported Apple VideoToolbox. Segment A retained
 scaling to 960×540 for comparison. This is a timing/consistency check, not a
 lossless-quality claim or a measured speedup for an entire project.
 
+A later check of the same segments included one and two workers:
+
+| Test segment | 1 worker | 2 workers | 4 workers |
+| --- | ---: | ---: | ---: |
+| A | 12.62 s | 10.25 s | 9.92 s |
+| B | 15.30 s | 11.74 s | 11.38 s |
+
+One worker was slower in both cases. Two and four were close (about 3% apart),
+and the four-worker timings varied between rounds. Four is a provisional local
+choice, not proof of a universal optimum. A full 3,701-frame, 61.68-second edit
+with music and a credit overlay rendered with four workers in 241.30 seconds;
+there is no precisely timed full-project baseline here for a speedup claim.
+
 ## Test your own project
 
 1. Keep the codec, output resolution, frame rate, bitrate, media and selected
