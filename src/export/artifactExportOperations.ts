@@ -9,7 +9,7 @@ import {
   type ExportDestination,
 } from './exportDestination';
 import { timelineToFcpxml } from './fcpxml';
-import { exportMediaDir } from './mediaDir';
+import { fcpxmlMediaLocations } from './exportMediaSources';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import type {
   ExportProgress,
@@ -162,13 +162,14 @@ async function writeXml(
 ): Promise<string> {
   signal?.throwIfAborted();
   const { state, projectName, nleFormat, base } = context.options;
-  const mediaDir = await exportMediaDir();
+  const { mediaDir, mediaSources } = await fcpxmlMediaLocations(state);
   signal?.throwIfAborted();
   const xml = timelineToFcpxml(state, {
     title: projectName,
     nleFormat,
     motionGraphicRenderKeys: keys,
     mediaDir,
+    mediaSources,
   });
   signal?.throwIfAborted();
   const suffix = nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere';

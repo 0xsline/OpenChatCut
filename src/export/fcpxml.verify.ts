@@ -2,13 +2,23 @@
 // Verify FCPXML export: structure and escape, track→lane, MG placeholder/baked reference, and two P0 fixes —
 // ① Audio transcript editing must be split into multiple asset-clips that are consistent with the playback layer (keptSegments) segment by segment;
 // ② The assets are converted to the absolute file:// path under mediaDir, otherwise the NLE is full of offline assets.
+// Issue #27 blocks: every export validates against the FCPXML 1.10 DTD (fcpxml.verify-support.ts), src is an
+// RFC 3986 file URL, and in-place references (desktop folder/watched/agent imports) name the user's real file.
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveAssetSrc, timelineToFcpxml } from './fcpxml';
 import { fcpxmlDtdViolations } from './fcpxml.verify-support';
+import { exportMediaSources, fcpxmlMediaLocations } from './exportMediaSources';
 import { motionGraphicRenderKey } from './motionGraphicRefs';
 import { keptSegments } from '../transcript/edit';
-import type { TimelineState } from '../editor/types';
+import type { TimelineItem, TimelineState } from '../editor/types';
+import { EXPORT_MEDIA_SOURCES_ROUTE } from '../../shared/export-media-sources';
+import { resolveExportMediaSources } from '../../server/export-media-sources';
+import { registerMediaReference } from '../../server/media-references';
 
 const clipsOf = (xml: string): string[] => xml.match(/<asset-clip[^>]*\/>/g) ?? [];
 const attr = (el: string, name: string): string => el.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? '';
@@ -277,6 +287,103 @@ const mediaRepSrc = (xml: string, kind: 'original-media' | 'proxy-media'): strin
   assert.deepEqual(fcpxmlDtdViolations(retimed), [], 'retime + background fill export validates against the DTD');
 }
 
+// ── Issue #27: in-place references export the user's file, never the nonexistent <mediaDir>/<storedName> ──
+{
+  const root = await mkdtemp(join(tmpdir(), 'occ-fcpxml-references-'));
+  try {
+    const uploads = join(root, 'media');
+    const folder = join(root, '素材 #1');
+    await Promise.all([mkdir(uploads, { recursive: true }), mkdir(folder, { recursive: true })]);
+    const [camera, key, tone, moved, dropped] = ['采访 100%.MOV', 'key #2.mov', 'room tone.wav', 'moved away.mov', 'web.mp4']
+      .map((name) => join(folder, name));
+    await Promise.all([camera, key, tone, moved, dropped].map((file) => writeFile(file, 'media')));
+    const stem = '8e45fd6f-8da8-4d6a-8a4f-339d6a8fd747';
+    // What folder/watched/agent imports leave behind (server/local-media-import.ts): a
+    // reference manifest, plus the working copy the timeline plays for video.
+    await registerMediaReference(uploads, `${stem}.mov`, camera);
+    await writeFile(join(uploads, `${stem}.normalized.mp4`), 'compatibility transcode');
+    await registerMediaReference(uploads, 'a1b2.mov', key);
+    await writeFile(join(uploads, 'a1b2.alpha.webm'), 'transparent proxy');
+    await registerMediaReference(uploads, 'c3d4.wav', tone);
+    await registerMediaReference(uploads, 'e5f6.mov', moved);
+    const movedCanonical = await realpath(moved);
+    await rm(moved);
+    await writeFile(join(uploads, 'managed.mp4'), 'browser upload copy');
+    const clip = (id: string, track: string, src: string, kind: 'video' | 'audio', extra: Partial<TimelineItem> = {}) => ({
+      id, track, src, kind, startFrame: 0, durationInFrames: 30, name: id, ...extra,
+    });
+    const state: TimelineState = {
+      fps: 30, width: 1920, height: 1080, selectedId: null,
+      tracks: { V1: { kind: 'video' }, V2: { kind: 'video' }, V3: { kind: 'video' }, V4: { kind: 'video' }, A1: { kind: 'audio' } },
+      trackOrder: ['V4', 'V3', 'V2', 'V1', 'A1'],
+      items: [
+        clip('cam', 'V1', `/media/uploads/${stem}.normalized.mp4`, 'video', { sourceFilename: '采访 100%.MOV' }),
+        clip('key', 'V2', '/media/uploads/a1b2.alpha.webm', 'video'),
+        clip('gone', 'V3', '/media/uploads/e5f6.mov', 'video'),
+        // Drag/drop keeps a renderer path too; a stale one must not beat the server's lookup.
+        clip('web', 'V4', '/media/uploads/managed.mp4', 'video', { originalFilePath: dropped }),
+        clip('tone', 'A1', '/media/uploads/c3d4.wav', 'audio', { originalFilePath: join(root, 'stale', 'tone.wav') }),
+      ],
+    };
+    const mediaSources = resolveExportMediaSources(state.items.map((item) => item.src!), [uploads]);
+    const xml = timelineToFcpxml(state, { mediaDir: uploads, mediaSources });
+    const asset = (id: string): string => xml.match(new RegExp(`<asset id="id-${id}"[\\s\\S]*?</asset>`))?.[0] ?? '';
+    const pathOf = (id: string, kind: 'original-media' | 'proxy-media'): string | undefined => {
+      const src = mediaRepSrc(asset(id), kind);
+      return src === undefined ? undefined : fileURLToPath(src);
+    };
+    assert.equal(pathOf('cam', 'original-media'), await realpath(camera), 'directory-imported video links its camera original');
+    assert.equal(pathOf('cam', 'proxy-media'), join(uploads, `${stem}.normalized.mp4`), 'the played transcode stays the proxy');
+    assert.equal(pathOf('key', 'original-media'), await realpath(key), 'alpha proxy resolves to its MOV original');
+    assert.equal(pathOf('key', 'proxy-media'), join(uploads, 'a1b2.alpha.webm'));
+    assert.equal(pathOf('tone', 'original-media'), await realpath(tone), 'server lookup beats a stale renderer path');
+    assert.equal(pathOf('tone', 'proxy-media'), undefined, 'a reference played in place has no separate proxy');
+    assert.equal(pathOf('gone', 'original-media'), movedCanonical, 'an offline reference still names where the original was');
+    assert.equal(pathOf('web', 'original-media'), dropped, 'managed copies keep the drag/drop original');
+    assert.equal(pathOf('web', 'proxy-media'), join(uploads, 'managed.mp4'));
+    for (const name of [`${stem}.mov`, 'a1b2.mov', 'c3d4.wav', 'e5f6.mov']) {
+      assert.ok(!xml.includes(`src="${resolveAssetSrc(`/media/uploads/${name}`, uploads)}"`),
+        `${name} is only a manifest: its <mediaDir> path must never be exported`);
+    }
+    for (const [, src] of xml.matchAll(/src="(file:\/\/[^"]*)"/g)) {
+      const path = fileURLToPath(src!);
+      assert.ok(path === movedCanonical || existsSync(path), `NLE can open ${path}`);
+    }
+    assert.deepEqual(fcpxmlDtdViolations(xml), [], 'reference export validates against the FCPXML 1.10 DTD');
+
+    // Without the server lookup (preview build) the export still goes out on the mediaDir guess.
+    const fallback = timelineToFcpxml(state, { mediaDir: uploads });
+    assert.equal(fileURLToPath(mediaRepSrc(fallback, 'original-media')!), join(uploads, `${stem}.normalized.mp4`));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+// ── Issue #27: the renderer asks the server once per export and never trusts a malformed answer ──
+{
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const answer = (payload: unknown, status = 200): typeof fetch => (async (url, init) => {
+    calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+    return new Response(JSON.stringify(payload), { status });
+  }) as typeof fetch;
+  const located = { '/media/uploads/a.mp4': { path: '/Volumes/媒体/a.mov', originalPath: '/Volumes/媒体/a.mov' } };
+  assert.deepEqual(await exportMediaSources(['/media/uploads/a.mp4', 'https://cdn/x.mp4', '/media/uploads/a.mp4'],
+    answer({ ok: true, sources: located })), located);
+  assert.deepEqual(calls, [{ url: EXPORT_MEDIA_SOURCES_ROUTE, body: { sources: ['/media/uploads/a.mp4'] } }],
+    'one POST with the distinct upload sources only');
+  assert.deepEqual(await exportMediaSources(['blob:x', 'https://cdn/y.mp4'], answer({})), {}, 'nothing to resolve');
+  assert.equal(calls.length, 1, 'no request without upload sources');
+  assert.deepEqual(await exportMediaSources(['/media/uploads/a.mp4'], answer({ error: 'boom' }, 500)), {});
+  assert.deepEqual(await exportMediaSources(['/media/uploads/a.mp4'],
+    answer({ ok: true, sources: { '/media/uploads/a.mp4': { path: 'relative/a.mov' } } })), {}, 'relative paths are rejected');
+  assert.deepEqual(await exportMediaSources(['/media/uploads/a.mp4'],
+    (async () => { throw new TypeError('offline'); }) as typeof fetch), {}, 'network failure falls back to mediaDir');
+  const locations = await fcpxmlMediaLocations({
+    items: [{ id: 'v', track: 'V1', startFrame: 0, durationInFrames: 1, kind: 'video', name: 'v', src: '/media/uploads/a.mp4' }],
+  }, answer({ ok: true, sources: located }));
+  assert.deepEqual(locations.mediaSources, located, 'timeline item sources are what gets resolved');
+}
+
 // ── Resolve variants retain existing differences ──
 {
   const state: TimelineState = {
@@ -289,4 +396,4 @@ const mediaRepSrc = (xml: string, kind: 'original-media' | 'proxy-media'): strin
   assert.ok(!timelineToFcpxml(state).includes('colorSpace'), '默认变体不带 colorSpace');
 }
 
-console.log('fcpxml.verify: ok (结构/转义/lane/分段/原始与代理媒体/FCPXML 1.10/Resolve 变体)');
+console.log('fcpxml.verify: ok (结构/转义/lane/分段/原始与代理媒体/FCPXML 1.10 DTD/src 编码/引用素材原片/Resolve 变体)');

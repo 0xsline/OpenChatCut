@@ -16,6 +16,7 @@ import { sourceWindowForTimelineRange, timelineFramesToSourceFrames } from '../e
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
 import { backgroundFillStrengthOf, isBackgroundFillActive } from '../editor/backgroundFill';
+import type { ExportMediaSource, ExportMediaSourceMap } from '../../shared/export-media-sources';
 
 /** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
 const UPLOAD_PREFIX = '/media/uploads/';
@@ -237,21 +238,27 @@ function mediaRepXml(
   return `<media-rep kind="${kind}" src="${escapeXml(src)}"${suggestedAttr}/>`;
 }
 
+/**
+ * original-media is the camera file; proxy-media the working copy the editor
+ * plays, when it is a different file. The server's export-time lookup wins:
+ * an in-place reference (desktop folder/watched/agent import) has no file at
+ * `<mediaDir>/<name>` and no originalFilePath in the project.
+ */
 function assetResourceXml(
   src: string,
   info: AssetInfo,
   fps: number,
   formatId: string,
   mediaDir?: string,
+  located?: ExportMediaSource,
 ): string {
   const hasVideo = info.kind !== 'audio';
   const hasAudio = info.kind === 'audio' || info.kind === 'video';
   const name = escapeXml(info.name || decodedBasename(src));
   const formatAttr = hasVideo ? ` format="${formatId}"` : '';
-  const internalHref = resolveAssetSrc(src, mediaDir);
-  const originalAbs = typeof info.originalFilePath === 'string' && info.originalFilePath
-    ? info.originalFilePath
-    : undefined;
+  const internalHref = located?.path ? toFileUrl(located.path) : resolveAssetSrc(src, mediaDir);
+  const originalAbs = located?.originalPath
+    || (typeof info.originalFilePath === 'string' && info.originalFilePath ? info.originalFilePath : undefined);
   const originalHref = originalAbs ? toFileUrl(originalAbs) : undefined;
   const filename = info.sourceFilename ?? info.name;
   const representations = originalHref
@@ -405,6 +412,8 @@ export interface FcpxmlExportOptions {
   /** The absolute disk path of the asset directory (server uploadDir()); by default, /media/uploads is output as is,
    *NLE will mark all assets as offline. The caller should fetch from the mediaDir of /api/keys. */
   mediaDir?: string;
+  /** Export-time disk locations keyed by item src (POST /api/export-media-sources); override the mediaDir guess. */
+  mediaSources?: ExportMediaSourceMap;
 }
 
 export function fcpxmlBackgroundFillCount(state: TimelineState): number {
@@ -431,7 +440,10 @@ export function timelineToFcpxml(
     ? `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}" colorSpace="1-1-1 (Rec. 709)"/>`
     : `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}"/>`;
   const assetXmls = Array.from(assets.entries())
-    .map(([src, info]) => assetResourceXml(src, info, fps, formatId, opts.mediaDir));
+    .map(([src, info]) => assetResourceXml(
+      src, info, fps, formatId, opts.mediaDir,
+      opts.mediaSources && Object.hasOwn(opts.mediaSources, src) ? opts.mediaSources[src] : undefined,
+    ));
   const motionGraphicXmls = Array.from(renderedMotionGraphics.values())
     .map((info) => motionGraphicResourceXml(info, fps, formatId));
   const resourcesXml = [formatXml, ...assetXmls, ...motionGraphicXmls].join('\n    ');
