@@ -162,7 +162,7 @@ async function writeXml(
 ): Promise<string> {
   signal?.throwIfAborted();
   const { state, projectName, nleFormat, base } = context.options;
-  const { mediaDir, mediaSources } = await fcpxmlMediaLocations(state);
+  const { mediaDir, mediaSources } = await fcpxmlMediaLocations(state, fetch, signal);
   signal?.throwIfAborted();
   const xml = timelineToFcpxml(state, {
     title: projectName,

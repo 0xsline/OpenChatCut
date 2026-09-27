@@ -20,16 +20,20 @@ const REQUEST_TIMEOUT_MS = 45_000;
 export async function exportMediaSources(
   sources: readonly string[],
   fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<ExportMediaSourceMap> {
   const uploads = [...new Set(sources.filter((source) => source.startsWith(UPLOAD_PREFIX)))]
     .slice(0, MAX_EXPORT_MEDIA_SOURCES);
   if (uploads.length === 0) return {};
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   try {
     const response = await fetcher(EXPORT_MEDIA_SOURCES_ROUTE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sources: uploads }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      // Cancelling the export stops the wait at once; the caller's own
+      // throwIfAborted() then ends the export.
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     if (!response.ok) return {};
     const body = (await response.json()) as { sources?: unknown } | null;
@@ -45,8 +49,9 @@ export async function exportMediaSources(
 export async function fcpxmlMediaLocations(
   state: Pick<TimelineState, 'items'>,
   fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<{ mediaDir?: string; mediaSources: ExportMediaSourceMap }> {
   const sources = state.items.flatMap((item) => (item.src ? [item.src] : []));
-  const [mediaDir, mediaSources] = await Promise.all([exportMediaDir(), exportMediaSources(sources, fetcher)]);
+  const [mediaDir, mediaSources] = await Promise.all([exportMediaDir(), exportMediaSources(sources, fetcher, signal)]);
   return { mediaDir, mediaSources };
 }

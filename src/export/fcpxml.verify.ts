@@ -575,6 +575,31 @@ function sourceFrameAt(xml: string, name: string, frame: number, fps: number): Q
     items: [{ id: 'v', track: 'V1', startFrame: 0, durationInFrames: 1, kind: 'video', name: 'v', src: '/media/uploads/a.mp4' }],
   }, answer({ ok: true, sources: located }));
   assert.deepEqual(locations.mediaSources, located, 'timeline item sources are what gets resolved');
+
+  // Cancelling the export ends the wait for the server at once instead of
+  // holding the export open until the lookup's own timeout.
+  const cancel = new AbortController();
+  let seen: AbortSignal | null | undefined;
+  const hanging = ((_url, init) => new Promise<Response>((_resolve, reject) => {
+    seen = init?.signal;
+    init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+  })) as typeof fetch;
+  const pending = exportMediaSources(['/media/uploads/a.mp4'], hanging, cancel.signal);
+  cancel.abort();
+  let hung: ReturnType<typeof setTimeout> | undefined;
+  const outcome = await Promise.race([
+    pending.then((value) => ({ value })),
+    new Promise<'hung'>((resolve) => { hung = setTimeout(() => resolve('hung'), 1_000); }),
+  ]);
+  clearTimeout(hung);
+  assert.deepEqual(outcome, { value: {} }, 'a cancelled lookup settles at once with the mediaDir fallback');
+  assert.equal(seen?.aborted, true, "the export's signal reaches the request");
+  let forwarded: AbortSignal | null | undefined;
+  await fcpxmlMediaLocations({
+    items: [{ id: 'v', track: 'V1', startFrame: 0, durationInFrames: 1, kind: 'video', name: 'v', src: '/media/uploads/a.mp4' }],
+  }, (async (_url, init) => { forwarded = init?.signal; throw new DOMException('aborted', 'AbortError'); }) as typeof fetch,
+  AbortSignal.abort());
+  assert.equal(forwarded?.aborted, true, 'fcpxmlMediaLocations forwards the export signal');
 }
 
 // ── Resolve variants retain existing differences ──
