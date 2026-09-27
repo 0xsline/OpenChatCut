@@ -20,8 +20,15 @@ import { backgroundFillStrengthOf, isBackgroundFillActive } from '../editor/back
 /** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
 const UPLOAD_PREFIX = '/media/uploads/';
 
-/** Absolute disk path → file:// URL. Both POSIX and Windows drive letters are covered; path segmentation is based on URL rules
- * Encoding (Chinese/space file names cannot be parsed by NLE if they are not encoded), and the colon in the drive letter must remain intact. */
+/**
+ * Absolute disk path → `media-rep` `src` URL, UTF-8 percent-encoded per path
+ * segment (drive-letter colons stay intact). FCPXML defines `src` as an
+ * RFC 2396 URL and `media-rep` may only contain `bookmark`, so this attribute
+ * is the one place an NLE reads the location. Final Cut Pro writes the same
+ * form itself (NSURL: `%E4%B8%AD…`, `%20`), DaVinci Resolve's own FCPXML
+ * export percent-encodes `src` too, and Resolve imports Final Cut's files.
+ * Raw non-ASCII is not a URL; a raw `#` or `%` truncates or corrupts the path.
+ */
 function toFileUrl(absPath: string): string {
   const slashed = absPath.replace(/\\/g, '/');
   if (slashed.startsWith('//')) {
@@ -32,23 +39,6 @@ function toFileUrl(absPath: string): string {
   const encoded = rooted
     .split('/')
     .map((seg) => (/^[A-Za-z]:$/.test(seg) ? seg : encodeURIComponent(seg)))
-    .join('/');
-  return `file://${encoded}`;
-}
-/**
- * Absolute disk path → FCPXML <pathurl>. DaVinci Resolve reads this element
- * per the FCPXML spec, and on macOS it resolves native UTF-8 path segments but
- * NOT percent-encoded non-ASCII. Keep every segment byte-identical to the
- * on-disk name; encode only URL-breaking characters (space/#/?).
- */
-export function toPathUrl(absPath: string): string {
-  const slashed = absPath.replace(/\\/g, '/');
-  const rooted = slashed.startsWith('//') || /^[A-Za-z]:/.test(slashed)
-    ? `/${slashed}`.replace(/^\/\//, '//')
-    : slashed;
-  const encoded = rooted
-    .split('/')
-    .map((seg) => seg.replace(/ /g, '%20').replace(/#/g, '%23').replace(/\?/g, '%3F'))
     .join('/');
   return `file://${encoded}`;
 }
@@ -236,16 +226,15 @@ function finalExtensionStem(filename: string): string {
 }
 
 
+/** `<!ELEMENT media-rep (bookmark?)>`: the location lives only in `src`. */
 function mediaRepXml(
   kind: 'original-media' | 'proxy-media',
   src: string,
   filename: string,
-  pathUrl?: string,
 ): string {
   const suggested = finalExtensionStem(filename);
   const suggestedAttr = suggested ? ` suggestedFilename="${escapeXml(suggested)}"` : '';
-  const inner = pathUrl ? `<pathurl>${escapeXml(pathUrl)}</pathurl>` : '';
-  return `<media-rep kind="${kind}" src="${escapeXml(src)}"${suggestedAttr}>${inner}</media-rep>`;
+  return `<media-rep kind="${kind}" src="${escapeXml(src)}"${suggestedAttr}/>`;
 }
 
 function assetResourceXml(
@@ -259,7 +248,6 @@ function assetResourceXml(
   const hasAudio = info.kind === 'audio' || info.kind === 'video';
   const name = escapeXml(info.name || decodedBasename(src));
   const formatAttr = hasVideo ? ` format="${formatId}"` : '';
-  const internalAbs = resolveAssetAbsPath(src, mediaDir);
   const internalHref = resolveAssetSrc(src, mediaDir);
   const originalAbs = typeof info.originalFilePath === 'string' && info.originalFilePath
     ? info.originalFilePath
@@ -268,12 +256,10 @@ function assetResourceXml(
   const filename = info.sourceFilename ?? info.name;
   const representations = originalHref
     ? [
-        mediaRepXml('original-media', originalHref, filename, toPathUrl(originalAbs!)),
-        ...(originalHref === internalHref
-          ? []
-          : [mediaRepXml('proxy-media', internalHref, filename, internalAbs ? toPathUrl(internalAbs) : undefined)]),
+        mediaRepXml('original-media', originalHref, filename),
+        ...(originalHref === internalHref ? [] : [mediaRepXml('proxy-media', internalHref, filename)]),
       ]
-    : [mediaRepXml('original-media', internalHref, filename, internalAbs ? toPathUrl(internalAbs) : undefined)];
+    : [mediaRepXml('original-media', internalHref, filename)];
   return `<asset id="${info.id}" name="${name}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}>\n      ${representations.join('\n      ')}\n    </asset>`;
 }
 

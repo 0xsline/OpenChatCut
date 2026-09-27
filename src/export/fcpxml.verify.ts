@@ -3,12 +3,17 @@
 // ① Audio transcript editing must be split into multiple asset-clips that are consistent with the playback layer (keptSegments) segment by segment;
 // ② The assets are converted to the absolute file:// path under mediaDir, otherwise the NLE is full of offline assets.
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { resolveAssetSrc, timelineToFcpxml } from './fcpxml';
+import { fcpxmlDtdViolations } from './fcpxml.verify-support';
 import { keptSegments } from '../transcript/edit';
 import type { TimelineState } from '../editor/types';
 
 const clipsOf = (xml: string): string[] => xml.match(/<asset-clip[^>]*\/>/g) ?? [];
 const attr = (el: string, name: string): string => el.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? '';
+const mediaRepSrc = (xml: string, kind: 'original-media' | 'proxy-media'): string | undefined => (
+  xml.match(new RegExp(`<media-rep kind="${kind}" src="([^"]*)"`))?.[1]
+);
 
 // ── Infrastructure: single root, required nodes, XML escaping, no undefined/NaN leaks ──
 {
@@ -174,18 +179,15 @@ const attr = (el: string, name: string): string => el.match(new RegExp(`${name}=
   assert.ok(assetOpen.includes('name="旅行.最终版.001.MOV"'), '可编辑显示名不得覆盖原始文件名');
   assert.ok(xml.includes('kind="original-media" src="file:///Users/me/%E6%97%85%E8%A1%8C/%E6%97%85%E8%A1%8C.%E6%9C%80%E7%BB%88%E7%89%88.001.MOV"'));
   assert.ok(xml.includes('kind="proxy-media" src="file:///Users/me/.openchatcut/media/8e45fd6f-8da8-4d6a-8a4f-339d6a8fd747.mp4"'));
-  // <pathurl> is the FCPXML-standard location element DaVinci Resolve reads;
-  // non-ASCII segments stay native UTF-8 (Resolve does not decode
-  // percent-encoded paths on macOS), only URL-breaking characters encode.
-  assert.ok(xml.includes('<pathurl>file:///Users/me/旅行/旅行.最终版.001.MOV</pathurl>'),
-    'original-media pathurl keeps native UTF-8 path segments');
-  assert.ok(xml.includes('<pathurl>file:///Users/me/.openchatcut/media/8e45fd6f-8da8-4d6a-8a4f-339d6a8fd747.mp4</pathurl>'),
-    'proxy-media pathurl carries the internal working copy');
-  assert.ok(!xml.includes('<pathurl>file:///Users/me/%E6%97%85%E8%A1%8C'),
-    'pathurl never percent-encodes non-ASCII');
-  assert.ok(
-    xml.includes('src="file:///Users/me/%E6%97%85%E8%A1%8C/%E6%97%85%E8%A1%8C.%E6%9C%80%E7%BB%88%E7%89%88.001.MOV"'),
-    'the src attribute keeps its percent-encoded form for NLEs that require it',
+  // FCPXML 1.9+ declares <!ELEMENT media-rep (bookmark?)> with src #REQUIRED.
+  // <pathurl> is FCP7 xmeml: Final Cut Pro rejects the whole import on it.
+  assert.ok(!xml.includes('<pathurl'), 'no FCP7 <pathurl> inside FCPXML media-rep');
+  assert.equal((xml.match(/<media-rep [^>]*\/>/g) ?? []).length, 2, 'media-rep carries its location only in src');
+  assert.deepEqual(fcpxmlDtdViolations(xml), [], 'original/proxy export validates against the FCPXML 1.10 DTD');
+  assert.equal(
+    fileURLToPath(mediaRepSrc(xml, 'original-media')!),
+    originalFilePath,
+    'percent-encoded Chinese src decodes back to the exact original path',
   );
   assert.equal((xml.match(/suggestedFilename="旅行\.最终版\.001"/g) ?? []).length, 2, '原片与代理建议文件名共用去除最终扩展名的原始 stem');
 
@@ -215,6 +217,48 @@ const attr = (el: string, name: string): string => el.match(new RegExp(`${name}=
   }, { mediaDir: '\\\\server\\OpenChatCut\\media' });
   assert.ok(uncXml.includes('kind="original-media" src="file://server/%E5%85%B1%E4%BA%AB%20%E7%A9%BA%E9%97%B4/%E6%97%85%E8%A1%8C.%E6%9C%80%E7%BB%88%E7%89%88.001.MOV"'), 'UNC 原片路径合法编码');
   assert.ok(uncXml.includes('kind="proxy-media" src="file://server/OpenChatCut/media/8e45fd6f-8da8-4d6a-8a4f-339d6a8fd747.mp4"'), 'UNC 代理路径合法编码');
+}
+
+// ── Issue #27: src is an RFC 3986 file URL (what Final Cut Pro writes) that decodes to the exact disk path ──
+{
+  const cases: ReadonlyArray<readonly [string, string, string]> = [
+    ['ASCII', '/Users/me/clips/A001_C002.mov', 'file:///Users/me/clips/A001_C002.mov'],
+    ['spaces', '/Users/me/my clips/b roll.mov', 'file:///Users/me/my%20clips/b%20roll.mov'],
+    ['Chinese', '/Users/me/素材/采访 01.mp4', 'file:///Users/me/%E7%B4%A0%E6%9D%90/%E9%87%87%E8%AE%BF%2001.mp4'],
+    ['#', '/Users/me/take #1.mov', 'file:///Users/me/take%20%231.mov'],
+    ['%', '/Users/me/100% crop.mov', 'file:///Users/me/100%25%20crop.mov'],
+  ];
+  for (const [label, originalFilePath, expected] of cases) {
+    const state: TimelineState = {
+      fps: 30, width: 1920, height: 1080, selectedId: null,
+      tracks: { V1: { kind: 'video' } }, trackOrder: ['V1'],
+      items: [{
+        id: 'clip', track: 'V1', startFrame: 0, durationInFrames: 30, kind: 'video', name: label,
+        src: '/media/uploads/0b0c5d4e.mp4', originalFilePath,
+      }],
+    };
+    const xml = timelineToFcpxml(state, { mediaDir: '/Users/me/.openchatcut/media' });
+    const src = mediaRepSrc(xml, 'original-media');
+    assert.equal(src, expected, `${label}: UTF-8 percent-encoded per path segment`);
+    assert.equal(fileURLToPath(src!), originalFilePath, `${label}: src decodes back to the exact on-disk path`);
+    assert.doesNotMatch(src!, /[^\x21-\x7e]/, `${label}: no raw space or non-ASCII byte reaches src`);
+    assert.ok(!xml.includes('<pathurl'), `${label}: no <pathurl> element`);
+    assert.deepEqual(fcpxmlDtdViolations(xml), [], `${label}: validates against the FCPXML 1.10 DTD`);
+  }
+
+  // Retimed clips (<timeMap>) and background-fill metadata stay DTD-valid too.
+  const retimed = timelineToFcpxml({
+    fps: 30, width: 1080, height: 1920, selectedId: null,
+    tracks: { V1: { kind: 'video' } }, trackOrder: ['V1'],
+    items: [{
+      id: 'fast', track: 'V1', startFrame: 0, durationInFrames: 60, kind: 'video', name: 'fast',
+      src: '/media/uploads/fast.mp4', playbackRate: 2, width: 1920, height: 1080,
+      backgroundFill: true, backgroundFillStrength: 40,
+    }],
+  }, { mediaDir: '/m', nleFormat: 'fcp_xml_resolve' });
+  assert.ok(retimed.includes('<timeMap>') && retimed.includes('com.openchatcut.backgroundFill'),
+    'fixture exercises the retime and background-fill paths');
+  assert.deepEqual(fcpxmlDtdViolations(retimed), [], 'retime + background fill export validates against the DTD');
 }
 
 // ── Resolve variants retain existing differences ──
