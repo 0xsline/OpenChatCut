@@ -25,6 +25,12 @@ export default {
   '工程不存在，返回…': 'Project not found, going back…',
   '工程数据暂时无法读取': 'Project data is temporarily unreadable',
   '为避免覆盖已保存的内容，已停止打开该工程。数据仍保留在本机存储中，可稍后重试。': 'Opening was stopped to avoid overwriting your saved work. The data is still in local storage — try again shortly.',
+  '编辑器需要通过 localhost 或 HTTPS 访问': 'The editor requires localhost or HTTPS',
+  '当前地址不是浏览器认可的安全上下文，编辑器依赖的 Web Crypto、WebCodecs 视频解码和剪贴板等能力在这里被禁用。请在运行 OpenChatCut 的电脑上打开 http://localhost 或 http://127.0.0.1，或通过 HTTPS 提供服务。':
+    'This address is not a secure context, so the browser disables Web Crypto, WebCodecs video decoding, the clipboard, and other capabilities the editor relies on. Open http://localhost or http://127.0.0.1 on the computer running OpenChatCut, or serve it over HTTPS.',
+  '当前地址：{origin}': 'Current address: {origin}',
+  '编辑器出现错误': 'The editor ran into an error',
+  '重新加载': 'Reload',
   '已导出「{name}」;{n} 个素材两端都取不到,未随包': 'Exported "{name}"; {n} asset(s) unavailable on both ends, not bundled',
   '已导出「{name}」(含 {n} 个素材)': 'Exported "{name}" ({n} assets included)',
   '导入失败:{error}': 'Import failed: {error}',

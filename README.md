@@ -274,6 +274,8 @@ Open:
 http://localhost:5199
 ```
 
+The editor needs a browser [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts): open OpenChatCut at `http://localhost` or `http://127.0.0.1` on the machine running it, or serve it over HTTPS. Over plain HTTP from another device (a LAN IP or reverse proxy), browsers disable Web Crypto, WebCodecs, and the clipboard, so the project list still loads but the editor shows this requirement instead of opening.
+
 Only add the model or media-service credentials you actually use to `.env.local`. Features without configured third-party credentials report the missing key explicitly; local timeline editing, built-in media, and other configured capabilities continue to work.
 
 Development launches are isolated per Git checkout/worktree by default. `npm run dev` and
