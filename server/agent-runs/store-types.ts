@@ -50,6 +50,13 @@ export interface ServerRunMetrics {
   reasoningTokens: number;
 }
 
+/** Mirrors the browser's ProjectPersistenceSignal across the tool-result wire. */
+export interface EditorPersistenceSignal {
+  readonly revision: number;
+  readonly pending: boolean;
+  readonly failed: boolean;
+}
+
 export interface ServerRun {
   id: string;
   projectId: string;
@@ -68,6 +75,12 @@ export interface ServerRun {
   events: ServerRunEvent[];
   error: string | null;
   persistenceError?: string;
+  /**
+   * Latest durability signal reported by the editor with a tool result. Lets
+   * mutating tools fail loudly when the editor's writes are not landing,
+   * instead of the agent building an entire edit on unsaved in-memory state.
+   */
+  editorPersistence?: EditorPersistenceSignal;
   retainedEventBytes: number;
   replayStart: number;
   subscriberCount: number;
