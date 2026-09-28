@@ -37,8 +37,13 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
   if (isProjectAction(a)) {
     switch (a.type) {
       case 'tl.create': {
-        const activeTimelineId = a.activate === false ? p.activeTimelineId : a.timeline.id;
-        const next = { ...p, timelines: [...p.timelines, a.timeline], activeTimelineId };
+        // The new sequence is empty and runs at the project rate. An agent can build
+        // it before the user picks another rate and land it after: it adopts the rate
+        // the project has now, so every timeline keeps sharing one.
+        const fps = activeTimeline(p)?.fps ?? a.timeline.fps;
+        const timeline = a.timeline.fps === fps ? a.timeline : { ...a.timeline, fps };
+        const activeTimelineId = a.activate === false ? p.activeTimelineId : timeline.id;
+        const next = { ...p, timelines: [...p.timelines, timeline], activeTimelineId };
         return sequenceGraphError(next) ? p : next;
       }
       case 'tl.switch':
