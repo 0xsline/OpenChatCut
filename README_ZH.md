@@ -258,6 +258,8 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 需要 Node.js 24.x 和 npm。`package.json` 会约束支持的 Node.js 范围，`.nvmrc` 可供 Node 版本管理器直接选择对应主版本。
 
+在 Linux x64 上，`npm install` 还会从 NuGet 下载 ONNX Runtime 可选的 CUDA 组件（数百 MB）。只需 CPU 推理时，可改用 `ONNXRUNTIME_NODE_INSTALL=skip npm install`。
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut
@@ -271,6 +273,8 @@ npm run dev
 ```text
 http://localhost:5199
 ```
+
+编辑器需要浏览器的[安全上下文](https://developer.mozilla.org/zh-CN/docs/Web/Security/Defenses/Secure_Contexts)：请在运行 OpenChatCut 的电脑上通过 `http://localhost` 或 `http://127.0.0.1` 访问，或通过 HTTPS 提供服务。从其他设备以普通 HTTP 访问（局域网 IP 或反向代理）时，浏览器会禁用 Web Crypto、WebCodecs 和剪贴板，工程列表仍可打开，但编辑器会显示这一要求而不会进入。
 
 `.env.local` 中只需填写你实际使用的模型或素材服务。没有配置的第三方能力会明确提示缺少对应 Key，不影响本地时间线编辑、内置素材和已配置的其他能力。
 

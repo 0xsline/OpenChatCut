@@ -26,8 +26,8 @@ jobs:
           cache: npm
       - run: npm ci --loglevel=error
         env:
-          # onnxruntime-node@1.22.0 postinstall fails on ubuntu CI runners (NuGet
-          # misses the win-x64 CUDA runtime). CI validates logic only, so skip it.
+          # onnxruntime-node's postinstall downloads its optional CUDA provider from
+          # NuGet on linux-x64. CI validates logic only, so skip it.
           ONNXRUNTIME_NODE_INSTALL: 'skip'
       - name: Install ffmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
@@ -91,8 +91,8 @@ jobs:
           cache: npm
       - run: npm ci --loglevel=error
         env:
-          # onnxruntime-node@1.22.0 postinstall fails on linux CI runners; skip the
-          # NuGet runtime download (real ORT bytes ship separately for packaging).
+          # Skip onnxruntime-node's optional NuGet CUDA provider download (linux-x64
+          # only); artifacts ship the runtime already bundled in the npm package.
           ONNXRUNTIME_NODE_INSTALL: 'skip'
 
       # First write the browser version corresponding to Remotion, and then use desktop:dist

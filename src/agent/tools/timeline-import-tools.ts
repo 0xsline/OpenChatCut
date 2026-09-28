@@ -76,6 +76,11 @@ export async function execTimelineImportTool(
       : parsed;
   }
   const report = { warnings: [...parsed.timeline.warnings], skipped: [...parsed.timeline.skipped] };
+  const { fps, sourceFps } = parsed.timeline;
+  if (sourceFps !== fps) {
+    const rate = (value: number) => Number(value.toFixed(3));
+    report.warnings.unshift(`the ${rate(sourceFps)} fps ${format === 'fcpxml' ? 'sequence' : 'list'} was converted to the project frame rate (${rate(fps)} fps); cut points are rounded to the nearest frame`);
+  }
   if (format === 'fcpxml' && (options.fps !== undefined || options.startTimecode !== undefined)) {
     report.warnings.unshift('fps and startTimecode apply to EDL only; the FCPXML sequence format and tcStart were used');
   }
@@ -93,7 +98,7 @@ export async function execTimelineImportTool(
     name: importedName,
     itemCount: built.itemCount,
     trackCount: built.trackCount,
-    fps: parsed.timeline.fps,
+    fps,
     ...(parsed.timeline.startTimecode ? { startTimecode: parsed.timeline.startTimecode } : {}),
     warnings: report.warnings.slice(0, MAX_REPORTED),
     ...(report.warnings.length > MAX_REPORTED ? { warningCount: report.warnings.length } : {}),
