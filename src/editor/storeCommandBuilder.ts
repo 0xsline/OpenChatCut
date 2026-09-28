@@ -44,6 +44,10 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
   // ONE undo step instead of two — previously the first undo removed the clip
   // and left an empty track behind.
   let pendingTrackCreates: AtomicAction[] = [];
+  // Pool durations say which rate they were counted at: the caller's when it probed
+  // before a rate change, else the rate this doc has now. The reducer recounts them
+  // on a project at another rate, e.g. when an agent's draft lands on the live one.
+  const projectFps = () => activeTimeline(getDoc())?.fps;
   const takePendingTrackCreates = (): AtomicAction[] => {
     const pending = pendingTrackCreates;
     pendingTrackCreates = [];
@@ -162,7 +166,9 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
         duplicateId,
         canonicalId,
       }),
-      relinkMediaAsset: (id, next) => commitRelink({ type: 'pool.relinkAsset', id, ...next }),
+      relinkMediaAsset: (id, next) => commitRelink({
+        type: 'pool.relinkAsset', id, ...next, durationFps: next.durationFps ?? projectFps(),
+      }),
       relinkTimelineItem: (id, next) => commitRelink({ type: 'relinkTimelineItem', id, ...next }),
       addSolidItem: (at) => {
         const id = uid('item');
@@ -256,7 +262,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
         }, 'Add title');
         return id;
       },
-      addAsset: (asset: MediaAsset) => dispatch({ type: 'addAsset', asset }),
+      addAsset: (asset: MediaAsset, durationFps = projectFps()) => dispatch({ type: 'addAsset', asset, durationFps }),
       addMediaItem: (asset, at) => {
         if (!isTimelineMediaAssetKind(asset.kind)) throw new Error(`${asset.name} is not timeline media`);
         const item = asset.kind === 'motion-graphic'

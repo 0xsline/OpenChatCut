@@ -13,7 +13,7 @@ import { newTranscriptGeneration } from '../transcript/identity';
 import type { AnyAction, ProjectAction } from './reducerActions';
 import { isRelinkableMediaKind, relinkTiming, type RelinkableTimelineItem } from './reducerTimelineHelpers';
 import { reduce } from './reducerTimeline';
-import { withProjectFrameRate } from './timelineFrameRate';
+import { recountAssetDuration, recountDuration, withProjectFrameRate } from './timelineFrameRate';
 
 // ── project reducer (routes per-timeline actions to the active timeline) ───
 export const maxOrder = (p: ProjectDoc) => p.timelines.reduce((m, t) => Math.max(m, t.order), -1);
@@ -32,7 +32,9 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
   }
   if (a.type === 'addAsset') {
     if (p.assets.some((asset) => asset.id === a.asset.id)) return p;
-    return { ...p, assets: [...p.assets, withMediaSourceRevision(a.asset)] };
+    // Identity from the asset as probed; its duration in the project's frames.
+    const asset = recountAssetDuration(withMediaSourceRevision(a.asset), a.durationFps, activeTimeline(p)?.fps);
+    return { ...p, assets: [...p.assets, asset] };
   }
   if (isProjectAction(a)) {
     switch (a.type) {
@@ -179,8 +181,13 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         };
         const nextSourceRevision = revisionAfterRelink(asset, replacement);
         const sourceChanged = nextSourceRevision !== sourceRevisionOf(asset);
+        // A file probed before the project rate changed is counted at durationFps.
+        const durationInFrames = a.durationInFrames === undefined
+          ? undefined
+          : recountDuration(replacement.kind, a.durationInFrames, a.durationFps, activeTimeline(p)?.fps);
         const nextAsset: MediaAsset = {
           ...replacement,
+          durationInFrames: durationInFrames ?? asset.durationInFrames,
           sourceRevision: nextSourceRevision,
           transcriptStale: sourceChanged && asset.transcript?.length ? true : asset.transcriptStale,
         };
@@ -191,7 +198,7 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         const relinkTimelineItem = (item: TimelineItem): TimelineItem => {
           if (!isRelinkableMediaKind(item.kind)) return item;
           const replacementKind = a.kind && isTimelineMediaAssetKind(a.kind) ? a.kind : item.kind;
-          const timing = relinkTiming(item, a.durationInFrames, replacementKind);
+          const timing = relinkTiming(item, durationInFrames, replacementKind);
           if (!timing) return item;
           const {
             denoisedSrc: _staleDenoisedSrc,

@@ -31,11 +31,13 @@ interface MediaPoolRelinkState {
   relinkFromFolder: (files: FileList | null) => Promise<void>;
 }
 
-function relinkPatch(asset: MediaAsset): MediaAssetRelinkPatch {
+/** `durationFps`: the rate the file was probed at, which the project may have left while it imported. */
+function relinkPatch(asset: MediaAsset, durationFps: number): MediaAssetRelinkPatch {
   return {
     src: asset.src,
     name: asset.name,
     durationInFrames: asset.durationInFrames,
+    durationFps,
     width: asset.width,
     height: asset.height,
     kind: asset.kind,
@@ -79,7 +81,7 @@ async function relinkMatches(
       unmatched.push(asset.name);
       continue;
     }
-    relink(asset.id, relinkPatch(await importMedia(file, fps)));
+    relink(asset.id, relinkPatch(await importMedia(file, fps), fps));
     clearMissing(asset.id);
     relinked += 1;
   }
@@ -133,7 +135,7 @@ function useSingleRelink(
     setBusy(true);
     setError(null);
     try {
-      onRelinkAsset(id, relinkPatch(await importMedia(file, fps)));
+      onRelinkAsset(id, relinkPatch(await importMedia(file, fps), fps));
       clearMissing(id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
