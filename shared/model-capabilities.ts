@@ -92,6 +92,15 @@ function catalogProviderId(provider: LlmProvider): LlmProvider {
   return provider === 'xai-oauth' ? 'xai' : provider;
 }
 
+function catalogModelsForProvider(provider: LlmProvider): Readonly<Record<string, CatalogModel>> {
+  const catalog = catalogProviders[catalogProviderId(provider)] ?? {};
+  if (provider !== 'api-route') return catalog;
+  // API Route lists gpt-5.5, but the bundled models.dev snapshot predates its
+  // provider entry. Reuse the upstream model facts until that entry is synced.
+  const defaultModel = catalogProviders.openai?.['gpt-5.5'];
+  return defaultModel ? { 'gpt-5.5': defaultModel, ...catalog } : catalog;
+}
+
 type OverridePatch = Partial<Omit<ModelCapabilityOverride, keyof ModelIdentity>>;
 
 function exact<T>(value: T, source: ModelCapabilitySource): ModelCapability<T> {
@@ -242,7 +251,7 @@ export function listVisionModels(
   provider: LlmProvider,
   configuredModel?: string,
 ): readonly string[] {
-  const catalog = catalogProviders[catalogProviderId(provider)] ?? {};
+  const catalog = catalogModelsForProvider(provider);
   const ids = Object.keys(catalog).filter((id) => (catalog[id]?.input ?? []).includes('image'));
   if (ids.length === 0 && provider !== 'ollama' && provider !== 'lmstudio') return [];
   if (configuredModel && !ids.includes(configuredModel)) return [...ids, configuredModel];
@@ -255,7 +264,7 @@ export function resolveModelCapabilities(
 ): ModelCapabilities {
   // Snapshot model ids (e.g. qwen3.7-plus-2026-05-26) share the base model's
   // catalog entry: match exact first, then the longest `base-` prefix.
-  const catalog = catalogProviders[catalogProviderId(identity.provider)] ?? {};
+  const catalog = catalogModelsForProvider(identity.provider);
   const model = catalog[identity.modelId]
     ?? (() => {
       const snapshotBase = Object.keys(catalog)

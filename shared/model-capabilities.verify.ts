@@ -40,4 +40,9 @@ assert.equal(deepseekVision.supportsImages.value, true, 'DeepSeek vision input r
 assert.equal(deepseekVision.supportsImages.source, 'catalog');
 assert.ok(listVisionModels('deepseek').includes('deepseek-v4-flash-vision-exp'));
 
+const apiRouteDefault = resolveModelCapabilities(identity('api-route', 'gpt-5.5'));
+assert.equal(apiRouteDefault.supportsTools.value, true, 'API Route default keeps agent tools enabled');
+assert.equal(apiRouteDefault.supportsImages.value, true, 'API Route default accepts image input');
+assert.ok(listVisionModels('api-route').includes('gpt-5.5'));
+
 console.log('model-capabilities.verify: snapshot prefix matching passed');

@@ -32,6 +32,7 @@ assert.equal(resolveLlmBaseUrl('deepseek', ''), 'https://api.deepseek.com');
 assert.equal(resolveLlmBaseUrl('minimax', ''), 'https://api.minimaxi.com/v1');
 assert.equal(resolveLlmBaseUrl('orcarouter', ''), 'https://api.orcarouter.ai/v1');
 assert.equal(resolveLlmBaseUrl('requesty', ''), 'https://router.requesty.ai/v1');
+assert.equal(resolveLlmBaseUrl('api-route', ''), 'https://global.api-route.com/v1');
 assert.equal(resolveLlmBaseUrl('requesty', 'https://router.eu.requesty.ai/v1'), 'https://router.eu.requesty.ai/v1');
 assert.equal(resolveLlmBaseUrl('gemini', ''), 'https://generativelanguage.googleapis.com/v1beta');
 assert.equal(resolveLlmBaseUrl('openai', 'https://api.openai.com', ''), 'https://api.openai.com/v1');
@@ -39,6 +40,7 @@ assert.equal(resolveLlmBaseUrl('anthropic', 'https://relay.test/api', ''), 'http
 assert.equal(llmOperationPath('kimi'), '/chat/completions');
 assert.equal(llmOperationPath('orcarouter'), '/chat/completions');
 assert.equal(llmOperationPath('requesty'), '/chat/completions');
+assert.equal(llmOperationPath('api-route'), '/chat/completions');
 
 // ── llmHeaders: Inject upstream authentication according to the protocol (google=x-goog-api-key;anthropic=x-api-key; the rest Bearer) ──
 {
@@ -51,6 +53,7 @@ assert.equal(llmOperationPath('requesty'), '/chat/completions');
     LLM_MINIMAX_API_KEY: 'mk-1',
     LLM_ORCAROUTER_API_KEY: 'ork-1',
     LLM_REQUESTY_API_KEY: 'rqsty-1',
+    LLM_API_ROUTE_API_KEY: 'api-route-1',
     LLM_XAI_OAUTH_API_KEY: 'stale-oauth-token',
     LLM_API_KEY: 'ak-1',
   } as Record<string, string>);
@@ -68,6 +71,8 @@ assert.equal(llmOperationPath('requesty'), '/chat/completions');
     'OrcaRouter 使用独立厂商 Key 和 OpenAI-compatible Bearer');
   assert.deepEqual(llmHeaders(reqFor('requesty')), { authorization: 'Bearer rqsty-1' },
     'Requesty uses its own provider key as an OpenAI-compatible Bearer');
+  assert.deepEqual(llmHeaders(reqFor('api-route')), { authorization: 'Bearer api-route-1' },
+    'API Route uses its own provider key as an OpenAI-compatible Bearer');
   assert.deepEqual(llmHeaders(reqFor('anthropic')), { 'x-api-key': 'ak-1', 'anthropic-version': '2023-06-01' }, 'anthropic x-api-key(经遗留迁移)');
   assert.deepEqual(llmHeaders(reqFor('xai-oauth')), {}, 'xAI OAuth 不回退到可能失效的持久化 token');
   assert.match(llmErrorMessage(401, reqFor('gemini')), /Gemini.*设置.*API Key/, '认证错误给设置入口');

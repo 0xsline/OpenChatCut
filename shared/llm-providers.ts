@@ -143,6 +143,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'claude-sonnet-5',
   },
   {
+    id: 'api-route',
+    label: 'API Route',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://global.api-route.com/v1',
+    defaultModel: 'gpt-5.5',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',
