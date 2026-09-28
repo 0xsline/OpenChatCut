@@ -6,12 +6,36 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.2.14] - 2026-09-04
+## [0.2.15] - 2026-09-29
 
 ### Added / 新增
 
-- **OrcaRouter is now a named LLM provider preset** — configure its Base URL and API key under Settings → Agent model like any other provider and select it as the chat model (contributed in #130).
-  **OrcaRouter 现在是具名 LLM 厂商预设**——在 设置 → Agent 模型 里像其他厂商一样配置 Base URL 与 API Key，并可作为聊天模型选择（#130 贡献）。
+- **`occ`, a command line for your project library** — list, inspect and create projects, move, trim, split, remove and duplicate clips, call the Agent's headless tools, render the saved project (`occ render --out cut.mp4`, 480p to 4k, H.264, VP8, ProRes or audio) and export a JianYing draft, all without opening the app. Writes need `--apply`, commit through the same revision check the app uses, and leave a version you can restore from the app's history. In a source checkout, `npm run build:cli` followed by `npm link` puts `occ` on your PATH.  
+  **`occ`：在终端里操作工程库**——不打开应用就能列出、查看和新建工程，移动、裁剪、分割、删除和复制片段，调用 Agent 的无头工具，渲染已保存的工程（`occ render --out cut.mp4`，480p 到 4k，H.264、VP8、ProRes 或纯音频），以及导出剪映草稿。写操作要加 `--apply`，和应用走同一套版本校验提交，并留下一个可以在应用历史版本里恢复的版本。在源码仓库里执行 `npm run build:cli` 再 `npm link`，就能直接使用 `occ` 命令。
+
+- **External agents can do more while the app is closed** — offline MCP sessions (and `occ`) now run `edit_item` and `manage_effects`, browse and add templates (installed plugin packs included) and library audio, and browse and import local files and folders, instead of refusing them for lack of a browser.  
+  **应用关闭时，外部 Agent 能做的事更多了**——离线 MCP 会话（以及 `occ`）现在可以执行 `edit_item` 和 `manage_effects`，浏览并添加模板（含已安装的插件包）和音频库素材，也能浏览和导入本地文件与文件夹，不再因为没有浏览器而拒绝。
+
+- **Run the Agent on GitHub Copilot or Claude Code** — two new Agent backends use a subscription you already have. GitHub Copilot runs in the app through the Copilot SDK with its own home folder, so it never touches your `~/.copilot` (contributed in #139). Claude Code drives the official `claude` CLI with no Anthropic API key, runs each turn in a restricted sandbox, resumes its session between turns and follows auto-apply mode (contributed in #148). Once their CLI is signed in, both show up in the model picker at launch.  
+  **Agent 可以跑在 GitHub Copilot 或 Claude Code 上**——新增两个 Agent 后端，直接用你已有的订阅。GitHub Copilot 通过 Copilot SDK 在应用内运行，使用单独的主目录，不会动你的 `~/.copilot`（#139 贡献）。Claude Code 调用官方 `claude` CLI，不需要 Anthropic API Key，每轮都在受限沙箱里运行，轮与轮之间续用同一个会话，并遵循自动应用模式（#148 贡献）。CLI 登录后，启动时两者都会出现在模型选择器里。
+
+- **New providers: OFox, Requesty and Fal.ai** — OFox is both an LLM preset and a video generation provider: text-to-video, first-frame or first-and-last-frame image-to-video, and up to 9 reference images (contributed in #132). Requesty is an LLM preset whose model list fills in after the connection test (contributed in #166). Fal.ai adds image and video generation from a curated catalog, and a resumed job is never billed twice (contributed in #147). Nothing changes until you add a key.  
+  **新增供应商：OFox、Requesty 和 Fal.ai**——OFox 既是 LLM 预设，也是视频生成供应商：文生视频、首帧或首尾帧图生视频，最多 9 张参考图（#132 贡献）。Requesty 是 LLM 预设，测试连接后会列出它的模型（#166 贡献）。Fal.ai 提供图片和视频生成，模型来自一份精选目录，任务恢复时不会重复计费（#147 贡献）。不填 Key 就不会有任何变化。
+
+- **The Agent can look through your local media before importing** — on the desktop, `browse_local_media` lists or searches folders by name and media type without importing anything, and `import_assets` brings a chosen batch into the media pool in one call, inside the same sandbox as the existing import tools (contributed in #138).  
+  **Agent 能先浏览本地素材再导入**——桌面端的 `browse_local_media` 可以按名称和素材类型列出或搜索文件夹，不会导入任何东西；`import_assets` 一次把选中的一批文件导入素材池。两者沿用现有导入工具的沙箱边界（#138 贡献）。
+
+- **External agents: one-click connect for Qoder and 千问办公, and recoverable edit sessions** — the MCP guide writes Qoder's settings for whichever of its international and China builds is installed, and copies the exact JSON 千问办公 imports (contributed in #146). A draft whose MCP client disconnected is kept as a recoverable session (`list_edit_sessions`, `recover_edit_session`) instead of being thrown away; it resumes only if the project has not changed since, otherwise it can only be discarded. Image results from the editor also reach the client intact (contributed in #124).  
+  **外部 Agent：Qoder 和千问办公一键接入，编辑会话可以恢复**——MCP 接入指引会写入已安装的 Qoder 国际版或国内版的配置，并为千问办公复制它导入所需的 JSON（#146 贡献）。MCP 客户端断开后，草稿会保留为可恢复的会话（`list_edit_sessions`、`recover_edit_session`），不再直接丢掉；只有工程在此期间没有变化时才能恢复，否则只能丢弃。编辑器返回的图片结果也能完整送到客户端（#124 贡献）。
+
+- **Three montage workflows for the Agent** — `batch-montage-variants` cuts several distinct edits from one media pool (for matrix accounts, hook tests and platform versions), `beat-sync-montage` places cuts on the beat where the content calls for them, and `ecommerce-product-montage` assembles product footage along a hook, pain point, demo, proof and call-to-action structure (contributed in #141, #142 and #143).  
+  **Agent 新增三个混剪工作流**——`batch-montage-variants` 用同一个素材池剪出多条不同的成片（适合矩阵号、开头测试和多平台版本），`beat-sync-montage` 按内容决定在哪些拍点上剪，`ecommerce-product-montage` 按钩子、痛点、演示、证明、行动号召的结构组织商品素材（#141、#142、#143 贡献）。
+
+- **Pick the project frame rate from the timeline toolbar** — next to the aspect-ratio picker, choose 24, 25, 30, 50 or 60 fps until the first clip is placed. These are the rates every export route renders without retiming; until now every project the app created was 30 fps.  
+  **在时间线工具栏里选择工程帧率**——在画幅比例选择器旁边，放入第一个片段之前可以选 24、25、30、50 或 60 fps，这些都是所有导出方式不用重定时就能渲染的帧率。此前应用新建的工程一律是 30 fps。
+
+- **On-device silence removal can be switched on** — Settings → Local models → Local transcription has a toggle for the bundled Silero VAD, which `remove_silence` uses once it is on; release builds shipped the model but could never run it. Installed local model packs now also warm up in the background, so their first use no longer starts cold.  
+  **可以开启本地语音检测去静音**——设置 → 本地模型 → 本地转写 里新增内置 Silero VAD 的开关，打开后 `remove_silence` 会用它来切；之前的发布版带着这个模型，却从来用不上。已安装的本地模型包现在也会在后台预热，第一次使用不再冷启动。
 
 - **The server now knows the interface language** — the language switch is mirrored into the non-secret `UI_LOCALE` setting, and server-authored text the user reads directly (starting with the remedy on a failed media import) follows it instead of being fixed Chinese.  
   **服务端现在知道界面语言**——语言切换会同步到非敏感设置 `UI_LOCALE`，服务端直接给用户看的文案（先从素材导入失败的补救提示开始）跟随界面语言，不再固定为中文。
@@ -39,22 +63,91 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **The desktop now ships at the density that used to be the "110%" setting** — Settings → Interface → UI scale reads 100% for it. A scale you had saved is converted once at startup so your window keeps its size after updating (110% → 100%, 100% → 90%).  
   **桌面端默认密度改为原来的「110%」**——设置 → 界面 → 界面缩放 里它现在显示为 100%。你之前保存过的缩放会在启动时换算一次（110% → 100%、100% → 90%），更新后窗口内容大小不变。
 
+- **Media model fields take any model id** — the image, video, music and TTS model settings still suggest the known ids but accept any id the vendor does, so a model released after this build is usable right away; MiniMax video ids outside the known list get the current request shape (contributed in #145, fixes #136).  
+  **媒体模型字段可以填任意模型 ID**——图片、视频、音乐和 TTS 的模型设置仍会提示已知 ID，但接受厂商认可的任何 ID，这一版之后才发布的模型也能直接用；不在已知列表里的 MiniMax 视频 ID 会按当前一代的请求格式发送（#145 贡献，修复 #136）。
+
+- **Auto bitrate for 4K hardware H.264 matches the export dialog** — Auto now targets 40 Mbps at 4K30 and 60 Mbps at 4K60 instead of stopping at 30 Mbps, so those files get larger. High, custom bitrates and lower resolutions are unchanged (contributed in #178).  
+  **4K 硬件 H.264 的自动码率与导出对话框一致**——自动码率在 4K30 下改为 40 Mbps，4K60 下改为 60 Mbps，不再停在 30 Mbps，这类文件会更大。「高」、自定义码率和更低的分辨率不受影响（#178 贡献）。
+
 ### Fixed / 修复
 
-- **Bundled product files now resolve inside the packaged app** — probe, sandbox and export looked for `/voice-samples/...`-style paths under the working directory, which is the user-data folder once packaged; the embedded server registers `resources/dist` as a product-asset root, so those paths resolve exactly as in the dev server.  
-  **打包版现在能找到内置资源文件**——探测、沙箱和导出之前按启动目录去找 `/voice-samples/...` 这类路径，而打包后启动目录是用户数据目录；内嵌服务现在把 `resources/dist` 注册为内置资源根目录，解析结果与开发服务一致。
+- **Windows exports no longer sit at about 10% until they time out (#162)** — on Windows the local renderer now decodes video with Remotion's FFmpeg compositor instead of Chrome's WebCodecs, whose D3D11 hardware decoder could stop producing frames without an error. macOS and Linux keep their decoder; `CC_RENDER_VIDEO_DECODER=webcodecs|offthread` picks one by hand for diagnosis.  
+  **Windows 导出不再卡在 10% 左右直到超时（#162）**——Windows 上的本地渲染改用 Remotion 的 FFmpeg 合成器解码视频，不再用 Chrome 的 WebCodecs，后者的 D3D11 硬件解码器可能不报错就停止出帧。macOS 和 Linux 保持原来的解码方式；排查问题时可以用 `CC_RENDER_VIDEO_DECODER=webcodecs|offthread` 手动指定。
 
-- **`probe_media` now runs the ffprobe bundled with the app instead of the e2b cloud sandbox** — on a machine without an E2B key the tool used to fail with "e2b sandbox is not configured" even though import, previews and export QA were already probing locally. Uploads and bundled assets are read in place; a public URL is fetched through the SSRF-safe transport into a temp file first.  
-  **`probe_media` 改用应用自带的 ffprobe，不再依赖 e2b 云沙箱**——没有配置 E2B key 的机器上，这个工具之前会报「e2b sandbox is not configured」，而导入、预览、导出质检其实早就在本地跑 ffprobe 了。上传文件和内置素材直接就地读取；公开 URL 先经过防 SSRF 的抓取落到临时文件再探测。
+- **GLSL transitions export the frames the preview shows** — in local exports, most frames of a transition window showed footage from several frames earlier, because each input was drawn before its video had finished seeking, and with the decoder Windows uses that seek could also stall the export. Both inputs now come from the export's own decoder, frame by frame.  
+  **GLSL 转场导出的画面与预览一致**——本地导出里，转场窗口的大部分帧显示的是几帧之前的画面，因为每一路输入都在视频跳转完成之前就被画了出来；在 Windows 使用的解码方式下，这次跳转还可能让导出卡住。现在两路输入都逐帧取自导出本身的解码器。
 
-- **A server-side agent run no longer ends with "I couldn't complete the requested operation" under the model's own reply** — when a tool failed and the model then answered, the run was still marked failed and an English template was appended beneath a Chinese answer. The reply is the outcome; the failed call stays visible on its tool card, matching the in-browser runtime. This also lets the documented fallbacks (probe fails → finalize with ingest defaults) complete.  
-  **服务端 Agent 运行不再在模型回复下方追加「I couldn't complete the requested operation」**——工具失败后模型已经作答，整轮却仍被判为失败，并在中文回复下面贴一段英文模板。现在以模型的回复为准，失败的调用仍在其工具卡片上可见，与浏览器端运行时一致；也让文档约定的降级路径（探测失败 → 用导入默认值 finalize）能正常完成。
+- **Wide and small frame sizes export locally** — anamorphic timelines such as 2.69:1, and 480p from a 16:9 canvas, failed because the renderer was handed a fractional frame size, and hardware H.264 cannot encode more than 4096 px on either side. The local renderer now uses sizes it can hit exactly, switches to software H.264 above the hardware limit, and hands sizes it cannot represent to the browser export up front (contributed in #154).  
+  **超宽和小尺寸画面可以本地导出**——2.69:1 这类变形宽银幕时间线，以及 16:9 画布的 480p，之前都会失败：渲染器拿到的是带小数的帧尺寸，而硬件 H.264 编码不了任一边超过 4096 像素的画面。现在本地渲染只用能精确得到的尺寸，超出硬件上限时改用软件 H.264，无法表示的尺寸一开始就交给浏览器导出（#154 贡献）。
+
+- **Browser exports check the exact encoder settings before they start** — the check used to ask about a 720p frame with no hardware preference, so a machine without a GPU encoder (a VM, remote desktop, disabled acceleration or a blocklisted driver) started a browser export that then failed. It now asks with the real codec, size, bitrate and hardware preference. When the app switches export engines, the dialog shows a neutral notice instead of an error, and if the local render fails as well, it reports the local engine's error.  
+  **浏览器导出开始前会检查确切的编码参数**——之前的预检只问 720p、不指定硬件偏好，没有 GPU 编码器的机器（虚拟机、远程桌面、关闭了硬件加速或驱动被列入黑名单）会开始一次注定失败的浏览器导出。现在预检使用真实的编码格式、尺寸、码率和硬件偏好。切换导出引擎时，对话框显示中性的提示而不是报错；如果本地渲染也失败，显示的是本地引擎的错误。
+
+- **Exports at a different frame rate pass their own duration check** — a retimed export keeps its frame count and changes the container rate, but its expected duration was computed at the timeline rate, so every such export failed QA with `duration_mismatch` and export history showed the wrong length (contributed in #137).  
+  **帧率与时间线不同的导出不再被自己的时长质检误报**——重定时导出保持帧数、只改容器帧率，预期时长却按时间线帧率计算，于是这类导出都会以 `duration_mismatch` 质检失败，导出历史里的时长也不对（#137 贡献）。
+
+- **JianYing/CapCut drafts match the timeline, and the export works on Windows (#160)** — trimmed clips keep their in-point and speed instead of reading their files from the start, captions follow the pages the subtitle export writes, and nested sequences are flattened instead of failing with "timeline has no video clips to export". The exporter now also starts on Windows, and it runs a pinned `capcut-cli` release (0.26.0) instead of whatever npm serves that day; set `CAPCUT_CLI` to use another.  
+  **剪映/CapCut 草稿与时间线一致，Windows 上也能导出（#160）**——裁剪过的片段保留入点和速度，不再从文件开头读；字幕按字幕导出的分页排时间；嵌套序列会被展开，不再报「timeline has no video clips to export」。导出器现在在 Windows 上也能启动，并且固定使用 `capcut-cli` 0.26.0，而不是当天 npm 上的最新版；需要其他版本时设置 `CAPCUT_CLI`。
+
+- **FCPXML exports open in Final Cut Pro and DaVinci Resolve (#27)** — the file validates against the FCPXML 1.10 DTD again (no `<pathurl>`, motion-graphic placeholders in connected storylines), media imported in place links to the real file, retimed clips sample the right source frames, clips sit on each file's own start timecode so Resolve finds camera media, and the download is no longer cut short. Cancelling the export also stops its media lookup.  
+  **FCPXML 导出能被 Final Cut Pro 和 DaVinci Resolve 打开（#27）**——文件重新符合 FCPXML 1.10 DTD（去掉 `<pathurl>`，动态图形占位放进连接的故事线）；原地引用导入的素材指向真实文件；变速片段取到正确的源帧；片段按各文件自己的起始时间码放置，Resolve 能找到摄像机素材；下载也不会再被截断。取消导出时，素材查询会一起停止。
+
+- **Imported FCPXML and EDL timelines land where they belong** — a Resolve timeline starting at 01:00:00:00 no longer arrives an hour late, connected clips are placed relative to their parent, camera-timecode in-points are measured from each file's own start, and anything the importer cannot bring in is listed with a reason instead of dropped silently. Imported timelines keep the project's frame rate, with a warning when the file's rate differs.  
+  **导入的 FCPXML 和 EDL 时间线落在正确的位置**——从 01:00:00:00 开始的 Resolve 时间线不再晚一小时出现；连接片段按父片段定位；带摄像机时间码的素材入点从文件自己的起点算起；导入器处理不了的内容会列出来并说明原因，不再悄悄丢掉。导入的时间线保持工程帧率，文件帧率不同时会给出提示。
+
+- **A blocked or blackholed media host no longer freezes `download_media`, with or without a proxy** — remote imports are bounded at the connect phase (10s, covering a proxy tunnel and the TLS handshake) and until response headers arrive (30s), then fail as `upstream_unreachable` with a remedy that matches whether a proxy is configured; a batch stops starting new URLs after 75s so it stays inside the run's stream watchdog instead of dying with "Chunk timeout exceeded". Retry now rewinds the failed turn out of both the chat and the model history and re-sends it, rather than stacking a second copy of the message under the error.  
+  **被墙或黑洞的素材主机不再让 `download_media` 挂死，有无代理都一样**——远程导入在连接阶段（10s，覆盖代理隧道与 TLS 握手）和收到响应头之前（30s）都有上限，超时以 `upstream_unreachable` 失败并按是否配置了代理给出对应提示；批量下载 75s 后不再开始新地址，避免撞上运行流看门狗而整轮以「Chunk timeout exceeded」失败。「重试」现在会把失败那轮从聊天与模型历史中回卷后原样重发，而不是在错误下面再叠一条同样的消息。
 
 - **Media-pool ratio badges snap to the ratio people actually name** — a 427×240 trailer read "427:240" because the badge reduced the exact pixel fraction; encoders round to codec-friendly sizes, so a frame within 2% of 16:9, 4:3, 1:1, 3:2, 5:4 or 21:9 (and their portrait forms) now shows that name, a small exact fraction such as 7:5 stays, and anything else shows a proportion like 2.40:1. Canvas sizes are exact and unchanged.  
   **素材池比例角标按人们常说的比例显示**——427×240 的预告片之前显示「427:240」，因为角标直接约分了像素分数；编码器会把尺寸凑成编码友好的数值，所以现在与 16:9、4:3、1:1、3:2、5:4、21:9（及其竖版）偏差在 2% 内的都显示该名称，7:5 这类小分数保留，其余显示为 2.40:1 这样的比例。画布尺寸精确，不受影响。
 
-- **A blocked or blackholed media host no longer freezes `download_media`, with or without a proxy** — remote imports are bounded at the connect phase (10s, covering a proxy tunnel and the TLS handshake) and until response headers arrive (30s), then fail as `upstream_unreachable` with a remedy that matches whether a proxy is configured; a batch stops starting new URLs after 75s so it stays inside the run's stream watchdog instead of dying with "Chunk timeout exceeded". Retry now rewinds the failed turn out of both the chat and the model history and re-sends it, rather than stacking a second copy of the message under the error.  
-  **被墙或黑洞的素材主机不再让 `download_media` 挂死，有无代理都一样**——远程导入在连接阶段（10s，覆盖代理隧道与 TLS 握手）和收到响应头之前（30s）都有上限，超时以 `upstream_unreachable` 失败并按是否配置了代理给出对应提示；批量下载 75s 后不再开始新地址，避免撞上运行流看门狗而整轮以「Chunk timeout exceeded」失败。「重试」现在会把失败那轮从聊天与模型历史中回卷后原样重发，而不是在错误下面再叠一条同样的消息。
+- **Desktop transcription runs whisper.cpp on every model tier** — model files now land where the engine looks for them, picking Large v3 Turbo takes effect, a model downloaded for the desktop engine no longer waits for the browser copy (#168), and the memory check sizes the GGML file, so 8 GB machines stop falling back to the browser engine and running out of memory. When the browser engine does run out of memory, the message is in your interface language and says what to do (#120), and the local Whisper settings page links to its model list (#126) (contributed in part in #165).  
+  **桌面端转写在所有模型档位上都使用 whisper.cpp**——模型文件现在下载到引擎读取的位置；选择 Large v3 Turbo 会真正生效；桌面引擎的模型不再等浏览器那份下载完（#168）；内存评估按 GGML 文件大小计算，8 GB 的机器不会再退回浏览器引擎、然后内存不足。浏览器引擎内存不足时，会用界面语言说明原因和办法（#120）；本地 Whisper 设置页有了通往模型列表的入口（#126）（部分由 #165 贡献）。
+
+- **Native transcription reads camera files whose index sits at the end (#167)** — FFmpeg now opens the file itself instead of reading it from a pipe, where such MP4 and MOV files could not be demuxed and the worker crashed with "native ASR process exited with code 1".  
+  **本地原生转写能读取索引位于文件末尾的摄像机文件（#167）**——FFmpeg 现在直接打开文件，不再从管道读取；此前这类 MP4 和 MOV 无法解封装，转写进程会以「native ASR process exited with code 1」崩溃。
+
+- **`retry_transcription` keeps the provider you asked for** — retrying a clip's transcript always fell back to the default provider, so it failed on installs set up for another one, and a transcript in the wrong language could not be redone (contributed in #150).  
+  **`retry_transcription` 会使用你指定的转写供应商**——重新转写之前总是退回默认供应商，在配置了其他供应商的环境里会直接失败，语言识别错了的转写也就没法重做（#150 贡献）。
+
+- **Agent edits are no longer lost, or reported as saved when they were not** — a run that ended with a follow-up question now keeps the edits it made before asking; a mutating tool fails once the editor cannot save, so the Agent stops instead of building on work that will not persist; and run drafts over 1 MiB no longer fail with HTTP 413.  
+  **Agent 的编辑不再丢失，也不会在没保存时报成功**——以追问结束的运行会保留提问前做的编辑；编辑器无法保存时，修改类工具会直接失败，Agent 随即停下，不再在存不下来的状态上继续；超过 1 MiB 的运行草稿不再以 HTTP 413 失败。
+
+- **A server-side agent run no longer ends with "I couldn't complete the requested operation" under the model's own reply** — when a tool failed and the model then answered, the run was still marked failed and an English template was appended beneath a Chinese answer. The reply is the outcome; the failed call stays visible on its tool card, matching the in-browser runtime. This also lets the documented fallbacks (probe fails → finalize with ingest defaults) complete.  
+  **服务端 Agent 运行不再在模型回复下方追加「I couldn't complete the requested operation」**——工具失败后模型已经作答，整轮却仍被判为失败，并在中文回复下面贴一段英文模板。现在以模型的回复为准，失败的调用仍在其工具卡片上可见，与浏览器端运行时一致；也让文档约定的降级路径（探测失败 → 用导入默认值 finalize）能正常完成。
+
+- **`probe_media` now runs the ffprobe bundled with the app instead of the e2b cloud sandbox** — on a machine without an E2B key the tool used to fail with "e2b sandbox is not configured" even though import, previews and export QA were already probing locally. Uploads and bundled assets are read in place; a public URL is fetched through the SSRF-safe transport into a temp file first.  
+  **`probe_media` 改用应用自带的 ffprobe，不再依赖 e2b 云沙箱**——没有配置 E2B key 的机器上，这个工具之前会报「e2b sandbox is not configured」，而导入、预览、导出质检其实早就在本地跑 ffprobe 了。上传文件和内置素材直接就地读取；公开 URL 先经过防 SSRF 的抓取落到临时文件再探测。
+
+- **Codex one-click MCP connect works on Windows (#161)** — the token went into `~/.zshrc`, which nothing on Windows reads, so Codex started without it and showed no OpenChatCut tools while the guide reported success. On Windows it is now saved as a user environment variable.  
+  **Codex 一键接入 MCP 在 Windows 上可用（#161）**——令牌之前写进 `~/.zshrc`，而 Windows 上没有程序读取这个文件，于是 Codex 启动时拿不到令牌、看不到 OpenChatCut 的工具，指引却显示成功。现在在 Windows 上会保存为用户环境变量。
+
+- **Projects keep saving to disk in long sessions** — the browser store opened a new IndexedDB connection for every read and write and never closed it, until the browser refused new ones and saving quietly fell back to memory (contributed in #137). Conflicting offline edits are now recovered into a separate, verified copy, and the original project stays as it was.  
+  **长时间使用也能持续保存到磁盘**——浏览器存储每次读写都新开一个 IndexedDB 连接且从不关闭，直到浏览器拒绝新的连接，保存就悄悄退化成只存在内存里（#137 贡献）。离线编辑发生冲突时，现在会恢复成一份经过校验的独立副本，原工程保持不变。
+
+- **Overwrite placement onto a new track no longer leaves the clip on a missing track** — the track created for the clip was dropped when the overwrite was applied, so the clip pointed at a track that did not exist (contributed in #137).  
+  **覆盖放置到新轨道时，片段不再落在不存在的轨道上**——应用覆盖时会丢掉刚为片段创建的轨道，片段因此指向一条不存在的轨道（#137 贡献）。
+
+- **The app says what is wrong instead of showing nothing** — a Windows install that lost files (antivirus quarantine is the usual cause) now names every missing file in a startup dialog instead of exiting without a window (#140), and opening the editor over plain HTTP from another machine explains that it needs localhost or HTTPS instead of showing a blank page (#183).  
+  **出问题时应用会说明原因，不再什么都不显示**——丢了文件的 Windows 安装（通常是被杀毒软件隔离）现在会在启动对话框里列出所有缺失的文件，不再一声不响地退出（#140）；从其他机器用普通 HTTP 打开编辑器时，会说明需要 localhost 或 HTTPS，不再是一片空白（#183）。
+
+- **`npm ci` finishes on Linux again (#182)** — the install script of onnxruntime-node 1.22.0 failed on linux-x64; it is pinned to the upstream fix, 1.22.0-rev, whose native binaries are identical.  
+  **Linux 上的 `npm ci` 又能正常跑完了（#182）**——onnxruntime-node 1.22.0 的安装脚本在 linux-x64 上会报错；现在固定为上游修复后的 1.22.0-rev，原生二进制完全相同。
+
+- **Bundled product files now resolve inside the packaged app** — probe, sandbox and export looked for `/voice-samples/...`-style paths under the working directory, which is the user-data folder once packaged; the embedded server registers `resources/dist` as a product-asset root, so those paths resolve exactly as in the dev server.  
+  **打包版现在能找到内置资源文件**——探测、沙箱和导出之前按启动目录去找 `/voice-samples/...` 这类路径，而打包后启动目录是用户数据目录；内嵌服务现在把 `resources/dist` 注册为内置资源根目录，解析结果与开发服务一致。
+
+- **The first-run example project is named in your language** — English, Italian and Russian interfaces no longer create a project called "示例工程" (contributed in #176).  
+  **首次启动的示例工程按界面语言命名**——英文、意大利文和俄文界面不再新建名为「示例工程」的工程（#176 贡献）。
+
+## [0.2.14] - 2026-09-04
+
+### Added / 新增
+
+- **OrcaRouter is now a named LLM provider preset** — configure its Base URL and API key under Settings → Agent model like any other provider and select it as the chat model (contributed in #130).
+  **OrcaRouter 现在是具名 LLM 厂商预设**——在 设置 → Agent 模型 里像其他厂商一样配置 Base URL 与 API Key，并可作为聊天模型选择（#130 贡献）。
+
+### Fixed / 修复
 
 - **Context-window overflows now recover silently instead of failing the turn (#131)** — the server retries an overflowing turn by compacting the history, then shrinks the output reservation, before surfacing anything. The output reservation is request-aware from the start: a huge-output model (e.g. a 500k-output Grok) no longer starves the input budget on short requests, and stale large tool results are mechanically replaced with one-line stubs only when the conversation is actually under pressure — healthy sessions keep their full history. Oversized tool-call inputs in the recent tail are rescued by replacing their input instead of dead-ending in a retry loop, and when every stage still fails, the overflow guidance now follows the UI language instead of always rendering Chinese.
   **上下文窗口溢出现在静默自愈，不再直接失败本轮（#131）**——服务端先压缩历史重试，再缩小输出预留，都不行才向用户报错。输出预留从一开始就按请求量计算：超大输出模型（如 500k 输出的 Grok）不会再在短请求上挤占输入预算；陈旧的大型工具结果只在会话真正吃紧时才机械替换为一行 stub——健康会话的历史保持原样。近期窗口里超大的工具调用参数会替换其 input 而不是陷入重试死循环；全部手段用尽后的溢出引导也跟随界面语言，不再永远显示中文。
