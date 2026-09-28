@@ -10,6 +10,7 @@ import type { CaptionsData } from '../captions/types';
 import { isSequenceGraphError } from '../editor/sequenceGraph';
 import { timelinePlacements } from '../editor/sequenceFlatten';
 import type { ProjectDoc, Timeline, TimelineItem } from '../editor/types';
+import { jianyingDraftTarget, jianyingStoreHint } from './jianyingDraftPreference';
 import { jianyingDraftPayload, type JianyingDraftClip } from './jianyingDraftRequest';
 
 const clip = (
@@ -205,6 +206,18 @@ const sourceWindows = (clips: JianyingDraftClip[]) => clips.map((item) => [item.
   assert.deepEqual(body, { draftName: 'Rough cut', draftsDir: '~/Drafts', ...jianyingDraftPayload(doc) });
   assert.deepEqual(body.items.map((item) => [item.name, item.srcInFrame, item.playbackRate]), [['shot', 450, 1.5]],
     'the tool exports the ACTIVE timeline with its source window');
+}
+
+// ── the dialog names a store; the server resolves it on its own platform ──────
+{
+  // #160: the JianYing option sent the macOS store path, so a Windows export
+  // wrote under $HOME/Movies instead of %LOCALAPPDATA%.
+  assert.deepEqual(jianyingDraftTarget('capcut', '~/elsewhere'), { store: 'capcut', draftsDir: '' });
+  assert.deepEqual(jianyingDraftTarget('jianying', ''), { store: 'jianying', draftsDir: '' });
+  assert.deepEqual(jianyingDraftTarget('custom', '  D:\\CapCut Drafts  '), { draftsDir: 'D:\\CapCut Drafts' });
+  assert.deepEqual(jianyingDraftTarget('custom', ''), { draftsDir: '' }, 'an empty custom path falls back to CapCut\'s store');
+  assert.equal(jianyingStoreHint(true), '%LOCALAPPDATA%\\JianyingPro\\User Data\\Projects\\com.lveditor.draft');
+  assert.equal(jianyingStoreHint(false), '~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft');
 }
 
 console.log('jianyingDraftRequest.verify: ok');
