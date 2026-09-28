@@ -12,7 +12,7 @@
 //   * unknown flags and unknown projects fail loudly instead of silently no-oping.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -435,6 +435,34 @@ try {
   const badTimeline = occ(['render', created.id, '--out', join(HOME, 'x.mp4'), '--timeline', 'nope', '--dry-run']);
   assert.equal(badTimeline.status, 1);
   assert.match(badTimeline.stderr, /no timeline nope/);
+
+  // The render command must serve media from the selected library, just as the
+  // export planner does. A disposable prebuilt directory exercises the real
+  // media link/copy without needing webpack or Chrome in CI.
+  const { uploadDir } = await import('../server/media-dir.ts');
+  const { parseCommandLine } = await import('./args.ts');
+  const { runRenderCommand } = await import('./commands/render.ts');
+  // @ts-expect-error — the plain .mjs serve pipeline has no .d.ts
+  const { getServeUrl } = await import('../remotion/serve-bundle.mjs');
+  const mediaMarker = 'cli-render-library-marker.txt';
+  mkdirSync(uploadDir(), { recursive: true });
+  writeFileSync(join(uploadDir(), mediaMarker), 'selected library');
+  const previousBundle = process.env.CC_REMOTION_BUNDLE;
+  process.env.CC_REMOTION_BUNDLE = join(HOME, 'render-bundle');
+  mkdirSync(join(process.env.CC_REMOTION_BUNDLE, 'media'), { recursive: true });
+  try {
+    await runRenderCommand(parseCommandLine([
+      created.id, '--out', join(HOME, 'media-root.mp4'), '--dry-run',
+    ]), true);
+    assert.equal(
+      readFileSync(join(await getServeUrl(), 'media', 'uploads', mediaMarker), 'utf8'),
+      'selected library',
+      'the renderer must read the same library as the CLI export planner',
+    );
+  } finally {
+    if (previousBundle === undefined) delete process.env.CC_REMOTION_BUNDLE;
+    else process.env.CC_REMOTION_BUNDLE = previousBundle;
+  }
 
   // 19. browse_local_media lists the directories the importer reads
   const browsed = occJson<CallJson>([
