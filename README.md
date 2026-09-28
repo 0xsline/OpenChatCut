@@ -258,6 +258,8 @@ These are early builds. The macOS packages are not yet signed or notarized, so t
 
 Requires Node.js 24.x and npm. The supported Node.js range is enforced by `package.json`, and `.nvmrc` selects the matching major version for Node version managers.
 
+On Linux x64, `npm install` also downloads ONNX Runtime's optional CUDA provider (several hundred MB from NuGet). For a CPU-only install, run `ONNXRUNTIME_NODE_INSTALL=skip npm install` instead.
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut

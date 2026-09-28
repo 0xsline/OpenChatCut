@@ -258,6 +258,8 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 需要 Node.js 24.x 和 npm。`package.json` 会约束支持的 Node.js 范围，`.nvmrc` 可供 Node 版本管理器直接选择对应主版本。
 
+在 Linux x64 上，`npm install` 还会从 NuGet 下载 ONNX Runtime 可选的 CUDA 组件（数百 MB）。只需 CPU 推理时，可改用 `ONNXRUNTIME_NODE_INSTALL=skip npm install`。
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut

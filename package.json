@@ -131,7 +131,7 @@
     "https-proxy-agent": "^9.1.0",
     "jieba-wasm": "^2.4.0",
     "mammoth": "^1.12.1",
-    "onnxruntime-node": "1.22.0",
+    "onnxruntime-node": "1.22.0-rev",
     "onnxruntime-web": "1.29.0",
     "pdfjs-dist": "^6.2.108",
     "qrcode": "^1.5.4",
