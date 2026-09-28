@@ -13,7 +13,8 @@ export default function App() {
   const t = useT();
   const route = useAppRoute();
   useAgentBackendSync();
-  useInferenceWarmup(route.name === 'editor');
+  // No warmup where the editor can't open (insecure context, see editorAccess).
+  useInferenceWarmup(route.name === 'editor' && window.isSecureContext);
   useUiScaleShortcuts();
   const { projects, refresh } = useProjects();
 

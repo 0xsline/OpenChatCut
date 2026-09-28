@@ -48,6 +48,7 @@ export function buildImportedTimeline(
   name: string,
   report: ImportReport,
 ): BuiltTimeline {
+  // A new sequence runs at the project rate, which the parsers counted the clips in.
   const timelineId = draft.commands.createTimeline({
     name,
     width: timeline.width,
@@ -77,7 +78,6 @@ export function buildImportedTimeline(
     timelines: current.timelines.map((item) => (item.id === timelineId
       ? {
         ...item,
-        fps: timeline.fps,
         items: item.items.map((clip) => (patches.has(clip.id) ? { ...clip, ...patches.get(clip.id) } : clip)),
       }
       : item)),

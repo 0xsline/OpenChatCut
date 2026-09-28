@@ -17,12 +17,18 @@ import {
 } from './useExportDialogModel';
 import type { ExportQaUiState, ExportTab } from './useExportWorkflow';
 import { fcpxmlBackgroundFillCount } from './fcpxml';
-import { loadJianYingDraftPreference, saveJianYingDraftPreference, type JianYingDraftStore } from './jianyingDraftPreference';
+import {
+  jianyingDraftTarget,
+  jianyingStoreHint,
+  loadJianYingDraftPreference,
+  saveJianYingDraftPreference,
+  type JianYingDraftStore,
+} from './jianyingDraftPreference';
 import { useState } from 'react';
 
-/** macOS default store for the Chinese JianYing (剪映专业版) app; drafts in 6.0+
- * are encrypted and capcut-cli cannot decrypt them, hence the ≤5.9 note. */
-const JIANYING_STORE = '~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft';
+/** The local server this page exports through runs on the same machine, so the
+ * browser's OS is the one whose draft store the export writes to. */
+const windowsHost = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
 
 const resolutionLabel = (value: string): string => value === '4k' ? '4K' : value;
 const clampBitrate = (value: number): number => Math.max(
@@ -229,7 +235,6 @@ function JianyingTab({ project, base }: { project: ProjectDoc; base: string }) {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<JianyingExportOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const draftsDir = store === 'jianying' ? JIANYING_STORE : store === 'custom' ? customDir.trim() : '';
   const updateStore = (next: JianYingDraftStore) => {
     setStore(next);
     saveJianYingDraftPreference({ store: next, customDir, draftName: draftName === base ? '' : draftName });
@@ -240,7 +245,7 @@ function JianyingTab({ project, base }: { project: ProjectDoc; base: string }) {
     setError(null);
     setOutcome(null);
     try {
-      const body = { draftName: draftName.trim(), ...jianyingDraftPayload(project), draftsDir };
+      const body = { draftName: draftName.trim(), ...jianyingDraftPayload(project), ...jianyingDraftTarget(store, customDir) };
       const response = await fetch('/api/external-agent/jianying-export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -278,7 +283,7 @@ function JianyingTab({ project, base }: { project: ProjectDoc; base: string }) {
           onChange={updateStore}
         />
       </Row>
-      {store === 'jianying' && <p className="cc-export-footnote">{JIANYING_STORE}</p>}
+      {store === 'jianying' && <p className="cc-export-footnote">{jianyingStoreHint(windowsHost)}</p>}
       {store === 'custom' && (
         <Row label={t('草稿库路径')}>
           <input className="cc-export-select" placeholder="~/Movies/.../com.lveditor.draft"

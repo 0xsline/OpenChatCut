@@ -159,12 +159,13 @@ const mediaRep = (file: string) => `<media-rep kind="original-media" src="file:/
         </audition>
       </spine>
     </sequence>`, '1.11');
+  // In a 29.97 project, so the clips keep the sequence's own frames.
   const { result, items, order, timeline } = await importFcpxml(xml, [
     { id: 'interview', name: 'Interview.mov', kind: 'video', seconds: 120 },
     { id: 'broll', name: 'Broll.mov', kind: 'video', seconds: 60 },
     { id: 'cam', name: 'A001C007.mov', kind: 'video', seconds: 120 },
     { id: 'rec', name: 'ZOOM0001.WAV', kind: 'audio', seconds: 180 },
-  ]);
+  ], 30000 / 1001);
   assert.equal(timeline.fps, 30000 / 1001);
   assert.equal(result.startTimecode, '01:00:00:00');
   assert.deepEqual(order, ['Imported V3', 'Imported V2', 'Imported V1', 'Imported A1']);
@@ -208,7 +209,7 @@ const mediaRep = (file: string) => `<media-rep kind="original-media" src="file:/
         </asset-clip>
       </spine>
     </sequence>`, '1.11');
-  const { items, timeline } = await importFcpxml(xml, [{ id: 'test', name: 'TestVideo.mov', kind: 'video', seconds: 29.52 }]);
+  const { items, timeline } = await importFcpxml(xml, [{ id: 'test', name: 'TestVideo.mov', kind: 'video', seconds: 29.52 }], 24);
   assert.equal(timeline.fps, 24);
   // 2.25 s at 24/25 speed plays media 27.36-29.52 s: exactly to the end of the file.
   assert.deepEqual(items, [{ asset: 'test', track: 'Imported V1', start: 240, duration: 54, srcIn: 657, rate: 0.96 }]);

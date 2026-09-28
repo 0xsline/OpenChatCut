@@ -12,32 +12,21 @@ import type { t as translate } from '../i18n/locale';
 import { duplicateAssetName } from './assetMenuSelection';
 import { classifyExternalFile, parseDroppedCaptions } from './externalFileDrop';
 import { createImportContentIdentityHooks } from './importContentIdentity';
-import { findMediaNameConflict, MediaImportCancelledError } from './mediaImportConflict';
 import { mediaAssetRelinkPatch, uploadedMediaRelinkPatch } from './mediaAssetRelink';
 import { importUploadedMedia } from './mobileImport';
+import { importAssetToPool, type ImportLifecycle, type StartAssetTranscription } from './poolImportRun';
 import { readProjectAssetDocuments } from './projectFile';
 import type { MobileUploadRecord } from './mobileUploadApi';
-import { createImportTranscriptionGate, createMediaAssetsChatSeed, importMedia, readyMediaAssetsForPaste, type ImportMediaHooks, type ImportTranscriptionStart } from './upload';
+import { createMediaAssetsChatSeed, importMedia, readyMediaAssetsForPaste, type ImportMediaHooks } from './upload';
 import { enqueueTranscription, getTranscribeJob, shouldTranscribe, untranscribedTimelineItemIdsForRevision, type TranscribeJob } from '../transcript/transcribe-jobs';
 import { shouldAutoTranscribeIngest } from '../transcript/provider';
 import { showAppToast } from '../ui/appToast';
 
 type Translate = typeof translate;
-type StartAssetTranscription = (
-  asset: ImportTranscriptionStart['asset'],
-  asrPath?: string | null | Promise<string | null>,
-  markRunning?: boolean,
-  replaceExisting?: boolean,
-) => void;
 type ChatSeed = { text: string; nonce: number; references?: AgentReference[] } | null;
-type ImportLifecycle = {
-  onPlaceholder?: (asset: MediaAsset) => void;
-  onAssetUpdated?: (asset: MediaAsset) => void;
-  onFailure?: (asset: MediaAsset | null, error: unknown) => void;
-};
 type ImportToPool = (file: File, onProgress?: (ratio: number) => void, lifecycle?: ImportLifecycle) => Promise<MediaAsset>;
 interface PoolImports {
-  ingestToPool: (asset: MediaAsset) => void;
+  ingestToPool: (asset: MediaAsset, durationFps?: number) => void;
   importMobileUpload: (record: MobileUploadRecord) => Promise<void>;
   importToPool: ImportToPool;
 }
@@ -52,22 +41,6 @@ interface EditorMediaIngestOptions {
   setChatCollapsed: (collapsed: boolean) => void;
   setChatSeed: (seed: ChatSeed) => void;
   t: Translate;
-}
-
-interface ImportTranscriptionGate {
-  uploaded: (info: Parameters<NonNullable<ImportMediaHooks['onUploaded']>>[0]) => ImportTranscriptionStart | null;
-  ready: (asset: MediaAsset) => ImportTranscriptionStart | null;
-}
-interface PoolImportRun {
-  commands: EditorCommands;
-  stateRef: { current: TimelineState };
-  startAssetTranscription: StartAssetTranscription;
-  targetId?: string;
-  placeholderId: string | null;
-  placeholder: MediaAsset | null;
-  canonicalizedAsset: MediaAsset | null;
-  transcriptionGate: ImportTranscriptionGate;
-  lifecycle?: ImportLifecycle;
 }
 
 interface PlacedItem {
@@ -114,67 +87,6 @@ function finishTranscription(job: TranscribeJob, projectId: string, commands: Ed
       transcribeStatus: 'failed',
       transcribeError: job.error,
     });
-  }
-}
-
-function poolImportHooks(run: PoolImportRun, onProgress?: (ratio: number) => void): ImportMediaHooks {
-  return {
-    onProgress,
-    ...createImportContentIdentityHooks({
-      getAssets: () => run.stateRef.current.assets ?? [],
-      onCanonical: (canonical, duplicateId) => {
-        run.canonicalizedAsset = canonical;
-        run.commands.canonicalizeMediaAsset(run.targetId ?? duplicateId, canonical.id);
-      },
-    }),
-    onPlaceholder: (asset) => {
-      if (run.targetId) return;
-      run.placeholderId = asset.id;
-      run.placeholder = asset;
-      run.commands.addAsset(asset);
-      run.lifecycle?.onPlaceholder?.(asset);
-    },
-    onUploaded: (info) => {
-      if (!run.targetId) run.commands.relinkMediaAsset(info.id, uploadedMediaRelinkPatch(info));
-      const start = run.transcriptionGate.uploaded(info);
-      if (start && shouldAutoTranscribeIngest()) run.startAssetTranscription(start.asset, start.asrPath);
-    },
-    onReady: (asset) => {
-      const ready = run.targetId ? { ...asset, id: run.targetId } : asset;
-      run.commands.relinkMediaAsset(ready.id, mediaAssetRelinkPatch(ready));
-      const start = run.transcriptionGate.ready(ready);
-      if (start && shouldAutoTranscribeIngest()) run.startAssetTranscription(start.asset, start.asrPath);
-      if (ready.kind !== 'audio') refreshVisualAnalysis(ready);
-    },
-  };
-}
-
-async function importAssetToPool(file: File, onProgress: ((ratio: number) => void) | undefined, lifecycle: ImportLifecycle | undefined, context: Pick<EditorMediaIngestOptions, 'commands' | 'stateRef' | 't'>, startAssetTranscription: StartAssetTranscription): Promise<MediaAsset> {
-  const existing = findMediaNameConflict(context.stateRef.current.assets ?? [], file.name);
-  if (existing && !window.confirm(context.t(
-    '素材「{name}」已存在。覆盖会同步替换已在时间线中使用的该素材。',
-    { name: existing.name },
-  ))) throw new MediaImportCancelledError();
-  const run: PoolImportRun = {
-    commands: context.commands,
-    stateRef: context.stateRef,
-    startAssetTranscription,
-    targetId: existing?.id,
-    placeholderId: null,
-    placeholder: null,
-    canonicalizedAsset: null,
-    transcriptionGate: createImportTranscriptionGate(existing?.id),
-    lifecycle,
-  };
-  try {
-    const imported = await importMedia(file, context.stateRef.current.fps, poolImportHooks(run, onProgress));
-    const ready = run.canonicalizedAsset ?? (run.targetId ? { ...imported, id: run.targetId } : imported);
-    lifecycle?.onAssetUpdated?.(ready);
-    return ready;
-  } catch (error) {
-    if (run.placeholderId) context.commands.removeMediaAsset(run.placeholderId);
-    lifecycle?.onFailure?.(run.placeholder, error);
-    throw error;
   }
 }
 
@@ -251,17 +163,17 @@ function timelineImportHooks(batch: DropBatch, context: DropContext, placeholder
         updatePlacedAsset(batch, canonical, context);
       },
     }),
-    onPlaceholder: (asset) => {
+    onPlaceholder: (asset, durationFps) => {
       placeholder.id = asset.id;
-      context.commands.addAsset(asset);
+      context.commands.addAsset(asset, durationFps);
       resolve(asset);
     },
     onUploaded: (info) => {
       context.commands.relinkMediaAsset(info.id, uploadedMediaRelinkPatch(info));
       context.startAssetTranscription(info, info.asrPath);
     },
-    onReady: (asset) => {
-      context.commands.relinkMediaAsset(asset.id, mediaAssetRelinkPatch(asset));
+    onReady: (asset, durationFps) => {
+      context.commands.relinkMediaAsset(asset.id, mediaAssetRelinkPatch(asset, durationFps));
       if (asset.kind !== 'audio') refreshVisualAnalysis(asset);
       updatePlacedAsset(batch, asset, context);
     },
@@ -393,14 +305,15 @@ function useAssetTranscription(options: EditorMediaIngestOptions): StartAssetTra
 
 function usePoolImports(options: EditorMediaIngestOptions, start: StartAssetTranscription): PoolImports {
   const { commands, stateRef, t } = options;
-  const ingestToPool = useCallback((asset: MediaAsset) => {
+  const ingestToPool = useCallback((asset: MediaAsset, durationFps?: number) => {
     const autoTranscribe = shouldTranscribe(asset.kind) && shouldAutoTranscribeIngest();
-    commands.addAsset(autoTranscribe ? { ...asset, transcribeStatus: 'running' } : asset);
+    commands.addAsset(autoTranscribe ? { ...asset, transcribeStatus: 'running' } : asset, durationFps);
     if (autoTranscribe) start(asset);
     if (asset.kind !== 'audio') enqueueVisualAnalysis(asset);
   }, [commands, start]);
   const importMobileUpload = useCallback(async (record: MobileUploadRecord) => {
-    ingestToPool(await importUploadedMedia(record, stateRef.current.fps));
+    const fps = stateRef.current.fps;
+    ingestToPool(await importUploadedMedia(record, fps), fps);
   }, [ingestToPool, stateRef]);
   const importToPool = useCallback((
     file: File,
