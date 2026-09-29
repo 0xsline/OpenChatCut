@@ -1,9 +1,7 @@
 import { compactToolResultForModel } from '../../src/agent/tool-result-compaction';
 import { isFailedToolResult, toolFailureReason } from '../../src/agent/toolFailure';
 import {
-  MAX_SERVER_TOOL_REQUESTS,
   SERVER_TOOL_RESULT_TIMEOUT_MS,
-  RunStoreLimitError,
   type ServerRun,
   type ServerToolRequest,
   type ToolClaimOutcome,
@@ -43,6 +41,21 @@ type ReadyToolSettlement = {
 
 type RejectedToolSettlement = Exclude<ToolResultOutcome, 'accepted'>;
 
+const released = (): void => {};
+
+/**
+ * A run makes as many tool calls as its turn needs, and every settled or
+ * cancelled request stays in run.toolRequests so a late claim or a re-sent
+ * result still reads as 'run-settled' or 'duplicate'. Drop the promise
+ * callbacks once it settles: they keep the delivered result reachable.
+ */
+function releaseToolRequest(request: ServerToolRequest): void {
+  clearTimeout(request.timeout);
+  request.timeout = undefined;
+  request.resolve = released;
+  request.reject = released;
+}
+
 export async function rejectPendingTools(
   run: ServerRun,
   message: string,
@@ -52,17 +65,21 @@ export async function rejectPendingTools(
   for (const request of run.toolRequests.values()) {
     if (request.status !== 'pending') continue;
     request.status = 'cancelled';
-    if (request.timeout) {
-      clearTimeout(request.timeout);
-      request.timeout = undefined;
-    }
-    request.reject(new Error(message));
+    const { reject } = request;
+    releaseToolRequest(request);
+    reject(new Error(message));
     pending.push(request);
   }
   if (persist) await Promise.all(pending.map(persist));
 }
 
-export function waitForToolResult(
+/**
+ * Registers a browser tool request and returns its eventual result. It throws
+ * instead of registering, so the caller announces a request only once the
+ * browser can claim it; an announced request that was never registered makes
+ * the claim 404 and the browser abandon the whole run (#186).
+ */
+export function registerToolRequest(
   dependencies: StoreToolDependencies,
   run: ServerRun,
   toolCallId: string,
@@ -70,17 +87,12 @@ export function waitForToolResult(
   argsDigest: string,
   timeoutMs = SERVER_TOOL_RESULT_TIMEOUT_MS,
 ): Promise<unknown> {
-  if (dependencies.isRunTerminal(run)) {
-    return Promise.reject(new Error('Agent run is already settled.'));
+  // Once settlement starts, pending requests have been cancelled and new
+  // events are dropped, so a request registered now would never be served.
+  if (dependencies.isRunTerminal(run) || run.terminalPromise) {
+    throw new Error('Agent run is already settled.');
   }
-  if (run.toolRequests.has(toolCallId)) {
-    return Promise.reject(new Error(`Duplicate toolCallId: ${toolCallId}`));
-  }
-  if (run.toolRequests.size >= MAX_SERVER_TOOL_REQUESTS) {
-    return Promise.reject(new RunStoreLimitError(
-      `Agent tool request limit reached (${MAX_SERVER_TOOL_REQUESTS}).`,
-    ));
-  }
+  if (run.toolRequests.has(toolCallId)) throw new Error(`Duplicate toolCallId: ${toolCallId}`);
   const { promise, resolve, reject } = Promise.withResolvers<unknown>();
   const request: ServerToolRequest = {
     toolCallId,
@@ -93,13 +105,28 @@ export function waitForToolResult(
   request.timeout = setTimeout(() => {
     if (request.status !== 'pending') return;
     request.status = 'cancelled';
-    request.timeout = undefined;
+    releaseToolRequest(request);
     void dependencies.mirrorTool(run, request, 'cancelled');
     reject(new Error(`Agent tool request timed out: ${toolName}.`));
   }, timeoutMs);
   run.toolRequests.set(toolCallId, request);
   void dependencies.mirrorTool(run, request, 'pending');
   return promise;
+}
+
+export function waitForToolResult(
+  dependencies: StoreToolDependencies,
+  run: ServerRun,
+  toolCallId: string,
+  toolName: string,
+  argsDigest: string,
+  timeoutMs = SERVER_TOOL_RESULT_TIMEOUT_MS,
+): Promise<unknown> {
+  try {
+    return registerToolRequest(dependencies, run, toolCallId, toolName, argsDigest, timeoutMs);
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 export function claimToolRequest(
@@ -175,6 +202,7 @@ function deliverToolSettlement(
   }
   if (input.error === undefined) request.resolve(input.result);
   else request.reject(new Error(input.error));
+  releaseToolRequest(request);
 }
 
 export function settleToolResult(

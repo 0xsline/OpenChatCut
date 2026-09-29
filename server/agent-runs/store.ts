@@ -30,6 +30,7 @@ import {
 } from './store-recovery';
 import {
   claimToolRequest as claimToolRequestInternal,
+  registerToolRequest as registerToolRequestInternal,
   rejectPendingTools,
   settleToolResult as settleToolResultInternal,
   waitForToolResult as waitForToolResultInternal,
@@ -40,7 +41,6 @@ import {
   MAX_SERVER_EVENT_BYTES,
   MAX_SERVER_RUN_BYTES,
   MAX_SERVER_RUN_EVENTS,
-  MAX_SERVER_TOOL_REQUESTS,
   RunStoreLimitError,
   type ServerRun,
   type ServerRunEvent,
@@ -64,7 +64,6 @@ export {
   MAX_SERVER_EVENT_BYTES,
   MAX_SERVER_RUN_BYTES,
   MAX_SERVER_RUN_EVENTS,
-  MAX_SERVER_TOOL_REQUESTS,
   RunStoreLimitError,
   createServerRunCapability,
   digestToolArgs,
@@ -241,6 +240,22 @@ export function waitForRunEvents(
 
 export async function cancelRun(run: ServerRun): Promise<void> {
   await cancelRunInternal(STORE_EVENT_DEPENDENCIES, run);
+}
+export function registerToolRequest(
+  run: ServerRun,
+  toolCallId: string,
+  toolName: string,
+  argsDigest: string,
+  timeoutMs?: number,
+): Promise<unknown> {
+  return registerToolRequestInternal(
+    STORE_TOOL_DEPENDENCIES,
+    run,
+    toolCallId,
+    toolName,
+    argsDigest,
+    timeoutMs,
+  );
 }
 export function waitForToolResult(
   run: ServerRun,
