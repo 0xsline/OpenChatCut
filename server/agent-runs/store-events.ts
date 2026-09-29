@@ -13,6 +13,7 @@ import {
   MAX_SERVER_RUN_EVENTS_HARD,
   RunStoreLimitError,
   type ServerRun,
+  type ServerRunEvent,
   type ServerRunStatus,
   type ServerToolRequest,
 } from './store-types';
@@ -88,6 +89,51 @@ function dropRollableForSpace(
   updateReplayStart(run);
 }
 
+function eventToolCallId(event: ServerRunEvent): string | undefined {
+  const data = event.data;
+  if (data === null || typeof data !== 'object') return undefined;
+  const id = (data as { toolCallId?: unknown }).toolCallId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function overHardCeiling(run: ServerRun, incomingEvents: number, incomingBytes: number): boolean {
+  return run.events.length + incomingEvents > MAX_SERVER_RUN_EVENTS_HARD
+    || run.retainedEventBytes + incomingBytes > MAX_SERVER_RUN_BYTES * 4;
+}
+
+function finishedToolEvent(run: ServerRun, event: ServerRunEvent): boolean {
+  if (event.type === 'tool-result') return true;
+  if (event.type !== 'tool-request') return false;
+  const id = eventToolCallId(event);
+  return id === undefined || run.toolRequests.get(id)?.status !== 'pending';
+}
+
+function removeEventAt(run: ServerRun, index: number): ServerRunEvent | undefined {
+  const [removed] = run.events.splice(index, 1);
+  if (removed) run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed));
+  return removed;
+}
+
+/**
+ * Every tool call adds a request and a result that never roll off, so a long
+ * turn used to reach the hard ceiling and fail. Retire the oldest finished
+ * calls instead, a request together with its result; the persisted log and
+ * the run's draft artifacts still hold them. Requests the browser may still
+ * claim stay, and so does the first event, which anchors the replay window:
+ * a reconnect skips the retired calls instead of finding its cursor gone.
+ */
+function retireFinishedToolCalls(run: ServerRun, incomingEvents: number, incomingBytes: number): void {
+  while (overHardCeiling(run, incomingEvents, incomingBytes)) {
+    const index = run.events.findIndex((event, position) => position > 0 && finishedToolEvent(run, event));
+    if (index < 0) return;
+    const retired = removeEventAt(run, index);
+    const id = retired?.type === 'tool-request' ? eventToolCallId(retired) : undefined;
+    if (id === undefined) continue;
+    const result = run.events.findIndex((event) => event.type === 'tool-result' && eventToolCallId(event) === id);
+    if (result >= 0) removeEventAt(run, result);
+  }
+}
+
 function appendEvent(
   dependencies: StoreEventDependencies,
   run: ServerRun,
@@ -108,12 +154,7 @@ function appendEvent(
   ) {
     dropRollableForSpace(run, bytes);
   }
-  if (
-    run.events.length + 1 > MAX_SERVER_RUN_EVENTS_HARD
-    || run.retainedEventBytes + bytes > MAX_SERVER_RUN_BYTES * 4
-  ) {
-    throw new RunStoreLimitError('Agent run event limit/replay retention limit reached.');
-  }
+  retireFinishedToolCalls(run, 1, bytes);
   run.eventCursor = event.id;
   run.pendingEventCount += 1;
   run.pendingEventBytes += bytes;
@@ -131,11 +172,7 @@ function appendEvent(
         const [removed] = run.events.splice(index, 1);
         run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed!));
       }
-      if (run.events.length > MAX_SERVER_RUN_EVENTS_HARD
-        || run.retainedEventBytes > MAX_SERVER_RUN_BYTES * 4) {
-        run.error = 'Agent run event limit/replay retention limit reached.';
-        run.abort?.abort(new Error(run.error));
-      }
+      retireFinishedToolCalls(run, 0, 0);
       updateReplayStart(run);
       wakeSubscribers(run);
     } finally {

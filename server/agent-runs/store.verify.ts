@@ -239,7 +239,7 @@ assert.equal(
 );
 resetServerRunStoreForTest();
 
-// Diagnostic bursts roll off; only an all-critical window still hits the hard cap.
+// Diagnostic bursts roll off instead of failing the run.
 const capped = run('server-run-cap');
 for (let index = 0; index < MAX_SERVER_RUN_EVENTS; index += 1) pushRunEvent(capped, 'diagnostic', { index });
 pushRunEvent(capped, 'tool-request', {
@@ -249,24 +249,8 @@ pushRunEvent(capped, 'tool-request', {
   argsDigest: 'cap-digest',
 });
 assert.ok(capped.events.length <= MAX_SERVER_RUN_EVENTS, 'diagnostics rolled off instead of failing');
-// The hard ceiling only engages once the mirror queue drains (real LLM turns
-// arrive with inter-turn latency, so the committed-window check is accurate
-// there). Cover it directly: a synchronous burst of critical events beyond the
-// hard cap still fails the run.
-const critical = run('server-run-critical-cap');
-for (let index = 0; index < MAX_SERVER_RUN_EVENTS * 4 + 2; index += 1) {
-  pushRunEvent(critical, 'tool-request', {
-    toolCallId: `cap-${index}`,
-    name: 'read_timeline',
-    args: {},
-    argsDigest: `cap-${index}`,
-  });
-}
-await flushRunPersistence(critical);
+// Past the hard ceiling, finished tool calls retire: store-event-window.verify.ts.
 resetServerRunStoreForTest();
-const criticalRecovered = await recoverServerRun(critical.projectId, critical.id);
-assert.equal(criticalRecovered?.status, 'failed', 'beyond the hard ceiling the run fails');
-assert.equal(criticalRecovered?.events.at(-1)?.type, 'done', 'terminal done event replays after recovery');
 
 // A tool result is a one-shot settlement. Re-delivery after a reconnect is a
 // duplicate, not a second execution or a replacement of the accepted result.
