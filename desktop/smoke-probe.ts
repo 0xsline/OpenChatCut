@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron';
 import { externalMcpToken } from '../server/editor-auth.ts';
 import { runDesktopMcpRecoverySmoke } from './smoke-mcp-recovery.ts';
 import { runDesktopRendererRecoverySmoke } from './smoke-renderer-recovery.ts';
+import type { CopilotAuthState } from '../shared/copilot-auth.ts';
 
 const RENDER_DRAIN_MS = 500;
 // Under the app's 240s watchdog, over any plausible healthy render (previous
@@ -15,6 +16,16 @@ export async function runDesktopSmokeProbe(
 ): Promise<void> {
   const res = await fetch(`${origin}/api/keys`);
   if (!res.ok) throw new Error(`/api/keys → HTTP ${res.status}`);
+  const authResponse = await fetch(`${origin}/api/copilot/auth`);
+  if (!authResponse.ok) throw new Error(`/api/copilot/auth → HTTP ${authResponse.status}`);
+  const auth = await authResponse.json() as CopilotAuthState;
+  if (typeof auth.available !== 'boolean' || !['signed-out', 'pending', 'signed-in', 'error'].includes(auth.status)) {
+    throw new Error('desktop Copilot authentication state is unavailable');
+  }
+  if (process.env.CC_SMOKE_COPILOT_AUTH === '1' && !auth.available) {
+    throw new Error('desktop Copilot secure credential storage is unavailable');
+  }
+  console.log('[smoke] desktop Copilot authentication endpoint ok');
   const mcp = await fetch(`${origin}/api/external-mcp/mcp`, {
     method: 'POST',
     headers: {
