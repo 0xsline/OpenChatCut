@@ -176,6 +176,10 @@ export function mirrorTool(
       toolCallId: request.toolCallId,
       toolName: request.toolName,
       argsDigest: request.argsDigest,
+      // Each tool call is its own operation. Without an id, two identical
+      // calls in one step read as one approval pending twice, and the second
+      // mirror fails the run.
+      operationId: request.toolCallId,
       status,
       createdAt: run.createdAt,
       ...(status !== 'pending' ? { decidedAt: Date.now() } : {}),

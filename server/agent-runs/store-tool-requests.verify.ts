@@ -100,6 +100,27 @@ await first;
 await flushRunPersistence(duplicateRun);
 assert.equal(announced(duplicateRun, 'call-dup'), 1, 'the refused duplicate was not announced');
 
+// Two identical calls in one step are two operations. Their pending approval
+// mirrors used to collide as one duplicated approval and fail the run.
+const parallelRun = newRun('server-run-identical-parallel');
+await setRunStatus(parallelRun, 'running');
+const parallelActivation = newActivation();
+const left = executeBrowserTool(parallelRun, readProject, {}, 'call-left', parallelActivation);
+const right = executeBrowserTool(parallelRun, readProject, {}, 'call-right', parallelActivation);
+await untilRegistered(parallelRun, 'call-left');
+await untilRegistered(parallelRun, 'call-right');
+await flushRunPersistence(parallelRun);
+assert.equal(parallelRun.status, 'running', 'identical parallel calls keep the run running');
+for (const toolCallId of ['call-left', 'call-right']) {
+  assert.equal(claimToolRequest(parallelRun, { toolCallId, argsDigest, claimId: 'browser' }), 'claimed');
+  assert.equal(settleToolResult(parallelRun, {
+    toolCallId, argsDigest, claimId: 'browser', result: { toolCallId },
+  }), 'accepted');
+}
+assert.deepEqual(await Promise.all([left, right]).then((results) => results.map((result) => (
+  (result as { toolCallId?: unknown }).toolCallId))), ['call-left', 'call-right']);
+await flushRunPersistence(parallelRun);
+
 // Once a run starts settling, it takes no new requests: they could never be served.
 const settlingRun = newRun('server-run-settling');
 await setRunStatus(settlingRun, 'running');
@@ -116,4 +137,4 @@ await assert.rejects(
 );
 assert.equal(announced(settlingRun, 'call-after'), 0, 'a request refused after settlement is not announced');
 
-console.log(`store-tool-requests.verify: ${CALLS} calls in one run all settle; refused requests are never announced`);
+console.log(`store-tool-requests.verify: ${CALLS} calls in one run all settle; identical parallel calls both run; refused requests are never announced`);
