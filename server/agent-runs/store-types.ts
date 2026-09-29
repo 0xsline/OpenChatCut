@@ -3,8 +3,6 @@ import type { AgentRunContext } from '../../src/persist/agentRuntimeStore';
 
 export const MAX_ACTIVE_SERVER_RUNS = MAX_AGENT_RUNS;
 export const MAX_SERVER_RUN_EVENTS = MAX_EVENTS_PER_RUN;
-/** Hard ceiling: critical events may exceed the rolling window up to this multiple before finished tool calls retire. */
-export const MAX_SERVER_RUN_EVENTS_HARD = MAX_SERVER_RUN_EVENTS * 4;
 export const MAX_SERVER_EVENT_BYTES = 64 * 1024;
 export const MAX_SERVER_TOOL_REQUEST_EVENT_BYTES = 512 * 1024;
 export const MAX_SERVER_RUN_BYTES = 1024 * 1024;

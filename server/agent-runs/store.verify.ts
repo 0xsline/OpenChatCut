@@ -249,7 +249,7 @@ pushRunEvent(capped, 'tool-request', {
   argsDigest: 'cap-digest',
 });
 assert.ok(capped.events.length <= MAX_SERVER_RUN_EVENTS, 'diagnostics rolled off instead of failing');
-// Past the hard ceiling, finished tool calls retire: store-event-window.verify.ts.
+// A window full of tool calls sheds its oldest finished ones: store-event-window.verify.ts.
 resetServerRunStoreForTest();
 
 // A tool result is a one-shot settlement. Re-delivery after a reconnect is a
