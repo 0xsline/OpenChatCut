@@ -263,6 +263,23 @@ const requestyProbe: ProbeDef = {
   },
 };
 
+/** Cheaper Inference: /models also lists image and video models. Only rows with
+ * type "text" can serve chat, so the model list keeps those (and untyped rows). */
+function parseTextModelCatalog(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as { data?: Array<{ type?: unknown } | null> };
+    if (!Array.isArray(body.data)) return parseModelCatalog(bodyText);
+    const data = body.data.filter((row) => row != null && (row.type === undefined || row.type === 'text'));
+    return parseModelCatalog(JSON.stringify({ data }));
+  } catch {
+    return [];
+  }
+}
+const cheaperInferenceProbe: ProbeDef = {
+  ...llmProbe('cheaperinference'),
+  models: parseTextModelCatalog,
+};
+
 
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
@@ -271,6 +288,7 @@ export const PROBES: Record<string, ProbeDef> = {
     llmProbe(preset.id),
   ])),
   'llm/requesty': requestyProbe,
+  'llm/cheaperinference': cheaperInferenceProbe,
   'image/openai': {
     needs: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
     run: (get) => fetch(`${base(get, 'IMAGE_BASE_URL', 'https://api.openai.com')}/v1/models`, {
