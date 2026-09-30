@@ -46,6 +46,12 @@ async function readAll(projectId: string): Promise<ProjectVersion[]> {
   return (await readPartitioned(projectId)).valid;
 }
 
+/** Raw snapshots for conservative media-reference collection, including unreadable versions.
+ * Unlike the display list, this read does not swallow storage errors. */
+export function loadRawVersions(projectId: string): Promise<unknown> {
+  return idbGet<unknown>(versionsKey(projectId));
+}
+
 /** All snapshots of the project, latest first. An empty array is returned on any failure (persistent data is not trusted).*/
 export async function listVersions(projectId: string): Promise<ProjectVersion[]> {
   try {

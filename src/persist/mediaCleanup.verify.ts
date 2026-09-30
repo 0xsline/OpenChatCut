@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import { collectAllUploadRefs, orphanDocIdsToPurge, unreferencedOf } from './mediaCleanup';
 import { createProject, listProjectDocIds, purgeProject } from './projectStore';
+import { kvGet, kvSet } from './sharedKv';
+import { listVersions, saveVersion } from './versionStore';
 import type { ProjectDoc } from '../editor/types';
 
 // ── unreferencedOf:盘面 − 引用 ──────────────────────────────────────────
@@ -60,4 +62,28 @@ import type { ProjectDoc } from '../editor/types';
   console.log('collectAllUploadRefs/级联语义: OK');
 }
 
+// Snapshots that this build cannot display still own their uploaded media.
+{
+  const doc: ProjectDoc = {
+    version: 3, assets: [], mediaFolders: [],
+    timelines: [{ id: 'tl1', name: 'sequence', fps: 30, width: 1920, height: 1080, selectedId: null, items: [] } as never],
+    activeTimelineId: 'tl1',
+  } as never;
+  const project = await createProject('snapshot cleanup safety', doc);
+  const futureSrc = '/media/uploads/future-snapshot-only.mp4';
+  const snapshots = [{ id: 'future', name: 'newer build', createdAt: 1,
+    doc: { ...doc, version: 99, assets: [{ src: futureSrc }] } }];
+  await kvSet(`versions:${project.id}`, snapshots);
+  assert.deepEqual(await listVersions(project.id), [], 'future versions stay hidden from the display list');
+  const spacedSrc = '/media/uploads/readable snapshot only.mp4';
+  await saveVersion(project.id, 'readable snapshot', { ...doc, assets: [{ id: 'space', name: 'spaced', kind: 'video', src: spacedSrc, durationInFrames: 30 }] });
+  const storedBefore = await kvGet(`versions:${project.id}`);
+  const refs = await collectAllUploadRefs();
+  assert.ok(refs.has(spacedSrc), 'readable snapshots retain their complete media paths');
+  assert.ok(refs.has(futureSrc), 'cleanup protects media owned only by an unreadable snapshot');
+  assert.deepEqual(unreferencedOf([{ name: 'future-snapshot-only.mp4', bytes: 1, mtimeMs: 1 }], refs), []);
+  assert.deepEqual(await kvGet(`versions:${project.id}`), storedBefore, 'reference collection preserves snapshot bytes');
+  assert.ok(!(await collectAllUploadRefs(project.id)).has(futureSrc), 'excluded projects exclude their snapshots too');
+  await purgeProject(project.id);
+}
 console.log('\nmediaCleanup.check: ALL PASSED');
