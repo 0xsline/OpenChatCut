@@ -22,10 +22,10 @@ delete process.env.HTTPS_PROXY;
 delete process.env.http_proxy;
 delete process.env.https_proxy;
 
-const uploads = join(root, 'media', 'uploads');
-await mkdir(uploads, { recursive: true });
-await writeFile(join(uploads, 'final-cut.mp4'), Buffer.alloc(1024 * 1024, 7));
-await writeFile(join(uploads, 'notes.txt'), 'not a video');
+const mediaDir = join(root, 'media', 'uploads');
+await mkdir(mediaDir, { recursive: true });
+await writeFile(join(mediaDir, 'final-cut.mp4'), Buffer.alloc(1024 * 1024, 7));
+await writeFile(join(mediaDir, 'notes.txt'), 'not a video');
 
 interface Recorded {
   method: string;
@@ -37,9 +37,14 @@ const requests: Recorded[] = [];
 const accepted = new Set<string>();
 /** Accepted by the fake server but not yet visible on /status (Upload-Post registers async uploads with a delay). */
 const pendingVisibility = new Set<string>();
-let failNextUpload = false;
-/** Next /api/upload answer: an HTTP status, 'empty-2xx', or whether the server still accepted it. */
-let nextUpload: { status: number | 'empty-2xx'; acceptAnyway?: boolean; visible?: boolean } | null = null;
+/** Plan for the next /api/upload: an HTTP status, 'empty-2xx', 'drop' (cut the socket), plus latency and acceptance. */
+let nextUpload: {
+  status?: number | 'empty-2xx' | 'drop';
+  acceptAnyway?: boolean;
+  visible?: boolean;
+  delayMs?: number;
+} | null = null;
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const provider = createServer(async (req, res) => {
   const chunks: Buffer[] = [];
@@ -53,7 +58,7 @@ const provider = createServer(async (req, res) => {
     res.end(JSON.stringify({ message: 'Invalid API key' }));
     return;
   }
-  if (url.pathname === '/api/uploadposts/users/creator') {
+  if (url.pathname === '/api/uploadposts/users/creator' || url.pathname === '/api/uploadposts/users/brand-b') {
     res.end(JSON.stringify({ success: true, profile: { social_accounts: { tiktok: { handle: 'a' }, youtube: { handle: 'b' }, linkedin: '', reddit: { handle: 'c' } } } }));
     return;
   }
@@ -80,29 +85,27 @@ const provider = createServer(async (req, res) => {
   }
   if (url.pathname === '/api/upload' && req.method === 'POST') {
     const id = String(req.headers['idempotency-key'] ?? '');
-    if (nextUpload) {
-      const plan = nextUpload;
-      nextUpload = null;
-      if (plan.acceptAnyway || plan.status === 'empty-2xx') {
-        accepted.add(id);
-        if (plan.visible === false) pendingVisibility.add(id);
-      }
-      if (plan.status === 'empty-2xx') {
-        res.setHeader('Content-Type', 'text/plain');
-        res.end('');
-        return;
-      }
+    const plan = nextUpload ?? {};
+    nextUpload = null;
+    if (plan.delayMs) await wait(plan.delayMs);
+    if (plan.status === undefined || plan.acceptAnyway || plan.status === 'empty-2xx') {
+      accepted.add(id);
+      if (plan.visible === false) pendingVisibility.add(id);
+    }
+    if (plan.status === 'drop') {
+      req.socket.destroy();
+      return;
+    }
+    if (plan.status === 'empty-2xx') {
+      res.setHeader('Content-Type', 'text/plain');
+      res.end('');
+      return;
+    }
+    if (typeof plan.status === 'number') {
       res.statusCode = plan.status;
       res.end(JSON.stringify({ message: `fake ${plan.status}` }));
       return;
     }
-    if (failNextUpload) {
-      failNextUpload = false;
-      accepted.add(id); // the server got it, but the client never sees the answer
-      req.socket.destroy();
-      return;
-    }
-    accepted.add(id);
     res.end(JSON.stringify({ success: true, request_id: id }));
     return;
   }
@@ -117,15 +120,27 @@ try {
   assert(address && typeof address === 'object');
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const mod = await import('./upload-post.ts');
-  const { parsePublishRequest, publishToUploadPost, publishStatus, uploadPostConfig, UploadPostError } = mod;
+  const {
+    parsePublishRequest, publishToUploadPost, publishStatus, settleBackgroundUploads, trackPublish,
+    uploadPostConfig, UploadPostError,
+  } = mod;
   const ledgerPath = join(root, 'ledger', 'upload-post-publishes.json');
-  const publish = (cfg: Parameters<typeof publishToUploadPost>[0], req: Parameters<typeof publishToUploadPost>[1]) =>
-    publishToUploadPost(cfg, req, { ledgerPath });
-  const uploadCount = () => requests.filter((request) => request.path === '/api/upload').length;
-  const config = uploadPostConfig((name) => ({
-    UPLOAD_POST_API_KEY: 'test-key', UPLOAD_POST_PROFILE: 'creator', UPLOAD_POST_BASE_URL: `${baseUrl}/`,
+  const configFor = (profile: string) => uploadPostConfig((name) => ({
+    UPLOAD_POST_API_KEY: 'test-key', UPLOAD_POST_PROFILE: profile, UPLOAD_POST_BASE_URL: `${baseUrl}/`,
   } as Record<string, string>)[name] ?? '');
+  const config = configFor('creator');
   assert.equal(config.baseUrl, baseUrl, 'trailing slash trimmed');
+  type Cfg = Parameters<typeof publishToUploadPost>[0];
+  const publish = (cfg: Cfg, req: Parameters<typeof publishToUploadPost>[1]) => publishToUploadPost(cfg, req, { ledgerPath });
+  const track = (id: string, cfg: Cfg = config) => trackPublish(cfg, id, ledgerPath);
+  const uploadCount = () => requests.filter((request) => request.path === '/api/upload').length;
+  /** Preview, then confirm with the preview's requestId — the approved flow. */
+  async function previewAndConfirm(fields: Record<string, unknown>, cfg: Cfg = config) {
+    const preview = await publish(cfg, parsePublishRequest(fields));
+    assert(preview.phase === 'preview');
+    const confirmed = await publish(cfg, parsePublishRequest({ ...fields, confirm: true, previewId: preview.requestId }));
+    return { preview, confirmed, confirmAgain: () => publish(cfg, parsePublishRequest({ ...fields, confirm: true, previewId: preview.requestId })) };
+  }
 
   // ── request parsing ──
   const base = { source: '/media/uploads/final-cut.mp4', platforms: ['tiktok', 'shorts', 'linkedin'], title: 'Launch day' };
@@ -138,24 +153,14 @@ try {
   assert.throws(() => parsePublishRequest({ ...base, youtubePrivacy: 'secret' }), /youtubePrivacy/);
 
   // ── unconfigured → actionable 412, before touching the file or the network ──
-  const unconfigured = uploadPostConfig(() => '');
-  await assert.rejects(publish(unconfigured, parsed), (error: unknown) => (
+  await assert.rejects(publish(configFor(''), parsed), (error: unknown) => (
     error instanceof UploadPostError && error.status === 412 && error.code === 'upload_post_not_configured'
   ));
 
   // ── source validation ──
-  await assert.rejects(
-    publish(config, parsePublishRequest({ ...base, source: '/etc/passwd' })),
-    /\/media\/uploads\//,
-  );
-  await assert.rejects(
-    publish(config, parsePublishRequest({ ...base, source: '/media/uploads/notes.txt' })),
-    /video renders/,
-  );
-  await assert.rejects(
-    publish(config, parsePublishRequest({ ...base, source: '/media/uploads/..%2F..%2Fsecret.mp4' })),
-    /invalid source path/,
-  );
+  await assert.rejects(publish(config, parsePublishRequest({ ...base, source: '/etc/passwd' })), /\/media\/uploads\//);
+  await assert.rejects(publish(config, parsePublishRequest({ ...base, source: '/media/uploads/notes.txt' })), /video renders/);
+  await assert.rejects(publish(config, parsePublishRequest({ ...base, source: '/media/uploads/..%2F..%2Fsecret.mp4' })), /invalid source path/);
   await assert.rejects(
     publish(config, parsePublishRequest({ ...base, source: '/media/uploads/%E0%A4%A.mp4' })),
     (error: unknown) => error instanceof UploadPostError && error.status === 400,
@@ -165,24 +170,57 @@ try {
   // ── preview: no upload, reports what would be skipped ──
   requests.length = 0;
   const preview = await publish(config, parsed);
-  assert.equal(preview.phase, 'preview');
   assert(preview.phase === 'preview');
   assert.equal(preview.needsConfirm, true);
   assert.deepEqual(preview.missingPlatforms, ['linkedin'], 'empty account entries are not connected');
   assert.deepEqual([...preview.connectedPlatforms].sort(), ['tiktok', 'youtube'], 'non-video platforms are not offered');
   assert.deepEqual(preview.file, { name: 'final-cut.mp4', sizeBytes: 1024 * 1024 });
-  assert.equal(preview.youtubePrivacy, 'private');
-  assert(!requests.some((request) => request.path === '/api/upload'), 'preview never uploads');
+  assert.equal(preview.profile, 'creator');
+  assert.equal(uploadCount(), 0, 'preview never uploads');
   assert.match(preview.requestId, /^ocut-[0-9a-f]{32}$/);
 
-  // ── confirmed publish: file-backed multipart with the idempotency key ──
+  // ── [P1] the confirmation is bound to the approved preview ──
   requests.length = 0;
-  const confirmed = parsePublishRequest({ ...base, confirm: true, aiGenerated: true, tiktokPrivacy: 'SELF_ONLY' });
-  const submitted = await publish(config, confirmed);
-  assert.equal(submitted.phase, 'submitted');
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...base, confirm: true })),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'preview_required',
+    'confirm without the preview id is refused',
+  );
+  // Preview names profile "creator"; the user switches Settings to "brand-b" before confirming.
+  await assert.rejects(
+    publish(configFor('brand-b'), parsePublishRequest({ ...base, confirm: true, previewId: preview.requestId })),
+    (error: unknown) => error instanceof UploadPostError && error.status === 409 && error.code === 'preview_mismatch',
+    'a profile switch after the preview is refused',
+  );
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...base, title: 'Edited after preview', confirm: true, previewId: preview.requestId })),
+    /changed since the preview/,
+    'a field edited after the preview is refused',
+  );
+  await utimes(join(mediaDir, 'final-cut.mp4'), new Date(), new Date(Date.now() + 5_000)); // re-rendered file
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...base, confirm: true, previewId: preview.requestId })),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'preview_mismatch',
+    'a file replaced after the preview is refused',
+  );
+  assert.equal(uploadCount(), 0, 'no mismatched confirm reaches Upload-Post');
+
+  // ── [P4] a confirm is admitted at once; the upload runs in the background ──
+  requests.length = 0;
+  nextUpload = { delayMs: 1_500 }; // slow upload
+  const slowFields = { ...base, title: 'Slow upload', aiGenerated: true, tiktokPrivacy: 'SELF_ONLY' };
+  const started = Date.now();
+  const { confirmed: admitted, preview: slowPreview, confirmAgain: confirmSlowAgain } = await previewAndConfirm(slowFields);
+  assert.equal(admitted.phase, 'admitted');
+  assert.equal(admitted.requestId, slowPreview.requestId, 'the admitted id is the previewed id');
+  assert.ok(Date.now() - started < 1_000, 'confirm returns before the slow upload finishes');
+  assert.equal((await track(admitted.requestId)).status, 'uploading', 'tracking reports the running upload');
+  assert.equal((await confirmSlowAgain()).phase, 'admitted', 'a concurrent confirm joins the running upload');
+  await settleBackgroundUploads();
+  assert.equal(uploadCount(), 1, 'one upload for two confirms');
   const upload = requests.find((request) => request.path === '/api/upload');
-  assert(upload, 'uploaded once');
-  assert.equal(upload.headers['idempotency-key'], submitted.requestId, 'request id doubles as Idempotency-Key');
+  assert(upload);
+  assert.equal(upload.headers['idempotency-key'], admitted.requestId, 'request id doubles as Idempotency-Key');
   assert.equal(upload.headers['user-agent'], 'OpenChatCut');
   assert.match(upload.body, /name="video"; filename="final-cut.mp4"/);
   assert.match(upload.body, /name="user"\r\n\r\ncreator\r\n/);
@@ -191,109 +229,116 @@ try {
   assert.match(upload.body, /name="privacy_level"\r\n\r\nSELF_ONLY\r\n/);
   assert.match(upload.body, /name="is_ai_generated"\r\n\r\ntrue\r\n/);
   assert.equal((upload.body.match(/name="platform\[\]"/g) ?? []).length, 3);
-  assert.notEqual(submitted.requestId, preview.requestId, 'changed publish fields → a different post id');
-
-  // ── the same approved publish again resumes it instead of posting twice ──
-  requests.length = 0;
-  const again = await publish(config, confirmed);
-  assert.equal(again.phase, 'resumed');
-  assert.equal(again.requestId, submitted.requestId);
-  assert(!requests.some((request) => request.path === '/api/upload'), 'resuming never re-uploads');
-
-  // ── a new render file (different mtime) is a different post ──
-  await utimes(join(uploads, 'final-cut.mp4'), new Date(), new Date(Date.now() + 5_000));
-  const newer = await publish(config, parsePublishRequest({ ...base }));
-  assert(newer.phase === 'preview');
-  assert.notEqual(newer.requestId, preview.requestId, 'the id tracks the file, not only its name');
+  const finished = await track(admitted.requestId);
+  assert.equal(finished.status, 'completed', 'the outcome is delivered through tracking');
+  assert.equal(finished.results.find((result) => result.platform === 'youtube')?.url, 'https://www.youtube.com/watch?v=yt123');
+  assert.equal(finished.results.find((result) => result.platform === 'tiktok')?.error, 'TikTok rejected the video');
+  const resumed = await confirmSlowAgain();
+  assert.equal(resumed.phase, 'resumed', 'the same approved publish resumes instead of posting twice');
+  assert.equal(uploadCount(), 1);
+  const previewAgain = await publish(config, parsePublishRequest(slowFields));
+  assert(previewAgain.phase === 'preview');
+  assert.equal(previewAgain.previouslySubmitted, true);
 
   // ── dropped connection mid-upload: reconciled against /status, never re-sent ──
   requests.length = 0;
-  failNextUpload = true;
-  const dropped = await publish(config, parsePublishRequest({ ...base, title: 'Dropped', confirm: true }));
-  assert.equal(dropped.phase, 'submitted', 'the server had it → keep tracking the same id');
+  nextUpload = { status: 'drop', acceptAnyway: true }; // the server got it, the client never sees the answer
+  const dropped = await previewAndConfirm({ ...base, title: 'Dropped' });
+  await settleBackgroundUploads();
+  assert.equal((await track(dropped.confirmed.requestId)).status, 'completed', 'the server had it');
+  assert.equal((await dropped.confirmAgain()).phase, 'resumed');
   assert.equal(uploadCount(), 1, 'exactly one upload attempt');
-  const settled = await publish(config, parsePublishRequest({ ...base, title: 'Dropped', confirm: true }));
-  assert.equal(settled.phase, 'resumed');
-  assert.equal(uploadCount(), 1, 'still one upload');
 
   // ── 503 on submit, accepted but not yet visible on /status → re-confirm → 0 second uploads ──
   requests.length = 0;
   nextUpload = { status: 503, acceptAnyway: true, visible: false };
-  const lagged = parsePublishRequest({ ...base, title: '503 lag', confirm: true });
-  const first503 = await publish(config, lagged);
-  assert.equal(first503.phase, 'unconfirmed_delivery', 'a 5xx is ambiguous, never a definitive failure');
-  assert.match(String((first503 as { note?: string }).note), /will not be re-sent/);
-  const reconfirmed = await publish(config, lagged);
-  assert.equal(reconfirmed.phase, 'unconfirmed_delivery', 'still unknown, and still not re-sent');
+  const lagged = await previewAndConfirm({ ...base, title: '503 lag' });
+  await settleBackgroundUploads();
+  const laggedStatus = await track(lagged.confirmed.requestId);
+  assert.equal(laggedStatus.status, 'unknown', 'a 5xx is ambiguous, never a definitive failure');
+  assert.match(String(laggedStatus.note), /will not be re-sent/);
+  assert.equal((await lagged.confirmAgain()).phase, 'unconfirmed_delivery', 'still unknown, and still not re-sent');
+  await settleBackgroundUploads();
   assert.equal(uploadCount(), 1, 're-confirming after a 503 never uploads a second time');
-  const previewAfter = await publish(config, parsePublishRequest({ ...base, title: '503 lag' }));
-  assert(previewAfter.phase === 'preview');
-  assert.equal(previewAfter.previouslySubmitted, true, 'the preview says this publish was already sent');
   pendingVisibility.clear(); // Upload-Post finally shows it
-  const visible = await publish(config, lagged);
-  assert.equal(visible.phase, 'resumed');
-  assert.equal(visible.status, 'completed');
+  assert.equal((await lagged.confirmAgain()).phase, 'resumed');
   assert.equal(uploadCount(), 1);
 
-  // ── 503 that the server really rejected: still no automatic re-send ──
+  // ── 503 that the server really lost: still no automatic re-send ──
   requests.length = 0;
   nextUpload = { status: 503 };
-  const rejected503 = parsePublishRequest({ ...base, title: '503 lost', confirm: true });
-  assert.equal((await publish(config, rejected503)).phase, 'unconfirmed_delivery');
-  assert.equal((await publish(config, rejected503)).phase, 'unconfirmed_delivery');
+  const lost = await previewAndConfirm({ ...base, title: '503 lost' });
+  await settleBackgroundUploads();
+  assert.equal((await lost.confirmAgain()).phase, 'unconfirmed_delivery');
   assert.equal(uploadCount(), 1, 'an ambiguous id stays blocked; a new post needs changed fields');
-
-  // ── 502 whose upload is already visible → reconciled straight to submitted ──
-  requests.length = 0;
-  nextUpload = { status: 502, acceptAnyway: true };
-  assert.equal((await publish(config, parsePublishRequest({ ...base, title: '502 visible', confirm: true }))).phase, 'submitted');
 
   // ── empty / non-JSON 2xx → accepted ──
   requests.length = 0;
   nextUpload = { status: 'empty-2xx' };
-  const empty = parsePublishRequest({ ...base, title: 'empty body', confirm: true });
-  assert.equal((await publish(config, empty)).phase, 'submitted', 'any 2xx is an accepted upload');
-  assert.equal((await publish(config, empty)).phase, 'resumed');
+  const empty = await previewAndConfirm({ ...base, title: 'empty body' });
+  await settleBackgroundUploads();
+  assert.equal((await empty.confirmAgain()).phase, 'resumed', 'any 2xx is an accepted upload');
   assert.equal(uploadCount(), 1);
 
-  // ── definitive pre-acceptance rejection (400/422): nothing posted, fixing and retrying is allowed ──
+  // ── definitive pre-acceptance rejection (400/422): reported, and the same publish may be retried ──
   for (const status of [400, 422]) {
     requests.length = 0;
     nextUpload = { status };
-    const refused = parsePublishRequest({ ...base, title: `refused ${status}`, confirm: true });
-    await assert.rejects(publish(config, refused), (error: unknown) => error instanceof UploadPostError && error.status === status);
-    const retried = await publish(config, refused);
-    assert.equal(retried.phase, 'submitted', `a ${status} clears the attempt so the same publish can be retried`);
+    const refused = await previewAndConfirm({ ...base, title: `refused ${status}` });
+    await settleBackgroundUploads();
+    const refusedStatus = await track(refused.confirmed.requestId);
+    assert.equal(refusedStatus.status, 'failed');
+    assert.match(String(refusedStatus.error), new RegExp(`^${status}: fake ${status}`));
+    assert.equal((await refused.confirmAgain()).phase, 'admitted', `a ${status} lets the fixed publish retry`);
+    await settleBackgroundUploads();
     assert.equal(uploadCount(), 2);
   }
 
-  // ── the ledger outlives the server's 24 h Idempotency-Key window ──
+  // ── [P2] duplicate protection is never evicted: exactly 1,001 records ──
   const ledger = JSON.parse(await readFile(ledgerPath, 'utf8')) as Record<string, { state: string; at: number }>;
   const stuckId = Object.keys(ledger).find((id) => ledger[id].state === 'ambiguous');
   assert(stuckId, 'ambiguous attempts are recorded');
-  ledger[stuckId].at = Date.now() - 30 * 24 * 3600 * 1000;
-  await writeFile(ledgerPath, JSON.stringify(ledger));
+  const boundary: Record<string, { state: string; at: number }> = {
+    [stuckId]: { state: 'ambiguous', at: Date.now() - 30 * 24 * 3600 * 1000 }, // oldest, and past the 24 h Idempotency-Key window
+  };
+  for (let index = 0; index < 1_000; index += 1) {
+    boundary[`ocut-${index.toString(16).padStart(32, '0')}`] = { state: 'accepted', at: Date.now() + index };
+  }
+  await writeFile(ledgerPath, JSON.stringify(boundary));
+  assert.equal(Object.keys(boundary).length, 1_001);
   requests.length = 0;
-  assert.equal((await publish(config, rejected503)).phase, 'unconfirmed_delivery');
-  assert.equal(uploadCount(), 0, 'a month later it is still never re-sent');
+  nextUpload = { status: 'empty-2xx' };
+  await previewAndConfirm({ ...base, title: 'one more write' }); // a further write must not evict the oldest entry
+  await settleBackgroundUploads();
+  const afterWrite = JSON.parse(await readFile(ledgerPath, 'utf8')) as Record<string, unknown>;
+  assert.equal(Object.keys(afterWrite).length, 1_002, 'nothing evicted');
+  assert.ok(afterWrite[stuckId], 'the oldest ambiguous record survives');
+  requests.length = 0;
+  assert.equal((await lost.confirmAgain()).phase, 'unconfirmed_delivery');
+  assert.equal(uploadCount(), 0, 'a month-old ambiguous attempt behind 1,000 newer ones is still never re-sent');
 
-  // ── status normalization ──
-  const status = await publishStatus(config, submitted.requestId);
-  assert.equal(status.status, 'completed');
-  const youtube = status.results.find((result) => result.platform === 'youtube');
-  assert.equal(youtube?.url, 'https://www.youtube.com/watch?v=yt123', 'private YouTube still gets an owner URL');
-  assert.equal(youtube?.note, undefined, 'text post_url replaced by the owner URL');
-  const tiktok = status.results.find((result) => result.platform === 'tiktok');
-  assert.equal(tiktok?.status, 'failed');
-  assert.equal(tiktok?.error, 'TikTok rejected the video');
+  // ── [P2] fail closed when the record cannot be read ──
+  await writeFile(ledgerPath, '{"torn');
+  requests.length = 0;
+  const unreadable = parsePublishRequest({ ...base, title: 'no ledger' });
+  await assert.rejects(publish(config, unreadable), (error: unknown) => (
+    error instanceof UploadPostError && error.status === 503 && error.code === 'ledger_unavailable'
+  ), 'preview refuses too: it cannot tell whether this was already sent');
+  const matchingId = mod.publishRequestId('creator', await mod.resolvePublishSource(unreadable.source), unreadable);
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...base, title: 'no ledger', confirm: true, previewId: matchingId })),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'ledger_unavailable',
+    'a correctly bound confirm still refuses without duplicate protection',
+  );
+  assert.equal(uploadCount(), 0, 'no upload without duplicate protection');
+  await rm(ledgerPath);
+
+  // ── provider status + errors ──
   assert.equal((await publishStatus(config, 'ocut-00000000000000000000000000000000')).status, 'not_found');
-
-  // ── provider errors are specific ──
-  const badKey = { ...config, apiKey: 'wrong' };
-  await assert.rejects(publish(badKey, parsed), (error: unknown) => (
+  await assert.rejects(publish({ ...config, apiKey: 'wrong' }, parsed), (error: unknown) => (
     error instanceof UploadPostError && error.status === 401
   ));
-  await assert.rejects(publish({ ...config, profile: 'missing' }, parsed), /profile "missing" was not found/);
+  await assert.rejects(publish(configFor('missing'), parsed), /profile "missing" was not found/);
 
   const source = await readFile(new URL('./upload-post.ts', import.meta.url), 'utf8');
   assert.match(source, /openAsBlob\(source\.file/);

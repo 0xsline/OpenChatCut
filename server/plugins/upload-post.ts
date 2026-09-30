@@ -5,42 +5,40 @@ import { extname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
-import { getKey } from '../keystore.ts';
-import type { KeyName } from '../keystore-names.ts';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
-import { proxyDispatcher } from '../outbound-proxy.ts';
 import { readJsonBody, sendError, sendJson } from './export-http.ts';
-import { clearLedger, defaultLedgerPath, ledgerEntry, markLedger } from './upload-post-ledger.ts';
+import {
+  connectedPlatforms, fetchWithProxy, PLATFORM_ALIASES, providerError, publishStatus, requireConfig,
+  UPLOAD_POST_PLATFORMS, UploadPostError, uploadPostConfig,
+  type PublishStatus, type UploadPostConfig, type UploadPostPlatform,
+} from './upload-post-client.ts';
+import {
+  defaultLedgerPath, ledgerEntry, LedgerUnavailableError, markLedger, type LedgerEntry,
+} from './upload-post-ledger.ts';
 
-// Publish a finished render to social platforms through Upload-Post
-// (https://docs.upload-post.com). One multipart upload fans out to every
-// requested platform; the API answers with a request_id and the per-platform
-// results are polled from /api/uploadposts/status.
+export {
+  connectedPlatforms, normalizeResults, publishStatus, UPLOAD_POST_PLATFORMS, UploadPostError, uploadPostConfig,
+} from './upload-post-client.ts';
+export type { PlatformResult, PublishStatus, UploadPostConfig, UploadPostPlatform } from './upload-post-client.ts';
+
+// Publish a finished render to social platforms through Upload-Post. One
+// multipart upload fans out to every requested platform; per-platform results
+// are polled from /api/uploadposts/status.
 //
-// Publishing is public and cannot be undone, so the route has two steps:
-// without `confirm` it only previews (resolves the file, checks the key and
-// which platforms the profile has connected); with `confirm: true` it uploads.
-// The request_id is derived from the file and the publish fields and doubles
-// as the Idempotency-Key, so re-sending an approved publish (a retried tool
-// call, a dropped connection) resumes the same post instead of posting twice.
-//
-// Only a 400/401/403/422 is a definitive rejection. A 5xx, a transport error
-// or timeout, or any other non-2xx answer is ambiguous: the upload may have
-// been accepted. Every attempt is written to a local ledger BEFORE the file is
-// sent, and an id that is in the ledger is never uploaded again — a later
-// confirm only reconciles it against the status endpoint. The server-side
-// Idempotency-Key only dedups for 24 hours; the ledger has no such window.
+// Publishing is public and cannot be undone:
+// - Without `confirm` the route only previews and returns a requestId derived
+//   from the profile, the render file and every publish field.
+// - `confirm: true` must carry that requestId as `previewId`. If the profile,
+//   the file or a field changed since the preview, the ids differ and the
+//   confirm is refused: the user has to approve a fresh preview.
+// - A confirm is admitted, recorded in the local ledger and answered at once;
+//   the upload itself runs in the background, so a large render never outlives
+//   the agent's tool deadline. track_social_publish reports `uploading` until
+//   Upload-Post answers.
+// - The requestId doubles as the Idempotency-Key. Only a 400/401/403/422 is a
+//   definitive rejection; anything else is ambiguous, reconciled against
+//   /status and never re-sent (see upload-post-ledger.ts).
 
-type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
-const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
-  fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
-
-export const UPLOAD_POST_DEFAULT_BASE_URL = 'https://api.upload-post.com';
-export const UPLOAD_POST_PLATFORMS = [
-  'tiktok', 'instagram', 'youtube', 'linkedin', 'facebook', 'x', 'threads', 'pinterest', 'bluesky',
-] as const;
-export type UploadPostPlatform = (typeof UPLOAD_POST_PLATFORMS)[number];
-const PLATFORM_ALIASES: Record<string, UploadPostPlatform> = { twitter: 'x', reels: 'instagram', shorts: 'youtube' };
 const YOUTUBE_PRIVACY = ['private', 'unlisted', 'public'] as const;
 const TIKTOK_PRIVACY = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'] as const;
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm']);
@@ -51,12 +49,6 @@ const REQUEST_ID = /^ocut-[0-9a-f]{32}$/;
 /** Pre-acceptance rejections: the upload was refused, so it can be fixed and retried. */
 const DEFINITIVE_REJECTIONS = new Set([400, 401, 403, 422]);
 
-export interface UploadPostConfig {
-  readonly apiKey: string;
-  readonly profile: string;
-  readonly baseUrl: string;
-}
-
 export interface PublishRequest {
   readonly source: string;
   readonly platforms: readonly UploadPostPlatform[];
@@ -66,45 +58,8 @@ export interface PublishRequest {
   readonly tiktokPrivacy?: (typeof TIKTOK_PRIVACY)[number];
   readonly aiGenerated: boolean;
   readonly confirm: boolean;
-}
-
-export interface PlatformResult {
-  readonly platform: string;
-  readonly status: 'completed' | 'failed' | 'retryable' | 'skipped' | 'queued' | 'processing';
-  readonly url?: string;
-  readonly postId?: string;
-  readonly note?: string;
-  readonly error?: string;
-  readonly inbox?: boolean;
-}
-
-export class UploadPostError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-export function uploadPostConfig(get: (name: KeyName) => string = getKey): UploadPostConfig {
-  return {
-    apiKey: get('UPLOAD_POST_API_KEY').trim(),
-    profile: get('UPLOAD_POST_PROFILE').trim(),
-    baseUrl: (get('UPLOAD_POST_BASE_URL').trim() || UPLOAD_POST_DEFAULT_BASE_URL).replace(/\/+$/, ''),
-  };
-}
-
-function requireConfig(config: UploadPostConfig): void {
-  if (!config.apiKey || !config.profile) {
-    throw new UploadPostError(
-      412,
-      'upload_post_not_configured',
-      'Upload-Post is not configured: add the API key and profile name in Settings → Enhanced tools → Social publishing.',
-    );
-  }
+  /** The requestId returned by the preview the user approved. Required with confirm. */
+  readonly previewId?: string;
 }
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], field: string, fallback?: T): T | undefined {
@@ -155,6 +110,7 @@ export function parsePublishRequest(body: unknown): PublishRequest {
     tiktokPrivacy: oneOf(input.tiktokPrivacy, TIKTOK_PRIVACY, 'tiktokPrivacy'),
     aiGenerated: input.aiGenerated === true,
     confirm: input.confirm === true,
+    ...(typeof input.previewId === 'string' && input.previewId.trim() ? { previewId: input.previewId.trim() } : {}),
   };
 }
 
@@ -198,96 +154,6 @@ export function publishRequestId(
   return `ocut-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
 }
 
-async function providerError(response: Response): Promise<string> {
-  const text = await response.text();
-  try {
-    const data = JSON.parse(text) as { message?: string; error?: string; detail?: string };
-    return data.message ?? data.error ?? data.detail ?? `Upload-Post request failed (${response.status})`;
-  } catch {
-    return text.slice(0, 300) || `Upload-Post request failed (${response.status})`;
-  }
-}
-
-async function apiGet(config: UploadPostConfig, path: string): Promise<Response> {
-  return fetchWithProxy(`${config.baseUrl}${path}`, {
-    headers: { Authorization: `Apikey ${config.apiKey}`, 'User-Agent': 'OpenChatCut' },
-    signal: AbortSignal.timeout(30_000),
-  });
-}
-
-/** Platforms that have an account connected on the configured profile. */
-export async function connectedPlatforms(config: UploadPostConfig): Promise<string[]> {
-  const response = await apiGet(config, `/api/uploadposts/users/${encodeURIComponent(config.profile)}`);
-  if (response.status === 401) throw new UploadPostError(401, 'upload_post_auth', 'Upload-Post rejected the API key');
-  if (response.status === 404) {
-    throw new UploadPostError(404, 'upload_post_profile', `Upload-Post profile "${config.profile}" was not found`);
-  }
-  if (!response.ok) throw new UploadPostError(502, 'upload_post_http', await providerError(response));
-  const data = await response.json() as { profile?: { social_accounts?: Record<string, unknown> } };
-  const accounts = data.profile?.social_accounts ?? {};
-  return Object.entries(accounts)
-    .filter(([, account]) => Boolean(account))
-    .map(([platform]) => PLATFORM_ALIASES[platform] ?? platform)
-    // Only platforms this tool can publish video to (a profile may also hold e.g. Reddit or Telegram).
-    .filter((platform) => (UPLOAD_POST_PLATFORMS as readonly string[]).includes(platform));
-}
-
-export function normalizeResults(raw: unknown): PlatformResult[] {
-  const list = Array.isArray(raw)
-    ? raw
-    : raw && typeof raw === 'object'
-      ? Object.entries(raw as Record<string, unknown>).map(([platform, value]) => ({ platform, ...(value as object) }))
-      : [];
-  return list.map((entry) => {
-    const item = (entry ?? {}) as Record<string, unknown>;
-    const platform = String(item.platform ?? '');
-    const status: PlatformResult['status'] = item.skipped === true
-      ? 'skipped'
-      : typeof item.status === 'string' && ['completed', 'failed', 'retryable', 'queued', 'processing'].includes(item.status)
-        ? item.status as PlatformResult['status']
-        : item.success === true ? 'completed' : 'failed';
-    const postId = typeof item.platform_post_id === 'string' ? item.platform_post_id : undefined;
-    const rawUrl = typeof item.post_url === 'string' ? item.post_url : typeof item.url === 'string' ? item.url : undefined;
-    let url = rawUrl?.startsWith('http') ? rawUrl : undefined;
-    // Private YouTube videos have no public URL but the owner can still open this one.
-    if (!url && platform === 'youtube' && postId) url = `https://www.youtube.com/watch?v=${postId}`;
-    const error = status === 'completed' ? undefined : String(item.error_message ?? item.error ?? '') || undefined;
-    return {
-      platform,
-      status,
-      ...(url ? { url } : {}),
-      ...(postId ? { postId } : {}),
-      ...(rawUrl && !url ? { note: rawUrl } : {}),
-      ...(error ? { error } : {}),
-      ...(item.fallback_to_inbox === true ? { inbox: true } : {}),
-    };
-  });
-}
-
-export interface PublishStatus {
-  readonly requestId: string;
-  readonly status: string;
-  readonly completed?: number;
-  readonly total?: number;
-  readonly results: PlatformResult[];
-}
-
-export async function publishStatus(config: UploadPostConfig, requestId: string): Promise<PublishStatus> {
-  requireConfig(config);
-  const response = await apiGet(config, `/api/uploadposts/status?request_id=${encodeURIComponent(requestId)}`);
-  if (response.status === 404) return { requestId, status: 'not_found', results: [] };
-  if (response.status === 401) throw new UploadPostError(401, 'upload_post_auth', 'Upload-Post rejected the API key');
-  if (!response.ok) throw new UploadPostError(502, 'upload_post_http', await providerError(response));
-  const data = await response.json() as Record<string, unknown>;
-  return {
-    requestId,
-    status: String(data.status ?? 'unknown'),
-    ...(typeof data.completed === 'number' ? { completed: data.completed } : {}),
-    ...(typeof data.total === 'number' ? { total: data.total } : {}),
-    results: normalizeResults(data.results),
-  };
-}
-
 function publishForm(request: PublishRequest, profile: string, requestId: string): FormData {
   const form = new FormData();
   form.append('user', profile);
@@ -307,10 +173,6 @@ function videoMime(name: string): string {
   return ext === '.webm' ? 'video/webm' : ext === '.mov' ? 'video/quicktime' : 'video/mp4';
 }
 
-export type PublishOutcome =
-  | ({ readonly phase: 'preview'; readonly needsConfirm: true } & PublishPreview)
-  | ({ readonly phase: 'submitted' | 'resumed' | 'unconfirmed_delivery'; readonly note?: string } & PublishStatus);
-
 export interface PublishPreview {
   readonly requestId: string;
   readonly file: { readonly name: string; readonly sizeBytes: number };
@@ -327,6 +189,10 @@ export interface PublishPreview {
   readonly previouslySubmitted?: boolean;
 }
 
+export type PublishOutcome =
+  | ({ readonly phase: 'preview'; readonly needsConfirm: true } & PublishPreview)
+  | ({ readonly phase: 'admitted' | 'resumed' | 'unconfirmed_delivery' } & PublishStatus);
+
 export interface PublishOptions {
   readonly resolve?: (name: string) => string | null;
   readonly ledgerPath?: string;
@@ -335,23 +201,105 @@ export interface PublishOptions {
 const AMBIGUOUS_NOTE = 'The upload may or may not have been accepted. It will not be re-sent: '
   + 'check it with track_social_publish. To publish a separate post anyway, change the title or description.';
 
-/** After an ambiguous answer: the status endpoint is the only authority on whether the post exists. */
-async function reconcile(
+/** Request ids whose upload is running (or being admitted) in this process. */
+const inFlight = new Map<string, Promise<void>>();
+
+/** Test hook: wait for every background upload to finish. */
+export async function settleBackgroundUploads(): Promise<void> {
+  while (inFlight.size) await Promise.allSettled([...inFlight.values()]);
+}
+
+function ledgerError(error: unknown): never {
+  if (error instanceof LedgerUnavailableError) throw new UploadPostError(503, 'ledger_unavailable', error.message);
+  throw error;
+}
+
+/** After an ambiguous answer the status endpoint is the only authority on whether the post exists. */
+async function settleAmbiguous(config: UploadPostConfig, requestId: string, ledgerPath: string): Promise<void> {
+  const status = await publishStatus(config, requestId).catch(() => null);
+  await markLedger(ledgerPath, requestId, status && status.status !== 'not_found' ? 'accepted' : 'ambiguous');
+}
+
+/** Background half of a confirmed publish. Never throws; the outcome lands in the ledger. */
+async function runUpload(
   config: UploadPostConfig,
+  request: PublishRequest,
+  source: { file: string; name: string },
   requestId: string,
   ledgerPath: string,
-  fallbackPhase: 'submitted' | 'unconfirmed_delivery',
+): Promise<void> {
+  try {
+    const form = publishForm(request, config.profile, requestId);
+    // File-backed Blob: the render streams from disk and is never buffered in memory.
+    form.append('video', await openAsBlob(source.file, { type: videoMime(source.name) }), source.name);
+    let response: Response;
+    try {
+      response = await fetchWithProxy(`${config.baseUrl}/api/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Apikey ${config.apiKey}`, 'Idempotency-Key': requestId, 'User-Agent': 'OpenChatCut' },
+        body: form,
+      });
+    } catch {
+      await settleAmbiguous(config, requestId, ledgerPath); // transport error or timeout
+      return;
+    }
+    if (response.ok) {
+      // Any 2xx means the upload was accepted, whatever the body looks like.
+      await response.body?.cancel().catch(() => undefined);
+      await markLedger(ledgerPath, requestId, 'accepted');
+    } else if (DEFINITIVE_REJECTIONS.has(response.status)) {
+      // Refused before acceptance: nothing was posted, so this publish may be fixed and retried.
+      await markLedger(ledgerPath, requestId, 'rejected', `${response.status}: ${await providerError(response)}`);
+    } else {
+      // 5xx, 429, 404, 409… — ambiguous: never treated as a failure that may be re-sent.
+      await response.body?.cancel().catch(() => undefined);
+      await settleAmbiguous(config, requestId, ledgerPath);
+    }
+  } catch {
+    // Unexpected error after the write-ahead record: stays ambiguous, never re-sent.
+    await markLedger(ledgerPath, requestId, 'ambiguous').catch(() => undefined);
+  }
+}
+
+/** Where a confirmed publish stands, combining this process, the ledger and Upload-Post. */
+export async function trackPublish(
+  config: UploadPostConfig,
+  requestId: string,
+  ledgerPath: string = defaultLedgerPath(),
+): Promise<PublishStatus> {
+  requireConfig(config);
+  if (inFlight.has(requestId)) {
+    return { requestId, status: 'uploading', results: [], note: 'The video is still being uploaded to Upload-Post.' };
+  }
+  const entry = await ledgerEntry(ledgerPath, requestId).catch(() => undefined);
+  if (entry?.state === 'rejected') {
+    return { requestId, status: 'failed', results: [], error: entry.error ?? 'Upload-Post rejected the upload' };
+  }
+  const remote = await publishStatus(config, requestId);
+  if (remote.status !== 'not_found') {
+    if (entry && entry.state !== 'accepted') await markLedger(ledgerPath, requestId, 'accepted').catch(() => undefined);
+    return remote;
+  }
+  if (entry?.state === 'accepted') {
+    return { requestId, status: 'queued', results: [], note: 'Accepted by Upload-Post; results are not visible yet.' };
+  }
+  // `sending` with no upload running here = interrupted (e.g. the app closed mid-upload).
+  if (entry) return { requestId, status: 'unknown', results: [], note: AMBIGUOUS_NOTE };
+  return remote;
+}
+
+async function resumeExisting(
+  config: UploadPostConfig,
+  requestId: string,
+  prior: LedgerEntry,
+  ledgerPath: string,
 ): Promise<PublishOutcome> {
   const status = await publishStatus(config, requestId).catch(() => null);
   if (status && status.status !== 'not_found') {
-    await markLedger(ledgerPath, requestId, 'accepted');
-    return { phase: 'submitted', ...status };
+    if (prior.state !== 'accepted') await markLedger(ledgerPath, requestId, 'accepted');
+    return { phase: 'resumed', ...status };
   }
-  if (fallbackPhase === 'submitted') {
-    await markLedger(ledgerPath, requestId, 'accepted');
-    return { phase: 'submitted', requestId, status: 'queued', results: [] };
-  }
-  await markLedger(ledgerPath, requestId, 'ambiguous');
+  if (prior.state === 'accepted') return { phase: 'resumed', requestId, status: 'queued', results: [] };
   return { phase: 'unconfirmed_delivery', requestId, status: 'unknown', results: [], note: AMBIGUOUS_NOTE };
 }
 
@@ -364,9 +312,9 @@ export async function publishToUploadPost(
   const ledgerPath = options.ledgerPath ?? defaultLedgerPath();
   const source = await resolvePublishSource(request.source, options.resolve ?? resolveUploadFile);
   const requestId = publishRequestId(config.profile, source, request);
-  const prior = await ledgerEntry(ledgerPath, requestId);
 
   if (!request.confirm) {
+    const prior = await ledgerEntry(ledgerPath, requestId).catch(ledgerError);
     const connected = await connectedPlatforms(config);
     return {
       phase: 'preview',
@@ -382,60 +330,49 @@ export async function publishToUploadPost(
       ...(request.platforms.includes('youtube') ? { youtubePrivacy: request.youtubePrivacy } : {}),
       ...(request.tiktokPrivacy ? { tiktokPrivacy: request.tiktokPrivacy } : {}),
       aiGenerated: request.aiGenerated,
-      ...(prior ? { previouslySubmitted: true } : {}),
+      ...(prior && prior.state !== 'rejected' ? { previouslySubmitted: true } : {}),
     };
   }
 
-  // Sent before (accepted, ambiguous, or interrupted mid-send): reconcile, never re-upload.
-  if (prior) {
-    const status = await publishStatus(config, requestId).catch(() => null);
-    if (status && status.status !== 'not_found') {
-      if (prior.state !== 'accepted') await markLedger(ledgerPath, requestId, 'accepted');
-      return { phase: 'resumed', ...status };
-    }
-    if (prior.state === 'accepted') return { phase: 'resumed', requestId, status: 'queued', results: [] };
-    return { phase: 'unconfirmed_delivery', requestId, status: 'unknown', results: [], note: AMBIGUOUS_NOTE };
+  // The confirmation is bound to the exact preview the user approved.
+  if (!request.previewId) {
+    throw new UploadPostError(400, 'preview_required', 'Preview first (call without confirm) and pass its requestId as previewId when confirming.');
   }
-  // No local record (e.g. another machine or a cleared data dir): the server is the fallback.
-  const existing = await publishStatus(config, requestId);
-  if (existing.status !== 'not_found') {
-    await markLedger(ledgerPath, requestId, 'accepted');
-    return { phase: 'resumed', ...existing };
+  if (request.previewId !== requestId) {
+    throw new UploadPostError(409, 'preview_mismatch', 'The Upload-Post profile, the render file or the publish fields changed since the preview. '
+      + 'Nothing was published: preview again and ask the user to approve the new preview.');
   }
+  if (inFlight.has(requestId)) return { phase: 'admitted', requestId, status: 'uploading', results: [] };
 
-  const form = publishForm(request, config.profile, requestId);
-  // File-backed Blob: the render streams from disk and is never buffered in memory.
-  form.append('video', await openAsBlob(source.file, { type: videoMime(source.name) }), source.name);
-  // Write-ahead: from here on this id counts as sent, even if the process dies mid-upload.
-  await markLedger(ledgerPath, requestId, 'sending');
-  let response: Response;
+  // Claim the id synchronously so a concurrent confirm cannot start a second upload.
+  let release!: () => void;
+  const claim = new Promise<void>((resolve) => { release = resolve; });
+  inFlight.set(requestId, claim);
+  let handedOff = false;
   try {
-    response = await fetchWithProxy(`${config.baseUrl}/api/upload`, {
-      method: 'POST',
-      headers: { Authorization: `Apikey ${config.apiKey}`, 'Idempotency-Key': requestId, 'User-Agent': 'OpenChatCut' },
-      body: form,
-    });
-  } catch {
-    // Transport error or timeout: the upload may have reached Upload-Post.
-    return reconcile(config, requestId, ledgerPath, 'unconfirmed_delivery');
+    const prior = await ledgerEntry(ledgerPath, requestId).catch(ledgerError);
+    if (prior && prior.state !== 'rejected') return await resumeExisting(config, requestId, prior, ledgerPath);
+    if (!prior) {
+      // No local record (another machine, a cleared data dir): the provider is the fallback.
+      const existing = await publishStatus(config, requestId);
+      if (existing.status !== 'not_found') {
+        await markLedger(ledgerPath, requestId, 'accepted').catch(ledgerError);
+        return { phase: 'resumed', ...existing };
+      }
+    }
+    // Write-ahead: from here on this id counts as sent, even if the process dies mid-upload.
+    await markLedger(ledgerPath, requestId, 'sending').catch(ledgerError);
+    const upload = runUpload(config, request, source, requestId, ledgerPath)
+      .finally(() => { inFlight.delete(requestId); release(); });
+    inFlight.set(requestId, upload);
+    handedOff = true;
+    return { phase: 'admitted', requestId, status: 'uploading', results: [] };
+  } finally {
+    if (!handedOff) {
+      inFlight.delete(requestId);
+      release();
+    }
   }
-  // Any 2xx means the upload was accepted, whatever the body looks like.
-  if (response.ok) {
-    await response.body?.cancel().catch(() => undefined);
-    await markLedger(ledgerPath, requestId, 'accepted');
-    return { phase: 'submitted', requestId, status: 'queued', results: [] };
-  }
-  if (DEFINITIVE_REJECTIONS.has(response.status)) {
-    // Refused before acceptance: nothing was posted, so this publish may be fixed and retried.
-    const message = await providerError(response);
-    await clearLedger(ledgerPath, requestId);
-    if (response.status === 401) throw new UploadPostError(401, 'upload_post_auth', 'Upload-Post rejected the API key');
-    if (response.status === 403) throw new UploadPostError(403, 'upload_post_plan', message);
-    throw new UploadPostError(response.status, 'upload_post_rejected', message);
-  }
-  // 5xx, 429, 404, 409… — ambiguous: never treat as a failure that may be re-sent.
-  await response.body?.cancel().catch(() => undefined);
-  return reconcile(config, requestId, ledgerPath, 'unconfirmed_delivery');
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -445,15 +382,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const body = await readJsonBody(req).catch((error: unknown) => {
       throw new UploadPostError(400, 'invalid_request', error instanceof Error ? error.message : 'invalid JSON body');
     });
-    const request = parsePublishRequest(body);
-    sendJson(res, 200, await publishToUploadPost(config, request));
+    sendJson(res, 200, await publishToUploadPost(config, parsePublishRequest(body)));
     return;
   }
   const match = /^\/publish\/([^/]+)$/.exec(path);
   if (req.method === 'GET' && match) {
     const requestId = match[1];
     if (!REQUEST_ID.test(requestId)) throw new UploadPostError(400, 'invalid_request', 'invalid publish id');
-    sendJson(res, 200, await publishStatus(config, requestId));
+    sendJson(res, 200, await trackPublish(config, requestId));
     return;
   }
   sendError(res, 404, 'not found');

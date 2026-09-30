@@ -5,18 +5,35 @@ import { dirname, join } from 'node:path';
 import { runtimeProfile } from '../runtime-profile.ts';
 
 // Local record of every Upload-Post publish attempt, keyed by request id.
-// An id is written here BEFORE its upload is sent; once present, the publish
-// route never uploads it again (see upload-post.ts). Upload-Post's own
-// Idempotency-Key dedup lasts 24 hours; this record has no time window.
+// An id is written here BEFORE its upload starts; once present (in any state
+// but `rejected`), the publish route never uploads it again (see upload-post.ts).
+// Upload-Post's own Idempotency-Key dedup lasts 24 hours; this record has no
+// time window, so it is never evicted: an entry is ~100 bytes, and dropping one
+// would silently reopen the duplicate-post risk it exists to close.
+//
+// Fail closed: if the record cannot be read or written, callers refuse to
+// publish instead of proceeding without duplicate protection.
 
-const LEDGER_MAX_ENTRIES = 1000;
+export type LedgerState =
+  | 'sending' // written before the upload starts; also what an interrupted upload leaves behind
+  | 'accepted' // Upload-Post accepted the upload
+  | 'ambiguous' // no definitive answer (5xx, transport error, timeout…) and /status did not show it
+  | 'rejected'; // definitive pre-acceptance rejection (400/401/403/422): nothing was posted
 
-// ── Attempt ledger ──────────────────────────────────────────────────────────
 export interface LedgerEntry {
-  readonly state: 'sending' | 'accepted' | 'ambiguous';
+  readonly state: LedgerState;
   readonly at: number;
+  readonly error?: string;
 }
 type Ledger = Record<string, LedgerEntry>;
+
+export class LedgerUnavailableError extends Error {
+  constructor(path: string, cause: unknown) {
+    super(`the local publish record ${path} cannot be used (${cause instanceof Error ? cause.message : String(cause)}); `
+      + 'refusing to publish without duplicate protection');
+    this.name = 'LedgerUnavailableError';
+  }
+}
 
 export function defaultLedgerPath(): string {
   return join(runtimeProfile().rootDir, 'upload-post-publishes.json');
@@ -25,12 +42,23 @@ export function defaultLedgerPath(): string {
 let ledgerQueue: Promise<unknown> = Promise.resolve();
 
 async function readLedger(path: string): Promise<Ledger> {
+  let text: string;
   try {
-    const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Ledger : {};
-  } catch {
-    return {};
+    text = await readFile(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw new LedgerUnavailableError(path, error);
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new LedgerUnavailableError(path, error);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new LedgerUnavailableError(path, new Error('not a JSON object'));
+  }
+  return parsed as Ledger;
 }
 
 /** Serialized read-modify-write with an atomic rename, so a crash never leaves a torn file. */
@@ -38,13 +66,14 @@ function updateLedger(path: string, update: (ledger: Ledger) => void): Promise<v
   const run = ledgerQueue.then(async () => {
     const ledger = await readLedger(path);
     update(ledger);
-    const kept = Object.entries(ledger)
-      .sort(([, a], [, b]) => b.at - a.at)
-      .slice(0, LEDGER_MAX_ENTRIES);
-    await mkdir(dirname(path), { recursive: true });
-    const temp = `${path}.${randomUUID()}.tmp`;
-    await writeFile(temp, JSON.stringify(Object.fromEntries(kept)), { encoding: 'utf8', mode: 0o600 });
-    await rename(temp, path);
+    try {
+      await mkdir(dirname(path), { recursive: true });
+      const temp = `${path}.${randomUUID()}.tmp`;
+      await writeFile(temp, JSON.stringify(ledger), { encoding: 'utf8', mode: 0o600 });
+      await rename(temp, path);
+    } catch (error) {
+      throw new LedgerUnavailableError(path, error);
+    }
   });
   ledgerQueue = run.catch(() => undefined);
   return run;
@@ -55,7 +84,5 @@ export async function ledgerEntry(path: string, requestId: string): Promise<Ledg
   return (await readLedger(path))[requestId];
 }
 
-export const markLedger = (path: string, requestId: string, state: LedgerEntry['state']) =>
-  updateLedger(path, (ledger) => { ledger[requestId] = { state, at: Date.now() }; });
-export const clearLedger = (path: string, requestId: string) =>
-  updateLedger(path, (ledger) => { delete ledger[requestId]; });
+export const markLedger = (path: string, requestId: string, state: LedgerState, error?: string) =>
+  updateLedger(path, (ledger) => { ledger[requestId] = { state, at: Date.now(), ...(error ? { error } : {}) }; });

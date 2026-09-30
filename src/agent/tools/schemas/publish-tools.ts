@@ -7,11 +7,13 @@ export const PUBLISH_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'publish_to_social',
     description:
       'Publish a finished video render to social platforms (TikTok, Instagram Reels, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, Bluesky) through Upload-Post. '
-      + 'Two steps, always: (1) call WITHOUT confirm — nothing is uploaded; it returns needsConfirm with the file, profile, platforms, missingPlatforms '
-      + '(not connected on the profile, would be skipped), title and privacy. Show that preview to the user. (2) Only after the user explicitly approves it '
-      + 'in this conversation, call again with the SAME arguments plus confirm:true. Publishing is public and cannot be undone. Re-sending the same arguments '
-      + 'resumes the same post instead of posting twice. source is the downloadUrl from a completed track_export (/media/uploads/...). '
-      + 'Then poll track_social_publish with the returned requestId. Requires the Upload-Post key and profile in Settings.',
+      + 'Two steps, always: (1) call WITHOUT confirm — nothing is uploaded; it returns needsConfirm, a requestId, and the file, profile, platforms, '
+      + 'missingPlatforms (not connected on the profile, would be skipped), title and privacy. Show that preview to the user. (2) Only after the user '
+      + 'explicitly approves it in this conversation, call again with the SAME arguments plus confirm:true and previewId set to that requestId. '
+      + 'If the profile, the file or any field changed since the preview, the confirm is refused with preview_mismatch: preview again and ask again. '
+      + 'A confirm returns phase admitted immediately and the upload continues in the background; poll track_social_publish with the requestId. '
+      + 'Publishing is public and cannot be undone; re-sending an approved publish resumes it instead of posting twice. '
+      + 'source is the downloadUrl from a completed track_export (/media/uploads/...). Requires the Upload-Post key and profile in Settings.',
     input_schema: {
       type: 'object',
       properties: {
@@ -38,6 +40,10 @@ export const PUBLISH_TOOL_SCHEMAS: AgentToolSchema[] = [
           type: 'boolean',
           description: 'Omit on the first call (preview). true only after the user approved the preview in chat.',
         },
+        previewId: {
+          type: 'string',
+          description: 'Required with confirm:true: the requestId returned by the preview the user approved.',
+        },
       },
       required: ['source', 'platforms', 'title'],
     },
@@ -45,9 +51,10 @@ export const PUBLISH_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'track_social_publish',
     description:
-      'Check a publish started by publish_to_social. action=status returns the current per-platform results; action=wait polls until every platform '
-      + 'finishes or timeoutSeconds elapses (use one bounded wait, then report). Each result is completed (with url or postId), failed (with error), '
-      + 'retryable, or skipped (no account connected on the profile). Read-only.',
+      'Check a publish started by publish_to_social. action=status returns the current state; action=wait polls until it settles or timeoutSeconds '
+      + 'elapses, then returns the last known state with waitExpired (use one bounded wait, then report). status is uploading while the video is '
+      + 'still being sent, then per-platform results: completed (url or postId), failed (error), retryable, or skipped (no account on the profile). '
+      + 'status unknown means Upload-Post never confirmed the upload: it is not re-sent. Read-only.',
     input_schema: {
       type: 'object',
       properties: {
