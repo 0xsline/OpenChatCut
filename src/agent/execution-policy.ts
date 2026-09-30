@@ -38,7 +38,7 @@ export function normalizeAgentToolInvocationArgs(
 }
 
 const READ_TOOLS = new Set([
-  'read_agent_artifact', 'ToolSearch', 'track_progress', 'track_export',
+  'read_agent_artifact', 'ToolSearch', 'track_progress', 'track_export', 'track_social_publish',
   'inspect_color', 'analyze_music', 'inspect_music', 'music_edit_plan', 'music_image_plan', 'probe_media',
   'analyze_scene_quality', 'report_user_friction', 'get_editor_url',
 ]);
@@ -55,6 +55,8 @@ const IRREVERSIBLE_EXTERNAL_TOOLS = new Set([
   // not be replayed automatically.
   'run_code', 'web_crawl', 'web_browser', 'web_search', 'web_map', 'web_batch_scrape',
   'submit_render_job', 'submit_export', 'export_timeline', 'export_motion_graphic_prores',
+  // public social post: never replayed automatically (the server also dedups by request id)
+  'publish_to_social',
   'convert_motion_graphic_to_video',
   'transcribe_track',
   'submit_image', 'submit_video', 'submit_music', 'submit_sound', 'submit_voice',

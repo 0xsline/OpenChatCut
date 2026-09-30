@@ -1641,6 +1641,11 @@ export const RU: Record<string, string> = {
   '增强工具': 'Дополнительные инструменты',
   '沙箱执行': 'Выполнение в песочнице',
   '网页抓取': 'Веб-скрапинг',
+  '发布到社交平台': 'Публикация в соцсетях',
+  'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。': 'publish_to_social · публикация готовых экспортов в TikTok, Instagram, YouTube и другие платформы.',
+  '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。':
+    'Один ключ публикует в TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest и Bluesky. Создайте профиль в Upload-Post, подключите к нему аккаунты и укажите имя профиля ниже. Агент всегда показывает предпросмотр платформ, заголовка и видео и ждёт вашего подтверждения перед загрузкой; YouTube по умолчанию приватный.',
+  '在 Upload-Post 控制台创建、已连接社交账号的 Profile 名称。': 'Имя профиля Upload-Post (создаётся в панели Upload-Post, с подключёнными аккаунтами соцсетей).',
   'Anthropic / 兼容 API': 'Anthropic / совместимые API',
   'Anthropic / OpenAI': 'Anthropic / OpenAI',
   '模型供应商': 'Провайдер модели',

@@ -424,6 +424,14 @@ export const PROBES: Record<string, ProbeDef> = {
       signal: t(), headers: bearer(get('FIRECRAWL_API_KEY')),
     }),
   },
+  // Read-only account endpoint; a fake key is a stable 401. Upload-Post keys
+  // use the `Apikey` scheme, not `Bearer`.
+  'publish/upload-post': {
+    needs: [['UPLOAD_POST_API_KEY']],
+    run: (get) => fetch(`${base(get, 'UPLOAD_POST_BASE_URL', 'https://api.upload-post.com')}/api/uploadposts/me`, {
+      signal: t(), headers: { Authorization: `Apikey ${get('UPLOAD_POST_API_KEY')}` },
+    }),
+  },
   // S3 HeadBucket is sent via SDK (SigV4 signature cannot be fetched manually), r2.ts synthesizes Response:
   // 200=The bucket exists and has been authenticated; 403/404 goes to classifyStatus; the network layer throws it to networkMessage as it is.
   'storage/r2': {

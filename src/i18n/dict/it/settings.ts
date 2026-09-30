@@ -35,6 +35,11 @@ const overrides: Record<string, string> = {
   '增强工具': 'Strumenti avanzati',
   '沙箱执行': 'Esecuzione sandbox',
   '网页抓取': 'Acquisizione web',
+  '发布到社交平台': 'Pubblicazione social',
+  'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。': 'publish_to_social · pubblica i video esportati su TikTok, Instagram, YouTube e altre piattaforme.',
+  '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。':
+    'Una sola chiave pubblica su TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest e Bluesky. Crea un profilo in Upload-Post, collega i tuoi account e inserisci qui sotto il nome del profilo. L’Agent mostra sempre un’anteprima di piattaforme, titolo e video e attende la tua conferma prima di caricare; YouTube è privato per impostazione predefinita.',
+  '在 Upload-Post 控制台创建、已连接社交账号的 Profile 名称。': 'Nome del profilo Upload-Post (creato nella dashboard di Upload-Post, con gli account social collegati).',
   '网络代理': 'Proxy di rete',
   '界面': 'Interfaccia',
   '显示': 'Visualizzazione',

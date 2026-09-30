@@ -25,6 +25,7 @@ import { HIGHLIGHT_TOOL_NAMES, HIGHLIGHT_TOOL_SCHEMAS } from './tools/schemas/hi
 import { REFRAME_TOOL_NAMES, REFRAME_TOOL_SCHEMAS } from './tools/schemas/reframe-tools';
 import { EXPORT_TOOL_NAMES, EXPORT_TOOL_SCHEMAS } from './tools/schemas/export-tools';
 import { EXPORT_QA_TOOL_NAMES, EXPORT_QA_TOOL_SCHEMAS } from './tools/schemas/export-qa-tools';
+import { PUBLISH_TOOL_NAMES, PUBLISH_TOOL_SCHEMAS } from './tools/schemas/publish-tools';
 import { TEMPLATE_TOOL_NAMES, TEMPLATE_TOOL_SCHEMAS } from './tools/schemas/template-tools';
 import { LOUDNESS_TOOL_NAMES, LOUDNESS_TOOL_SCHEMAS } from './tools/schemas/loudness-tools';
 import { ISOLATE_VOICE_TOOL_NAMES, ISOLATE_VOICE_TOOL_SCHEMAS } from './tools/schemas/isolate-voice-tools';
@@ -121,6 +122,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...EXPORT_TOOL_SCHEMAS,
   // Export QA: streams, duration, black/still frames, silence, peaks, and evidence frames around edit points.
   ...EXPORT_QA_TOOL_SCHEMAS,
+  // Social publishing: publish_to_social previews, then uploads a finished render via Upload-Post after user confirmation.
+  ...PUBLISH_TOOL_SCHEMAS,
   // Project templates: manage_template get/list_assets/apply installs a bundled MG and design style set.
   ...TEMPLATE_TOOL_SCHEMAS,
   // Loudness normalization: offline WebAudio analysis → per-clip gain through setItemVolume.
@@ -240,6 +243,7 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
   [REFRAME_TOOL_NAMES, async () => (await import('./tools/reframe-tools')).execReframeTool],
   [EXPORT_TOOL_NAMES, async () => (await import('./tools/export-tools')).execExportTool],
   [EXPORT_QA_TOOL_NAMES, async () => (await import('./tools/export-qa-tools')).execExportQaTool],
+  [PUBLISH_TOOL_NAMES, async () => (await import('./tools/publish-tools')).execPublishTool],
   [TEMPLATE_TOOL_NAMES, async () => (await import('./tools/template-tools')).execTemplateTool],
   [LOUDNESS_TOOL_NAMES, async () => (await import('./tools/loudness-tools')).execLoudnessTool],
   [ISOLATE_VOICE_TOOL_NAMES, async () => (await import('./tools/isolate-voice-tools')).execIsolateVoiceTool],
