@@ -46,14 +46,17 @@ async function publishToSocial(args: Args): Promise<unknown> {
     return {
       ok: true,
       ...data,
-      next: 'Show this preview to the user. Publishing is public and cannot be undone; call again with confirm:true only after they approve.',
+      next: data.previouslySubmitted
+        ? 'This exact publish was already sent. Do not ask to confirm it again: check it with track_social_publish.'
+        : 'Show this preview to the user. Publishing is public and cannot be undone; call again with confirm:true only after they approve.',
     };
   }
   if (data.phase === 'unconfirmed_delivery') {
     return {
       ok: true,
       ...data,
-      next: 'The connection dropped during the upload. Do NOT publish again: poll track_social_publish with this requestId to see whether it arrived.',
+      next: 'Upload-Post did not confirm whether the upload was accepted. It will NOT be re-sent, and confirming again only re-checks it. '
+        + 'Poll track_social_publish with this requestId and tell the user the outcome is unknown until it shows up.',
     };
   }
   return { ok: true, ...data, next: 'Poll track_social_publish with requestId, then report each platform result.' };

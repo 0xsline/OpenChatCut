@@ -55,7 +55,12 @@ responses = [json(200, { phase: 'unconfirmed_delivery', requestId: 'ocut-3', sta
 const dropped = await execPublishTool('publish_to_social', {
   source: '/media/uploads/cut.mp4', platforms: ['tiktok'], title: 'Hi', confirm: true,
 }) as Record<string, unknown>;
-assert.match(String(dropped.next), /Do NOT publish again/);
+assert.match(String(dropped.next), /will NOT be re-sent/);
+responses = [json(200, { phase: 'preview', needsConfirm: true, requestId: 'ocut-3', previouslySubmitted: true })];
+const repeatPreview = await execPublishTool('publish_to_social', {
+  source: '/media/uploads/cut.mp4', platforms: ['tiktok'], title: 'Hi',
+}) as Record<string, unknown>;
+assert.match(String(repeatPreview.next), /already sent/, 'no second confirmation prompt for a publish already sent');
 
 // ── server errors surface verbatim ──
 responses = [json(412, { error: 'Upload-Post is not configured', code: 'upload_post_not_configured' })];

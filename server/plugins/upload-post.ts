@@ -10,6 +10,7 @@ import type { KeyName } from '../keystore-names.ts';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { proxyDispatcher } from '../outbound-proxy.ts';
 import { readJsonBody, sendError, sendJson } from './export-http.ts';
+import { clearLedger, defaultLedgerPath, ledgerEntry, markLedger } from './upload-post-ledger.ts';
 
 // Publish a finished render to social platforms through Upload-Post
 // (https://docs.upload-post.com). One multipart upload fans out to every
@@ -22,6 +23,13 @@ import { readJsonBody, sendError, sendJson } from './export-http.ts';
 // The request_id is derived from the file and the publish fields and doubles
 // as the Idempotency-Key, so re-sending an approved publish (a retried tool
 // call, a dropped connection) resumes the same post instead of posting twice.
+//
+// Only a 400/401/403/422 is a definitive rejection. A 5xx, a transport error
+// or timeout, or any other non-2xx answer is ambiguous: the upload may have
+// been accepted. Every attempt is written to a local ledger BEFORE the file is
+// sent, and an id that is in the ledger is never uploaded again — a later
+// confirm only reconciles it against the status endpoint. The server-side
+// Idempotency-Key only dedups for 24 hours; the ledger has no such window.
 
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
 const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
@@ -40,6 +48,8 @@ const TITLE_MAX = 2200;
 const YOUTUBE_TITLE_MAX = 100;
 const DESCRIPTION_MAX = 5000;
 const REQUEST_ID = /^ocut-[0-9a-f]{32}$/;
+/** Pre-acceptance rejections: the upload was refused, so it can be fixed and retried. */
+const DEFINITIVE_REJECTIONS = new Set([400, 401, 403, 422]);
 
 export interface UploadPostConfig {
   readonly apiKey: string;
@@ -299,7 +309,7 @@ function videoMime(name: string): string {
 
 export type PublishOutcome =
   | ({ readonly phase: 'preview'; readonly needsConfirm: true } & PublishPreview)
-  | ({ readonly phase: 'submitted' | 'resumed' | 'unconfirmed_delivery' } & PublishStatus);
+  | ({ readonly phase: 'submitted' | 'resumed' | 'unconfirmed_delivery'; readonly note?: string } & PublishStatus);
 
 export interface PublishPreview {
   readonly requestId: string;
@@ -313,16 +323,48 @@ export interface PublishPreview {
   readonly youtubePrivacy?: string;
   readonly tiktokPrivacy?: string;
   readonly aiGenerated: boolean;
+  /** This exact publish was already sent once; confirming again only reconciles it, it never re-uploads. */
+  readonly previouslySubmitted?: boolean;
+}
+
+export interface PublishOptions {
+  readonly resolve?: (name: string) => string | null;
+  readonly ledgerPath?: string;
+}
+
+const AMBIGUOUS_NOTE = 'The upload may or may not have been accepted. It will not be re-sent: '
+  + 'check it with track_social_publish. To publish a separate post anyway, change the title or description.';
+
+/** After an ambiguous answer: the status endpoint is the only authority on whether the post exists. */
+async function reconcile(
+  config: UploadPostConfig,
+  requestId: string,
+  ledgerPath: string,
+  fallbackPhase: 'submitted' | 'unconfirmed_delivery',
+): Promise<PublishOutcome> {
+  const status = await publishStatus(config, requestId).catch(() => null);
+  if (status && status.status !== 'not_found') {
+    await markLedger(ledgerPath, requestId, 'accepted');
+    return { phase: 'submitted', ...status };
+  }
+  if (fallbackPhase === 'submitted') {
+    await markLedger(ledgerPath, requestId, 'accepted');
+    return { phase: 'submitted', requestId, status: 'queued', results: [] };
+  }
+  await markLedger(ledgerPath, requestId, 'ambiguous');
+  return { phase: 'unconfirmed_delivery', requestId, status: 'unknown', results: [], note: AMBIGUOUS_NOTE };
 }
 
 export async function publishToUploadPost(
   config: UploadPostConfig,
   request: PublishRequest,
-  resolve: (name: string) => string | null = resolveUploadFile,
+  options: PublishOptions = {},
 ): Promise<PublishOutcome> {
   requireConfig(config);
-  const source = await resolvePublishSource(request.source, resolve);
+  const ledgerPath = options.ledgerPath ?? defaultLedgerPath();
+  const source = await resolvePublishSource(request.source, options.resolve ?? resolveUploadFile);
   const requestId = publishRequestId(config.profile, source, request);
+  const prior = await ledgerEntry(ledgerPath, requestId);
 
   if (!request.confirm) {
     const connected = await connectedPlatforms(config);
@@ -340,16 +382,32 @@ export async function publishToUploadPost(
       ...(request.platforms.includes('youtube') ? { youtubePrivacy: request.youtubePrivacy } : {}),
       ...(request.tiktokPrivacy ? { tiktokPrivacy: request.tiktokPrivacy } : {}),
       aiGenerated: request.aiGenerated,
+      ...(prior ? { previouslySubmitted: true } : {}),
     };
   }
 
-  // An already-accepted id means this exact publish was sent before: resume it, never re-upload.
+  // Sent before (accepted, ambiguous, or interrupted mid-send): reconcile, never re-upload.
+  if (prior) {
+    const status = await publishStatus(config, requestId).catch(() => null);
+    if (status && status.status !== 'not_found') {
+      if (prior.state !== 'accepted') await markLedger(ledgerPath, requestId, 'accepted');
+      return { phase: 'resumed', ...status };
+    }
+    if (prior.state === 'accepted') return { phase: 'resumed', requestId, status: 'queued', results: [] };
+    return { phase: 'unconfirmed_delivery', requestId, status: 'unknown', results: [], note: AMBIGUOUS_NOTE };
+  }
+  // No local record (e.g. another machine or a cleared data dir): the server is the fallback.
   const existing = await publishStatus(config, requestId);
-  if (existing.status !== 'not_found') return { phase: 'resumed', ...existing };
+  if (existing.status !== 'not_found') {
+    await markLedger(ledgerPath, requestId, 'accepted');
+    return { phase: 'resumed', ...existing };
+  }
 
   const form = publishForm(request, config.profile, requestId);
   // File-backed Blob: the render streams from disk and is never buffered in memory.
   form.append('video', await openAsBlob(source.file, { type: videoMime(source.name) }), source.name);
+  // Write-ahead: from here on this id counts as sent, even if the process dies mid-upload.
+  await markLedger(ledgerPath, requestId, 'sending');
   let response: Response;
   try {
     response = await fetchWithProxy(`${config.baseUrl}/api/upload`, {
@@ -358,16 +416,26 @@ export async function publishToUploadPost(
       body: form,
     });
   } catch {
-    // The upload may have reached Upload-Post before the connection dropped.
-    // Report the id instead of re-sending; the next status poll settles it.
-    return { phase: 'unconfirmed_delivery', requestId, status: 'unknown', results: [] };
+    // Transport error or timeout: the upload may have reached Upload-Post.
+    return reconcile(config, requestId, ledgerPath, 'unconfirmed_delivery');
   }
-  if (response.status === 401) throw new UploadPostError(401, 'upload_post_auth', 'Upload-Post rejected the API key');
-  if (response.status === 403 || response.status === 429) {
-    throw new UploadPostError(response.status, 'upload_post_plan', await providerError(response));
+  // Any 2xx means the upload was accepted, whatever the body looks like.
+  if (response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    await markLedger(ledgerPath, requestId, 'accepted');
+    return { phase: 'submitted', requestId, status: 'queued', results: [] };
   }
-  if (!response.ok) throw new UploadPostError(response.status === 400 ? 400 : 502, 'upload_post_http', await providerError(response));
-  return { phase: 'submitted', requestId, status: 'queued', results: [] };
+  if (DEFINITIVE_REJECTIONS.has(response.status)) {
+    // Refused before acceptance: nothing was posted, so this publish may be fixed and retried.
+    const message = await providerError(response);
+    await clearLedger(ledgerPath, requestId);
+    if (response.status === 401) throw new UploadPostError(401, 'upload_post_auth', 'Upload-Post rejected the API key');
+    if (response.status === 403) throw new UploadPostError(403, 'upload_post_plan', message);
+    throw new UploadPostError(response.status, 'upload_post_rejected', message);
+  }
+  // 5xx, 429, 404, 409… — ambiguous: never treat as a failure that may be re-sent.
+  await response.body?.cancel().catch(() => undefined);
+  return reconcile(config, requestId, ledgerPath, 'unconfirmed_delivery');
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
