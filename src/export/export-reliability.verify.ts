@@ -2,10 +2,59 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   effectiveIncludeMg,
+  initialExportDialogJobId,
   suggestedExportFilename,
 } from './useExportWorkflow';
 import { exportMediaExtension } from './exportMediaExtension';
 import type { UseExportWorkflowOptions } from './exportWorkflowTypes';
+import { createExportJobStore } from './backgroundExportStore';
+
+const exportStore = createExportJobStore();
+const finishedId = exportStore.start({
+  label: 'completed.mp4', targetPath: null,
+  async execute({ setters }) {
+    setters.setProgress((progress) => progress ? { ...progress, phase: 'completed', percent: 100 } : progress);
+    setters.setBusy(null);
+  },
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(exportStore.getSnapshot().jobs.at(-1)?.progress.phase, 'completed');
+assert.equal(initialExportDialogJobId(exportStore.getSnapshot().jobs), null,
+  'reopening after a completed export restores the Export action instead of Done');
+assert.equal(exportStore.getSnapshot().jobs[0]?.id, finishedId, 'completed export history is retained');
+
+let releaseRender!: () => void;
+const activeId = exportStore.start({
+  label: 'active.mp4', targetPath: null,
+  async execute({ setters }) {
+    await new Promise<void>((resolve) => { releaseRender = resolve; });
+    setters.setProgress((progress) => progress ? { ...progress, phase: 'completed', percent: 100 } : progress);
+    setters.setBusy(null);
+  },
+});
+await Promise.resolve();
+assert.equal(initialExportDialogJobId(exportStore.getSnapshot().jobs), activeId,
+  'reopening during a render keeps its progress and cancel controls visible');
+const newerFinishedId = exportStore.start({
+  label: 'newer.mp4', targetPath: null,
+  async execute({ setters }) {
+    setters.setProgress((progress) => progress ? { ...progress, phase: 'completed', percent: 100 } : progress);
+    setters.setBusy(null);
+  },
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(initialExportDialogJobId(exportStore.getSnapshot().jobs), activeId,
+  'a newer completed job must not hide an older active render');
+assert.ok(exportStore.getSnapshot().jobs.some((job) => job.id === newerFinishedId));
+releaseRender();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(initialExportDialogJobId(exportStore.getSnapshot().jobs), null);
+assert.equal(initialExportDialogJobId([]), null);
+const completedJob = exportStore.getSnapshot().jobs[0]!;
+for (const phase of ['failed', 'cancelled'] as const) {
+  assert.equal(initialExportDialogJobId([{ ...completedJob, progress: { ...completedJob.progress, phase } }]), completedJob.id,
+    'failed or cancelled jobs retain their feedback and retry action');
+}
 
 const model = readFileSync(new URL('./useExportDialogModel.ts', import.meta.url), 'utf8');
 
