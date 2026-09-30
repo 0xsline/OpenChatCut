@@ -114,6 +114,13 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
     ],
   },
   {
+    requestKeywords: [
+      'publish', 'post to', 'post on', 'post it', 'share to', 'upload to', 'upload-post',
+      '发布', '发到', '上传到',
+    ],
+    tools: ['publish_to_social', 'track_social_publish', 'submit_render_job', 'track_export'],
+  },
+  {
     requestKeywords: ['export', 'render', 'xml', 'prores', 'premiere', 'resolve', '导出', '渲染', '成片'],
     tools: [
       'submit_export', 'submit_render_job', 'track_export', 'read_export_history',

@@ -35,6 +35,7 @@ const EXPECTED_PAGES = [
   'transcription/deepgram', 'transcription/groq', 'transcription/elevenlabs', 'transcription/cartesia',
   'sandbox/e2b',
   'web/firecrawl',
+  'publish/upload-post',
   'storage/r2', 'storage/local',
 ];
 for (const page of EXPECTED_PAGES) assert.ok(PROBES[page], `probe missing for ${page}`);

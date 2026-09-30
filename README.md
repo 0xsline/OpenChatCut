@@ -197,6 +197,7 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 | AI generation | Image, video, speech, music, and sound-effect jobs with progress tracking |
 | Media | Uploads, folders, online image/video/audio search, and Firecrawl visual-media fallback |
 | Export | MP4, audio, captions, FCPXML, project import/export, export history, hardware-aware H.264 acceleration, and resource-aware export queueing |
+| Publishing | Agent-driven publishing of finished renders to TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and Bluesky via Upload-Post, with a preview and explicit confirmation first |
 | Agent | Built-in conversational agent, skills, proposal-based edits, and external Streamable HTTP MCP |
 
 ---

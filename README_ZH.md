@@ -197,6 +197,7 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 | AI 生成 | 图片、视频、语音、音乐和音效任务，支持进度追踪 |
 | 素材 | 上传、文件夹、在线图片/视频/音频检索、Firecrawl 视觉素材兜底 |
 | 导出 | MP4、音频、字幕、FCPXML、工程导入导出、导出历史、硬件感知的 H.264 加速和资源感知的导出排队 |
+| 发布 | Agent 通过 Upload-Post 把成片发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky，先预览、确认后才上传 |
 | Agent | 内置对话 Agent、技能系统、提案式编辑、外部 Streamable HTTP MCP |
 
 ---

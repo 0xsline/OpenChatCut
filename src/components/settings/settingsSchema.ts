@@ -271,6 +271,17 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'web/firecrawl', vendor: 'firecrawl', title: 'Firecrawl',
             fields: [secret('FIRECRAWL_API_KEY', 'API Key')] },
         ] },
+      { key: 'publish', title: '发布到社交平台', hint: 'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。',
+        vendors: [
+          { key: 'publish/upload-post', vendor: 'uploadpost', title: 'Upload-Post',
+            note: '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。'
+              + '先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。'
+              + 'Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。',
+            fields: [
+              secret('UPLOAD_POST_API_KEY', 'API Key'),
+              text('UPLOAD_POST_PROFILE', 'Profile', undefined, '在 Upload-Post 控制台创建、已连接社交账号的 Profile 名称。'),
+            ] },
+        ] },
     ],
   },
   {
