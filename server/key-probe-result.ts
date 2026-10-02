@@ -6,6 +6,35 @@ export interface ProbeResult {
   models?: string[];
 }
 
+export function parseModelCatalog(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as {
+      data?: Array<{ id?: unknown; name?: unknown }>;
+      models?: Array<{ id?: unknown; name?: unknown }>;
+    };
+    const rows = Array.isArray(body.data) ? body.data : Array.isArray(body.models) ? body.models : [];
+    return [...new Set(rows
+      .map((row) => typeof row.id === 'string' ? row.id : typeof row.name === 'string' ? row.name : '')
+      .map((id) => id.trim())
+      .filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+/** Cheaper Inference also lists image/video models; chat keeps text and untyped rows. */
+export function parseTextModelCatalog(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as { data?: Array<{ type?: unknown } | null> };
+    if (!Array.isArray(body.data)) return parseModelCatalog(bodyText);
+    const data = body.data.filter((row) => row != null && (row.type === undefined || row.type === 'text'));
+    return parseModelCatalog(JSON.stringify({ data }));
+  } catch {
+    return [];
+  }
+}
+
 export function sanitizeProbeText(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 140);
 }
