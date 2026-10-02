@@ -25,6 +25,7 @@ import {
   writeDataDirPointer,
 } from '../data-dir.ts';
 import { sqliteStoreEnabled } from '../storage/sqlite-store.ts';
+import { pausePublishing } from './upload-post.ts';
 
 const ISOLATED_R2_SETTINGS = [
   'R2_ACCOUNT_ID',
@@ -127,17 +128,23 @@ async function applyDataDirChange(
   // the copy, and lose the projects exactly like the case this guards against.
   const destination = target ?? defaultRootDir(profile);
   if (destination !== profile.rootDir) {
-    const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreEnabled());
-    if (outcome.refused === 'sqlite-store-active') {
-      throw new Error(
-        'the project store has been migrated to SQLite and cannot be relocated yet: '
-        + 'moving a live database needs a quiesced snapshot, which this setting does not do',
-      );
-    }
-    // Uploads are addressed by name through uploadReadDirs(), so the copy must
-    // land where the relocated profile will resolve its writable upload dir.
-    const mediaDestination = relocatedMediaDestination(target, destination, DEFAULT_UPLOAD_DIR);
-    await syncUploadDirectories(uploadDir(profile), mediaDestination, log);
+    // The Upload-Post publish record moves with the root: no upload may be in
+    // flight while it is copied, and none is admitted until the restart.
+    await pausePublishing(async () => {
+      const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreEnabled());
+      if (outcome.refused === 'sqlite-store-active') {
+        throw new Error(
+          'the project store has been migrated to SQLite and cannot be relocated yet: '
+          + 'moving a live database needs a quiesced snapshot, which this setting does not do',
+        );
+      }
+      // Uploads are addressed by name through uploadReadDirs(), so the copy must
+      // land where the relocated profile will resolve its writable upload dir.
+      const mediaDestination = relocatedMediaDestination(target, destination, DEFAULT_UPLOAD_DIR);
+      await syncUploadDirectories(uploadDir(profile), mediaDestination, log);
+      await writeDataDirPointer(target);
+    });
+    return;
   }
   await writeDataDirPointer(target);
 }

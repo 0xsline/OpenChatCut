@@ -48,6 +48,12 @@ responses = [json(200, { phase: 'admitted', requestId: 'ocut-1', status: 'upload
 const admitted = await execPublishTool('publish_to_social', { ...SOURCE, confirm: true, previewId: 'ocut-1' }) as Record<string, unknown>;
 assert.equal(lastBody().previewId, 'ocut-1');
 assert.equal(admitted.phase, 'admitted');
+
+// ── the Pinterest board travels from the tool call to the server ──
+assert.ok(publishSchema?.input_schema.properties?.pinterestBoardId, 'pinterestBoardId is part of the schema');
+responses = [json(200, { phase: 'preview', needsConfirm: true, requestId: 'ocut-p' })];
+await execPublishTool('publish_to_social', { ...SOURCE, platforms: ['pinterest'], pinterestBoardId: 'board-42' });
+assert.equal(lastBody().pinterestBoardId, 'board-42');
 assert.match(String(admitted.next), /background/);
 
 // ── [P1] a changed profile / file / field surfaces as "preview again", never a silent publish ──

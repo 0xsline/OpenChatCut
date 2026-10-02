@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,6 +34,12 @@ interface Recorded {
   body: string;
 }
 const requests: Recorded[] = [];
+/** API key → Upload-Post account. test-key-rotated is a new key of the same account. */
+const ACCOUNTS: Record<string, string> = {
+  'test-key': 'Creator@Example.com',
+  'test-key-rotated': 'creator@example.com',
+  'key-b': 'other@example.com',
+};
 const accepted = new Set<string>();
 /** Accepted by the fake server but not yet visible on /status (Upload-Post registers async uploads with a delay). */
 const pendingVisibility = new Set<string>();
@@ -53,9 +59,14 @@ const provider = createServer(async (req, res) => {
   const body = Buffer.concat(chunks).toString('latin1');
   requests.push({ method: req.method ?? '', path: url.pathname, headers: req.headers, body });
   res.setHeader('Content-Type', 'application/json');
-  if (req.headers.authorization !== 'Apikey test-key') {
+  const account = ACCOUNTS[String(req.headers.authorization ?? '').replace(/^Apikey /, '')];
+  if (!account) {
     res.statusCode = 401;
     res.end(JSON.stringify({ message: 'Invalid API key' }));
+    return;
+  }
+  if (url.pathname === '/api/uploadposts/me') {
+    res.end(JSON.stringify({ success: true, message: 'Token is valid', email: account, plan: 'Basic' }));
     return;
   }
   if (url.pathname === '/api/uploadposts/users/creator' || url.pathname === '/api/uploadposts/users/brand-b') {
@@ -121,12 +132,13 @@ try {
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const mod = await import('./upload-post.ts');
   const {
-    parsePublishRequest, publishToUploadPost, publishStatus, settleBackgroundUploads, trackPublish,
-    uploadPostConfig, UploadPostError,
+    accountIdentity, parsePublishRequest, pausePublishing, publishToUploadPost, publishStatus, resumePublishingForTests,
+    settleBackgroundUploads, trackPublish, uploadPostConfig, UploadPostError,
   } = mod;
+  const { syncUploadDirectories } = await import('../media-dir.ts');
   const ledgerPath = join(root, 'ledger', 'upload-post-publishes.json');
-  const configFor = (profile: string) => uploadPostConfig((name) => ({
-    UPLOAD_POST_API_KEY: 'test-key', UPLOAD_POST_PROFILE: profile, UPLOAD_POST_BASE_URL: `${baseUrl}/`,
+  const configFor = (profile: string, apiKey = 'test-key', endpoint = `${baseUrl}/`) => uploadPostConfig((name) => ({
+    UPLOAD_POST_API_KEY: apiKey, UPLOAD_POST_PROFILE: profile, UPLOAD_POST_BASE_URL: endpoint,
   } as Record<string, string>)[name] ?? '');
   const config = configFor('creator');
   assert.equal(config.baseUrl, baseUrl, 'trailing slash trimmed');
@@ -197,7 +209,7 @@ try {
     /changed since the preview/,
     'a field edited after the preview is refused',
   );
-  await utimes(join(mediaDir, 'final-cut.mp4'), new Date(), new Date(Date.now() + 5_000)); // re-rendered file
+  await writeFile(join(mediaDir, 'final-cut.mp4'), Buffer.alloc(1024 * 1024, 9)); // re-rendered: same name and size, new bytes
   await assert.rejects(
     publish(config, parsePublishRequest({ ...base, confirm: true, previewId: preview.requestId })),
     (error: unknown) => error instanceof UploadPostError && error.code === 'preview_mismatch',
@@ -324,7 +336,9 @@ try {
   await assert.rejects(publish(config, unreadable), (error: unknown) => (
     error instanceof UploadPostError && error.status === 503 && error.code === 'ledger_unavailable'
   ), 'preview refuses too: it cannot tell whether this was already sent');
-  const matchingId = mod.publishRequestId('creator', await mod.resolvePublishSource(unreadable.source), unreadable);
+  const matchingId = mod.publishRequestId(
+    await accountIdentity(config), 'creator', await mod.resolvePublishSource(unreadable.source), unreadable,
+  );
   await assert.rejects(
     publish(config, parsePublishRequest({ ...base, title: 'no ledger', confirm: true, previewId: matchingId })),
     (error: unknown) => error instanceof UploadPostError && error.code === 'ledger_unavailable',
@@ -332,6 +346,147 @@ try {
   );
   assert.equal(uploadCount(), 0, 'no upload without duplicate protection');
   await rm(ledgerPath);
+
+  // ── [P1] approval and duplicate protection are bound to the endpoint and the account ──
+  // Preview under account A, then the key is switched to account B with the same profile name.
+  requests.length = 0;
+  const accountFields = { ...base, title: 'Account bound' };
+  const accountB = configFor('creator', 'key-b');
+  const previewA = await publish(config, parsePublishRequest(accountFields));
+  assert(previewA.phase === 'preview');
+  await assert.rejects(
+    publish(accountB, parsePublishRequest({ ...accountFields, confirm: true, previewId: previewA.requestId })),
+    (error: unknown) => error instanceof UploadPostError && error.status === 409 && error.code === 'preview_mismatch',
+    "account A's approved preview cannot be confirmed under account B",
+  );
+  assert.equal(uploadCount(), 0, 'nothing is uploaded under B with A\'s approval');
+  // B publishes the same fields with its own approval; A's record must not see it.
+  const underB = await previewAndConfirm(accountFields, accountB);
+  assert.equal(underB.confirmed.phase, 'admitted');
+  assert.notEqual(underB.preview.requestId, previewA.requestId, 'another account is another post');
+  await settleBackgroundUploads();
+  assert.equal(uploadCount(), 1);
+  const backToA = await publish(config, parsePublishRequest(accountFields));
+  assert(backToA.phase === 'preview');
+  assert.equal(backToA.requestId, previewA.requestId);
+  assert.equal(backToA.previouslySubmitted, undefined, "B's ledger entry is not reported as A's");
+  const confirmedA = await publish(config, parsePublishRequest({ ...accountFields, confirm: true, previewId: previewA.requestId }));
+  assert.equal(confirmedA.phase, 'admitted', 'A uploads its own post, not "resumed" from B');
+  await settleBackgroundUploads();
+  assert.equal(uploadCount(), 2);
+  // A rotates its key: same account, so the same id, and duplicate protection holds.
+  const rotated = configFor('creator', 'test-key-rotated');
+  const previewRotated = await publish(rotated, parsePublishRequest(accountFields));
+  assert(previewRotated.phase === 'preview');
+  assert.equal(previewRotated.requestId, previewA.requestId, 'a key rotation keeps the publish identity');
+  assert.equal(previewRotated.previouslySubmitted, true);
+  assert.equal(
+    (await publish(rotated, parsePublishRequest({ ...accountFields, confirm: true, previewId: previewA.requestId }))).phase,
+    'resumed',
+    'the rotated key resumes the post instead of sending it again',
+  );
+  assert.equal(uploadCount(), 2);
+  // Same key and account, another endpoint: a different destination.
+  const otherEndpoint = configFor('creator', 'test-key', `${baseUrl.replace('127.0.0.1', 'localhost')}/`);
+  await assert.rejects(
+    publish(otherEndpoint, parsePublishRequest({ ...accountFields, confirm: true, previewId: previewA.requestId })),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'preview_mismatch',
+    'an approval for one endpoint is not valid on another',
+  );
+  assert.equal(uploadCount(), 2);
+
+  // ── [P2] the Pinterest board is required, approved and sent ──
+  assert.throws(
+    () => parsePublishRequest({ ...base, platforms: ['pinterest'] }),
+    /pinterestBoardId is required/,
+    'Pinterest without a board is refused before anything else',
+  );
+  assert.equal(parsePublishRequest({ ...base, pinterestBoardId: 'board-1' }).pinterestBoardId, undefined, 'ignored without Pinterest');
+  requests.length = 0;
+  const pinFields = { ...base, platforms: ['pinterest', 'youtube'], title: 'Pinned', pinterestBoardId: 'board-1' };
+  const pin = await previewAndConfirm(pinFields);
+  assert(pin.preview.phase === 'preview');
+  assert.equal(pin.preview.pinterestBoardId, 'board-1', 'the preview shows the board the user approves');
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...pinFields, pinterestBoardId: 'board-2', confirm: true, previewId: pin.preview.requestId })),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'preview_mismatch',
+    'another board needs a new approval',
+  );
+  await settleBackgroundUploads();
+  const pinUpload = requests.find((request) => request.path === '/api/upload');
+  assert(pinUpload);
+  assert.match(pinUpload.body, /name="pinterest_board_id"\r\n\r\nboard-1\r\n/);
+  assert.equal(uploadCount(), 1);
+
+  // ── [P2] media migration keeps the publish identity, so the ledger still matches ──
+  requests.length = 0;
+  const movedFields = { ...base, title: 'Moved media' };
+  const beforeMove = await previewAndConfirm(movedFields);
+  await settleBackgroundUploads();
+  assert.equal(uploadCount(), 1);
+  const movedDir = join(root, 'moved-media');
+  await syncUploadDirectories(mediaDir, movedDir, () => undefined);
+  assert.equal(
+    Math.trunc((await stat(join(movedDir, 'final-cut.mp4'))).mtimeMs),
+    Math.trunc((await stat(join(mediaDir, 'final-cut.mp4'))).mtimeMs),
+    'the migration keeps the original timestamp',
+  );
+  // Even a destination that does not keep timestamps (coarse filesystem) keeps the identity.
+  await utimes(join(movedDir, 'final-cut.mp4'), new Date(), new Date(Date.now() + 60_000));
+  const fromMoved = (cfg: Cfg, fields: Record<string, unknown>) => publishToUploadPost(
+    cfg, parsePublishRequest(fields), { ledgerPath, resolve: (name) => join(movedDir, name) },
+  );
+  const movedPreview = await fromMoved(config, movedFields);
+  assert(movedPreview.phase === 'preview');
+  assert.equal(movedPreview.requestId, beforeMove.preview.requestId, 'same bytes, same publish');
+  assert.equal(movedPreview.previouslySubmitted, true, 'the migrated render is recognised as already sent');
+  assert.equal(
+    (await fromMoved(config, { ...movedFields, confirm: true, previewId: beforeMove.preview.requestId })).phase,
+    'resumed',
+  );
+  await settleBackgroundUploads();
+  assert.equal(uploadCount(), 1, 'migrating the media never produces a second upload');
+
+  // ── [P2] storage relocation: never while an upload is in flight, and none admitted until restart ──
+  requests.length = 0;
+  nextUpload = { delayMs: 800 };
+  const busy = await previewAndConfirm({ ...base, title: 'Busy during relocation' });
+  assert.equal(busy.confirmed.phase, 'admitted');
+  let relocated = false;
+  await assert.rejects(
+    pausePublishing(async () => { relocated = true; }),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'publish_in_progress',
+    'a relocation waits for the running upload, so its ledger writes are not left behind',
+  );
+  assert.equal(relocated, false);
+  await settleBackgroundUploads();
+  const pausedFields = { ...base, title: 'During relocation' };
+  const pausedPreview = await publish(config, parsePublishRequest(pausedFields));
+  assert(pausedPreview.phase === 'preview');
+  await pausePublishing(async () => {
+    await assert.rejects(
+      publish(config, parsePublishRequest({ ...pausedFields, confirm: true, previewId: pausedPreview.requestId })),
+      (error: unknown) => error instanceof UploadPostError && error.code === 'publish_paused',
+      'no upload is admitted while the root is copied',
+    );
+  });
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...pausedFields, confirm: true, previewId: pausedPreview.requestId })),
+    /after restarting/,
+    'after the copy the old root is still the live one, so publishing waits for the restart',
+  );
+  assert.equal(uploadCount(), 1, 'only the upload that was already running');
+  resumePublishingForTests();
+  await assert.rejects(
+    pausePublishing(async () => { throw new Error('copy failed'); }),
+    /copy failed/,
+  );
+  assert.equal(
+    (await publish(config, parsePublishRequest({ ...pausedFields, confirm: true, previewId: pausedPreview.requestId }))).phase,
+    'admitted',
+    'a failed relocation resumes publishing',
+  );
+  await settleBackgroundUploads();
 
   // ── provider status + errors ──
   assert.equal((await publishStatus(config, 'ocut-00000000000000000000000000000000')).status, 'not_found');

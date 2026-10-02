@@ -97,14 +97,22 @@ try {
   await writeFile(join(source, 'project-store-v1', 'projects.json'), '[]');
   await writeFile(join(source, 'deleted-projects-v1.json'), '{}');
   await writeFile(join(source, 'export-cache.log'), 'regenerated, stays behind');
+  // The Upload-Post publish record: an ambiguous publish lost here could be sent again after restart.
+  const publishRecord = JSON.stringify({ 'ocut-0123456789abcdef0123456789abcdef': { state: 'ambiguous', at: 1 } });
+  await writeFile(join(source, 'upload-post-publishes.json'), publishRecord);
 
   const logs: string[] = [];
   const destination = join(fixture, 'destination');
   assert.deepEqual(
     await relocateDataDir(source, destination, (msg) => logs.push(msg), false),
-    { copiedEntries: 2 },
+    { copiedEntries: 3 },
   );
   assert.equal(await readFile(join(destination, 'project-store-v1', 'projects.json'), 'utf8'), '[]');
+  assert.equal(
+    await readFile(join(destination, 'upload-post-publishes.json'), 'utf8'),
+    publishRecord,
+    'the duplicate-publish record travels with the root',
+  );
   assert.ok(existsSync(join(source, 'project-store-v1', 'projects.json')), 'the source is kept intact');
   assert.equal(existsSync(join(destination, 'export-cache.log')), false, 'regenerated files are not carried over');
   assert.deepEqual(
@@ -148,7 +156,7 @@ try {
   await writeFile(join(resumed, 'project-store-v1.incoming', 'half.json'), 'truncated');
   assert.deepEqual(
     await relocateDataDir(source, resumed, () => undefined, false),
-    { copiedEntries: 2 },
+    { copiedEntries: 3 },
   );
   assert.equal(
     await readFile(join(resumed, 'project-store-v1', 'projects.json'), 'utf8'),

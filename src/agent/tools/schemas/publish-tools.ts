@@ -10,7 +10,8 @@ export const PUBLISH_TOOL_SCHEMAS: AgentToolSchema[] = [
       + 'Two steps, always: (1) call WITHOUT confirm — nothing is uploaded; it returns needsConfirm, a requestId, and the file, profile, platforms, '
       + 'missingPlatforms (not connected on the profile, would be skipped), title and privacy. Show that preview to the user. (2) Only after the user '
       + 'explicitly approves it in this conversation, call again with the SAME arguments plus confirm:true and previewId set to that requestId. '
-      + 'If the profile, the file or any field changed since the preview, the confirm is refused with preview_mismatch: preview again and ask again. '
+      + 'If the Upload-Post account, the profile, the file or any field changed since the preview, the confirm is refused with preview_mismatch: preview again and ask again. '
+      + 'Pinterest needs pinterestBoardId. '
       + 'A confirm returns phase admitted immediately and the upload continues in the background; poll track_social_publish with the requestId. '
       + 'Publishing is public and cannot be undone; re-sending an approved publish resumes it instead of posting twice. '
       + 'source is the downloadUrl from a completed track_export (/media/uploads/...). Requires the Upload-Post key and profile in Settings.',
@@ -31,6 +32,10 @@ export const PUBLISH_TOOL_SCHEMAS: AgentToolSchema[] = [
           type: 'string',
           enum: ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'],
           description: 'Omit to keep the TikTok account default.',
+        },
+        pinterestBoardId: {
+          type: 'string',
+          description: 'Required when platforms includes pinterest: the ID of the Pinterest board to pin the video to. Ask the user for it.',
         },
         aiGenerated: {
           type: 'boolean',

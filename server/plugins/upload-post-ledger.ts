@@ -13,6 +13,10 @@ import { runtimeProfile } from '../runtime-profile.ts';
 //
 // Fail closed: if the record cannot be read or written, callers refuse to
 // publish instead of proceeding without duplicate protection.
+//
+// The file lives in the storage root and travels with a storage relocation
+// (RELOCATED_ENTRIES in server/data-dir.ts); the relocation runs only while no
+// upload is in flight (pausePublishing in upload-post.ts).
 
 export type LedgerState =
   | 'sending' // written before the upload starts; also what an interrupted upload leaves behind
@@ -77,6 +81,11 @@ function updateLedger(path: string, update: (ledger: Ledger) => void): Promise<v
   });
   ledgerQueue = run.catch(() => undefined);
   return run;
+}
+
+/** Resolves once every queued ledger write has landed on disk. */
+export async function ledgerIdle(): Promise<void> {
+  await ledgerQueue;
 }
 
 export async function ledgerEntry(path: string, requestId: string): Promise<LedgerEntry | undefined> {

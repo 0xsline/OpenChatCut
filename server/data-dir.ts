@@ -80,6 +80,9 @@ const RELOCATED_ENTRIES = [
   'project-store-auth-v1',
   'deleted-projects-v1.json',
   'generation-operations-v1.json',
+  // Upload-Post duplicate-publish record: losing it would let an ambiguous
+  // publish be sent again after the restart (server/plugins/upload-post-ledger.ts).
+  'upload-post-publishes.json',
 ] as const;
 
 /** Why a relocation was refused, so the caller can explain it to the user. */

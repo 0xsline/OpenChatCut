@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { openAsBlob } from 'node:fs';
+import { createReadStream, openAsBlob } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -8,16 +8,16 @@ import type { Plugin } from 'vite';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { readJsonBody, sendError, sendJson } from './export-http.ts';
 import {
-  connectedPlatforms, fetchWithProxy, PLATFORM_ALIASES, providerError, publishStatus, requireConfig,
+  accountIdentity, connectedPlatforms, fetchWithProxy, PLATFORM_ALIASES, providerError, publishStatus, requireConfig,
   UPLOAD_POST_PLATFORMS, UploadPostError, uploadPostConfig,
   type PublishStatus, type UploadPostConfig, type UploadPostPlatform,
 } from './upload-post-client.ts';
 import {
-  defaultLedgerPath, ledgerEntry, LedgerUnavailableError, markLedger, type LedgerEntry,
+  defaultLedgerPath, ledgerEntry, ledgerIdle, LedgerUnavailableError, markLedger, type LedgerEntry,
 } from './upload-post-ledger.ts';
 
 export {
-  connectedPlatforms, normalizeResults, publishStatus, UPLOAD_POST_PLATFORMS, UploadPostError, uploadPostConfig,
+  accountIdentity, connectedPlatforms, normalizeResults, publishStatus, UPLOAD_POST_PLATFORMS, UploadPostError, uploadPostConfig,
 } from './upload-post-client.ts';
 export type { PlatformResult, PublishStatus, UploadPostConfig, UploadPostPlatform } from './upload-post-client.ts';
 
@@ -27,10 +27,13 @@ export type { PlatformResult, PublishStatus, UploadPostConfig, UploadPostPlatfor
 //
 // Publishing is public and cannot be undone:
 // - Without `confirm` the route only previews and returns a requestId derived
-//   from the profile, the render file and every publish field.
-// - `confirm: true` must carry that requestId as `previewId`. If the profile,
-//   the file or a field changed since the preview, the ids differ and the
-//   confirm is refused: the user has to approve a fresh preview.
+//   from the destination (endpoint, Upload-Post account and profile), the
+//   render's content and every publish field.
+// - `confirm: true` must carry that requestId as `previewId`. If the account
+//   (another API key), the endpoint, the profile, the file or a field changed
+//   since the preview, the ids differ and the confirm is refused: the user has
+//   to approve a fresh preview. Rotating the key of the SAME account keeps the
+//   id, so duplicate protection survives a key rotation.
 // - A confirm is admitted, recorded in the local ledger and answered at once;
 //   the upload itself runs in the background, so a large render never outlives
 //   the agent's tool deadline. track_social_publish reports `uploading` until
@@ -56,6 +59,8 @@ export interface PublishRequest {
   readonly description?: string;
   readonly youtubePrivacy: (typeof YOUTUBE_PRIVACY)[number];
   readonly tiktokPrivacy?: (typeof TIKTOK_PRIVACY)[number];
+  /** Required when publishing to Pinterest: the board the pin goes to. */
+  readonly pinterestBoardId?: string;
   readonly aiGenerated: boolean;
   readonly confirm: boolean;
   /** The requestId returned by the preview the user approved. Required with confirm. */
@@ -101,6 +106,10 @@ export function parsePublishRequest(body: unknown): PublishRequest {
   const description = typeof input.description === 'string' && input.description.trim()
     ? input.description.trim().slice(0, DESCRIPTION_MAX)
     : undefined;
+  const pinterestBoardId = typeof input.pinterestBoardId === 'string' ? input.pinterestBoardId.trim() : '';
+  if (platforms.includes('pinterest') && !pinterestBoardId) {
+    throw new UploadPostError(400, 'invalid_request', 'pinterestBoardId is required when publishing to Pinterest');
+  }
   return {
     source,
     platforms,
@@ -108,6 +117,7 @@ export function parsePublishRequest(body: unknown): PublishRequest {
     description,
     youtubePrivacy: oneOf(input.youtubePrivacy, YOUTUBE_PRIVACY, 'youtubePrivacy', 'private')!,
     tiktokPrivacy: oneOf(input.tiktokPrivacy, TIKTOK_PRIVACY, 'tiktokPrivacy'),
+    ...(platforms.includes('pinterest') ? { pinterestBoardId } : {}),
     aiGenerated: input.aiGenerated === true,
     confirm: input.confirm === true,
     ...(typeof input.previewId === 'string' && input.previewId.trim() ? { previewId: input.previewId.trim() } : {}),
@@ -118,7 +128,7 @@ export function parsePublishRequest(body: unknown): PublishRequest {
 export async function resolvePublishSource(
   source: string,
   resolve: (name: string) => string | null = resolveUploadFile,
-): Promise<{ file: string; name: string; sizeBytes: number; modifiedMs: number }> {
+): Promise<PublishSource> {
   const clean = source.split(/[?#]/, 1)[0];
   if (!clean.startsWith('/media/uploads/')) {
     throw new UploadPostError(400, 'invalid_source', 'source must be a /media/uploads/ path (the downloadUrl from track_export)');
@@ -137,19 +147,58 @@ export async function resolvePublishSource(
   if (!file) throw new UploadPostError(404, 'source_not_found', `render not found: ${source}`);
   const info = await stat(file);
   if (!info.isFile() || info.size === 0) throw new UploadPostError(422, 'source_empty', 'the render file is empty');
-  return { file, name, sizeBytes: info.size, modifiedMs: Math.trunc(info.mtimeMs) };
+  return { file, name, sizeBytes: info.size, contentHash: await contentHash(file, info) };
 }
 
-/** Deterministic id: the same file + the same publish fields always map to the same post. */
+export interface PublishSource {
+  readonly file: string;
+  readonly name: string;
+  readonly sizeBytes: number;
+  /** SHA-256 of the render's bytes: the same video keeps its identity wherever it is copied. */
+  readonly contentHash: string;
+}
+
+const HASH_CACHE_LIMIT = 64;
+const hashCache = new Map<string, Promise<string>>();
+
+/**
+ * Identity of the render by content, not by timestamp: a media-directory
+ * migration (or a copy to a filesystem with coarser timestamps) keeps the same
+ * id for the same bytes, while a re-render with new bytes gets a new one. The
+ * hash is cached per file version, so a preview and its confirm read the file once.
+ */
+function contentHash(file: string, info: { size: number; mtimeMs: number; ino: number }): Promise<string> {
+  const key = `${file}\n${info.size}\n${info.mtimeMs}\n${info.ino}`;
+  const cached = hashCache.get(key);
+  if (cached) return cached;
+  const hashing = new Promise<string>((resolve, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(file)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', () => resolve(hash.digest('hex')));
+  });
+  if (hashCache.size >= HASH_CACHE_LIMIT) hashCache.delete(hashCache.keys().next().value!);
+  hashCache.set(key, hashing);
+  hashing.catch(() => hashCache.delete(key));
+  return hashing;
+}
+
+/**
+ * Deterministic id: the same destination + the same video + the same publish
+ * fields always map to the same post. `account` is accountIdentity(config):
+ * the endpoint and the Upload-Post account, stable across key rotations.
+ */
 export function publishRequestId(
+  account: string,
   profile: string,
-  source: { name: string; sizeBytes: number; modifiedMs: number },
+  source: Pick<PublishSource, 'name' | 'sizeBytes' | 'contentHash'>,
   request: PublishRequest,
 ): string {
   const identity = JSON.stringify([
-    profile, source.name, source.sizeBytes, source.modifiedMs,
+    account, profile, source.name, source.sizeBytes, source.contentHash,
     [...request.platforms].sort(), request.title, request.description ?? '',
-    request.youtubePrivacy, request.tiktokPrivacy ?? '', request.aiGenerated,
+    request.youtubePrivacy, request.tiktokPrivacy ?? '', request.pinterestBoardId ?? '', request.aiGenerated,
   ]);
   return `ocut-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
 }
@@ -165,6 +214,7 @@ function publishForm(request: PublishRequest, profile: string, requestId: string
   if (request.aiGenerated) form.append('is_ai_generated', 'true');
   if (request.platforms.includes('youtube')) form.append('privacyStatus', request.youtubePrivacy);
   if (request.platforms.includes('tiktok') && request.tiktokPrivacy) form.append('privacy_level', request.tiktokPrivacy);
+  if (request.platforms.includes('pinterest') && request.pinterestBoardId) form.append('pinterest_board_id', request.pinterestBoardId);
   return form;
 }
 
@@ -184,6 +234,7 @@ export interface PublishPreview {
   readonly description?: string;
   readonly youtubePrivacy?: string;
   readonly tiktokPrivacy?: string;
+  readonly pinterestBoardId?: string;
   readonly aiGenerated: boolean;
   /** This exact publish was already sent once; confirming again only reconciles it, it never re-uploads. */
   readonly previouslySubmitted?: boolean;
@@ -203,11 +254,51 @@ const AMBIGUOUS_NOTE = 'The upload may or may not have been accepted. It will no
 
 /** Request ids whose upload is running (or being admitted) in this process. */
 const inFlight = new Map<string, Promise<void>>();
+/**
+ * Why new uploads are not admitted: a storage relocation is copying the root,
+ * or has copied it and only takes effect on the next launch. Until then this
+ * process still writes the old root's ledger, so a publish admitted now would
+ * be missing from the relocated record after the restart.
+ */
+let pausedFor: 'relocating' | 'relocated' | null = null;
+
+/**
+ * Run `task` (a storage relocation) with publishing paused. Refused while an
+ * upload is in flight, because its ledger writes would land in the old root
+ * after the copy and leave the relocated record stale. The check and the flag
+ * are set in the same synchronous step as an admission's claim, so the two
+ * cannot interleave. If `task` succeeds, publishing stays paused until the
+ * restart that activates the new root; if it fails, publishing resumes.
+ */
+export async function pausePublishing<T>(task: () => Promise<T>): Promise<T> {
+  if (inFlight.size > 0) {
+    throw new UploadPostError(409, 'publish_in_progress',
+      'A social publish is still uploading. Change the storage folder after it finishes (check it with track_social_publish).');
+  }
+  if (pausedFor === 'relocating') throw new UploadPostError(409, 'publish_paused', 'A storage relocation is already in progress.');
+  const before = pausedFor;
+  pausedFor = 'relocating';
+  try {
+    await ledgerIdle(); // every write already queued lands before the copy
+    const result = await task();
+    pausedFor = 'relocated';
+    return result;
+  } catch (error) {
+    pausedFor = before;
+    throw error;
+  }
+}
+
+/** Test hook: undo pausePublishing as a restart would. */
+export function resumePublishingForTests(): void {
+  pausedFor = null;
+}
 
 /** Test hook: wait for every background upload to finish. */
 export async function settleBackgroundUploads(): Promise<void> {
   while (inFlight.size) await Promise.allSettled([...inFlight.values()]);
 }
+
 
 function ledgerError(error: unknown): never {
   if (error instanceof LedgerUnavailableError) throw new UploadPostError(503, 'ledger_unavailable', error.message);
@@ -224,7 +315,7 @@ async function settleAmbiguous(config: UploadPostConfig, requestId: string, ledg
 async function runUpload(
   config: UploadPostConfig,
   request: PublishRequest,
-  source: { file: string; name: string },
+  source: Pick<PublishSource, 'file' | 'name'>,
   requestId: string,
   ledgerPath: string,
 ): Promise<void> {
@@ -310,8 +401,11 @@ export async function publishToUploadPost(
 ): Promise<PublishOutcome> {
   requireConfig(config);
   const ledgerPath = options.ledgerPath ?? defaultLedgerPath();
-  const source = await resolvePublishSource(request.source, options.resolve ?? resolveUploadFile);
-  const requestId = publishRequestId(config.profile, source, request);
+  const [source, account] = await Promise.all([
+    resolvePublishSource(request.source, options.resolve ?? resolveUploadFile),
+    accountIdentity(config),
+  ]);
+  const requestId = publishRequestId(account, config.profile, source, request);
 
   if (!request.confirm) {
     const prior = await ledgerEntry(ledgerPath, requestId).catch(ledgerError);
@@ -329,6 +423,7 @@ export async function publishToUploadPost(
       ...(request.description ? { description: request.description } : {}),
       ...(request.platforms.includes('youtube') ? { youtubePrivacy: request.youtubePrivacy } : {}),
       ...(request.tiktokPrivacy ? { tiktokPrivacy: request.tiktokPrivacy } : {}),
+      ...(request.pinterestBoardId ? { pinterestBoardId: request.pinterestBoardId } : {}),
       aiGenerated: request.aiGenerated,
       ...(prior && prior.state !== 'rejected' ? { previouslySubmitted: true } : {}),
     };
@@ -339,10 +434,15 @@ export async function publishToUploadPost(
     throw new UploadPostError(400, 'preview_required', 'Preview first (call without confirm) and pass its requestId as previewId when confirming.');
   }
   if (request.previewId !== requestId) {
-    throw new UploadPostError(409, 'preview_mismatch', 'The Upload-Post profile, the render file or the publish fields changed since the preview. '
+    throw new UploadPostError(409, 'preview_mismatch', 'The Upload-Post account, endpoint or profile, the render file or the publish fields changed since the preview. '
       + 'Nothing was published: preview again and ask the user to approve the new preview.');
   }
   if (inFlight.has(requestId)) return { phase: 'admitted', requestId, status: 'uploading', results: [] };
+  if (pausedFor) {
+    throw new UploadPostError(503, 'publish_paused', pausedFor === 'relocating'
+      ? 'The storage folder is being moved. Nothing was published: confirm again in a moment.'
+      : 'The storage folder was moved and takes effect after restarting OpenChatCut. Nothing was published: restart, then confirm again.');
+  }
 
   // Claim the id synchronously so a concurrent confirm cannot start a second upload.
   let release!: () => void;

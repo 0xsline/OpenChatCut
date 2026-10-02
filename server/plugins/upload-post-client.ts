@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { getKey } from '../keystore.ts';
 import type { KeyName } from '../keystore-names.ts';
 import { proxyDispatcher } from '../outbound-proxy.ts';
@@ -89,6 +91,33 @@ async function apiGet(config: UploadPostConfig, path: string): Promise<Response>
     headers: { Authorization: `Apikey ${config.apiKey}`, 'User-Agent': 'OpenChatCut' },
     signal: AbortSignal.timeout(READ_TIMEOUT_MS),
   });
+}
+
+/** In-process cache of account identities, keyed by endpoint + a hash of the key (never the key itself). */
+const accountCache = new Map<string, Promise<string>>();
+
+/**
+ * Stable identity of the Upload-Post account behind the configured key, bound
+ * to the endpoint: sha256(baseUrl + account email). It does not change when the
+ * same account rotates its key, and differs for another account or endpoint.
+ * The email itself never leaves this process; only its hash is used.
+ */
+export function accountIdentity(config: UploadPostConfig): Promise<string> {
+  const cacheKey = createHash('sha256').update(`${config.baseUrl}\n${config.apiKey}`).digest('hex');
+  const cached = accountCache.get(cacheKey);
+  if (cached) return cached;
+  const lookup = (async () => {
+    const response = await apiGet(config, '/api/uploadposts/me');
+    if (response.status === 401) throw new UploadPostError(401, 'upload_post_auth', 'Upload-Post rejected the API key');
+    if (!response.ok) throw new UploadPostError(502, 'upload_post_http', await providerError(response));
+    const data = await response.json().catch(() => ({})) as { email?: unknown };
+    const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+    if (!email) throw new UploadPostError(502, 'upload_post_http', 'Upload-Post did not identify the account behind the API key');
+    return createHash('sha256').update(`${config.baseUrl}\n${email}`).digest('hex');
+  })();
+  accountCache.set(cacheKey, lookup);
+  lookup.catch(() => accountCache.delete(cacheKey));
+  return lookup;
 }
 
 /** Platforms that have an account connected on the configured profile. */

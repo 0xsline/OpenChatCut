@@ -15,7 +15,7 @@ type Args = Record<string, unknown>;
 const DEFAULT_WAIT_SECONDS = 20; // stays below the browser Agent's 30-second tool deadline
 const MAX_WAIT_SECONDS = 25;
 const POLL_INTERVAL_MS = 3_000;
-/** Bound for one publish_to_social request (a preview makes two provider reads). */
+/** Bound for one publish_to_social request (a preview makes up to three provider reads, two of them in parallel). */
 const PUBLISH_REQUEST_TIMEOUT_MS = 25_000;
 /** States that will not change by polling again within one wait. */
 const SETTLED = new Set(['completed', 'failed', 'unknown', 'not_found']);
@@ -37,6 +37,7 @@ async function publishToSocial(args: Args): Promise<unknown> {
     description: args.description,
     youtubePrivacy: args.youtubePrivacy,
     tiktokPrivacy: args.tiktokPrivacy,
+    pinterestBoardId: args.pinterestBoardId,
     aiGenerated: args.aiGenerated === true,
     confirm,
     ...(typeof args.previewId === 'string' ? { previewId: args.previewId } : {}),
