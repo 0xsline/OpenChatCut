@@ -225,6 +225,73 @@ try {
     assert.deepEqual([result.addedVideos, result.warnings], [2, []]);
   }
 
+  // ── the store: the app's default on this platform, or the directory given ────
+  {
+    // capcut-cli 0.26 draftDirCandidates(): %LOCALAPPDATA% on Windows (HOME is
+    // usually unset there), ~/Movies on macOS. #160 wrote Windows drafts to
+    // $HOME/Movies/CapCut/… and sent the macOS JianYing path from the dialog.
+    const windows = { platform: 'win32' as const, env: { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, home: 'C:\\Users\\me' };
+    const mac = { platform: 'darwin' as const, env: {}, home: '/Users/me' };
+    const cases = [
+      // No store named (the agent tool, `occ export jianying`): CapCut's.
+      [windows, {}, 'C:\\Users\\me\\AppData\\Local\\CapCut\\User Data\\Projects\\com.lveditor.draft'],
+      [windows, { store: 'jianying' }, 'C:\\Users\\me\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft'],
+      [{ ...windows, env: { USERPROFILE: 'D:\\Profiles\\me' } }, { store: 'capcut' },
+        'D:\\Profiles\\me\\AppData\\Local\\CapCut\\User Data\\Projects\\com.lveditor.draft'],
+      [{ ...windows, env: {} }, { store: 'jianying' }, 'C:\\Users\\me\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft'],
+      [mac, { store: 'capcut' }, '/Users/me/Movies/CapCut/User Data/Projects/com.lveditor.draft'],
+      [mac, { store: 'jianying' }, '/Users/me/Movies/JianyingPro/User Data/Projects/com.lveditor.draft'],
+      // The body is untrusted JSON: a store it does not know is CapCut's.
+      [mac, JSON.parse('{"store":"custom"}'), '/Users/me/Movies/CapCut/User Data/Projects/com.lveditor.draft'],
+    ] as const;
+    for (const [host, target, expected] of cases) {
+      const { calls, seams } = recorder();
+      await exportJianyingDraft({ draftName: 'occ-verify', ...target, fps: 30, items: [video(0, 30)] }, { ...seams, ...host });
+      assert.deepEqual(calls[0], ['init', 'occ-verify', '--jianying', '--force-write', '--drafts', expected],
+        `${host.platform} ${target.store ?? 'default'} store`);
+    }
+    // A directory given (the custom store, the tool's draftsDir, --out-dir) wins.
+    for (const [host, draftsDir, expected] of [
+      [mac, ' ~/Drafts ', '/Users/me/Drafts'],
+      [windows, '~\\Drafts', 'C:\\Users\\me\\Drafts'],
+      [windows, 'D:\\CapCut Drafts', 'D:\\CapCut Drafts'],
+    ] as const) {
+      const { calls, seams } = recorder();
+      await exportJianyingDraft({ draftName: 'occ-verify', store: 'jianying', draftsDir, fps: 30, items: [video(0, 30)] }, { ...seams, ...host });
+      assert.equal(calls[0]!.at(-1), expected);
+    }
+  }
+
+  // ── a draft name Windows cannot use as a folder follows the file-name rule ───
+  {
+    const name = 'a<b>c:d"e|f?g*h\ni & 100%';
+    const onWindows = recorder();
+    const result = await exportJianyingDraft({ draftName: name, draftsDir: DRAFTS, fps: 30, items: [video(0, 30)] },
+      { ...onWindows.seams, platform: 'win32' });
+    assert.equal(result.draftName, 'a_b_c_d_e_f_g_h_i & 100%', 'what Windows forbids is replaced; & and % are legal');
+    assert.deepEqual(onWindows.calls[0], ['init', 'a_b_c_d_e_f_g_h_i & 100%', ...STORE_FLAGS]);
+    const onMac = recorder();
+    await exportJianyingDraft({ draftName: name, draftsDir: DRAFTS, fps: 30, items: [video(0, 30)] }, { ...onMac.seams, platform: 'darwin' });
+    assert.equal(onMac.calls[0]![1], name, 'macOS names are unchanged');
+  }
+
+  // ── Win32 paths drop a trailing dot/space and reserve device names ───────────
+  {
+    const windowsName = async (draftName: string): Promise<string> => {
+      const onWindows = recorder();
+      const result = await exportJianyingDraft({ draftName, draftsDir: DRAFTS, fps: 30, items: [video(0, 30)] },
+        { ...onWindows.seams, platform: 'win32' });
+      return result.draftName;
+    };
+    assert.equal(await windowsName('Final cut.'), 'Final cut', 'a trailing dot is dropped');
+    assert.equal(await windowsName('CON'), '_CON', 'a device name gets a prefix');
+    assert.equal(await windowsName('nul.draft'), '_nul.draft', 'a device name with an extension too');
+    assert.equal(await windowsName(`${'x'.repeat(59)} tail`), 'x'.repeat(59), 'no trailing space after the cut');
+    const onMac = recorder();
+    await exportJianyingDraft({ draftName: 'Final cut.', draftsDir: DRAFTS, fps: 30, items: [video(0, 30)] }, { ...onMac.seams, platform: 'darwin' });
+    assert.equal(onMac.calls[0]![1], 'Final cut.', 'macOS keeps the trailing dot');
+  }
+
   // ── init failure and empty timelines stop before touching clips ──────────────
   {
     const { calls, seams } = recorder({ init: () => ({ ok: false, error: 'Draft already exists' }) });

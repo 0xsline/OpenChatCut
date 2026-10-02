@@ -26,6 +26,8 @@ import {
 import { isValidAgentRuntimeSnapshot } from './agentRuntimeSnapshotValidation';
 import {
   applyAgentRuntimeRetention,
+  historyArtifacts,
+  isActiveAgentRun,
   MAX_AGENT_RUNS, MAX_APPROVALS, MAX_CHECKPOINTS, MAX_EVENTS_PER_RUN,
 } from './agentRuntimeRetention';
 import {
@@ -243,10 +245,14 @@ export async function storeAgentArtifact(record: AgentArtifactRecord): Promise<b
     await kvSet(key, record);
     try {
       const mutation = await mutateOnce(record.projectId, (current) => {
-        if (!current.runs.some((run) => run.runId === record.runId)) return [current, false];
-        const bytes = current.artifacts.reduce((sum, item) => sum + item.originalBytes, 0);
-        if (current.artifacts.length >= MAX_PROJECT_ARTIFACTS
-            || bytes + record.originalBytes > MAX_PROJECT_ARTIFACT_BYTES) return [current, false];
+        const owner = current.runs.find((run) => run.runId === record.runId);
+        if (!owner) return [current, false];
+        if (!isActiveAgentRun(owner)) {
+          const history = historyArtifacts(current.runs, current.artifacts);
+          const bytes = history.reduce((sum, item) => sum + item.originalBytes, 0);
+          if (history.length >= MAX_PROJECT_ARTIFACTS
+              || bytes + record.originalBytes > MAX_PROJECT_ARTIFACT_BYTES) return [current, false];
+        }
         const { body: _body, version: _version, ...index } = record;
         const runs = current.runs.map((run) => run.runId === record.runId
           ? { ...run, artifactIds: [...new Set([...run.artifactIds, record.artifactId])] } : run);

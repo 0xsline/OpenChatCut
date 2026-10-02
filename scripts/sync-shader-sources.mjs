@@ -13,13 +13,20 @@
 // Usage: node scripts/sync-shader-sources.mjs [--check]
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
 const SUFFIX = '.frag';
 const TWIN_SUFFIX = '.frag.ts';
+
+// A Windows checkout (core.autocrlf, the GitHub runner default) hands back the
+// .frag and its twin with CRLF, and relative() there joins with "\". Generate
+// and compare the LF, "/"-joined form, or every twin reads as stale on Windows
+// and `npm run build` stops in prebuild.
+const lf = (text) => text.replace(/\r\n?/g, '\n');
+const posix = (path) => path.split(sep).join('/');
 
 async function walk(dir) {
   const found = [];
@@ -37,8 +44,8 @@ function twinPath(shaderPath) {
 
 function twinContent(shaderPath, text) {
   return [
-    `// GENERATED from ${relative(root, shaderPath)} by scripts/sync-shader-sources.mjs — do not edit.`,
-    `export default ${JSON.stringify(text)};`,
+    `// GENERATED from ${posix(relative(root, shaderPath))} by scripts/sync-shader-sources.mjs — do not edit.`,
+    `export default ${JSON.stringify(lf(text))};`,
     '',
   ].join('\n');
 }
@@ -53,7 +60,7 @@ for (const shader of shaders) {
   const expected = twinContent(shader, text);
   const twin = twinPath(shader);
   const current = existsSync(twin) ? await readFile(twin, 'utf8') : null;
-  if (current === expected) continue;
+  if (current !== null && lf(current) === expected) continue;
   if (check) {
     stale.push(current === null ? `missing ${relative(root, twin)}` : `stale ${relative(root, twin)}`);
     continue;

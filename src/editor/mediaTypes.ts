@@ -73,6 +73,8 @@ export interface MediaAssetRelinkPatch {
   name?: string;
   /** Total replacement-source frames, not a request to resize timeline clips. */
   durationInFrames?: number;
+  /** Rate `durationInFrames` was counted at; a pool relink recounts it at the project rate. */
+  durationFps?: number;
   width?: number;
   height?: number;
   kind?: MediaAsset['kind'];

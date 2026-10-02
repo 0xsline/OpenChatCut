@@ -258,6 +258,8 @@ These are early builds. The macOS packages are not yet signed or notarized, so t
 
 Requires Node.js 24.x and npm. The supported Node.js range is enforced by `package.json`, and `.nvmrc` selects the matching major version for Node version managers.
 
+On Linux x64, `npm install` also downloads ONNX Runtime's optional CUDA provider (several hundred MB from NuGet). For a CPU-only install, run `ONNXRUNTIME_NODE_INSTALL=skip npm install` instead.
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut
@@ -271,6 +273,8 @@ Open:
 ```text
 http://localhost:5199
 ```
+
+The editor needs a browser [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts): open OpenChatCut at `http://localhost` or `http://127.0.0.1` on the machine running it, or serve it over HTTPS. Over plain HTTP from another device (a LAN IP or reverse proxy), browsers disable Web Crypto, WebCodecs, and the clipboard, so the project list still loads but the editor shows this requirement instead of opening.
 
 Only add the model or media-service credentials you actually use to `.env.local`. Features without configured third-party credentials report the missing key explicitly; local timeline editing, built-in media, and other configured capabilities continue to work.
 

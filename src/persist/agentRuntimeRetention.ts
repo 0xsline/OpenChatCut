@@ -22,6 +22,24 @@ const CRITICAL_EVENT: Partial<Record<AgentRunEvent['type'], true>> = {
 };
 const terminal = (status: AgentRunStatus): boolean => ACTIVE_STATUS[status] !== true;
 
+export function isActiveAgentRun(run: Pick<AgentRunRecord, 'status'>): boolean {
+  return !terminal(run.status);
+}
+
+/**
+ * The artifacts the project budget (MAX_PROJECT_ARTIFACTS and _BYTES) bounds:
+ * those of finished runs. A running agent writes what its turn needs (a
+ * server run's draft is one artifact per tool call), so its own artifacts
+ * neither count nor get refused.
+ */
+export function historyArtifacts<T extends { readonly runId: string }>(
+  runs: readonly Pick<AgentRunRecord, 'runId' | 'status'>[],
+  artifacts: readonly T[],
+): T[] {
+  const active = new Set(runs.filter(isActiveAgentRun).map((run) => run.runId));
+  return artifacts.filter((artifact) => !active.has(artifact.runId));
+}
+
 function pruneEvents(events: readonly AgentRunEvent[]): AgentRunEvent[] {
   if (events.length <= MAX_EVENTS_PER_RUN) return [...events];
   const safety = events.filter((event) => CRITICAL_EVENT[event.type]).slice(-MAX_EVENTS_PER_RUN);

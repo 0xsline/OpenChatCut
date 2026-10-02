@@ -1,3 +1,4 @@
+import { hasOperationalTranscript } from '../transcript/types';
 import { scaleItemKeyframes } from './keyframes';
 import { timelineFramesToSourceFrames } from './sourceLimit';
 import type { TimelineItem, TimelineState } from './types';
@@ -6,6 +7,11 @@ export type RateStretchEdge = 'left' | 'right';
 
 const MIN_RATE = 0.1;
 const MAX_RATE = 8;
+
+/** Word-driven audio renders its edited stream at 1x and cannot be rate stretched. */
+export function canRateStretchItem(item: TimelineItem): boolean {
+  return item.kind === 'video' || (item.kind === 'audio' && !hasOperationalTranscript(item));
+}
 
 export function rateStretchGeometry(
   item: TimelineItem,
@@ -30,7 +36,7 @@ export function rateStretchItem(
   deltaFrames: number,
 ): TimelineState {
   const target = state.items.find((item) => item.id === itemId);
-  if (!target || !['video', 'audio'].includes(target.kind) || state.tracks?.[target.track]?.locked) return state;
+  if (!target || !canRateStretchItem(target) || state.tracks?.[target.track]?.locked) return state;
   const next = rateStretchGeometry(target, edge, deltaFrames);
   if (next.durationInFrames === target.durationInFrames) return state;
   const factor = next.durationInFrames / target.durationInFrames;

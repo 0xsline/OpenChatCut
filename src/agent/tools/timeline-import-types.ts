@@ -13,7 +13,7 @@ export function describeSource(source: ClipSource): string {
   return `${source.element} "${source.name}" at ${source.at}`;
 }
 
-/** One clip placed on the imported timeline, already converted to timeline frames. */
+/** One clip placed on the imported timeline, already converted to timeline (project) frames. */
 export interface ParsedClip {
   name: string;
   assetId: string;
@@ -49,7 +49,10 @@ export interface ImportReport {
 
 export interface ParsedTimeline {
   name: string;
+  /** The project's frame rate, which the clips are counted in: every timeline of a project shares it. */
   fps: number;
+  /** The sequence's own rate (FCPXML format / EDL clock), converted from when it differs. */
+  sourceFps: number;
   width: number;
   height: number;
   clips: ParsedClip[];

@@ -188,13 +188,22 @@ function sameArtifactIndex(index: AgentArtifactIndexEntry, artifact: AgentArtifa
 }
 
 function validateCounts(sidecar: AgentRuntimeSidecar, artifacts: readonly AgentArtifactRecord[]): void {
-  if (sidecar.runs.length > MAX_RUNTIME_RUNS || sidecar.approvals.length > MAX_APPROVALS
+  // Retention keeps every pending approval plus the newest decided ones, so
+  // the two are capped apart. Server-run drafts are one artifact per tool
+  // call of a running turn and never leave the project (see
+  // projectPortableAgentRuntimeSnapshot), so only the others count.
+  // Rows are still unvalidated here, so a malformed row counts as exported.
+  const pending = sidecar.approvals.filter((row) => isRecord(row) && row.status === 'pending').length;
+  const exportedIndex = sidecar.artifacts.filter((row) => !isRecord(row) || row.kind !== 'server-run-draft');
+  const exported = artifacts.filter((artifact) => !isRecord(artifact) || artifact.kind !== 'server-run-draft');
+  if (sidecar.runs.length > MAX_RUNTIME_RUNS || pending > MAX_APPROVALS
+    || sidecar.approvals.length - pending > MAX_APPROVALS
     || sidecar.checkpoints.length > MAX_CHECKPOINTS + MAX_RUNTIME_RUNS
-    || sidecar.artifacts.length > MAX_PROJECT_ARTIFACTS || artifacts.length > MAX_PROJECT_ARTIFACTS) {
+    || exportedIndex.length > MAX_PROJECT_ARTIFACTS || exported.length > MAX_PROJECT_ARTIFACTS) {
     throw new Error('Agent runtime transfer exceeds record caps.');
   }
   const runtimeBytes = encoder.encode(JSON.stringify(sidecar)).byteLength;
-  const artifactBytes = artifacts.reduce((sum, artifact) => sum + artifact.originalBytes, 0);
+  const artifactBytes = exported.reduce((sum, artifact) => sum + artifact.originalBytes, 0);
   if (runtimeBytes > MAX_RUNTIME_BYTES || artifactBytes > MAX_PROJECT_ARTIFACT_BYTES) {
     throw new Error('Agent runtime transfer exceeds byte caps.');
   }

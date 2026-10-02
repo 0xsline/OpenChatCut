@@ -264,7 +264,9 @@ function approvalLabel(status: string, t: Translate): string {
 function ApprovalSection({ approvals, t }: { approvals: readonly AgentApprovalRecord[]; t: Translate }) {
   return <Section title={t('审批')} hint={t('本次运行涉及的确认/审批记录（只列前 6 条）')}>
     {approvals.length === 0 ? <div style={emptyLine}>{t('没有审批记录')}</div> : approvals.slice(0, 6).map((approval) => {
-      const detail = firstText(approval.summary, approval.operationId);
+      // A server run's approval carries its tool call id as operationId; that is no detail.
+      const detail = firstText(approval.summary,
+        approval.operationId === approval.toolCallId ? undefined : approval.operationId);
       return <div key={approval.approvalId} style={row}>
         <span style={{ ...statusDot, background: statusColor(approval.status === 'allowed' ? 'completed' : approval.status === 'pending' ? 'waiting_approval' : 'failed') }} />
         <div style={{ minWidth: 0, flex: 1 }}>

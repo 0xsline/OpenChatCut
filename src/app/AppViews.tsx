@@ -6,6 +6,8 @@ import { loadProjectForEditing, renameProject } from '../persist/projectStore';
 import type { ProjectMeta } from '../persist/projectStoreCoordinators';
 import { theme } from '../theme';
 import { emptyProjectDoc, navigateTo, type AppRoute } from './appShell';
+import { editorAccess } from './editorAccess';
+import { EditorErrorBoundary, SecureContextRequiredView } from './EditorGuards';
 import { useDashboardActions } from './useDashboardActions';
 
 const Editor = lazy(() => import('../Editor'));
@@ -88,9 +90,11 @@ function EditorLoader({ meta, onHome, onRename }: EditorLoaderProps) {
     );
   }
   return (
-    <Suspense fallback={<AppSplash text={t('加载编辑器…')} />}>
-      <Editor initial={load.doc} project={meta} onHome={onHome} onRename={onRename} />
-    </Suspense>
+    <EditorErrorBoundary translate={t} onHome={onHome}>
+      <Suspense fallback={<AppSplash text={t('加载编辑器…')} />}>
+        <Editor initial={load.doc} project={meta} onHome={onHome} onRename={onRename} />
+      </Suspense>
+    </EditorErrorBoundary>
   );
 }
 
@@ -106,6 +110,11 @@ export function EditorRoute({ route, projects, refresh }: EditorRouteProps) {
   if (!meta) {
     navigateTo('#/');
     return <AppSplash text={t('工程不存在，返回…')} />;
+  }
+  // Decide before the editor chunk is requested: outside a secure context it cannot run.
+  const access = editorAccess(window.isSecureContext, window.location.origin);
+  if (access.kind === 'insecure-context') {
+    return <SecureContextRequiredView origin={access.origin} translate={t} onHome={() => navigateTo('#/')} />;
   }
   return (
     <EditorLoader

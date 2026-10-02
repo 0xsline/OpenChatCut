@@ -42,6 +42,7 @@ interface ProviderOptions {
   baseURL: string;
   apiKey: string;
   headers: Record<string, string>;
+  fetch: typeof fetch;
 }
 
 type ModelFactory = (model: string) => ConfiguredLanguageModel;
@@ -53,11 +54,65 @@ type OpenAiProvider = {
 const factoryPromises = new Map<LlmProvider, Promise<ModelFactory>>();
 const openAiProviderPromises = new Map<LlmProvider, Promise<OpenAiProvider>>();
 
+function normalizeToolCallDeltaLine(line: string): string {
+  if (!line.startsWith('data:')) return line;
+  try {
+    const chunk = JSON.parse(line.slice(5)) as {
+      choices?: Array<{ delta?: { tool_calls?: Array<{ type?: unknown }> } }>;
+    } | null;
+    if (!Array.isArray(chunk?.choices)) return line;
+    let changed = false;
+    for (const choice of chunk.choices) {
+      const calls = choice?.delta?.tool_calls;
+      if (!Array.isArray(calls)) continue;
+      for (const call of calls) {
+        // StepFun-compatible gateways use an empty type on continuation chunks.
+        // Omit that placeholder; leave unknown nonempty types for SDK validation.
+        if (call?.type === '') {
+          delete call.type;
+          changed = true;
+        }
+      }
+    }
+    return changed ? `data: ${JSON.stringify(chunk)}` : line;
+  } catch {
+    // Preserve [DONE], provider errors and malformed data for the SDK to handle.
+    return line;
+  }
+}
+
+const providerFetch: typeof fetch = async (input, init) => {
+  const response = await globalThis.fetch(input, init);
+  const url = input instanceof Request ? input.url : String(input);
+  if (!new URL(url, ORIGIN).pathname.endsWith('/chat/completions') || !response.ok || !response.body
+    || !response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) return response;
+
+  let pending = '';
+  const stream = response.body.pipeThrough(new TextDecoderStream()).pipeThrough(new TransformStream<string, string>({
+    transform(text, controller) {
+      pending += text;
+      let end: number;
+      while ((end = pending.search(/[\r\n]/)) !== -1) {
+        controller.enqueue(normalizeToolCallDeltaLine(pending.slice(0, end)) + pending[end]);
+        pending = pending.slice(end + 1);
+      }
+    },
+    flush(controller) {
+      if (pending) controller.enqueue(normalizeToolCallDeltaLine(pending));
+    },
+  })).pipeThrough(new TextEncoderStream());
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  return new Response(stream, { status: response.status, statusText: response.statusText, headers });
+};
+
 function providerOptions(provider: LlmProvider): ProviderOptions {
   return {
     baseURL: PROXY_API_BASE,
     apiKey: PROXY_KEY,
     headers: { 'x-openchatcut-provider': provider },
+    fetch: providerFetch,
   };
 }
 

@@ -131,12 +131,21 @@ function retainArtifactRows(sidecar: Record<string, unknown>): Record<string, un
   for (const run of runs) for (const id of Array.isArray(run.artifactIds) ? run.artifactIds : []) reachable.add(id);
   const artifacts = (sidecar.artifacts as Record<string, unknown>[]).filter((row) => reachable.has(row.artifactId))
     .sort((a, b) => itemTime(b) - itemTime(a));
+  // An active run keeps every artifact: a server run's draft is its recovery
+  // log, one artifact per tool call, and dropping its oldest (the base
+  // snapshot) breaks recovery. The caps bound what finished runs leave behind.
+  const activeRuns = new Set(runs.filter((run) => !isTerminalRun(run.status)).map((run) => run.runId));
   const retained: Record<string, unknown>[] = [];
+  let history = 0;
   let bytes = 0;
   for (const row of artifacts) {
+    if (activeRuns.has(row.runId)) {
+      retained.push(row);
+      continue;
+    }
     const size = typeof row.originalBytes === 'number' && Number.isFinite(row.originalBytes) ? row.originalBytes : 0;
-    if (retained.length >= MAX_ARTIFACTS || bytes + size > MAX_ARTIFACT_BYTES) continue;
-    retained.push(row); bytes += size;
+    if (history >= MAX_ARTIFACTS || bytes + size > MAX_ARTIFACT_BYTES) continue;
+    retained.push(row); history += 1; bytes += size;
   }
   const artifactIds = new Set(retained.map((row) => row.artifactId));
   const keptCheckpoints = checkpoints.filter((row) => artifactIds.has(row.sourceArtifactId));
