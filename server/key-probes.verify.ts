@@ -152,6 +152,24 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   }
 }
 
+// 7c. API Route uses the standard authenticated OpenAI-compatible model catalog.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), auth: new Headers(init?.headers).get('authorization') });
+    return Response.json({ data: [{ id: 'gpt-5.5' }] });
+  };
+  try {
+    const result = await runProbe('llm/api-route', { LLM_API_ROUTE_API_KEY: 'test-key' });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.models, ['gpt-5.5']);
+    assert.deepEqual(calls, [{ url: 'https://global.api-route.com/v1/models', auth: 'Bearer test-key' }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 
 // 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
 // Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.
@@ -192,7 +210,7 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   );
   const recorded = await runProbe('storage/projects', {});
   assert.equal(recorded.ok, true);
-  assert.match(recorded.message, new RegExp(`目录可写 · ${target}`));
+  assert.equal(recorded.message, `目录可写 · ${target}`);
 
   process.env.OPENCHATCUT_DATA_DIR = target;
   try {
