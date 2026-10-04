@@ -40,6 +40,7 @@ import type {
 
 export type {
   ExportPhase,
+  ExportNleFormat,
   ExportProgress,
   ExportQaUiState,
   ExportTab,
@@ -98,8 +99,11 @@ export function suggestedExportFilename(options: UseExportWorkflowOptions): stri
   if (options.tab === 'video') return `${options.base}.${exportMediaExtension('video', options.codec)}`;
   if (options.tab === 'audio') return `${options.base}.mp3`;
   if (options.tab === 'subtitles') return `${options.base}.${options.subtitleFormat}`;
+  if (options.tab === 'xml' && options.nleFormat === 'premiere_xml') {
+    return `${options.base}-premiere.xml`;
+  }
   if (options.tab === 'xml' && !effectiveIncludeMg(options.includeMg, options.mgItems)) {
-    const suffix = options.nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere';
+    const suffix = options.nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'final-cut';
     return `${options.base}-${suffix}.fcpxml`;
   }
   return undefined;
@@ -108,7 +112,9 @@ export function suggestedExportFilename(options: UseExportWorkflowOptions): stri
 function snapshotWorkflowOptions(options: UseExportWorkflowOptions): UseExportWorkflowOptions {
   return Object.freeze({
     ...options,
-    includeMg: effectiveIncludeMg(options.includeMg, options.mgItems),
+    includeMg: options.nleFormat === 'premiere_xml'
+      ? false
+      : effectiveIncludeMg(options.includeMg, options.mgItems),
     state: immutableExportSnapshot(options.state),
     ...(options.project ? { project: immutableExportSnapshot(options.project) } : {}),
     subtitleCaptions: immutableExportSnapshot(options.subtitleCaptions),

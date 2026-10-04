@@ -2212,7 +2212,7 @@
     },
     {
       "name": "submit_export",
-      "description": "Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles, or an FCPXML project (format=xml) for Premiere / Resolve / FCP. When MG/captions reference fonts the renderer cannot load, the first call returns unsupportedFonts — relay to the user and retry with confirmFontFallback=true only after they accept. For XML, pass nleFormat=fcp_xml (default, Premiere) or fcp_xml_resolve (DaVinci Resolve). Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.",
+      "description": "Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles, or an NLE timeline project (format=xml): legacy FCP7 XML for Premiere Pro, or FCPXML for Final Cut Pro / Resolve. When MG/captions reference fonts the renderer cannot load, the first call returns unsupportedFonts — relay to the user and retry with confirmFontFallback=true only after they accept. For direct Premiere import, pass nleFormat=premiere_xml; unsupported clip-local content is selectively rendered and compatibility issues are returned. Use fcp_xml for Final Cut Pro FCPXML or fcp_xml_resolve for Resolve FCPXML. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -2250,10 +2250,11 @@
           "nleFormat": {
             "type": "string",
             "enum": [
+              "premiere_xml",
               "fcp_xml",
               "fcp_xml_resolve"
             ],
-            "description": "NLE XML format for format=xml. Defaults to fcp_xml (Premiere). Use fcp_xml_resolve for DaVinci Resolve."
+            "description": "NLE XML format for format=xml. Use premiere_xml for legacy FCP7 XML (.xml) that Premiere imports; use fcp_xml for Apple FCPXML or fcp_xml_resolve for Resolve FCPXML. Omitted values retain the legacy fcp_xml behavior."
           },
           "name": {
             "type": "string",
@@ -2309,7 +2310,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Advanced XML export: render keys returned by export_motion_graphic_prores with filenameMode=xml. Matching MG clips become media references; other MG clips stay placeholders."
+            "description": "FCPXML only: render keys returned by export_motion_graphic_prores with filenameMode=xml. Matching MG clips become media references; other MG clips stay placeholders. Premiere XML ignores these keys and uses its own selective per-clip rendering."
           }
         }
       }

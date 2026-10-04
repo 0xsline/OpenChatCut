@@ -5,6 +5,10 @@ import { join, sep } from 'node:path';
 const require = createRequire(import.meta.url);
 const ffmpegStatic = require('ffmpeg-static') as string | null;
 const ffprobeInstaller = require('@ffprobe-installer/ffprobe') as { path?: string };
+// Electron adds resourcesPath to Node's Process object at runtime. Keep this
+// server module type-checkable when a verifier imports its probe helpers in a
+// plain Node/Vite context where Electron's global augmentation is absent.
+const electronResourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? '';
 
 const ASAR_SEGMENT = `${sep}app.asar${sep}`;
 const UNPACKED_SEGMENT = `${sep}app.asar.unpacked${sep}`;
@@ -58,8 +62,8 @@ export function whisperCliBin(): string {
   const relative = join('whisper-cli', platformKey, `whisper-cli${suffix}`);
   const candidates = [
     join(import.meta.dirname, '..', 'public', relative),
-    join(process.resourcesPath ?? '', 'dist', relative),
-    join(process.resourcesPath ?? '', relative),
+    join(electronResourcesPath, 'dist', relative),
+    join(electronResourcesPath, relative),
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;

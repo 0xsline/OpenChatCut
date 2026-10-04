@@ -86,7 +86,7 @@ const zeroMgXml = {
 assert.equal(effectiveIncludeMg(zeroMgXml.includeMg, zeroMgXml.mgItems), false);
 assert.equal(
   suggestedExportFilename(zeroMgXml),
-  'project-premiere.fcpxml',
+  'project-final-cut.fcpxml',
   'zero-MG XML exports must request a single-file picker even when the checkbox defaults on',
 );
 assert.equal(

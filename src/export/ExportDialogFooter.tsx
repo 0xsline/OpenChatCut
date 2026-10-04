@@ -52,6 +52,11 @@ function ExportProgressView({ progress, clock }: { progress: ExportProgress; clo
           <span>{t('已渲染 {done}/{total} 帧', { done: progress.processedFrames, total: progress.totalFrames })}</span>
         )}
         {progress.detail && <span>{progress.detail}</span>}
+        {progress.notices && progress.notices.length > 0 && (
+          <ul className="cc-export-notices">
+            {progress.notices.map((notice, index) => <li key={`${index}-${notice}`}>{notice}</li>)}
+          </ul>
+        )}
         <span>{t('已用 {time}', { time: formatDuration(elapsedMs) })}</span>
         {etaMs !== null && etaMs < 24 * 60 * 60_000 && (
           <span>{t('预计剩余 {time}', { time: formatDuration(etaMs) })}</span>

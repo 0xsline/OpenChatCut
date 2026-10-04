@@ -15,7 +15,8 @@ import {
   type ExportSubtitleSettings,
   type ExportVideoSettings,
 } from './useExportDialogModel';
-import type { ExportQaUiState, ExportTab } from './useExportWorkflow';
+import type { ExportNleFormat, ExportQaUiState, ExportTab } from './useExportWorkflow';
+import type { PremiereExportPlan } from './premiereTypes';
 import { fcpxmlBackgroundFillCount } from './fcpxml';
 import {
   jianyingDraftTarget,
@@ -179,20 +180,41 @@ function SubtitlesTab({ state, subtitles }: { state: TimelineState; subtitles: E
 
 interface XmlTabProps {
   state: TimelineState;
-  nleFormat: 'fcp_xml' | 'fcp_xml_resolve';
+  nleFormat: ExportNleFormat;
+  premierePlan: PremiereExportPlan;
   includeMg: boolean;
   mgCount: number;
-  setNleFormat: (format: 'fcp_xml' | 'fcp_xml_resolve') => void;
+  setNleFormat: (format: ExportNleFormat) => void;
   setIncludeMg: (include: boolean) => void;
 }
 
-function XmlTab({ state, nleFormat, includeMg, mgCount, setNleFormat, setIncludeMg }: XmlTabProps) {
+function XmlTab({ state, nleFormat, premierePlan, includeMg, mgCount, setNleFormat, setIncludeMg }: XmlTabProps) {
   const t = useT();
   const backgroundFillCount = fcpxmlBackgroundFillCount(state);
+  const blockingIssues = premierePlan.issues.filter((issue) => issue.severity === 'error');
+  const bakedItems = new Set(premierePlan.bakeJobs.map((job) => job.itemId)).size;
+  const captionsUnsupported = blockingIssues.some((issue) => issue.code === 'premiere-captions-require-composite');
+  const issuePreview = blockingIssues
+    .filter((issue) => issue.code !== 'premiere-captions-require-composite')
+    .slice(0, 3).map((issue) => t(issue.message)).join('；');
   return (
     <>
-      <InfoCard icon="clipboard" title={t('可继续编辑的工程')} text={t('生成带轨道与素材引用的 FCPXML，交给 Premiere Pro 或达芬奇继续制作。')} />
-      {backgroundFillCount > 0 && (
+      <InfoCard icon="clipboard" title={t('可继续编辑的工程')} text={nleFormat === 'premiere_xml'
+        ? t('生成 Premiere 可导入的 FCP7 XML（.xml），保留基础剪辑和素材引用；不支持的片段效果会按需渲染。')
+        : t('生成 FCPXML 工程，交给 Final Cut Pro 或达芬奇继续制作。')} />
+      {nleFormat === 'premiere_xml' && bakedItems > 0 && (
+        <InfoCard icon="film" title={t('部分片段会渲染为媒体文件')}
+          text={t('为了保留 OpenChatCut 效果，会自动渲染 {n} 个片段；原始素材仍会保留为可链接媒体。', { n: bakedItems })} />
+      )}
+      {nleFormat === 'premiere_xml' && blockingIssues.length > 0 && (
+        <InfoCard icon="clipboard" title={t('部分时间线内容暂不能导出')}
+          text={`${t('当前有 {n} 个导出限制；解决后再导出。', { n: blockingIssues.length })} ${issuePreview}`} />
+      )}
+      {nleFormat === 'premiere_xml' && captionsUnsupported && (
+        <InfoCard icon="captions" title={t('字幕需要单独导出')}
+          text={t('此 Premiere XML 暂不包含原生字幕轨；请在“字幕稿”中另行导出 SRT/TXT。')} />
+      )}
+      {nleFormat !== 'premiere_xml' && backgroundFillCount > 0 && (
         <InfoCard
           icon="film"
           title={t('当前 FCPXML 会保留背景参数，但不生成图层')}
@@ -203,16 +225,22 @@ function XmlTab({ state, nleFormat, includeMg, mgCount, setNleFormat, setInclude
       )}
       <Row label={t('目标软件')}>
         <Segmented
-          options={[{ value: 'fcp_xml', label: 'Premiere Pro' }, { value: 'fcp_xml_resolve', label: '达芬奇' }] as const}
+          options={[
+            { value: 'premiere_xml', label: 'Premiere Pro (FCP7 XML)' },
+            { value: 'fcp_xml', label: 'Final Cut Pro (FCPXML)' },
+            { value: 'fcp_xml_resolve', label: 'DaVinci Resolve (FCPXML)' },
+          ] as const}
           value={nleFormat}
           onChange={setNleFormat}
         />
       </Row>
-      <label className="cc-export-toggle">
-        <span><strong>{t('同时打包动态图层')}</strong><small>{t('额外生成带透明通道的 ProRes 4444 MOV。')}</small></span>
-        <input type="checkbox" checked={includeMg} onChange={(event) => setIncludeMg(event.target.checked)} disabled={mgCount === 0} />
-      </label>
-      <p className="cc-export-footnote">{t('导入后，请在剪辑软件中指向原始素材所在文件夹，以重新链接离线片段。')}</p>
+      {nleFormat !== 'premiere_xml' && (
+        <label className="cc-export-toggle">
+          <span><strong>{t('同时打包动态图层')}</strong><small>{t('额外生成带透明通道的 ProRes 4444 MOV。')}</small></span>
+          <input type="checkbox" checked={includeMg} onChange={(event) => setIncludeMg(event.target.checked)} disabled={mgCount === 0} />
+        </label>
+      )}
+      <p className="cc-export-footnote">{t('传输工程文件时也要传输素材文件；打开后如有离线媒体，请在剪辑软件中重新链接。')}</p>
     </>
   );
 }

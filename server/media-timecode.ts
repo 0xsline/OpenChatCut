@@ -7,7 +7,7 @@
 // tmcd data stream, on the format for MXF, as TIMECODE on a Matroska/WebM
 // stream (the alpha proxy), and as time_reference (samples since midnight) for
 // Broadcast WAV.
-import type { ExportMediaStart } from '../shared/export-media-sources.ts';
+import type { ExportMediaRate, ExportMediaStart } from '../shared/export-media-sources.ts';
 import { ffprobeBin } from './media-binaries.ts';
 import { spawnMediaProcess } from './media-process.ts';
 
@@ -83,10 +83,18 @@ function timecodeLabel(tags: ProbeTags | undefined): string | null {
 }
 
 /** The start ffprobe reported: video stream, then tmcd/data stream, then format timecode, then BWF. */
-export function mediaStartFromProbe(probe: ProbeOutput): ExportMediaStart | null {
+export interface MediaProbeResult {
+  start: ExportMediaStart | null;
+  /** The exact native frame rate of the video stream, independent of timecode tags. */
+  rate?: ExportMediaRate;
+}
+
+/** Timecode plus the stream's frame rate from one ffprobe document. */
+export function mediaProbeFromProbe(probe: ProbeOutput): MediaProbeResult {
   const streams = Array.isArray(probe.streams) ? probe.streams : [];
   const video = streams.find((stream) => stream.codec_type === 'video');
   const videoRate = parseFrameRate(video?.r_frame_rate) ?? parseFrameRate(video?.avg_frame_rate);
+  const rate = videoRate ? { numerator: videoRate.num, denominator: videoRate.den } : undefined;
   const labels: Array<{ label: string | null; rate: Rate | null }> = [
     { label: timecodeLabel(video?.tags), rate: videoRate },
     ...streams.filter((stream) => stream.codec_type === 'data').map((stream) => ({
@@ -95,16 +103,22 @@ export function mediaStartFromProbe(probe: ProbeOutput): ExportMediaStart | null
     })),
     { label: timecodeLabel(probe.format?.tags), rate: videoRate },
   ];
-  for (const { label, rate } of labels) {
-    const start = label ? timecodeStart(label, rate) : null;
-    if (start) return start;
+  for (const { label, rate: labelRate } of labels) {
+    const start = label ? timecodeStart(label, labelRate) : null;
+    if (start) return { start, ...(rate ? { rate } : {}) };
   }
   const reference = probe.format?.tags?.time_reference;
   const sampleRate = Number(streams.find((stream) => stream.codec_type === 'audio')?.sample_rate);
   const samples = typeof reference === 'string' && /^\d+$/.test(reference) ? Number(reference) : 0;
-  return Number.isSafeInteger(samples) && samples > 0 && Number.isSafeInteger(sampleRate) && sampleRate > 0
+  const start = Number.isSafeInteger(samples) && samples > 0 && Number.isSafeInteger(sampleRate) && sampleRate > 0
     ? { value: samples, timescale: sampleRate, dropFrame: false }
     : null;
+  return { start, ...(rate ? { rate } : {}) };
+}
+
+/** Backward-compatible start-only view for FCPXML call sites. */
+export function mediaStartFromProbe(probe: ProbeOutput): ExportMediaStart | null {
+  return mediaProbeFromProbe(probe).start;
 }
 
 function runProbe(path: string): Promise<string> {
@@ -140,4 +154,10 @@ function runProbe(path: string): Promise<string> {
 export async function probeMediaStart(path: string): Promise<ExportMediaStart | null> {
   if (STILL_IMAGE.test(path)) return null;
   return mediaStartFromProbe(JSON.parse(await runProbe(path)) as ProbeOutput);
+}
+
+/** Read the source start and native video rate with one ffprobe process. */
+export async function probeMediaInfo(path: string): Promise<MediaProbeResult> {
+  if (STILL_IMAGE.test(path)) return { start: null };
+  return mediaProbeFromProbe(JSON.parse(await runProbe(path)) as ProbeOutput);
 }

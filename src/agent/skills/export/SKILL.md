@@ -67,7 +67,9 @@ For NLE XML, use `submit_export` with `format:"xml"`:
 }
 ```
 
-`nleFormat` values are `fcp_xml` for Premiere XML (default) and `fcp_xml_resolve` for DaVinci Resolve XML. Omit `timelineId` for the active timeline, or pass a timeline id/prefix for a non-active timeline. Read and report warnings: captions, solids, SVG, unsupported clip attributes, and unrendered motion graphics may be dropped by the XML format. Motion graphics are only represented in XML when a transparent-ProRes MG export flow supplies `motionGraphicRenderKeys`; otherwise the exporter reports them as dropped.
+`nleFormat` values are `premiere_xml` for Premiere's legacy FCP7 XMEML `.xml` handoff, `fcp_xml` for Apple FCPXML, and `fcp_xml_resolve` for Resolve-targeted FCPXML. Omitting `nleFormat` retains the existing `fcp_xml` behavior. Omit `timelineId` for the active timeline, or pass a timeline id/prefix for a non-active timeline. Read and report the returned `issues`; if `ok` is false, no XML file was written.
+
+The `premiere_xml` path selectively renders unsupported clip-local effects to managed media and returns the affected item IDs and compatibility issues. It does not use `motionGraphicRenderKeys`; those keys belong only to the legacy FCPXML flow, and supplying them to Premiere XML produces an explicit warning. Enabled captions, timeline-wide watermark/transition composites, nested sequences, or any other blocking plan issue must be reported as blocked rather than silently omitted. Export captions separately through the subtitle flow. The FCPXML paths retain their existing motion-graphic workflow: use `filenameMode:"xml"` and pass the matching `motionGraphicRenderKeys` only when exporting with `nleFormat:"fcp_xml"` or `"fcp_xml_resolve"`.
 
 For media-pool source download, use `request_asset_download` on a file-backed source asset. It returns a guarded backend download URL/path for the original source media. Do not use `pull_asset` for user downloads; `pull_asset` is sandbox-only.
 
@@ -93,7 +95,7 @@ For one motion graphic as transparent ProRes 4444, use `export_motion_graphic_pr
 
 Prefer `itemId` when exporting a specific timeline instance, because the item carries live `propertyOverrides` such as edited text. Use `assetId` for a media-pool motion graphic; the backend will use the first timeline instance for that asset when present, matching the editor's media-pool export behavior. For several motion graphics, pass `itemIds` or `assetIds` in one call. Each motion graphic still becomes a separate durable render; use `track_export` with the returned `renderIds` to wait, then download through each returned render download path.
 
-When preparing XML that should reference rendered motion graphics, pass `"filenameMode":"xml"` and the same `timelineId` to `export_motion_graphic_prores`, then keep the returned `motionGraphicRenderKey` / `motionGraphicRenderKeys`; after the render completes, pass those keys and the same `timelineId` in `submit_export.motionGraphicRenderKeys` with `format:"xml"`.
+When preparing legacy FCPXML that should reference rendered motion graphics, pass `"filenameMode":"xml"` and the same `timelineId` to `export_motion_graphic_prores`, then keep the returned `motionGraphicRenderKey` / `motionGraphicRenderKeys`; after the render completes, pass those keys and the same `timelineId` in `submit_export.motionGraphicRenderKeys` with `format:"xml"` and an FCPXML `nleFormat`. This separate MG-key flow does not apply to `premiere_xml`.
 
 ## Local Render (this build)
 

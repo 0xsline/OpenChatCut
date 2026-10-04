@@ -6,6 +6,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
+  ExportMediaRate,
   ExportMediaSource,
   ExportMediaSourceMap,
   ExportMediaStart,
@@ -102,9 +103,21 @@ export function resolveExportMediaSource(
  * A file's embedded start, null when it has none; rejects when the file cannot
  * be read. Production passes media-timecode.ts's ffprobe reader.
  */
-export type StartProbe = (path: string) => Promise<ExportMediaStart | null>;
+export interface ExportMediaProbeResult {
+  start: ExportMediaStart | null;
+  rate?: ExportMediaRate;
+}
+
+/** Existing start-only probes remain supported for FCPXML and embedders. */
+export type StartProbe = (path: string) => Promise<ExportMediaStart | ExportMediaProbeResult | null>;
 /** As StartProbe, with undefined for a file that could not be read in time. */
-type RequestStartProbe = (path: string) => Promise<ExportMediaStart | null | undefined>;
+type RequestStartProbe = (path: string) => Promise<ExportMediaProbeResult | undefined>;
+
+function unpackProbe(value: ExportMediaStart | ExportMediaProbeResult | null): ExportMediaProbeResult {
+  if (value && 'value' in value && 'timescale' in value) return { start: value };
+  if (value) return value;
+  return { start: null };
+}
 
 const PROBE_CONCURRENCY = 4;
 /** Past this, remaining files export without a start rather than stall the export. */
@@ -112,7 +125,7 @@ const PROBE_BUDGET_MS = 20_000;
 
 /** One probe per file per request, a few at a time, within the request's budget. */
 function requestStartProbe(probe: StartProbe): RequestStartProbe {
-  const cache = new Map<string, Promise<ExportMediaStart | null | undefined>>();
+  const cache = new Map<string, Promise<ExportMediaProbeResult | undefined>>();
   const waiting: Array<() => void> = [];
   const deadline = Date.now() + PROBE_BUDGET_MS;
   let active = 0;
@@ -129,10 +142,10 @@ function requestStartProbe(probe: StartProbe): RequestStartProbe {
     if (next) next();
     else active -= 1;
   };
-  const run = async (path: string): Promise<ExportMediaStart | null | undefined> => {
+  const run = async (path: string): Promise<ExportMediaProbeResult | undefined> => {
     await acquire();
     try {
-      return Date.now() > deadline ? undefined : await probe(path);
+      return Date.now() > deadline ? undefined : unpackProbe(await probe(path));
     } catch {
       return undefined;
     } finally {
@@ -155,15 +168,19 @@ function requestStartProbe(probe: StartProbe): RequestStartProbe {
  */
 async function withStarts(location: ExportMediaSource, probe: RequestStartProbe): Promise<ExportMediaSource> {
   const { path, originalPath } = location;
-  const [pathStart, ownStart] = await Promise.all([
+  const [pathInfo, ownInfo] = await Promise.all([
     path && existsSync(path) ? probe(path) : undefined,
     originalPath && originalPath !== path && existsSync(originalPath) ? probe(originalPath) : undefined,
   ]);
-  const originalStart = ownStart === undefined ? pathStart : ownStart;
+  const sameFile = !!originalPath && originalPath === path;
+  const originalInfo = ownInfo ?? (sameFile ? pathInfo : undefined);
+  const originalStart = originalInfo === undefined ? pathInfo?.start : originalInfo.start;
   return {
     ...location,
-    ...(pathStart ? { pathStart } : {}),
+    ...(pathInfo?.start ? { pathStart: pathInfo.start } : {}),
     ...(originalPath && originalStart ? { originalStart } : {}),
+    ...(pathInfo?.rate ? { pathRate: pathInfo.rate } : {}),
+    ...(originalPath && originalInfo?.rate ? { originalRate: originalInfo.rate } : {}),
   };
 }
 

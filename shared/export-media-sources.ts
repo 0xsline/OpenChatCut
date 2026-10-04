@@ -28,6 +28,12 @@ export interface ExportMediaStart {
   readonly dropFrame: boolean;
 }
 
+/** Exact native frame rate from the file's video stream, when it has one. */
+export interface ExportMediaRate {
+  readonly numerator: number;
+  readonly denominator: number;
+}
+
 export interface ExportMediaSource {
   /** The file behind the upload name: a managed copy, or the external source of an in-place reference. */
   readonly path?: string;
@@ -37,6 +43,10 @@ export interface ExportMediaSource {
   readonly pathStart?: ExportMediaStart;
   /** Embedded start of the original; the working copy's stands in while the original is offline or unreadable. */
   readonly originalStart?: ExportMediaStart;
+  /** Native video rate of `path`; omitted for stills, audio-only sources, or failed probes. */
+  readonly pathRate?: ExportMediaRate;
+  /** Native video rate of `originalPath`; omitted when unavailable. */
+  readonly originalRate?: ExportMediaRate;
 }
 
 /** Keyed by the exact `src` string the timeline item carries. */
@@ -68,13 +78,22 @@ function isExportMediaStart(value: unknown): value is ExportMediaStart {
     && typeof start.dropFrame === 'boolean';
 }
 
+function isExportMediaRate(value: unknown): value is ExportMediaRate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const rate = value as Record<string, unknown>;
+  return Number.isSafeInteger(rate.numerator) && (rate.numerator as number) > 0
+    && Number.isSafeInteger(rate.denominator) && (rate.denominator as number) > 0;
+}
+
 function isExportMediaSource(value: unknown): value is ExportMediaSource {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const { path, originalPath, pathStart, originalStart } = value as Record<string, unknown>;
+  const { path, originalPath, pathStart, originalStart, pathRate, originalRate } = value as Record<string, unknown>;
   return (path === undefined || isAbsoluteDiskPath(path))
     && (originalPath === undefined || isAbsoluteDiskPath(originalPath))
     && (pathStart === undefined || isExportMediaStart(pathStart))
-    && (originalStart === undefined || isExportMediaStart(originalStart));
+    && (originalStart === undefined || isExportMediaStart(originalStart))
+    && (pathRate === undefined || isExportMediaRate(pathRate))
+    && (originalRate === undefined || isExportMediaRate(originalRate));
 }
 
 export function isExportMediaSourceMap(value: unknown): value is ExportMediaSourceMap {

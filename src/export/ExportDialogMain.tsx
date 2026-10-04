@@ -99,6 +99,7 @@ export function ExportDialogMain({ state, project, model }: { state: TimelineSta
           busy={!!workflow.busy} enabled={workflow.autoQaEnabled} qa={workflow.qa}
           qualityMode={model.qualityMode} setQualityMode={model.setQualityMode}
           onToggle={workflow.toggleAutoQa} nleFormat={model.nleFormat}
+          premierePlan={model.premierePlan}
           setNleFormat={model.setNleFormat} includeMg={model.includeMg}
           setIncludeMg={model.setIncludeMg} mgCount={model.mgItems.length} base={model.base}
         />

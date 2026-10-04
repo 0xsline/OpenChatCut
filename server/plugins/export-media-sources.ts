@@ -10,7 +10,7 @@ import {
 } from '../../shared/export-media-sources.ts';
 import { editorCredentialAuthorized } from '../editor-auth.ts';
 import { resolveExportMediaSources } from '../export-media-sources.ts';
-import { probeMediaStart } from '../media-timecode.ts';
+import { probeMediaInfo } from '../media-timecode.ts';
 import { readJsonBody, sendJson } from './export-http.ts';
 
 const MAX_SOURCE_LENGTH = 4096;
@@ -24,7 +24,7 @@ const defaultDependencies: ExportMediaSourcesRouteDependencies = {
   // The answer holds absolute source paths: same gate as upload mutations
   // (loopback socket, local Host, same-origin Origin), not just the shape gate.
   authorized: (req) => editorCredentialAuthorized(req, true),
-  resolve: (sources) => resolveExportMediaSources(sources, probeMediaStart),
+  resolve: (sources) => resolveExportMediaSources(sources, probeMediaInfo),
 };
 
 function requestedSources(body: unknown): string[] | null {

@@ -36,6 +36,9 @@ import {
 import type { ExportDestination } from './exportDestination';
 import { exportMediaExtension } from './exportMediaExtension';
 import type { ExportEngineInfo, ExportEngineReason } from './exportWorkflowTypes';
+import type { ExportNleFormat } from './exportWorkflowTypes';
+import { planPremiereExport } from './premiereBakePlan';
+import type { PremiereExportPlan } from './premiereTypes';
 import {
   effectiveIncludeMg,
   useExportWorkflow,
@@ -50,7 +53,7 @@ export const EXPORT_TABS = [
   { key: 'audio', label: '音轨', summary: 'MP3', icon: 'music' },
   { key: 'mg', label: '动态图层', summary: 'ProRes 4444', icon: 'sparkles' },
   { key: 'subtitles', label: '字幕稿', summary: 'SRT / TXT', icon: 'captions' },
-  { key: 'xml', label: '剪辑工程', summary: 'FCPXML', icon: 'clipboard' },
+  { key: 'xml', label: '剪辑工程', summary: 'Premiere XML / FCPXML', icon: 'clipboard' },
   { key: 'jianying', label: '剪映草稿', summary: 'CapCut / 剪映', icon: 'video' },
 ] as const satisfies ReadonlyArray<{ key: ExportTab; label: string; summary: string; icon: IconName }>;
 
@@ -123,8 +126,9 @@ export interface ExportDialogModel {
   setTab: Dispatch<SetStateAction<ExportTab>>;
   video: ExportVideoSettings;
   subtitles: ExportSubtitleSettings;
-  nleFormat: 'fcp_xml' | 'fcp_xml_resolve';
-  setNleFormat: Dispatch<SetStateAction<'fcp_xml' | 'fcp_xml_resolve'>>;
+  nleFormat: ExportNleFormat;
+  setNleFormat: Dispatch<SetStateAction<ExportNleFormat>>;
+  premierePlan: PremiereExportPlan;
   includeMg: boolean;
   setIncludeMg: Dispatch<SetStateAction<boolean>>;
   mgItems: TimelineItem[];
@@ -180,13 +184,15 @@ function useSubtitleSettings(state: TimelineState): ExportSubtitleSettings {
   };
 }
 
-function outputName(base: string, tab: ExportTab, video: ExportVideoSettings, subtitles: ExportSubtitleSettings, nleFormat: 'fcp_xml' | 'fcp_xml_resolve', mgOutput: string): string {
+function outputName(base: string, tab: ExportTab, video: ExportVideoSettings, subtitles: ExportSubtitleSettings, nleFormat: ExportNleFormat, mgOutput: string): string {
   if (tab === 'video') {
     return `${base}.${exportMediaExtension('video', video.codec)}`;
   }
   if (tab === 'audio') return `${base}.mp3`;
   if (tab === 'subtitles') return `${base}.${subtitles.format}`;
-  if (tab === 'xml') return `${base}-${nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere'}.fcpxml`;
+  if (tab === 'xml') return nleFormat === 'premiere_xml'
+    ? `${base}-premiere.xml`
+    : `${base}-${nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'final-cut'}.fcpxml`;
   if (tab === 'jianying') return `${base}-jianying`;
   return mgOutput;
 }
@@ -204,9 +210,10 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
   const qualityMode = useSyncExternalStore(subscribeQualityMode, getQualityMode, getQualityMode);
   const video = useVideoSettings(state, qualityMode);
   const subtitles = useSubtitleSettings(state);
-  const [nleFormat, setNleFormat] = useState<'fcp_xml' | 'fcp_xml_resolve'>('fcp_xml');
+  const [nleFormat, setNleFormat] = useState<ExportNleFormat>('premiere_xml');
   const [includeMg, setIncludeMg] = useState(DEFAULT_INCLUDE_MG);
   const mgItems = useMemo(() => state.items.filter((item) => item.kind === 'motion-graphic'), [state.items]);
+  const premierePlan = useMemo(() => planPremiereExport(state), [state]);
   const includeAvailableMg = effectiveIncludeMg(includeMg, mgItems);
   const base = sanitizeFileName(projectName, 'export');
   const workflow = useExportWorkflow({
@@ -228,7 +235,7 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
     || (tab === 'subtitles' && !subtitles.captions)
     || (tab === 'mg' && mgItems.length === 0);
   return {
-    tab, setTab, video, subtitles, nleFormat, setNleFormat, includeMg, setIncludeMg,
+    tab, setTab, video, subtitles, nleFormat, setNleFormat, premierePlan, includeMg, setIncludeMg,
     mgItems, base, outputName: name, videoSummary, workflow, disabled,
     qualityMode, setQualityMode,
   };

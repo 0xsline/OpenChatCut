@@ -6,6 +6,7 @@ import type { ExportResolution } from './mediaSettings';
 import type { ExportFailure } from './exportFailure';
 
 export type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml' | 'jianying';
+export type ExportNleFormat = 'premiere_xml' | 'fcp_xml' | 'fcp_xml_resolve';
 export type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'verifying' | 'downloading' | 'completed' | 'failed' | 'cancelled';
 export type RenderEngine = 'idle' | 'checking' | 'browser' | 'server';
 export type Translate = (zh: string, params?: Record<string, string | number>) => string;
@@ -27,6 +28,7 @@ export interface ExportProgress {
   processedFrames?: number;
   totalFrames?: number;
   detail?: string;
+  notices?: string[];
   outputSize?: number;
 }
 
@@ -78,7 +80,7 @@ export interface UseExportWorkflowOptions {
   requestedVideoBitrate?: number;
   subtitleFormat: 'srt' | 'txt';
   subtitleCaptions: CaptionsData | null;
-  nleFormat: 'fcp_xml' | 'fcp_xml_resolve';
+  nleFormat: ExportNleFormat;
   includeMg: boolean;
   mgItems: TimelineItem[];
   onClose: () => void;

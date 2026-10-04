@@ -42,8 +42,8 @@ export const GENERATE_WORKFLOW = `
 - Do not claim a generated asset exists until track_progress reports succeeded and addedAssets includes it. Retrying track_progress is idempotent and never duplicates an existing asset.
 
 ## Export
-- Use submit_export with format=video for MP4/WebM, format=audio for MP3/WAV, format=subtitles for SRT/TXT, or format=xml for FCPXML (nleFormat fcp_xml|fcp_xml_resolve). codec defaults to h264 for video and mp3 for audio; subtitleFormat defaults to srt.
-- To hand off rendered motion graphics with XML, call export_motion_graphic_prores with filenameMode=xml, then pass the successful renders[].renderKey values to submit_export.motionGraphicRenderKeys. Missing or failed keys remain explicit XML placeholders.
+- Use submit_export with format=video for MP4/WebM, format=audio for MP3/WAV, format=subtitles for SRT/TXT, or format=xml for an NLE timeline. Set nleFormat=premiere_xml for legacy FCP7 XML (.xml) that Premiere imports, fcp_xml for Apple FCPXML, or fcp_xml_resolve for Resolve FCPXML. codec defaults to h264 for video and mp3 for audio; subtitleFormat defaults to srt.
+- For FCPXML only (nleFormat=fcp_xml or fcp_xml_resolve), motion graphics can be handed off with export_motion_graphic_prores using filenameMode=xml, then passing successful renders[].renderKey values to submit_export.motionGraphicRenderKeys. This key flow does not apply to Premiere; nleFormat=premiere_xml selectively bakes unsupported clip-local content and returns compatibility issues instead of MG-key placeholders.
 - Prefer startFrame/endFrameExclusive for partial exports. The range is half-open, export is synchronous, and it does not change the timeline.
 - If submit_export returns unsupportedFonts, use search_fonts for alternatives or ask the user, then retry with confirmFontFallback=true only after they accept fallback.
 `;

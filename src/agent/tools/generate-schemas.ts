@@ -215,10 +215,10 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'submit_export',
     description: [
       'Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles,',
-      'or an FCPXML project (format=xml) for Premiere / Resolve / FCP.',
+      'or an NLE timeline project (format=xml): legacy FCP7 XML for Premiere Pro, or FCPXML for Final Cut Pro / Resolve.',
       'When MG/captions reference fonts the renderer cannot load, the first call returns unsupportedFonts',
       '— relay to the user and retry with confirmFontFallback=true only after they accept.',
-      'For XML, pass nleFormat=fcp_xml (default, Premiere) or fcp_xml_resolve (DaVinci Resolve).',
+      'For direct Premiere import, pass nleFormat=premiere_xml; unsupported clip-local content is selectively rendered and compatibility issues are returned. Use fcp_xml for Final Cut Pro FCPXML or fcp_xml_resolve for Resolve FCPXML.',
       'Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
     ].join(' '),
     input_schema: {
@@ -230,8 +230,8 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         captionTrackId: { type: 'string', description: 'For subtitle export: C1/C2 alias or stable caption track id. Defaults to C1.' },
         nleFormat: {
           type: 'string',
-          enum: ['fcp_xml', 'fcp_xml_resolve'],
-          description: 'NLE XML format for format=xml. Defaults to fcp_xml (Premiere). Use fcp_xml_resolve for DaVinci Resolve.',
+          enum: ['premiere_xml', 'fcp_xml', 'fcp_xml_resolve'],
+          description: 'NLE XML format for format=xml. Use premiere_xml for legacy FCP7 XML (.xml) that Premiere imports; use fcp_xml for Apple FCPXML or fcp_xml_resolve for Resolve FCPXML. Omitted values retain the legacy fcp_xml behavior.',
         },
         name: { type: 'string', description: 'Download filename.' },
         fps: {
@@ -264,7 +264,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         motionGraphicRenderKeys: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Advanced XML export: render keys returned by export_motion_graphic_prores with filenameMode=xml. Matching MG clips become media references; other MG clips stay placeholders.',
+          description: 'FCPXML only: render keys returned by export_motion_graphic_prores with filenameMode=xml. Matching MG clips become media references; other MG clips stay placeholders. Premiere XML ignores these keys and uses its own selective per-clip rendering.',
         },
       },
     },
