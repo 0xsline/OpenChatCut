@@ -1,12 +1,6 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { runtimeProfile } from '../runtime-profile.ts';
 import {
   initializeSqliteProjectStore,
-  registerStorageMigrationBarrier,
   sqliteReadEntry,
-  sqliteStoreEnabled,
   sqliteWriteEntry,
 } from '../storage/sqlite-store.ts';
 import { GENERATION_JOBS_KV_KEY } from '../storage/sqlite-migration.ts';
@@ -32,31 +26,7 @@ export const resumers = new Map<string, GenerationJobResumer>();
 const cleanupPolicyHandlers = new Map<string, GenerationCleanupPolicyHandler>();
 const retentionGuards = new Map<string, GenerationRetentionGuard>();
 const MAX_JOB_AGE_MS = 60 * 60_000;
-const STORE_PATH = runtimeProfile().generationJobStore;
-let persistenceHydrated = false;
 let persistenceQueue: Promise<void> = Promise.resolve();
-let persistenceMigrationGate: Promise<void> | null = null;
-registerStorageMigrationBarrier(async () => {
-  // Before hydration, only drain existing writes: writing the empty in-memory
-  // map would destroy the configured legacy ledger before it is imported.
-  // Once hydrated, persist the current in-memory snapshot as the migration
-  // boundary, then wait until no later queued write exists.
-  if (persistenceHydrated) await persistJobs();
-  let observed: Promise<void>;
-  do {
-    observed = persistenceQueue;
-    await observed;
-  } while (observed !== persistenceQueue);
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  persistenceMigrationGate = gate;
-  return () => {
-    if (persistenceMigrationGate === gate) persistenceMigrationGate = null;
-    release();
-  };
-});
 
 export function resumerKey(toolName?: string, provider?: string): string {
   return `${toolName ?? ''}:${provider ?? ''}`;
@@ -87,17 +57,8 @@ function persistedRows(): GenerationJobSnapshot[] {
 
 export function persistJobs(): Promise<void> {
   const write = persistenceQueue.catch(() => undefined).then(async () => {
-    const migrationGate = persistenceMigrationGate;
-    if (migrationGate) await migrationGate;
-    if (sqliteStoreEnabled()) {
-      // SQLite backend: the whole jobs snapshot lives under one kv key.
-      await sqliteWriteEntry(GENERATION_JOBS_KV_KEY, { version: 1, jobs: persistedRows() });
-      return;
-    }
-    await mkdir(dirname(STORE_PATH), { recursive: true });
-    const temporary = `${STORE_PATH}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify({ version: 1, jobs: persistedRows() }), 'utf8');
-    await rename(temporary, STORE_PATH);
+    await initializeSqliteProjectStore();
+    await sqliteWriteEntry(GENERATION_JOBS_KV_KEY, { version: 1, jobs: persistedRows() });
   });
   persistenceQueue = write.then(() => undefined, () => undefined);
   return write;
@@ -153,31 +114,20 @@ function normalizePersistedJob(value: unknown): GenerationJob | null {
 
 export async function loadPersistedJobs(): Promise<void> {
   await initializeSqliteProjectStore();
-  let parsed: { version?: unknown; jobs?: unknown } | null = null;
-  if (sqliteStoreEnabled()) {
-    const row = await sqliteReadEntry(GENERATION_JOBS_KV_KEY);
-    if (row.found && row.value && typeof row.value === 'object') {
-      parsed = row.value as { version?: unknown; jobs?: unknown };
-    }
-  } else {
-    try {
-      parsed = JSON.parse(await readFile(STORE_PATH, 'utf8')) as { version?: unknown; jobs?: unknown };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
-  }
+  const row = await sqliteReadEntry(GENERATION_JOBS_KV_KEY);
+  if (!row.found) return;
+  const parsed = row.value as { version?: unknown; jobs?: unknown } | undefined;
   if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.jobs)) {
-    persistenceHydrated = true;
-    return;
+    throw new Error('invalid persisted generation jobs');
   }
   for (const value of parsed.jobs) {
     const job = normalizePersistedJob(value);
-    if (!job || jobs.has(job.id)) continue;
+    if (!job) throw new Error('invalid persisted generation job');
+    if (jobs.has(job.id)) continue;
     jobs.set(job.id, job);
     if (job.timestamps.acceptedAt) job.acceptance?.resolve(acceptanceOf(job));
     if (TERMINAL.has(job.status)) scheduleExpiry(job);
   }
-  persistenceHydrated = true;
 }
 
 export function normalizeRetentionMs(value: number | undefined): number {

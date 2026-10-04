@@ -1,14 +1,14 @@
 // Focused SQLite migration lifecycle regression.
 //
-// Covers one process-wide migration lease, receipt-less partial recovery,
-// cfc-sidecar authority promotion without row replay, safe candidate refusal,
-// sidecar repair after restart, and custom generation-ledger migration.
+// Covers automatic fresh startup, monolithic/directory imports, fail-closed
+// recovery, phase-one/cfc upgrades and immutable legacy backup retention.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -71,16 +71,15 @@ async function main(): Promise<void> {
   try {
     // Import only after profile variables are installed: runtimeProfile caches.
     const {
-      cleanupLegacyJson,
       initializeSqliteProjectStore,
-      registerStorageMigrationBarrier,
       resetSqliteStoreForTests,
-      runStorageMigration,
-      sqliteMigrationStatus,
       sqliteDeleteEntry,
       sqliteDeleteProjectEntries,
       sqliteReadEntry,
-      sqliteStoreEnabled,
+      sqliteStoreReady,
+      sqliteReadAll,
+      sqliteWriteAll,
+      sqliteImmediateTransaction,
       sqliteWriteEntry,
     } = await import('./sqlite-store.ts');
     const {
@@ -94,9 +93,31 @@ async function main(): Promise<void> {
     const profile = runtimeProfile();
     assert.equal(profile.generationJobStore, customJobsPath,
       'the custom runtime-profile ledger must be authoritative');
+    const sqlitePath = join(profile.rootDir, 'project-store-v1.sqlite3');
+    assert.equal(sqliteStoreReady(), false);
+    assert.equal(existsSync(sqlitePath), false, 'readiness must not create a database');
+    await assert.rejects(sqliteReadEntry('projects'), /not initialized/);
+    await Promise.all([initializeSqliteProjectStore(), initializeSqliteProjectStore()]);
+    assert.equal(sqliteStoreReady(), true, 'fresh profiles initialize without an opt-in');
+    await sqliteWriteEntry('chat:fresh', { saved: true });
+    resetSqliteStoreForTests();
+    process.env.OPENCHATCUT_SQLITE_STORE = '0';
+    await initializeSqliteProjectStore();
+    assert.deepEqual(await sqliteReadEntry('chat:fresh'), { found: true, value: { saved: true } },
+      'a historical env=0 cannot select JSON or hide persisted SQLite data');
+    resetSqliteStoreForTests();
+    rmSync(sqlitePath, { force: true });
+    rmSync(`${sqlitePath}-wal`, { force: true });
+    rmSync(`${sqlitePath}-shm`, { force: true });
+    rmSync(importReceiptPath(profile), { force: true });
+
+    const monolithBytes = JSON.stringify({
+      version: 1, entries: { 'chat:monolith': { old: true }, 'project:legacy': { id: 'legacy', title: 'preserved' } },
+    });
+    writeFileSync(profile.projectStore.legacyStorePath, monolithBytes);
     mkdirSync(profile.projectStore.directory, { recursive: true });
     const projectSource = join(profile.projectStore.directory, 'project%3Alegacy.json');
-    writeFileSync(projectSource, JSON.stringify({ id: 'legacy', title: 'preserved' }));
+    writeFileSync(projectSource, JSON.stringify({ id: 'legacy', title: 'partial-directory-copy' }));
     const concurrentSource = join(profile.projectStore.directory, 'chat%3Aconcurrent.json');
     writeFileSync(concurrentSource, JSON.stringify({ source: 'latest' }));
     const deletedLegacySource = join(profile.projectStore.directory, 'chat%3Adeleted-partial.json');
@@ -116,7 +137,6 @@ async function main(): Promise<void> {
 
     // Simulate an interrupted older attempt: SQLite contains partial imports,
     // including one key subsequently deleted from authoritative legacy storage.
-    const sqlitePath = join(profile.rootDir, 'project-store-v1.sqlite3');
     mkdirSync(dirname(sqlitePath), { recursive: true });
     const partial = new DatabaseSync(sqlitePath);
     partial.exec('CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
@@ -138,45 +158,48 @@ async function main(): Promise<void> {
       keys: {},
       sources: {},
     }));
-    assert.equal(sqliteStoreEnabled(), false,
-      'only the SQLite completion row may switch backend authority');
-    assert.throws(() => cleanupLegacyJson(), /migration not completed/);
+    assert.equal(sqliteStoreReady(), false,
+      'only completed initialization may expose the SQLite store');
     assert.equal(existsSync(customJobsPath), true,
       'configured legacy ledger must survive before confirmed import');
 
     const unreadableSource = join(profile.projectStore.directory, 'chat%3Abroken.json');
     writeFileSync(unreadableSource, '{not-json');
-    await assert.rejects(runStorageMigration(), /refused to activate/);
-    assert.equal(sqliteStoreEnabled(), false,
-      'a partial source failure must keep the legacy backend authoritative');
+    await assert.rejects(initializeSqliteProjectStore(), /refused to activate/);
+    assert.equal(sqliteStoreReady(), false, 'a partial source failure must reject startup');
+    await assert.rejects(sqliteReadEntry('project:legacy'), /not initialized/);
+    await assert.rejects(sqliteReadAll(), /not initialized/);
+    await assert.rejects(sqliteWriteEntry('chat:unsafe', {}), /not initialized/);
+    await assert.rejects(sqliteWriteAll({ 'chat:unsafe': {} }), /not initialized/);
+    await assert.rejects(sqliteDeleteEntry('project:legacy'), /not initialized/);
+    await assert.rejects(sqliteDeleteProjectEntries('legacy'), /not initialized/);
+    assert.throws(() => sqliteImmediateTransaction(() => undefined), /not initialized/);
     assert.equal(existsSync(customJobsPath), true,
       'a failed import must not delete the configured legacy ledger');
     rmSync(unreadableSource);
 
     await assert.rejects(
-      runStorageMigration(),
+      initializeSqliteProjectStore(),
       /target row\(s\) absent from authoritative legacy storage/,
     );
-    assert.equal(sqliteStoreEnabled(), false,
+    assert.equal(sqliteStoreReady(), false,
       'a partial row deleted from legacy must block activation instead of resurfacing');
-    assert.deepEqual(await sqliteReadEntry('chat:deleted-partial'), {
-      found: true,
-      value: { mustNotResurrect: true },
-    }, 'unmatched target data is preserved for recovery, never cleared');
-    await sqliteDeleteEntry('chat:deleted-partial');
+    const unmatched = new DatabaseSync(sqlitePath);
+    const unmatchedRow = unmatched.prepare('SELECT v FROM kv WHERE k = ?')
+      .get('chat:deleted-partial') as { v: string } | undefined;
+    assert.equal(unmatchedRow?.v, JSON.stringify({ mustNotResurrect: true }),
+      'unmatched target data is preserved for recovery, never cleared');
+    unmatched.prepare('DELETE FROM kv WHERE k = ?').run('chat:deleted-partial');
+    unmatched.close();
 
-    // Deterministic same-process race: both manual and startup paths share the
-    // lease. Exactly one run writes the marker; queued callers observe it.
-    const [first, initialized, second] = await Promise.all([
-      runStorageMigration(),
-      initializeSqliteProjectStore(),
-      runStorageMigration(),
-    ]);
-    assert.equal([first, second].filter((summary) => summary.receiptWritten).length, 1,
-      'concurrent starts must commit exactly one migration receipt');
-    assert.equal(initialized.phase, 'complete');
-    assert.equal(sqliteMigrationStatus().phase, 'complete');
-    assert.equal(sqliteStoreEnabled(), true);
+    const first = initializeSqliteProjectStore();
+    const second = initializeSqliteProjectStore();
+    assert.equal(first, second, 'concurrent callers share one complete import');
+    assert.equal(sqliteStoreReady(), false, 'queued initialization cannot expose partial rows');
+    await Promise.all([first, second]);
+    assert.equal(sqliteStoreReady(), true);
+    assert.deepEqual(await sqliteReadEntry('chat:monolith'), { found: true, value: { old: true } });
+    assert.equal(readFileSync(profile.projectStore.legacyStorePath, 'utf8'), monolithBytes);
 
     assert.deepEqual(await sqliteReadEntry('project:legacy'), {
       found: true,
@@ -207,18 +230,28 @@ async function main(): Promise<void> {
 
     // Crash window after SQLite commit but before/while writing the sidecar:
     // restart trusts the SQLite row, repairs the sidecar, and keeps all rows.
+    await sqliteWriteEntry('project:legacy', { editedInSqlite: true });
+    await sqliteDeleteEntry('chat:monolith');
+    writeFileSync(projectSource, '{changed-backup');
+    writeFileSync(profile.projectStore.legacyStorePath, '{changed-backup');
     rmSync(importReceiptPath(profile), { force: true });
     resetSqliteStoreForTests();
-    const recovered = await initializeSqliteProjectStore();
-    assert.equal(recovered.phase, 'complete');
+    await initializeSqliteProjectStore();
+    assert.equal(sqliteStoreReady(), true);
+    assert.deepEqual(await sqliteReadEntry('project:legacy'), { found: true, value: { editedInSqlite: true } },
+      'complete SQLite authority never replays edited or corrupt backups');
+    assert.deepEqual(await sqliteReadEntry('chat:monolith'), { found: false },
+      'a SQLite deletion cannot be resurrected from the monolithic backup');
     assert.equal(existsSync(importReceiptPath(profile)), true,
       'startup repairs a missing receipt sidecar from SQLite authority');
     assert.deepEqual((await sqliteReadEntry(GENERATION_JOBS_KV_KEY)).value, jobs);
 
-    const cleanup = cleanupLegacyJson();
-    assert.ok(cleanup.removed >= 2);
-    assert.equal(existsSync(customJobsPath), false,
-      'custom ledger cleanup occurs only after its exact hash was confirmed imported');
+    assert.equal(readFileSync(customJobsPath, 'utf8'), jobsBytes.toString('utf8'),
+      'the configured ledger remains an untouched backup');
+    assert.equal(readFileSync(projectSource, 'utf8'), '{changed-backup',
+      'startup never rewrites or removes changed backup files');
+    writeFileSync(projectSource, JSON.stringify({ id: 'legacy', title: 'preserved' }));
+    writeFileSync(profile.projectStore.legacyStorePath, monolithBytes);
 
     // A phase-1 marker proves current SQLite project authority but is not yet a
     // usable phase-2 store. Startup imports only missing auxiliary snapshots.
@@ -271,39 +304,14 @@ async function main(): Promise<void> {
       .run('project:phase-one-sqlite-only', JSON.stringify({ inserted: true }));
     current.close();
 
-    const phaseOneJobs = { version: 1, jobs: [{ id: 'phase-one-job', status: 'queued' }] };
+    const phaseOneJobs = { version: 1, jobs: [{ id: 'phase-one-job', status: 'queued',
+      progress: 0, params: {}, createdAt: 1, updatedAt: 1 }] };
     const deletedProjects = { 'phase-one-deleted-project': 1_723_337_200_000 };
     writeFileSync(customJobsPath, JSON.stringify(phaseOneJobs));
     writeFileSync(profile.projectStore.tombstonePath, JSON.stringify(deletedProjects));
-    assert.equal(sqliteStoreEnabled(), false,
-      'a phase-1 marker must not enable the SQLite backend');
-    assert.equal(sqliteMigrationStatus().phase, 'legacy',
-      'a phase-1 marker must not report migration complete');
-
-    let enteredBarrier!: () => void;
-    const barrierEntered = new Promise<void>((resolve) => {
-      enteredBarrier = resolve;
-    });
-    let allowUpgrade!: () => void;
-    const upgradeAllowed = new Promise<void>((resolve) => {
-      allowUpgrade = resolve;
-    });
-    const unregisterBarrier = registerStorageMigrationBarrier(async () => {
-      enteredBarrier();
-      await upgradeAllowed;
-    });
-    const upgrading = initializeSqliteProjectStore();
-    await barrierEntered;
-    assert.equal(sqliteStoreEnabled(), false,
-      'phase 1 stays disabled while the upgrade is waiting under the migration lease');
-    assert.equal(sqliteMigrationStatus().phase, 'migrating');
-    assert.equal(sqliteMigrationStatus().receipt, null,
-      'phase-1 receipt metadata must not be presented as completed phase 2');
-    allowUpgrade();
-    const upgraded = await upgrading;
-    unregisterBarrier();
-    assert.equal(upgraded.phase, 'complete');
-    assert.equal(sqliteStoreEnabled(), true);
+    assert.equal(sqliteStoreReady(), false, 'phase one is unavailable before initialization');
+    await initializeSqliteProjectStore();
+    assert.equal(sqliteStoreReady(), true);
     assert.equal(readMigrationPhase(sqlitePath), 2);
     assert.deepEqual(await sqliteReadEntry('project:phase-one-edited'), {
       found: true,
@@ -335,14 +343,15 @@ async function main(): Promise<void> {
       END
     `);
     failing.close();
-    const failedUpgrade = await initializeSqliteProjectStore();
-    assert.equal(failedUpgrade.phase, 'failed');
-    assert.equal(failedUpgrade.enabled, false);
-    assert.equal(failedUpgrade.receipt, null);
+    await assert.rejects(initializeSqliteProjectStore(), /forced phase-2 marker failure/);
+    assert.equal(sqliteStoreReady(), false);
     assert.equal(readMigrationPhase(sqlitePath), 1,
       'a failed auxiliary import must leave the phase-1 marker authoritative');
-    assert.deepEqual(await sqliteReadEntry(GENERATION_JOBS_KV_KEY), { found: false },
+    await assert.rejects(sqliteReadEntry(GENERATION_JOBS_KV_KEY), /not initialized/);
+    const rolledBack = new DatabaseSync(sqlitePath);
+    assert.equal(rolledBack.prepare('SELECT v FROM kv WHERE k = ?').get(GENERATION_JOBS_KV_KEY), undefined,
       'an auxiliary row inserted before failure must roll back with the marker');
+    rolledBack.close();
     rmSync(profile.projectStore.tombstonePath);
     rmSync(customJobsPath);
 
@@ -351,11 +360,9 @@ async function main(): Promise<void> {
       sqlitePath,
       jobs,
       store: {
-        cleanupLegacyJson,
         initializeSqliteProjectStore,
         resetSqliteStoreForTests,
-        runStorageMigration,
-        sqliteMigrationStatus,
+        sqliteStoreReady,
         sqliteReadEntry,
       },
       migration: {
@@ -364,6 +371,50 @@ async function main(): Promise<void> {
         readImportReceipt,
       },
     });
+    resetSqliteStoreForTests();
+    rmSync(profile.projectStore.directory, { recursive: true, force: true });
+    mkdirSync(profile.projectStore.directory);
+    rmSync(importReceiptPath(profile), { force: true });
+    replaceSqlite(sqlitePath, {});
+    writeFileSync(profile.projectStore.legacyStorePath, '{corrupt');
+    await assert.rejects(initializeSqliteProjectStore(), /JSON|Unexpected|position|property/i,
+      'an unreadable authoritative monolith must block startup');
+    assert.equal(sqliteStoreReady(), false);
+    assert.equal(readFileSync(profile.projectStore.legacyStorePath, 'utf8'), '{corrupt');
+    writeFileSync(profile.projectStore.legacyStorePath, JSON.stringify({ version: 1, entries: [] }));
+    await assert.rejects(initializeSqliteProjectStore(), /invalid legacy project store/);
+    writeFileSync(profile.projectStore.legacyStorePath, '{corrupt');
+    writeFileSync(profile.projectStore.readyPath, '1\n');
+    writeFileSync(projectSource, JSON.stringify({ directoryAuthority: true }));
+    await initializeSqliteProjectStore();
+    assert.deepEqual(await sqliteReadEntry('project:legacy'), { found: true, value: { directoryAuthority: true } },
+      '.ready means the directory is authoritative and the monolith is only a backup');
+    assert.equal(readFileSync(profile.projectStore.legacyStorePath, 'utf8'), '{corrupt');
+
+    // JSON-shaped but unusable auxiliary data is not an empty successful import.
+    resetSqliteStoreForTests();
+    replaceSqlite(sqlitePath, {});
+    rmSync(importReceiptPath(profile), { force: true });
+    for (const invalidJobs of [{ version: 1, jobs: {} }, { version: 1, jobs: [{ id: 'lost' }] }]) {
+      const bytes = JSON.stringify(invalidJobs);
+      writeFileSync(customJobsPath, bytes);
+      await assert.rejects(initializeSqliteProjectStore(), /unreadable legacy record/);
+      assert.equal(sqliteStoreReady(), false);
+      assert.equal(readFileSync(customJobsPath, 'utf8'), bytes);
+    }
+    writeFileSync(customJobsPath, JSON.stringify(jobs));
+    writeFileSync(profile.projectStore.tombstonePath, '[]');
+    await assert.rejects(initializeSqliteProjectStore(), /unreadable legacy record/);
+    assert.equal(readFileSync(profile.projectStore.tombstonePath, 'utf8'), '[]');
+    writeFileSync(profile.projectStore.tombstonePath, '{}');
+    await initializeSqliteProjectStore();
+    assert.equal(sqliteStoreReady(), true, 'a repaired legacy snapshot can be imported on retry');
+
+    resetSqliteStoreForTests();
+    writeMigrationReceipt(sqlitePath, { corrupted: true });
+    await assert.rejects(initializeSqliteProjectStore(), /invalid authoritative receipt/);
+    assert.equal(sqliteStoreReady(), false);
+    resetSqliteStoreForTests();
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
