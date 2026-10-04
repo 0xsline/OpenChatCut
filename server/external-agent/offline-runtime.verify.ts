@@ -67,6 +67,13 @@ assert.equal(persistence.commitCount, 0);
 
 const begun = await runtime.execute('begin_edit_session', { approvalMode: 'auto', clientName: 'External editor' });
 const sessionId = editSessionId(begun);
+await assert.rejects(
+  () => runtime.execute('begin_edit_session', { approvalMode: 'auto' }),
+  /Resolve or discard active edit session/,
+  'offline active conflict rejects when reuseExisting is not set',
+);
+const adoptedOffline = await runtime.execute('begin_edit_session', { approvalMode: 'auto', reuseExisting: true });
+assert.equal(editSessionId(adoptedOffline), sessionId, 'offline begin_edit_session with reuseExisting: true adopts active session');
 for (const action of ['preset_apply', 'preset_delete', 'preset_list', 'preset_rename', 'preset_save']) {
   await assert.rejects(
     () => runtime.execute('edit_captions', { editSessionId: sessionId, action }),

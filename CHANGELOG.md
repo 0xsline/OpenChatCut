@@ -13,6 +13,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - SQLite is now the only project-store backend. Startup automatically imports existing JSON project data, chats, history, generation jobs and deletion records in one transaction; original files remain untouched backups. Failed imports stop startup instead of falling back to JSON, and completed databases never replay stale backups. Removed the migration banner, manual migration dialog/endpoints and backend opt-out.
   工程库统一使用 SQLite。启动时自动以事务导入已有 JSON 工程、聊天、历史版本、生成任务和删除记录，原文件保持不变，仅作备份。导入失败时停止启动，不再回退到 JSON；迁移完成后不会用旧备份覆盖 SQLite。移除迁移横幅、手动迁移对话框及接口，以及旧后端开关。
 
+### Fixed / 修复
+
+- MCP clients can reuse their active edit draft with `begin_edit_session({ reuseExisting: true })`, or adopt an unchanged orphan after its owner disconnects. Reuse preserves staged operations and approval mode, rejects stale drafts and prevents another transport from taking an owned or recovering session (#196).
+  MCP 客户端可通过 `begin_edit_session({ reuseExisting: true })` 复用自己的编辑草稿，或在原客户端断开后接管工程未变化的孤立草稿。复用保留已有操作及审批模式，拒绝过期草稿，也不允许抢占其他客户端持有或正在恢复的会话（#196）。
+
 ## [0.2.15] - 2026-09-29
 
 ### Added / 新增

@@ -53,6 +53,10 @@ export const EXTERNAL_SESSION_TOOLS: readonly ExternalRegisteredTool[] = [
           enum: ['manual', 'auto'],
           description: 'manual (default) requires proposal approval in OpenChatCut; auto applies the reviewed draft only and never bypasses real-tool confirmation.',
         },
+        reuseExisting: {
+          type: 'boolean',
+          description: 'When true, reuse an owned active draft or adopt an unchanged orphaned draft. Rejects drafts owned or being recovered by another transport.',
+        },
       },
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },

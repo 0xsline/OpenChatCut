@@ -108,7 +108,12 @@ function finishCall(
   removeQueuedCall(call);
   wakeBrokerWaiters(waiters, call.binding.projectId);
   if (outcome === 'applied') {
-    call.resolve(sessionOwnership.finishApplied(call, value));
+    try {
+      call.resolve(sessionOwnership.finishApplied(call, value));
+    } catch (error) {
+      call.reject(error instanceof ExternalEditorCallError
+        ? error : new ExternalEditorCallError('failed', terminalMessage(error)));
+    }
     return true;
   }
   sessionOwnership.releaseRecovery(call);

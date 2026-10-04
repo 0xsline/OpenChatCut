@@ -21,6 +21,14 @@ tools require the target project to be open.
 The editor registers project tools after its bridge connects. Open the target
 project, call `openchatcut_status`, and refresh the MCP tool list.
 
+## Active edit session
+
+`begin_edit_session` rejects an existing draft unless `reuseExisting: true` is
+set. Reuse keeps the session ID, staged operations and approval mode. It can
+reuse a draft owned by the same MCP transport or adopt an unchanged orphan.
+It cannot take a draft from another online transport or a recovery in progress,
+and it does not bypass stale-project checks.
+
 ## Stale edit session
 
 Call `list_edit_sessions` before starting another session. For an entry marked
