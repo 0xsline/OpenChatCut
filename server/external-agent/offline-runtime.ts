@@ -131,7 +131,9 @@ export class OfflineExternalEditRuntime {
       try {
         await this.validateAvailabilityLocked();
         const args = { ...rawArgs };
-        if (name === 'begin_edit_session') return await this.begin(args.clientName, args.approvalMode);
+        if (name === 'begin_edit_session') {
+          return await this.begin(args.clientName, args.approvalMode, args.reuseExisting);
+        }
         const state = this.requireSession(requiredSessionId(args));
         if (name === 'get_edit_session') return this.info(state.session);
         if (name === 'discard_edit_session') return await this.discard(state);
@@ -192,10 +194,16 @@ export class OfflineExternalEditRuntime {
   private async begin(
     clientName: unknown,
     approvalMode: unknown,
+    reuseExisting?: unknown,
   ): Promise<Record<string, unknown>> {
     const active = [...this.sessions.values()]
       .find(({ session }) => ACTIVE_SESSION_STATUSES[session.status] === true);
-    if (active) throw new Error(`Resolve or discard active edit session ${active.session.id} first.`);
+    if (active) {
+      if (Boolean(reuseExisting)) {
+        return { ...this.info(active.session), resumed: true };
+      }
+      throw new Error(`Resolve or discard active edit session ${active.session.id} first.`);
+    }
     if (approvalMode !== 'auto') {
       throw new ExternalEditorCallError(
         'rejected',

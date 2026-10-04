@@ -115,7 +115,11 @@ export class ExternalBridgeRuntime {
     if (name === 'begin_edit_session') {
       await this.validateBinding(binding);
       throwIfExternalCallCancelled(signal);
-      return this.begin(invocationArgs.clientName, invocationArgs.approvalMode);
+      return this.begin(
+        invocationArgs.clientName,
+        invocationArgs.approvalMode,
+        invocationArgs.reuseExisting,
+      );
     }
     if (isExternalGlobalReadTool(name)) {
       await this.validateBinding(binding);
@@ -303,9 +307,16 @@ export class ExternalBridgeRuntime {
     await this.complete(session, 'rejected');
   }
 
-  private async begin(clientName: unknown, approvalMode: unknown): Promise<unknown> {
+  private async begin(
+    clientName: unknown,
+    approvalMode: unknown,
+    reuseExisting?: unknown,
+  ): Promise<unknown> {
     const active = findActiveExternalSession(this.sessions);
     if (active) {
+      if (Boolean(reuseExisting)) {
+        return this.info(active);
+      }
       throw new ExternalEditSessionOutcomeError(
         'rejected',
         'An edit session is already active. Call list_edit_sessions to inspect it before recovery or discard.',
