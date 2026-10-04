@@ -18,7 +18,6 @@ export default {
   '配置模型': 'Configura modello',
   '搜索工程': 'Cerca progetti',
   '清除搜索': 'Cancella ricerca',
-  '数据存储': 'Archiviazione dati',
   '清理所有工程都不引用的上传素材(测试/已删工程残留)': 'Pulisci i media caricati non referenziati da alcun progetto',
   '清理素材': 'Pulisci media',
   '导入 .ccproj 工程文件(兼容旧 .ccproj.json)': 'Importa file progetto .ccproj (compatibile con vecchi .ccproj.json)',

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, rename, rm } from 'node:fs/promises';
+import { open, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 interface DurableHandle {
@@ -91,26 +91,3 @@ export async function atomicWriteFile(
   }
 }
 
-export async function atomicWriteJson(target: string, value: unknown): Promise<void> {
-  const encoded = JSON.stringify(value);
-  if (encoded === undefined) throw new Error('project store value is not JSON serializable');
-  await atomicWriteFile(target, encoded);
-}
-
-export async function durableMkdir(path: string, recursive = false): Promise<void> {
-  await mkdir(path, { recursive, mode: 0o700 });
-  await syncDirectory(dirname(path));
-}
-
-export async function durableRemove(path: string, recursive = false): Promise<void> {
-  await rm(path, { force: true, recursive });
-  await syncDirectory(dirname(path));
-}
-
-export async function durableRename(source: string, target: string): Promise<void> {
-  await rename(source, target);
-  const sourceDirectory = dirname(source);
-  const targetDirectory = dirname(target);
-  await syncDirectory(sourceDirectory);
-  if (targetDirectory !== sourceDirectory) await syncDirectory(targetDirectory);
-}

@@ -1,6 +1,6 @@
 // Semantic vectors via sqlite-vec (phase C): vec0 virtual table with metadata
 // columns for scope/asset/source filtering. Server-side TopK search replaces
-// the browser-side full-scope ranking once the project store is on SQLite.
+// the browser-side full-scope ranking after storage initialization.
 //
 // The extension is loaded lazily; any load failure degrades to "unavailable"
 // (the browser keeps its IndexedDB + local-ranking fallback).
@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { getLoadablePath as sqliteVecPath } from 'sqlite-vec';
 import { unpackedPath } from '../media-binaries.ts';
 import { SEMANTIC_INFERENCE_CONTRACT } from '../../shared/vector-inference-contract.ts';
-import { sqliteStoreEnabled, storePath } from './sqlite-store.ts';
+import { sqliteStoreReady, storePath } from './sqlite-store.ts';
 
 const VEC_TABLE = 'semantic_vectors';
 const VEC_DIMENSION = SEMANTIC_INFERENCE_CONTRACT.embeddingDimension;
@@ -50,13 +50,14 @@ export function semanticVectorsAvailable(): boolean {
 }
 
 function openConnection(): DatabaseSync | null {
+  if (!sqliteStoreReady()) return null;
   if (connection) return connection;
-  if (extensionFailed || !sqliteStoreEnabled()) return null;
+  if (extensionFailed) return null;
   try {
     const path = storePath();
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(path, { allowExtension: true });
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+    db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
     // SQLite dlopens the extension itself; inside the packaged archive that needs the unpacked twin.
     db.loadExtension(unpackedPath(sqliteVecPath()));
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${VEC_TABLE} USING vec0(

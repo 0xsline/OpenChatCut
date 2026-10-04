@@ -24,7 +24,7 @@ import {
   relocatedMediaDestination,
   writeDataDirPointer,
 } from '../data-dir.ts';
-import { sqliteStoreEnabled } from '../storage/sqlite-store.ts';
+import { sqliteStoreReady } from '../storage/sqlite-store.ts';
 import { pausePublishing } from './upload-post.ts';
 import { UploadPostError } from './upload-post-client.ts';
 
@@ -132,10 +132,10 @@ async function applyDataDirChange(
     // The Upload-Post publish record moves with the root: no upload may be in
     // flight while it is copied, and none is admitted until the restart.
     await pausePublishing(async () => {
-      const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreEnabled());
+      const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreReady());
       if (outcome.refused === 'sqlite-store-active') {
         throw new Error(
-          'the project store has been migrated to SQLite and cannot be relocated yet: '
+          'the SQLite project store cannot be relocated while it is open: '
           + 'moving a live database needs a quiesced snapshot, which this setting does not do',
         );
       }

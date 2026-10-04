@@ -19,12 +19,11 @@ async function main(): Promise<void> {
   const previousHome = process.env.HOME;
   const previousEnv = process.env.OPENCHATCUT_SQLITE_STORE;
   process.env.HOME = root;
-  process.env.OPENCHATCUT_SQLITE_STORE = '1';
+  delete process.env.OPENCHATCUT_SQLITE_STORE;
 
   try {
-    const { initializeSqliteProjectStore, SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
-    process.env[SQLITE_STORE_ENV] = '1';
-    await initializeSqliteProjectStore();
+    // Runtime profile is cached at module load; install the isolated HOME first.
+    const { initializeSqliteProjectStore, resetSqliteStoreForTests } = await import('./sqlite-store.ts');
     const {
       clearSemanticVectors,
       pruneSemanticVectors,
@@ -34,6 +33,8 @@ async function main(): Promise<void> {
       upsertSemanticVectors,
     } = await import('./semantic-vectors.ts');
 
+    assert.equal(semanticVectorsAvailable(), false, 'vectors wait for complete storage initialization');
+    await initializeSqliteProjectStore();
     assert.equal(semanticVectorsAvailable(), true, 'the extension must load on this platform');
 
     // ── upsert two assets, one with multiple samples ──
@@ -92,9 +93,15 @@ async function main(): Promise<void> {
       { assetId: 'asset-1', sampleTime: 0, sourceRevision: 'rev-3', vector: vector(7) },
     ]);
     resetSemanticVectorsForTests();
+    resetSqliteStoreForTests();
+    assert.equal(semanticVectorsAvailable(), false, 'readiness gates reopen after restart');
+    process.env.OPENCHATCUT_SQLITE_STORE = '0';
+    await initializeSqliteProjectStore();
     const reopened = searchSemanticVectors('project-a', vector(7), 10);
     assert.equal(reopened.length, 1, 'vectors must survive a connection reopen');
     assert.equal(reopened[0]!.assetId, 'asset-1');
+    resetSemanticVectorsForTests();
+    resetSqliteStoreForTests();
 
     console.log('✓ semantic-vectors verify: upsert/replace/search/scope-isolation/prune/clear/reopen all passed');
   } finally {
