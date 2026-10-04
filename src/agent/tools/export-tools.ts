@@ -1,9 +1,10 @@
 export { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES } from './schemas/export-tools';
 import type { AgentContext } from '../context';
 import { recordExport, listExportHistory } from '../../persist/exportHistoryStore';
-import { isTerminal, isComplete, isFailed, type JobReportBase } from '../progress/job-model';
+import { isTerminal, isComplete, isFailed } from '../progress/job-model';
 import { materializeTimelineExport } from '../../export/materializeBlobMedia';
 import { exportFailureFrom } from '../../export/exportFailure';
+import { readRenderJobSnapshot, RenderJobRequestError, submitRenderJob as submitJob } from '../../export/renderJobClient';
 import { exportMediaExtension } from '../../export/exportMediaExtension';
 import {
   agentExportMediaPoolState,
@@ -12,7 +13,7 @@ import {
   saveTrackedAgentExport,
   type AgentExportMediaPoolPlan,
 } from '../../export/agentExportTracking';
-import type { ExportJobResult } from '../../export/exportWorkflowTypes';
+import type { ExportJobResult, ExportJobSnapshot } from '../../export/exportWorkflowTypes';
 import type { ProjectDoc } from '../../editor/types';
 
 // ═════════════════════════════════════ ══════════════════════════════════════
@@ -47,23 +48,6 @@ function mapStatus(status: string): string {
   return status === 'succeeded' ? 'completed' : status;
 }
 
-/** Backend /export/job/:id Fields that the tool cares about in the snapshot (others are ignored). */
-interface JobSnapshot extends JobReportBase<'queued' | 'running' | 'succeeded' | 'failed'> {
-  id: string;
-  progress: number;
-  result?: {
-    path?: string;
-    name?: string;
-    sizeBytes?: number;
-    codec?: string;
-    durationSeconds?: number;
-    width?: number;
-    height?: number;
-    fps?: number;
-    sourceStartSeconds?: number;
-  };
-}
-
 export type PollResult =
   | {
     ok: true;
@@ -84,8 +68,10 @@ export type PollResult =
     mediaPoolPath?: string;
     mediaPoolError?: string;
     error?: string;
+    code?: string;
+    retryable?: boolean;
   }
-  | { error: string };
+  | { error: string; code?: string; retryable?: boolean };
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -159,12 +145,17 @@ export async function fetchRenderJob(renderId: string): Promise<PollResult> {
 }
 
 async function pollOnce(renderId: string): Promise<PollResult> {
-  const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { method: 'GET' });
-  if (response.status === 404) return { error: `render job ${renderId} not found` };
-  const snapshot = (await response.json().catch(() => null)) as JobSnapshot | { error?: string } | null;
-  if (!response.ok || !snapshot || !('status' in snapshot)) {
-    const message = snapshot && 'error' in snapshot ? snapshot.error : undefined;
-    return { error: message ?? `track_export failed (${response.status})` };
+  let snapshot: ExportJobSnapshot & { id: string };
+  try {
+    snapshot = await readRenderJobSnapshot(renderId);
+  } catch (error) {
+    const failure = exportFailureFrom(error);
+    if (failure) return { error: failure.message, code: failure.code, retryable: failure.retryable };
+    if (error instanceof RenderJobRequestError) {
+      return { error: error.status === 404 ? `render job ${renderId} not found`
+        : error.responseMessage ?? `track_export failed (${error.status})` };
+    }
+    return { error: error instanceof Error ? error.message : String(error) };
   }
   const completed = isComplete(snapshot.status);
   const result = snapshot.result;
@@ -184,7 +175,11 @@ async function pollOnce(renderId: string): Promise<PollResult> {
       fps: result.fps,
       sourceStartSeconds: result.sourceStartSeconds,
     } : {}),
-    ...(isFailed(snapshot.status) && snapshot.error ? { error: snapshot.error } : {}),
+    ...(isFailed(snapshot.status) && snapshot.failure ? {
+      error: snapshot.failure.message,
+      code: snapshot.failure.code,
+      retryable: snapshot.failure.retryable,
+    } : isFailed(snapshot.status) && snapshot.error ? { error: snapshot.error } : {}),
   };
 }
 
@@ -215,21 +210,15 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
     if (typeof args.startSeconds === 'number') body.startSeconds = args.startSeconds;
     if (typeof args.endSeconds === 'number') body.endSeconds = args.endSeconds;
 
-    const response = await fetch('/export/job', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = (await response.json().catch(() => ({}))) as { renderId?: string; error?: string };
-    if (!response.ok || !data.renderId) return { error: data.error ?? `render job submit failed (${response.status})` };
-    sessionJobs.push({ renderId: data.renderId, timelineId, saveToMediaPool: !!savePlan });
+    const renderId = await submitJob(body);
+    sessionJobs.push({ renderId, timelineId, saveToMediaPool: !!savePlan });
     if (projectId) {
       const codec = format === 'audio' ? 'mp3' : args.codec === 'vp8' ? 'vp8' : 'h264';
       const extension = format === 'audio' && args.codec === 'wav'
         ? 'wav'
         : exportMediaExtension(format, codec);
       notifyAgentExportSubmitted({
-        renderId: data.renderId,
+        renderId,
         projectId,
         label: typeof args.name === 'string' && args.name.trim()
           ? args.name
@@ -240,10 +229,10 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
     }
     return {
       ok: true,
-      renderId: data.renderId,
+      renderId,
       format,
       ...(savePlan ? { mediaPoolStatus: 'pending' } : {}),
-      next: `This job is visible in the editor's top-right export queue. Call track_export once with renderIds=${data.renderId}, action=wait, timeoutSeconds=20. If it is still queued/running, report its background progress and end this turn; do not start another export for the same timeline.`,
+      next: `This job is visible in the editor's top-right export queue. Call track_export once with renderIds=${renderId}, action=wait, timeoutSeconds=20. If it is still queued/running, report its background progress and end this turn; do not start another export for the same timeline.`,
     };
   } catch (error) {
     const failure = exportFailureFrom(error);
@@ -253,6 +242,9 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
         code: failure.code,
         retryable: failure.retryable,
       };
+    }
+    if (error instanceof RenderJobRequestError) {
+      return { error: error.responseMessage ?? `render job submit failed (${error.status})` };
     }
     return { error: error instanceof Error ? error.message : String(error) };
   }

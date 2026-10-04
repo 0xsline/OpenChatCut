@@ -53,6 +53,7 @@ export interface ExportJobResult {
   path?: string;
   name?: string;
   sizeBytes?: number;
+  codec?: string;
   durationSeconds?: number;
   width?: number;
   height?: number;

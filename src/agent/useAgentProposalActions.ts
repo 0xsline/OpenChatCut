@@ -19,6 +19,7 @@ import {
   clearStoredServerRun,
 } from './serverRunSessionStorage';
 import { settleServerRun } from './serverRunSettleClient';
+import { commitProposalDocument } from './proposal-commit';
 
 export interface ProposalPersistence {
   readonly saveVersion: typeof saveAutomaticVersion;
@@ -60,38 +61,6 @@ async function settleAndRecord(
   await persistence.settle(projectId, proposal, outcome);
   const status = OUTCOME_STATUS[outcome];
   await recordProposalOutcome(projectId, proposal, status.runtime, status.final, status.summary);
-}
-
-async function claimProposalRun(
-  proposal: Proposal,
-): Promise<boolean> {
-  // The server owns the run ledger; applying a proposal only needs the
-  // proposal record to still reference a live run (the settle endpoint is
-  // idempotent for terminal/missing runs, so no ownership handshake is
-  // required in the browser).
-  return Boolean(proposal.agentRunId && proposal.id);
-}
-
-async function confirmOwnershipBeforeApply(_available: boolean): Promise<void> {
-  // Ownership authority lives on the server; nothing to prove client-side.
-}
-
-async function restoreConcurrentProject(
-  state: AgentHookState,
-  projectId: string,
-  proposal: Proposal,
-  currentDoc: ProjectDoc,
-  persistence: ProposalPersistence,
-): Promise<boolean> {
-  if (state.proposalRef.current === proposal && state.ctxRef.current.getDoc() === currentDoc) return false;
-  const latestDoc = state.ctxRef.current.getDoc();
-  const restored = await persistence.saveDoc(projectId, latestDoc).catch(() => null);
-  if (!restored?.saved) {
-    throw new Error('The newer live project could not be saved; proposal recovery remains pending.');
-  }
-  await settleAndRecord(projectId, proposal, 'stale', persistence);
-  state.setProposalStale(true);
-  return true;
 }
 
 function commitAppliedUi(
@@ -150,19 +119,21 @@ async function persistSelectedProposal(
   operationCount: number,
   persistence: ProposalPersistence,
 ): Promise<boolean> {
-  await persistence.saveVersion(projectId, 'Agent 修改前', currentDoc);
-  if (state.proposalRef.current !== proposal || state.ctxRef.current.getDoc() !== currentDoc) {
+  const committed = await commitProposalDocument({
+    projectId, before: currentDoc, result, versionLabel: 'Agent 修改前',
+  }, {
+    saveVersion: persistence.saveVersion,
+    saveDoc: persistence.saveDoc,
+    getDoc: () => state.ctxRef.current.getDoc(),
+    isCurrent: () => state.proposalRef.current === proposal && state.ctxRef.current.getDoc() === currentDoc,
+    stage: () => persistence.markApplying(projectId, proposal, result, operationCount),
+  });
+  if (committed.status === 'stale') {
     await settleAndRecord(projectId, proposal, 'stale', persistence);
     state.setProposalStale(true);
     return false;
   }
-  await confirmOwnershipBeforeApply(true);
-  await persistence.markApplying(projectId, proposal, result, operationCount);
-  const saved = await persistence.saveDoc(projectId, result);
-  if (!saved.saved) throw new Error('project save failed');
-  if (await restoreConcurrentProject(state, projectId, proposal, currentDoc, persistence)) {
-    return false;
-  }
+  if (committed.status !== 'saved') throw new Error('project save or concurrent edit recovery failed');
   try {
     await persistence.settle(projectId, proposal, 'applied');
   } catch {
@@ -196,7 +167,6 @@ export async function applySelectedProposal(
     return;
   }
   try {
-    await claimProposalRun(proposal);
     const persisted = await persistSelectedProposal(
       state, projectId, proposal, currentDoc, result, chosen.length, persistence,
     );

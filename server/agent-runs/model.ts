@@ -11,7 +11,7 @@ import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
 import type { LanguageModel } from 'ai';
 import type { AgentCacheMode } from '../../src/agent/settings/agentSettings';
 import {
-  protocolForProvider,
+  resolveModelRequestPolicy,
   type LlmProvider,
   type OpenAiApiMode,
 } from '../../shared/llm-providers';
@@ -56,9 +56,10 @@ export function createServerLanguageModel(
   apiMode: OpenAiApiMode,
   origin: string,
 ): LanguageModel {
-  if (protocolForProvider(provider) === 'openai') {
+  const policy = resolveModelRequestPolicy(provider, apiMode);
+  if (policy.protocol === 'openai') {
     const openai = createOpenAI(proxyOptions(provider, origin));
-    return apiMode === 'chat' ? openai.chat(modelId) : openai.responses(modelId);
+    return policy.apiMode === 'chat' ? openai.chat(modelId) : openai.responses(modelId);
   }
   return providerFactory(provider, origin)(modelId);
 }
@@ -68,15 +69,5 @@ export function serverProviderOptions(
   apiMode: OpenAiApiMode,
   cacheMode: AgentCacheMode,
 ): SharedV4ProviderOptions | undefined {
-  if (provider === 'anthropic') {
-    const cacheControl = cacheMode === 'long'
-      ? { type: 'ephemeral' as const, ttl: '1h' as const }
-      : { type: 'ephemeral' as const };
-    return { anthropic: { cacheControl } };
-  }
-  if (provider === 'minimax') return { minimax: { reasoning_split: true } };
-  if (protocolForProvider(provider) === 'openai' && apiMode === 'responses') {
-    return { openai: { store: false } };
-  }
-  return undefined;
+  return resolveModelRequestPolicy(provider, apiMode, cacheMode).providerOptions;
 }

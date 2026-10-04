@@ -1,10 +1,11 @@
 import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
+import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
+import { resolveModelRequestPolicy } from '../../shared/llm-providers';
 import {
   MODEL,
   OPENAI_API_MODE,
   PROVIDER,
-  protocolForProvider,
 } from './providerConfig';
 import type { LlmProvider, OpenAiApiMode } from './providerConfig';
 import { normalizeLlmMessages, withoutModelImages } from './messages';
@@ -168,12 +169,10 @@ export async function getLanguageModel(
   model: string = MODEL,
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
 ): Promise<ConfiguredLanguageModel> {
-  if (protocolForProvider(provider) === 'openai') {
+  const policy = resolveModelRequestPolicy(provider, openAiApiMode);
+  if (policy.protocol === 'openai') {
     const openai = await openAiProvider(provider);
-    // The xAI subscription session speaks the Responses API only; the global
-    // OpenAI chat/responses toggle must not switch it to chat completions.
-    const mode = provider === 'xai-oauth' ? 'responses' : openAiApiMode;
-    return mode === 'chat' ? openai.chat(model) : openai.responses(model);
+    return policy.apiMode === 'chat' ? openai.chat(model) : openai.responses(model);
   }
   return (await providerFactory(provider))(model);
 }
@@ -182,27 +181,14 @@ export function getLanguageModelProviderOptions(
   provider: LlmProvider = PROVIDER,
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
   cacheMode: AgentCacheMode = 'short',
-): Record<string, Record<string, boolean>> | undefined {
-  if (provider === 'anthropic') {
-    const cacheControl = cacheMode === 'long'
-      ? { type: 'ephemeral', ttl: '1h' }
-      : { type: 'ephemeral' };
-    return { anthropic: { cacheControl } as unknown as Record<string, boolean> };
-  }
-  if (provider === 'minimax') {
-    return { minimax: { reasoning_split: true } };
-  }
-  if (provider === 'xai-oauth') return undefined;
-  return protocolForProvider(provider) === 'openai' && openAiApiMode === 'responses'
-    ? { openai: { store: false } }
-    : undefined;
+): SharedV4ProviderOptions | undefined {
+  return resolveModelRequestPolicy(provider, openAiApiMode, cacheMode).providerOptions;
 }
 export function cacheTtlMsForProvider(
   provider: LlmProvider,
   cacheMode: AgentCacheMode,
 ): number | undefined {
-  if (provider !== 'anthropic') return undefined;
-  return cacheMode === 'long' ? 60 * 60 * 1000 : 5 * 60 * 1000;
+  return resolveModelRequestPolicy(provider, undefined, cacheMode).cacheTtlMs;
 }
 
 

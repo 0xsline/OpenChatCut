@@ -65,6 +65,7 @@ assert.equal(defaultModelForProvider('cheaperinference'), 'gpt-5.4-mini');
 assert.equal(providerApiPath('anthropic'), '/messages');
 assert.equal(providerApiPath('openai'), '/responses');
 assert.equal(providerApiPath('openai', 'chat'), '/chat/completions');
+assert.equal(providerApiPath('xai-oauth', 'chat'), '/responses');
 assert.equal(providerApiPath('kimi'), '/chat/completions');
 assert.equal(providerApiPath('gemini'), '/models');
 assert.equal(providerApiPath('openrouter'), '/chat/completions');

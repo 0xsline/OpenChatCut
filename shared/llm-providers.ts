@@ -1,3 +1,5 @@
+import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
+
 /** wire protocol the SERVER proxy speaks upstream: auth header + path family.
  * 'google' = Gemini native API (x-goog-api-key, /models/{id}:generateContent). */
 export type LlmProtocol = 'anthropic' | 'openai' | 'google' | 'openai-compatible';
@@ -226,15 +228,50 @@ export function normalizeOpenAiApiMode(value: unknown): OpenAiApiMode {
   return value === 'chat' ? 'chat' : DEFAULT_OPENAI_API_MODE;
 }
 
+/** Provider request rules shared by browser and server model adapters. */
+export function resolveModelRequestPolicy(
+  provider: unknown,
+  openAiApiMode: unknown = DEFAULT_OPENAI_API_MODE,
+  cacheMode: 'short' | 'long' = 'short',
+): {
+  protocol: LlmProtocol;
+  apiMode: OpenAiApiMode;
+  providerOptions: SharedV4ProviderOptions | undefined;
+  cacheTtlMs: number | undefined;
+} {
+  const normalized = normalizeLlmProvider(provider);
+  const protocol = protocolForProvider(normalized);
+  // Subscription sessions only speak Responses, regardless of the global toggle.
+  const apiMode = normalized === 'xai-oauth' ? 'responses' : normalizeOpenAiApiMode(openAiApiMode);
+  let providerOptions: SharedV4ProviderOptions | undefined;
+  if (normalized === 'anthropic') {
+    providerOptions = { anthropic: { cacheControl: cacheMode === 'long'
+      ? { type: 'ephemeral', ttl: '1h' }
+      : { type: 'ephemeral' } } };
+  } else if (normalized === 'minimax') {
+    providerOptions = { minimax: { reasoning_split: true } };
+  } else if (normalized !== 'xai-oauth' && protocol === 'openai' && apiMode === 'responses') {
+    providerOptions = { openai: { store: false } };
+  }
+  return {
+    protocol,
+    apiMode,
+    providerOptions,
+    cacheTtlMs: normalized === 'anthropic'
+      ? (cacheMode === 'long' ? 60 : 5) * 60 * 1000
+      : undefined,
+  };
+}
+
 export function providerApiPath(
   provider: unknown,
   openAiApiMode: unknown = DEFAULT_OPENAI_API_MODE,
 ): string {
-  const protocol = protocolForProvider(provider);
+  const { protocol, apiMode } = resolveModelRequestPolicy(provider, openAiApiMode);
   if (protocol === 'anthropic') return '/messages';
   if (protocol === 'google') return '/models'; // Native API path according to model:/models/{id}:generateContent
   if (protocol === 'openai') {
-    return normalizeOpenAiApiMode(openAiApiMode) === 'chat'
+    return apiMode === 'chat'
       ? '/chat/completions'
       : '/responses';
   }

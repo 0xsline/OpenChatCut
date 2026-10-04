@@ -3,9 +3,9 @@ import { exportMediaExtension } from './exportMediaExtension';
 import {
   exportFailureFrom,
   ExportFailureError,
-  isExportFailure,
   type ExportFailure,
 } from './exportFailure';
+import { cancelRenderJob, readRenderJobSnapshot, RenderJobRequestError, submitRenderJob } from './renderJobClient';
 import {
   markServerExportOutputReady,
   persistServerExportJob,
@@ -127,28 +127,14 @@ async function submitExport(
   operationId: string,
   signal?: AbortSignal,
 ) {
-  const submission = await fetch('/export/job', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(submissionBody(context, format, codec, operationId)),
-    signal,
-  });
-  const submitted: unknown = await submission.json().catch(() => null);
-  if (submitted && typeof submitted === 'object' && 'failure' in submitted && isExportFailure(submitted.failure)) {
-    throw new ExportFailureError(submitted.failure);
+  try {
+    return await submitRenderJob(submissionBody(context, format, codec, operationId), signal);
+  } catch (error) {
+    if (error instanceof RenderJobRequestError) {
+      throw new Error(error.responseMessage ?? context.t('导出失败 ({status})', { status: error.status }));
+    }
+    throw error;
   }
-  const renderId = submitted && typeof submitted === 'object' && 'renderId' in submitted
-    && typeof submitted.renderId === 'string'
-    ? submitted.renderId
-    : null;
-  if (!submission.ok || !renderId || renderId !== operationId) {
-    const error = submitted && typeof submitted === 'object' && 'error' in submitted
-      && typeof submitted.error === 'string'
-      ? submitted.error
-      : context.t('导出失败 ({status})', { status: submission.status });
-    throw new Error(error);
-  }
-  return renderId;
 }
 
 async function readSnapshot(
@@ -156,24 +142,14 @@ async function readSnapshot(
   t: Translate,
   signal?: AbortSignal,
 ): Promise<ExportJobSnapshot> {
-  const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { signal });
-  const snapshot: unknown = await response.json().catch(() => null);
-  const validSnapshot = snapshot !== null && typeof snapshot === 'object'
-    && 'status' in snapshot
-    && (snapshot.status === 'queued' || snapshot.status === 'running'
-      || snapshot.status === 'succeeded' || snapshot.status === 'failed')
-    && 'progress' in snapshot && typeof snapshot.progress === 'number';
-  if ((!response.ok || !validSnapshot)
-    && snapshot && typeof snapshot === 'object'
-    && 'failure' in snapshot && isExportFailure(snapshot.failure)) {
-    throw new ExportFailureError(snapshot.failure);
+  try {
+    return await readRenderJobSnapshot(renderId, signal);
+  } catch (error) {
+    if (error instanceof RenderJobRequestError) {
+      throw new Error(error.responseMessage ?? t('无法读取导出进度 ({status})', { status: error.status }));
+    }
+    throw error;
   }
-  if (!response.ok || !validSnapshot) {
-    const message = snapshot && typeof snapshot === 'object' && 'error' in snapshot
-      && typeof snapshot.error === 'string' ? snapshot.error : undefined;
-    throw new Error(message ?? t('无法读取导出进度 ({status})', { status: response.status }));
-  }
-  return snapshot as ExportJobSnapshot;
 }
 
 function activePhase(snapshot: ExportJobSnapshot): ExportPhase {
@@ -230,9 +206,13 @@ export async function pollExport(
 }
 
 export async function deleteExportJob(renderId: string): Promise<void> {
-  const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { method: 'DELETE' });
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`server export cleanup failed (${response.status})`);
+  try {
+    await cancelRenderJob(renderId);
+  } catch (error) {
+    if (error instanceof RenderJobRequestError) {
+      throw new Error(error.responseMessage ?? `server export cleanup failed (${error.status})`);
+    }
+    throw error;
   }
 }
 
