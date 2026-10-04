@@ -25,6 +25,8 @@ import {
   writeDataDirPointer,
 } from '../data-dir.ts';
 import { sqliteStoreReady } from '../storage/sqlite-store.ts';
+import { pausePublishing } from './upload-post.ts';
+import { UploadPostError } from './upload-post-client.ts';
 
 const ISOLATED_R2_SETTINGS = [
   'R2_ACCOUNT_ID',
@@ -127,17 +129,23 @@ async function applyDataDirChange(
   // the copy, and lose the projects exactly like the case this guards against.
   const destination = target ?? defaultRootDir(profile);
   if (destination !== profile.rootDir) {
-    const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreReady());
-    if (outcome.refused === 'sqlite-store-active') {
-      throw new Error(
-        'the SQLite project store cannot be relocated while it is open: '
-        + 'moving a live database needs a quiesced snapshot, which this setting does not do',
-      );
-    }
-    // Uploads are addressed by name through uploadReadDirs(), so the copy must
-    // land where the relocated profile will resolve its writable upload dir.
-    const mediaDestination = relocatedMediaDestination(target, destination, DEFAULT_UPLOAD_DIR);
-    await syncUploadDirectories(uploadDir(profile), mediaDestination, log);
+    // The Upload-Post publish record moves with the root: no upload may be in
+    // flight while it is copied, and none is admitted until the restart.
+    await pausePublishing(async () => {
+      const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreReady());
+      if (outcome.refused === 'sqlite-store-active') {
+        throw new Error(
+          'the SQLite project store cannot be relocated while it is open: '
+          + 'moving a live database needs a quiesced snapshot, which this setting does not do',
+        );
+      }
+      // Uploads are addressed by name through uploadReadDirs(), so the copy must
+      // land where the relocated profile will resolve its writable upload dir.
+      const mediaDestination = relocatedMediaDestination(target, destination, DEFAULT_UPLOAD_DIR);
+      await syncUploadDirectories(uploadDir(profile), mediaDestination, log);
+      await writeDataDirPointer(target);
+    });
+    return;
   }
   await writeDataDirPointer(target);
 }
@@ -196,7 +204,12 @@ export function settingsPlugin(): Plugin {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[settings] ${message}`);  // message only — never a key value
-          if (!res.headersSent) sendJson(res, 400, { error: message });
+          if (!res.headersSent) {
+            sendJson(res, error instanceof UploadPostError ? error.status : 400, {
+              error: message,
+              ...(error instanceof UploadPostError ? { code: error.code } : {}),
+            });
+          }
         }
       });
     },

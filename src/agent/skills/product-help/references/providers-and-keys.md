@@ -20,6 +20,7 @@ If a capability is off, say so and offer alternatives (upload, library, another 
 | Transcription | `transcribe_track` | The provider selected in Settings (or an explicit configured override): AssemblyAI (default), local, OpenAI, Mistral, Deepgram, Groq, ElevenLabs, or Cartesia |
 | Web | `web_browser` | `FIRECRAWL_API_KEY` |
 | Sandbox / ffmpeg helpers | `run_code` | `E2B_API_KEY` (if used) |
+| Social publishing | `publish_to_social`, `track_social_publish` | `UPLOAD_POST_API_KEY` + `UPLOAD_POST_PROFILE` (Upload-Post profile with the social accounts connected) |
 | LLM agent | chat | Configure one or more independent provider triplets: `LLM_<PROVIDER>_BASE_URL`, `LLM_<PROVIDER>_API_KEY`, and `LLM_<PROVIDER>_MODEL`. Supported provider tokens are `ANTHROPIC`, `OPENAI`, `GEMINI`, `KIMI`, `QWEN`, `GLM`, `DEEPSEEK`, `MINIMAX`, and `MISTRAL`. `LLM_PROVIDER` controls the initially selected chat provider. |
 
 ## Speech provider configuration

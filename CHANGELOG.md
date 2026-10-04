@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / 未发布
 
+### Added / 新增
+
+- Publish completed video exports through Upload-Post with an explicit preview and confirmation. Approval is bound to the account, profile, platforms, title and exported file; a durable delivery record prevents duplicate submissions after retries or restarts. Configure the provider under Settings → Social Publishing (#188).
+  支持通过 Upload-Post 发布已导出的视频，发布前必须预览并确认。确认与账号、Profile、平台、标题及导出文件绑定；持久化投递记录防止重试或重启后重复发布。供应商可在“设置 → 社交发布”中配置（#188）。
+
 ### Changed / 调整
 
 - SQLite is now the only project-store backend. Startup automatically imports existing JSON project data, chats, history, generation jobs and deletion records in one transaction; original files remain untouched backups. Failed imports stop startup instead of falling back to JSON, and completed databases never replay stale backups. Removed the migration banner, manual migration dialog/endpoints and backend opt-out.
