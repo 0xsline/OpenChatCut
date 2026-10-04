@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { cp, mkdir, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { mergePublishLedgers } from './plugins/upload-post-ledger.ts';
 
 /** Fixed pointer location — deliberately outside the movable storage root. */
 export function dataDirPointerPath(home: string = homedir()): string {
@@ -118,6 +119,12 @@ export async function relocateDataDir(
     const from = join(source, entry);
     if (!existsSync(from)) continue;
     const to = join(target, entry);
+    if (entry === 'upload-post-publishes.json') {
+      // A previously used destination also owns permanent duplicate protection.
+      // Merge both histories instead of the generic "already present" skip below.
+      if (await mergePublishLedgers(from, to)) copiedEntries += 1;
+      continue;
+    }
     if (existsSync(to)) {
       const existing = await readdir(to).catch(() => ['?']);
       if (existing.length > 0) {

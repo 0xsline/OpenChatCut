@@ -75,6 +75,12 @@ responses = [() => { throw Object.assign(new Error('The operation was aborted du
 const timedOut = await execPublishTool('publish_to_social', { ...SOURCE, confirm: true, previewId: 'ocut-5' }) as Record<string, unknown>;
 assert.equal(timedOut.requestId, 'ocut-5');
 assert.match(String(timedOut.next), /Do not confirm again/);
+responses = [() => new Response(new ReadableStream({
+  start(controller) { controller.error(new DOMException('Response body timed out', 'AbortError')); },
+}))];
+const bodyTimedOut = await execPublishTool('publish_to_social', { ...SOURCE, confirm: true, previewId: 'ocut-5' }) as Record<string, unknown>;
+assert.equal(bodyTimedOut.requestId, 'ocut-5', 'a body timeout also preserves the admitted request identity');
+assert.match(String(bodyTimedOut.next), /Do not confirm again/);
 
 // ── server errors surface verbatim ──
 responses = [json(412, { error: 'Upload-Post is not configured', code: 'upload_post_not_configured' })];
@@ -92,7 +98,7 @@ assert.deepEqual(await execPublishTool('track_social_publish', {}), { error: 're
 
 // ── [P3] every status request is bounded by the remaining wait budget (virtual clock) ──
 // The review's reproduction: each status answer takes 15 s, timeoutSeconds is 20.
-function virtualClock(responseMs: number, body: Record<string, unknown>) {
+function virtualClock(responseMs: number, body: Record<string, unknown>, timeoutInBody = false) {
   let clock = 0;
   const timers: Array<{ at: number; controller: AbortController }> = [];
   const requestsAt: number[] = [];
@@ -111,6 +117,11 @@ function virtualClock(responseMs: number, body: Record<string, unknown>) {
       if (timer && timer.at < respondAt) {
         clock = timer.at;
         timer.controller.abort();
+        if (timeoutInBody) {
+          return new Response(new ReadableStream({
+            start(controller) { controller.error(timer.controller.signal.reason); },
+          }));
+        }
         throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
       }
       clock = respondAt;
@@ -125,6 +136,12 @@ assert.ok(slow.elapsed() <= 20_000, `the wait honours timeoutSeconds (took ${slo
 assert.equal(bounded.waitExpired, true);
 assert.equal(bounded.status, 'processing', 'the last known status is returned when the budget runs out');
 assert.deepEqual(slow.requestsAt, [0, 18_000], 'second request is cut off at the 20 s budget, not left to run 15 s');
+
+const slowBody = virtualClock(15_000, { requestId: 'ocut-9', status: 'processing', results: [] }, true);
+const boundedBody = await trackSocialPublish({ requestId: 'ocut-9', action: 'wait', timeoutSeconds: 20 }, slowBody.deps) as Record<string, unknown>;
+assert.equal(slowBody.elapsed(), 20_000);
+assert.equal(boundedBody.waitExpired, true);
+assert.equal(boundedBody.status, 'processing', 'aborting a response body retains the last known status, not an empty success');
 
 const hung = virtualClock(60_000, { requestId: 'ocut-9', status: 'processing', results: [] });
 const firstHangs = await trackSocialPublish({ requestId: 'ocut-9', action: 'wait', timeoutSeconds: 20 }, hung.deps) as Record<string, unknown>;

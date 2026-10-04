@@ -181,6 +181,36 @@ try {
   assert.equal(await readFile(join(destination, 'deleted-projects-v1.json'), 'utf8'), 'newer, must win');
   assert.ok(logs.some((msg) => msg.includes('skipped')), 'a skipped entry is reported, never silent');
 
+  // Publish histories are the exception: both roots' tombstones must survive.
+  const ledgerName = 'upload-post-publishes.json';
+  const sourceOnly = 'ocut-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const targetOnly = 'ocut-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const shared = 'ocut-cccccccccccccccccccccccccccccccc';
+  await writeFile(join(source, ledgerName), JSON.stringify({
+    [sourceOnly]: { state: 'ambiguous', at: 1 },
+    [shared]: { state: 'accepted', at: 2 },
+  }));
+  await writeFile(join(destination, ledgerName), JSON.stringify({
+    [targetOnly]: { state: 'sending', at: 3 },
+    [shared]: { state: 'rejected', at: 4 },
+  }));
+  assert.deepEqual(await relocateDataDir(source, destination, () => undefined, false), { copiedEntries: 1 });
+  const merged = JSON.parse(await readFile(join(destination, ledgerName), 'utf8'));
+  assert.deepEqual(merged, {
+    [targetOnly]: { state: 'sending', at: 3 },
+    [shared]: { state: 'accepted', at: 2 },
+    [sourceOnly]: { state: 'ambiguous', at: 1 },
+  }, 'relocation unions dedup history and never changes an accepted upload into a retryable rejection');
+  assert.deepEqual(await relocateDataDir(source, destination, () => undefined, false), { copiedEntries: 0 });
+  await relocateDataDir(destination, source, () => undefined, false);
+  assert.deepEqual(JSON.parse(await readFile(join(source, ledgerName), 'utf8')), merged, 'moving back keeps both histories');
+  await writeFile(join(destination, ledgerName), JSON.stringify({ [shared]: null }));
+  await assert.rejects(
+    relocateDataDir(source, destination, () => undefined, false),
+    /invalid publish record/,
+    'a damaged destination ledger refuses relocation instead of silently discarding protection',
+  );
+
   // 7. Creating the root up front is idempotent, so a first run never races a first write.
   const eager = join(fixture, 'eager', 'nested');
   ensureDataDir(eager);

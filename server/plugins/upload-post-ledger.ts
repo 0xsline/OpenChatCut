@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-
-import { runtimeProfile } from '../runtime-profile.ts';
+import { dirname } from 'node:path';
 
 // Local record of every Upload-Post publish attempt, keyed by request id.
 // An id is written here BEFORE its upload starts; once present (in any state
@@ -39,9 +37,6 @@ export class LedgerUnavailableError extends Error {
   }
 }
 
-export function defaultLedgerPath(): string {
-  return join(runtimeProfile().rootDir, 'upload-post-publishes.json');
-}
 
 let ledgerQueue: Promise<unknown> = Promise.resolve();
 
@@ -61,6 +56,14 @@ async function readLedger(path: string): Promise<Ledger> {
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new LedgerUnavailableError(path, new Error('not a JSON object'));
+  }
+  for (const entry of Object.values(parsed)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+      || !['sending', 'accepted', 'ambiguous', 'rejected'].includes(entry.state)
+      || typeof entry.at !== 'number' || !Number.isFinite(entry.at)
+      || (entry.error !== undefined && typeof entry.error !== 'string')) {
+      throw new LedgerUnavailableError(path, new Error('invalid publish record'));
+    }
   }
   return parsed as Ledger;
 }
@@ -95,3 +98,24 @@ export async function ledgerEntry(path: string, requestId: string): Promise<Ledg
 
 export const markLedger = (path: string, requestId: string, state: LedgerState, error?: string) =>
   updateLedger(path, (ledger) => { ledger[requestId] = { state, at: Date.now(), ...(error ? { error } : {}) }; });
+
+/** Relocation must retain both roots' tombstones, not skip a nonempty destination. */
+export async function mergePublishLedgers(source: string, target: string): Promise<boolean> {
+  await ledgerIdle();
+  const incoming = await readLedger(source);
+  let changed = false;
+  const priority: Record<LedgerState, number> = { rejected: 0, sending: 1, ambiguous: 2, accepted: 3 };
+  await updateLedger(target, (ledger) => {
+    for (const [id, entry] of Object.entries(incoming)) {
+      const existing = ledger[id];
+      // An older attempted/accepted upload must never become retryable because
+      // the other root only remembers a rejection of the same deterministic id.
+      if (!existing || priority[entry.state] > priority[existing.state]
+        || (entry.state === existing.state && entry.at > existing.at)) {
+        ledger[id] = entry;
+        changed = true;
+      }
+    }
+  });
+  return changed;
+}

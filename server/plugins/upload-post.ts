@@ -1,11 +1,10 @@
-import { createHash } from 'node:crypto';
-import { createReadStream, openAsBlob } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import { extname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { join } from 'node:path';
 import type { Plugin } from 'vite';
 
-import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
+import { resolveUploadFile } from '../media-dir.ts';
+import { runtimeProfile } from '../runtime-profile.ts';
 import { readJsonBody, sendError, sendJson } from './export-http.ts';
 import {
   accountIdentity, connectedPlatforms, fetchWithProxy, PLATFORM_ALIASES, providerError, publishStatus, requireConfig,
@@ -13,13 +12,14 @@ import {
   type PublishStatus, type UploadPostConfig, type UploadPostPlatform,
 } from './upload-post-client.ts';
 import {
-  defaultLedgerPath, ledgerEntry, ledgerIdle, LedgerUnavailableError, markLedger, type LedgerEntry,
+  ledgerEntry, ledgerIdle, LedgerUnavailableError, markLedger, type LedgerEntry,
 } from './upload-post-ledger.ts';
+import { publishRequestId, resolvePublishSource, type PublishSource } from './upload-post-source.ts';
 
-export {
-  accountIdentity, connectedPlatforms, normalizeResults, publishStatus, UPLOAD_POST_PLATFORMS, UploadPostError, uploadPostConfig,
-} from './upload-post-client.ts';
-export type { PlatformResult, PublishStatus, UploadPostConfig, UploadPostPlatform } from './upload-post-client.ts';
+function defaultLedgerPath(): string {
+  return join(runtimeProfile().rootDir, 'upload-post-publishes.json');
+}
+
 
 // Publish a finished render to social platforms through Upload-Post. One
 // multipart upload fans out to every requested platform; per-platform results
@@ -44,7 +44,6 @@ export type { PlatformResult, PublishStatus, UploadPostConfig, UploadPostPlatfor
 
 const YOUTUBE_PRIVACY = ['private', 'unlisted', 'public'] as const;
 const TIKTOK_PRIVACY = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'] as const;
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm']);
 const TITLE_MAX = 2200;
 const YOUTUBE_TITLE_MAX = 100;
 const DESCRIPTION_MAX = 5000;
@@ -124,86 +123,13 @@ export function parsePublishRequest(body: unknown): PublishRequest {
   };
 }
 
-/** Resolve a `/media/uploads/<name>` render to its file; only video files may be published. */
-export async function resolvePublishSource(
-  source: string,
-  resolve: (name: string) => string | null = resolveUploadFile,
-): Promise<PublishSource> {
-  const clean = source.split(/[?#]/, 1)[0];
-  if (!clean.startsWith('/media/uploads/')) {
-    throw new UploadPostError(400, 'invalid_source', 'source must be a /media/uploads/ path (the downloadUrl from track_export)');
-  }
-  let name: string;
-  try {
-    name = decodeURIComponent(clean.slice('/media/uploads/'.length));
-  } catch {
-    throw new UploadPostError(400, 'invalid_source', 'invalid source path');
-  }
-  if (!isSafeUploadName(name)) throw new UploadPostError(400, 'invalid_source', 'invalid source path');
-  if (!VIDEO_EXTENSIONS.has(extname(name).toLowerCase())) {
-    throw new UploadPostError(400, 'invalid_source', 'only MP4, MOV or WebM video renders can be published');
-  }
-  const file = resolve(name);
-  if (!file) throw new UploadPostError(404, 'source_not_found', `render not found: ${source}`);
-  const info = await stat(file);
-  if (!info.isFile() || info.size === 0) throw new UploadPostError(422, 'source_empty', 'the render file is empty');
-  return { file, name, sizeBytes: info.size, contentHash: await contentHash(file, info) };
-}
 
-export interface PublishSource {
-  readonly file: string;
-  readonly name: string;
-  readonly sizeBytes: number;
-  /** SHA-256 of the render's bytes: the same video keeps its identity wherever it is copied. */
-  readonly contentHash: string;
-}
-
-const HASH_CACHE_LIMIT = 64;
-const hashCache = new Map<string, Promise<string>>();
-
-/**
- * Identity of the render by content, not by timestamp: a media-directory
- * migration (or a copy to a filesystem with coarser timestamps) keeps the same
- * id for the same bytes, while a re-render with new bytes gets a new one. The
- * hash is cached per file version, so a preview and its confirm read the file once.
- */
-function contentHash(file: string, info: { size: number; mtimeMs: number; ino: number }): Promise<string> {
-  const key = `${file}\n${info.size}\n${info.mtimeMs}\n${info.ino}`;
-  const cached = hashCache.get(key);
-  if (cached) return cached;
-  const hashing = new Promise<string>((resolve, reject) => {
-    const hash = createHash('sha256');
-    createReadStream(file)
-      .on('data', (chunk) => hash.update(chunk))
-      .on('error', reject)
-      .on('end', () => resolve(hash.digest('hex')));
-  });
-  if (hashCache.size >= HASH_CACHE_LIMIT) hashCache.delete(hashCache.keys().next().value!);
-  hashCache.set(key, hashing);
-  hashing.catch(() => hashCache.delete(key));
-  return hashing;
-}
-
-/**
- * Deterministic id: the same destination + the same video + the same publish
- * fields always map to the same post. `account` is accountIdentity(config):
- * the endpoint and the Upload-Post account, stable across key rotations.
- */
-export function publishRequestId(
-  account: string,
-  profile: string,
-  source: Pick<PublishSource, 'name' | 'sizeBytes' | 'contentHash'>,
+function publishBody(
   request: PublishRequest,
-): string {
-  const identity = JSON.stringify([
-    account, profile, source.name, source.sizeBytes, source.contentHash,
-    [...request.platforms].sort(), request.title, request.description ?? '',
-    request.youtubePrivacy, request.tiktokPrivacy ?? '', request.pinterestBoardId ?? '', request.aiGenerated,
-  ]);
-  return `ocut-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
-}
-
-function publishForm(request: PublishRequest, profile: string, requestId: string): FormData {
+  profile: string,
+  requestId: string,
+  source: Pick<PublishSource, 'video' | 'name'>,
+): Blob {
   const form = new FormData();
   form.append('user', profile);
   form.append('title', request.title);
@@ -215,13 +141,21 @@ function publishForm(request: PublishRequest, profile: string, requestId: string
   if (request.platforms.includes('youtube')) form.append('privacyStatus', request.youtubePrivacy);
   if (request.platforms.includes('tiktok') && request.tiktokPrivacy) form.append('privacy_level', request.tiktokPrivacy);
   if (request.platforms.includes('pinterest') && request.pinterestBoardId) form.append('pinterest_board_id', request.pinterestBoardId);
-  return form;
+  // Node's FormData encoder can leave a changed file Blob's read rejection
+  // unhandled. A composite Blob streams the same file-backed parts, but routes
+  // stream errors into fetch's rejected promise so delivery remains ambiguous.
+  const boundary = `----openchatcut-${randomUUID()}`;
+  const parts: BlobPart[] = [];
+  for (const [name, value] of form) {
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n`
+      + `${String(value).replace(/\r\n|\r|\n/g, '\r\n')}\r\n`);
+  }
+  const filename = source.name.replace(/[\r\n"]/g, (character) => encodeURIComponent(character));
+  parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${filename}"\r\n`
+    + `Content-Type: ${source.video.type}\r\n\r\n`, source.video, `\r\n--${boundary}--\r\n`);
+  return new Blob(parts, { type: `multipart/form-data; boundary=${boundary}` });
 }
 
-function videoMime(name: string): string {
-  const ext = extname(name).toLowerCase();
-  return ext === '.webm' ? 'video/webm' : ext === '.mov' ? 'video/quicktime' : 'video/mp4';
-}
 
 export interface PublishPreview {
   readonly requestId: string;
@@ -315,20 +249,18 @@ async function settleAmbiguous(config: UploadPostConfig, requestId: string, ledg
 async function runUpload(
   config: UploadPostConfig,
   request: PublishRequest,
-  source: Pick<PublishSource, 'file' | 'name'>,
+  source: Pick<PublishSource, 'video' | 'name'>,
   requestId: string,
   ledgerPath: string,
 ): Promise<void> {
   try {
-    const form = publishForm(request, config.profile, requestId);
-    // File-backed Blob: the render streams from disk and is never buffered in memory.
-    form.append('video', await openAsBlob(source.file, { type: videoMime(source.name) }), source.name);
+    const body = publishBody(request, config.profile, requestId, source);
     let response: Response;
     try {
       response = await fetchWithProxy(`${config.baseUrl}/api/upload`, {
         method: 'POST',
         headers: { Authorization: `Apikey ${config.apiKey}`, 'Idempotency-Key': requestId, 'User-Agent': 'OpenChatCut' },
-        body: form,
+        body,
       });
     } catch {
       await settleAmbiguous(config, requestId, ledgerPath); // transport error or timeout

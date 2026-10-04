@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
-import { createServer, type IncomingMessage } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -51,10 +51,16 @@ let nextUpload: {
   delayMs?: number;
 } | null = null;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let beforeNextStatus: (() => Promise<void>) | undefined;
 
 const provider = createServer(async (req, res) => {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  try {
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  } catch {
+    res.destroy(); // A changed file-backed snapshot aborts the multipart stream.
+    return;
+  }
   const url = new URL(req.url ?? '/', 'http://localhost');
   const body = Buffer.concat(chunks).toString('latin1');
   requests.push({ method: req.method ?? '', path: url.pathname, headers: req.headers, body });
@@ -79,6 +85,9 @@ const provider = createServer(async (req, res) => {
     return;
   }
   if (url.pathname === '/api/uploadposts/status') {
+    const beforeStatus = beforeNextStatus;
+    beforeNextStatus = undefined;
+    await beforeStatus?.();
     const id = url.searchParams.get('request_id') ?? '';
     if (!accepted.has(id) || pendingVisibility.has(id)) {
       res.statusCode = 404;
@@ -130,11 +139,14 @@ try {
   const address = provider.address();
   assert(address && typeof address === 'object');
   const baseUrl = `http://127.0.0.1:${address.port}`;
+  // These modules snapshot the runtime profile; import after isolating the fixture.
   const mod = await import('./upload-post.ts');
   const {
-    accountIdentity, parsePublishRequest, pausePublishing, publishToUploadPost, publishStatus, resumePublishingForTests,
-    settleBackgroundUploads, trackPublish, uploadPostConfig, UploadPostError,
+    parsePublishRequest, pausePublishing, publishToUploadPost, resumePublishingForTests,
+    settleBackgroundUploads, trackPublish, uploadPostPlugin,
   } = mod;
+  const { accountIdentity, publishStatus, uploadPostConfig, UploadPostError } = await import('./upload-post-client.ts');
+  const { publishRequestId, resolvePublishSource } = await import('./upload-post-source.ts');
   const { syncUploadDirectories } = await import('../media-dir.ts');
   const ledgerPath = join(root, 'ledger', 'upload-post-publishes.json');
   const configFor = (profile: string, apiKey = 'test-key', endpoint = `${baseUrl}/`) => uploadPostConfig((name) => ({
@@ -216,6 +228,30 @@ try {
     'a file replaced after the preview is refused',
   );
   assert.equal(uploadCount(), 0, 'no mismatched confirm reaches Upload-Post');
+
+  const sameStampFile = join(mediaDir, 'same-stamp.mp4');
+  const originalTime = new Date('2025-01-01T00:00:00Z');
+  await writeFile(sameStampFile, Buffer.alloc(1024, 1));
+  await utimes(sameStampFile, originalTime, originalTime);
+  const sameStampFields = { ...base, source: '/media/uploads/same-stamp.mp4' };
+  const sameStampPreview = await publish(config, parsePublishRequest(sameStampFields));
+  await writeFile(sameStampFile, Buffer.alloc(1024, 2));
+  await utimes(sameStampFile, originalTime, originalTime);
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...sameStampFields, confirm: true, previewId: sameStampPreview.requestId })),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'preview_mismatch',
+    'a same-size replacement with restored mtime invalidates the cached content identity',
+  );
+
+  const lateFields = { ...base, title: 'Replaced during admission' };
+  const latePreview = await publish(config, parsePublishRequest(lateFields));
+  beforeNextStatus = () => writeFile(join(mediaDir, 'final-cut.mp4'), Buffer.alloc(1024 * 1024, 4));
+  const lateAdmitted = await publish(config, parsePublishRequest({ ...lateFields, confirm: true, previewId: latePreview.requestId }));
+  assert.equal(lateAdmitted.phase, 'admitted');
+  await settleBackgroundUploads();
+  assert.equal(accepted.has(latePreview.requestId), false, 'replacement bytes cannot be posted under the approved identity');
+  assert.equal((await track(latePreview.requestId)).status, 'unknown', 'an interrupted transfer remains blocked, never retried');
+  assert.equal(uploadCount(), 0, 'the provider receives no complete upload of the replacement');
 
   // ── [P4] a confirm is admitted at once; the upload runs in the background ──
   requests.length = 0;
@@ -308,8 +344,8 @@ try {
 
   // ── [P2] duplicate protection is never evicted: exactly 1,001 records ──
   const ledger = JSON.parse(await readFile(ledgerPath, 'utf8')) as Record<string, { state: string; at: number }>;
-  const stuckId = Object.keys(ledger).find((id) => ledger[id].state === 'ambiguous');
-  assert(stuckId, 'ambiguous attempts are recorded');
+  const stuckId = lost.confirmed.requestId;
+  assert.equal(ledger[stuckId]?.state, 'ambiguous', 'the lost attempt is recorded');
   const boundary: Record<string, { state: string; at: number }> = {
     [stuckId]: { state: 'ambiguous', at: Date.now() - 30 * 24 * 3600 * 1000 }, // oldest, and past the 24 h Idempotency-Key window
   };
@@ -336,8 +372,8 @@ try {
   await assert.rejects(publish(config, unreadable), (error: unknown) => (
     error instanceof UploadPostError && error.status === 503 && error.code === 'ledger_unavailable'
   ), 'preview refuses too: it cannot tell whether this was already sent');
-  const matchingId = mod.publishRequestId(
-    await accountIdentity(config), 'creator', await mod.resolvePublishSource(unreadable.source), unreadable,
+  const matchingId = publishRequestId(
+    await accountIdentity(config), 'creator', await resolvePublishSource(unreadable.source), unreadable,
   );
   await assert.rejects(
     publish(config, parsePublishRequest({ ...base, title: 'no ledger', confirm: true, previewId: matchingId })),
@@ -345,6 +381,12 @@ try {
     'a correctly bound confirm still refuses without duplicate protection',
   );
   assert.equal(uploadCount(), 0, 'no upload without duplicate protection');
+  await writeFile(ledgerPath, JSON.stringify({ [matchingId]: null }));
+  await assert.rejects(
+    publish(config, parsePublishRequest({ ...base, title: 'no ledger', confirm: true, previewId: matchingId })),
+    (error: unknown) => error instanceof UploadPostError && error.code === 'ledger_unavailable',
+    'a syntactically valid but damaged tombstone must not become permission to upload',
+  );
   await rm(ledgerPath);
 
   // ── [P1] approval and duplicate protection are bound to the endpoint and the account ──
@@ -426,11 +468,6 @@ try {
   assert.equal(uploadCount(), 1);
   const movedDir = join(root, 'moved-media');
   await syncUploadDirectories(mediaDir, movedDir, () => undefined);
-  assert.equal(
-    Math.trunc((await stat(join(movedDir, 'final-cut.mp4'))).mtimeMs),
-    Math.trunc((await stat(join(mediaDir, 'final-cut.mp4'))).mtimeMs),
-    'the migration keeps the original timestamp',
-  );
   // Even a destination that does not keep timestamps (coarse filesystem) keeps the identity.
   await utimes(join(movedDir, 'final-cut.mp4'), new Date(), new Date(Date.now() + 60_000));
   const fromMoved = (cfg: Cfg, fields: Record<string, unknown>) => publishToUploadPost(
@@ -495,9 +532,69 @@ try {
   ));
   await assert.rejects(publish(configFor('missing'), parsed), /profile "missing" was not found/);
 
-  const source = await readFile(new URL('./upload-post.ts', import.meta.url), 'utf8');
-  assert.match(source, /openAsBlob\(source\.file/);
-  assert.doesNotMatch(source, /readFile\(source\.file/, 'video upload must stay file-backed');
+  // Exercise the actual HTTP publish/status handlers behind the request-shape gate.
+  const { seedKeystore } = await import('../keystore.ts');
+  const { requestShapeAllowed } = await import('./request-shape-gate.ts');
+  seedKeystore({ UPLOAD_POST_API_KEY: 'test-key', UPLOAD_POST_PROFILE: 'creator', UPLOAD_POST_BASE_URL: baseUrl });
+  let routeHandler!: (req: IncomingMessage, res: ServerResponse) => void;
+  const configure = uploadPostPlugin().configureServer;
+  assert.equal(typeof configure, 'function');
+  if (typeof configure !== 'function') throw new Error('upload-post route was not configured');
+  configure({
+    config: { logger: { error: () => undefined } },
+    middlewares: {
+      use(path: string, handler: typeof routeHandler) {
+        assert.equal(path, '/api/upload-post');
+        routeHandler = handler;
+      },
+    },
+  } as never);
+  const local = createServer((req, res) => {
+    if (!requestShapeAllowed(req)) {
+      res.writeHead(403).end();
+      return;
+    }
+    req.url = req.url?.slice('/api/upload-post'.length);
+    routeHandler(req, res);
+  });
+  local.listen(0, '127.0.0.1');
+  await once(local, 'listening');
+  const localAddress = local.address();
+  assert(localAddress && typeof localAddress === 'object');
+  const origin = `http://127.0.0.1:${localAddress.port}`;
+  const endpoint = `${origin}/api/upload-post/publish`;
+  const routeFields = { ...base, title: 'Local HTTP route' };
+  const post = (fields: Record<string, unknown>, trusted = true) => fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(trusted ? { Origin: origin, 'Sec-Fetch-Site': 'same-origin' } : {}),
+    },
+    body: JSON.stringify(fields),
+  });
+  try {
+    requests.length = 0;
+    assert.equal((await post(routeFields, false)).status, 403, 'untrusted HTTP callers cannot publish');
+    const previewResponse = await post(routeFields);
+    assert.equal(previewResponse.status, 200);
+    const routePreview = await previewResponse.json() as { requestId: string; phase: string };
+    assert.equal(routePreview.phase, 'preview');
+    assert.equal(uploadCount(), 0, 'a real HTTP preview still sends no upload');
+    assert.equal((await post({ ...routeFields, confirm: true })).status, 400);
+    const confirmResponse = await post({ ...routeFields, confirm: true, previewId: routePreview.requestId });
+    assert.equal(confirmResponse.status, 200);
+    assert.equal((await confirmResponse.json() as { phase: string }).phase, 'admitted');
+    await settleBackgroundUploads();
+    const statusResponse = await fetch(`${endpoint}/${routePreview.requestId}`);
+    assert.equal(statusResponse.status, 200);
+    assert.equal((await statusResponse.json() as { status: string }).status, 'completed');
+    const repeatResponse = await post({ ...routeFields, confirm: true, previewId: routePreview.requestId });
+    assert.equal((await repeatResponse.json() as { phase: string }).phase, 'resumed');
+    assert.equal(uploadCount(), 1, 'the real HTTP route posts once across reconfirmation');
+  } finally {
+    await settleBackgroundUploads();
+    await new Promise<void>((resolve) => local.close(() => resolve()));
+  }
   console.log('upload-post.verify OK');
 } finally {
   await new Promise<void>((resolve) => provider.close(() => resolve()));

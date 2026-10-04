@@ -6,6 +6,13 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased] / 未发布
+
+### Added / 新增
+
+- Publish completed video exports through Upload-Post with an explicit preview and confirmation. Approval is bound to the account, profile, platforms, title and exported file; a durable delivery record prevents duplicate submissions after retries or restarts. Configure the provider under Settings → Social Publishing (#188).
+  支持通过 Upload-Post 发布已导出的视频，发布前必须预览并确认。确认与账号、Profile、平台、标题及导出文件绑定；持久化投递记录防止重试或重启后重复发布。供应商可在“设置 → 社交发布”中配置（#188）。
+
 ## [0.2.15] - 2026-09-29
 
 ### Added / 新增

@@ -21,7 +21,12 @@ const PUBLISH_REQUEST_TIMEOUT_MS = 25_000;
 const SETTLED = new Set(['completed', 'failed', 'unknown', 'not_found']);
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
-  return (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  try {
+    return await response.json() as Record<string, unknown>;
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return {};
+  }
 }
 
 function isAbort(error: unknown): boolean {
@@ -43,6 +48,7 @@ async function publishToSocial(args: Args): Promise<unknown> {
     ...(typeof args.previewId === 'string' ? { previewId: args.previewId } : {}),
   };
   let response: Response;
+  let data: Record<string, unknown>;
   try {
     response = await fetch('/api/upload-post/publish', {
       method: 'POST',
@@ -50,6 +56,7 @@ async function publishToSocial(args: Args): Promise<unknown> {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),
     });
+    data = await readJson(response);
   } catch (error) {
     if (confirm && typeof args.previewId === 'string') {
       return {
@@ -60,7 +67,6 @@ async function publishToSocial(args: Args): Promise<unknown> {
     }
     return { error: `publish_to_social request failed: ${error instanceof Error ? error.message : String(error)}` };
   }
-  const data = await readJson(response);
   if (!response.ok) {
     return {
       error: String(data.error ?? `publish_to_social failed (${response.status})`),

@@ -143,6 +143,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'claude-sonnet-5',
   },
   {
+    id: 'cheaperinference',
+    label: 'Cheaper Inference',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.cheaperinference.com/v1',
+    defaultModel: 'gpt-5.4-mini',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',

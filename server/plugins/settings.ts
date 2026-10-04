@@ -26,6 +26,7 @@ import {
 } from '../data-dir.ts';
 import { sqliteStoreEnabled } from '../storage/sqlite-store.ts';
 import { pausePublishing } from './upload-post.ts';
+import { UploadPostError } from './upload-post-client.ts';
 
 const ISOLATED_R2_SETTINGS = [
   'R2_ACCOUNT_ID',
@@ -203,7 +204,12 @@ export function settingsPlugin(): Plugin {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[settings] ${message}`);  // message only — never a key value
-          if (!res.headersSent) sendJson(res, 400, { error: message });
+          if (!res.headersSent) {
+            sendJson(res, error instanceof UploadPostError ? error.status : 400, {
+              error: message,
+              ...(error instanceof UploadPostError ? { code: error.code } : {}),
+            });
+          }
         }
       });
     },

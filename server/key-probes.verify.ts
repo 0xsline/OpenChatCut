@@ -153,6 +153,33 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   }
 }
 
+// 7c. Cheaper Inference checks the key on /models and lists only the chat (type "text") models.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), auth: new Headers(init?.headers).get('authorization') });
+    return Response.json({
+      data: [
+        { id: 'gpt-5.4-mini', type: 'text' },
+        { id: 'claude-sonnet-5', type: 'text' },
+        { id: 'image-model', type: 'image' },
+        { id: 'video-model', type: 'video' },
+      ],
+    });
+  };
+  try {
+    const ok = await runProbe('llm/cheaperinference', { LLM_CHEAPERINFERENCE_API_KEY: 'ci_live_test' });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.models, ['claude-sonnet-5', 'gpt-5.4-mini']);
+    assert.deepEqual(calls, [
+      { url: 'https://api.cheaperinference.com/v1/models', auth: 'Bearer ci_live_test' },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 
 // 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
 // Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.

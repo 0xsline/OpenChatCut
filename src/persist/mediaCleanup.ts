@@ -8,7 +8,7 @@
 import { deleteMediaBlob } from './mediaBlobStore';
 import { listPacks } from '../plugins/store';
 import { listProjectDocIds, listProjects, loadProject, loadRawProject, purgeProject } from './projectStore';
-import { listVersions } from './versionStore';
+import { listVersions, loadRawVersions } from './versionStore';
 import { collectUploadSrcs, rawUploadSrcs } from './projectTransfer';
 
 const MEDIA_PREFIX = '/media/uploads/';
@@ -40,9 +40,12 @@ export async function collectAllUploadRefs(excludeId?: string): Promise<Set<stri
     // Version snapshots reference assets the CURRENT document may have
     // dropped: deleting a clip then cleaning up would otherwise delete the
     // media that restoring a 5-minute-old snapshot still needs.
-    for (const version of await listVersions(id).catch(() => [])) {
+    for (const version of await listVersions(id)) {
       for (const src of collectUploadSrcs(version.doc)) refs.add(src);
     }
+    // Display filtering omits future-version snapshots. Scan their raw records
+    // too, just as we do for an unreadable current project document below.
+    for (const src of rawUploadSrcs(await loadRawVersions(id))) refs.add(src);
     const doc = await loadProject(id);
     if (doc) {
       for (const src of collectUploadSrcs(doc)) refs.add(src);
