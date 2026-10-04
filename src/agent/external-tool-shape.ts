@@ -55,7 +55,7 @@ export const EXTERNAL_SESSION_TOOLS: readonly ExternalRegisteredTool[] = [
         },
         reuseExisting: {
           type: 'boolean',
-          description: 'When true, adopt and return the active edit session if one is already open, rather than rejecting.',
+          description: 'When true, reuse an owned active draft or adopt an unchanged orphaned draft. Rejects drafts owned or being recovered by another transport.',
         },
       },
     },

@@ -96,7 +96,20 @@ export class EditSessionOwnershipRegistry {
     }
     if (call.name === 'begin_edit_session') {
       const sessionId = sessionIdFrom(value);
-      if (sessionId) this.recordOwner(sessionId, call.ownerId, call.binding);
+      if (sessionId) {
+        if (this.owners.has(sessionId)) this.requireOwned(call.ownerId, call.binding, sessionId);
+        if (this.recoveryClaims.has(sessionId)) {
+          throw new ExternalEditorCallError(
+            'rejected', 'The active edit session is already being recovered by another MCP transport.',
+          );
+        }
+        if ((value as Record<string, unknown>).stale === true) {
+          throw new ExternalEditorCallError(
+            'rejected', 'The active edit session is stale. Call list_edit_sessions before recovery or discard.',
+          );
+        }
+        this.recordOwner(sessionId, call.ownerId, call.binding);
+      }
       return value;
     }
     if (call.name !== 'recover_edit_session') return value;

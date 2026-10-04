@@ -6,6 +6,13 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased] / 未发布
+
+### Fixed / 修复
+
+- MCP clients can reuse their active edit draft with `begin_edit_session({ reuseExisting: true })`, or adopt an unchanged orphan after its owner disconnects. Reuse preserves staged operations and approval mode, rejects stale drafts and prevents another transport from taking an owned or recovering session (#196).
+  MCP 客户端可通过 `begin_edit_session({ reuseExisting: true })` 复用自己的编辑草稿，或在原客户端断开后接管工程未变化的孤立草稿。复用保留已有操作及审批模式，拒绝过期草稿，也不允许抢占其他客户端持有或正在恢复的会话（#196）。
+
 ## [0.2.15] - 2026-09-29
 
 ### Added / 新增

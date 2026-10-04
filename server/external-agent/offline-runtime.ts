@@ -199,7 +199,7 @@ export class OfflineExternalEditRuntime {
     const active = [...this.sessions.values()]
       .find(({ session }) => ACTIVE_SESSION_STATUSES[session.status] === true);
     if (active) {
-      if (Boolean(reuseExisting)) {
+      if (reuseExisting === true) {
         return { ...this.info(active.session), resumed: true };
       }
       throw new Error(`Resolve or discard active edit session ${active.session.id} first.`);

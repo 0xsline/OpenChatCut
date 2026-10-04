@@ -231,6 +231,49 @@ assert.equal(editSessionOwnerMatches(
   'persisted-ownerless-draft',
 ), true, 'a failed recovery releases its claim for another authenticated transport');
 
+async function reuseDraft(ownerId: string, stale = false): Promise<unknown> {
+  const result = invokeEditorTool(ownerId, currentBinding!, 'begin_edit_session', { reuseExisting: true });
+  const next = await nextEditorCall(
+    projectId, editorId, currentBinding!.baseRevision, AbortSignal.timeout(1_000), registrationCapability,
+  );
+  assert(next);
+  assert.equal(next.name, 'begin_edit_session');
+  settleEditorCall(next.id, 'applied', {
+    editSessionId: 'persisted-ownerless-draft', status: 'drafting', stale,
+  }, registrationCapability);
+  return result;
+}
+
+await reuseDraft('recovery-owner-three');
+assert.equal(editSessionOwnerMatches('recovery-owner-three', currentBinding, 'persisted-ownerless-draft'), true);
+await assert.rejects(reuseDraft('competing-owner'), hasOutcome('rejected'),
+  'reuseExisting must not steal a live draft from another transport');
+assert.equal(editSessionOwnerMatches('recovery-owner-three', currentBinding, 'persisted-ownerless-draft'), true,
+  'a rejected adoption leaves the original owner able to continue editing');
+
+cancelEditorCallsForOwner('recovery-owner-three');
+const reservedRecovery = invokeEditorTool('reserved-owner', currentBinding, 'recover_edit_session', {
+  editSessionId: 'persisted-ownerless-draft', action: 'resume',
+});
+const reservedCall = await nextEditorCall(
+  projectId, editorId, currentBinding.baseRevision, AbortSignal.timeout(1_000), registrationCapability,
+);
+assert(reservedCall);
+await assert.rejects(reuseDraft('competing-owner'), hasOutcome('rejected'),
+  'reuseExisting cannot bypass an in-flight recovery reservation');
+settleEditorCall(reservedCall.id, 'applied', {
+  editSessionId: 'persisted-ownerless-draft', status: 'drafting',
+}, registrationCapability);
+await reservedRecovery;
+assert.equal(editSessionOwnerMatches('reserved-owner', currentBinding, 'persisted-ownerless-draft'), true);
+
+cancelEditorCallsForOwner('reserved-owner');
+await assert.rejects(reuseDraft('reconnected-owner', true), hasOutcome('rejected'),
+  'a stale draft must not be silently adopted at a new project revision');
+await reuseDraft('reconnected-owner');
+assert.equal(editSessionOwnerMatches('reconnected-owner', currentBinding, 'persisted-ownerless-draft'), true,
+  'a disconnected owner can be replaced without losing its unchanged draft');
+
 await import('./mcp.verify.ts');
 await import('./broker-poll-refresh.verify.ts');
 console.log('external-agent broker check passed');
