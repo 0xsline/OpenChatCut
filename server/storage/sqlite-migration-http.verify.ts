@@ -1,26 +1,32 @@
-// HTTP-layer verification for the storage migration endpoints.
-//
-// Boots a REAL node:http server with the project-store plugin middleware and
-// exercises the loopback trust flow: same-origin read → write → migrate →
-// migrate-status, plus the 403 rejections for missing Origin. Isolated via a
-// temporary HOME.
+// Real HTTP consumers use SQLite immediately after automatic startup.
+// Legacy files remain immutable backups; retired migration controls return 404.
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-migrate-http-verify-'));
   const previousHome = process.env.HOME;
+  const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
+  delete process.env.OPENCHATCUT_SQLITE_STORE;
   process.env.HOME = root;
 
-  const serverHandle: { close: () => void } = { close: () => undefined };
+  let app: http.Server | undefined;
   try {
+    // Runtime profile is cached at module load; import only after HOME isolation.
     const { projectStorePlugin } = await import('../plugins/project-store-plugin.ts');
+    const { storageLifecyclePlugin } = await import('../plugins/storage-lifecycle.ts');
+    const { runtimeProfile } = await import('../runtime-profile.ts');
+    const { resetSqliteStoreForTests, sqliteStoreReady, storePath } = await import('./sqlite-store.ts');
+    const { resetSearchForTests } = await import('./fulltext-search.ts');
+    const profile = runtimeProfile();
+    mkdirSync(profile.projectStore.directory, { recursive: true });
+    const legacyPath = join(profile.projectStore.directory, 'chat%3Ahttp-1.json');
+    const legacyBytes = JSON.stringify({ messages: [{ role: 'user', text: 'legacy chat' }] });
+    writeFileSync(legacyPath, legacyBytes);
 
     // Minimal vite-server-shaped stub: the plugin only uses middlewares.use
     // and config.logger.error.
@@ -33,29 +39,30 @@ async function main(): Promise<void> {
       },
       config: { logger: { error: () => undefined } },
     };
+    await storageLifecyclePlugin().configureServer(stubServer as never);
+    assert.equal(sqliteStoreReady(), true, 'startup imports automatically before accepting HTTP');
     projectStorePlugin({ http: true }).configureServer(stubServer as never);
 
-    const app = http.createServer((req, res) => {
+    app = http.createServer((req, res) => {
       for (const { path, handler } of middlewares) {
         if (req.url?.startsWith(path)) {
-          // connect semantics: the mount prefix is stripped before the handler
-          // runs (the plugin compares req.url against '/migrate' etc.).
-          const original = req.url;
-          req.url = original.slice(path.length) || '/';
-          void handler(req, res);
-          req.url = original;
+          // Match Connect: keep the stripped URL for the entire async handler.
+          req.url = req.url.slice(path.length) || '/';
+          void Promise.resolve(handler(req, res)).catch((error: unknown) => {
+            res.writeHead(500).end(String(error));
+          });
           return;
         }
       }
       res.writeHead(404).end();
     });
-    await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', resolve));
+    const listeningApp = app;
+    await new Promise<void>((resolve) => listeningApp.listen(0, '127.0.0.1', resolve));
     const port = (app.address() as AddressInfo).port;
-    serverHandle.close = () => app.close();
 
-    // node:http.request (fetch forbids the Origin header, which the trust
-    // checks require for writes).
-    const request = (path: string, init: { method: string; headers?: Record<string, string> }) =>
+    const request = (path: string, init: {
+      method: string; headers?: Record<string, string>; body?: unknown;
+    }) =>
       new Promise<{ status: number; json(): Promise<unknown> }>((resolve, reject) => {
         const req = http.request({
           host: '127.0.0.1',
@@ -66,6 +73,7 @@ async function main(): Promise<void> {
             host: `localhost:${port}`,
             origin: `http://localhost:${port}`,
             'sec-fetch-site': 'same-origin',
+            'content-type': 'application/json',
             ...init.headers,
           },
         }, (res) => {
@@ -77,51 +85,60 @@ async function main(): Promise<void> {
           }));
         });
         req.on('error', reject);
-        req.end();
+        req.end(init.body === undefined ? undefined : JSON.stringify(init.body));
       });
 
-    // 1. Read-only status (loopback same-origin) → 200.
-    const status0 = await request('/migrate-status', { method: 'GET' });
-    assert.equal(status0.status, 200, 'loopback same-origin reads must be allowed');
-    const body0 = await status0.json() as { enabled: boolean; receipt: unknown; jsonKeyCount: number };
-    assert.equal(body0.enabled, false);
-    assert.equal(body0.jsonKeyCount, 0);
-
-    // 2. Write without Origin → 403 (no token handshake, shape only).
-    const noOrigin = await request('/migrate', {
-      method: 'POST',
-      headers: { origin: '', 'sec-fetch-site': 'none' },
+    const imported = await request('/entry?key=chat%3Ahttp-1', { method: 'GET' });
+    assert.equal(imported.status, 200);
+    assert.deepEqual(await imported.json(), { found: true, value: JSON.parse(legacyBytes) });
+    const noOrigin = await request('/entry', {
+      method: 'PUT', headers: { origin: '', 'sec-fetch-site': 'none' },
+      body: { key: 'chat:http-1', value: { forbidden: true } },
     });
-    assert.equal(noOrigin.status, 403, 'migrate must require a same-origin loopback request');
+    assert.equal(noOrigin.status, 403, 'writes still require matching Origin');
+    const crossSite = await request('/entry?key=chat%3Ahttp-1', {
+      method: 'GET', headers: { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
+    });
+    assert.equal(crossSite.status, 403, 'cross-site reads remain unauthorized');
 
-    // 3. Seed legacy JSON data in file mode (migration has not run yet).
-    const store = await import('../plugins/project-store.ts');
-    await store.setStoredEntry('chat:http-1', { m: 'one' });
-    await store.setStoredEntry('project:http-p', { doc: { v: 1 }, updatedAt: 1 });
-    await store.setStoredEntry('thumb:http-1', { t: true });
+    const sqliteValue = { messages: [{ role: 'user', text: 'SQLite persisted edit' }] };
+    const saved = await request('/entry', {
+      method: 'PUT', body: { key: 'chat:http-1', value: sqliteValue },
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(readFileSync(legacyPath, 'utf8'), legacyBytes,
+      'consumer writes cannot modify original JSON backups');
 
-    // 4. Write with the loopback same-origin shape → 200, all keys imported.
-    const migrate = await request('/migrate', { method: 'POST' });
-    assert.equal(migrate.status, 200, 'loopback same-origin requests must authorize migrate');
-    const migrateBody = await migrate.json() as { summary: { imported: number }; enabled: boolean };
-    assert.equal(migrateBody.summary.imported, 3, 'all three keys must import');
-    assert.equal(migrateBody.enabled, true);
+    resetSearchForTests();
+    resetSqliteStoreForTests();
+    writeFileSync(legacyPath, '{outdated-backup');
+    process.env.OPENCHATCUT_SQLITE_STORE = '0';
+    await storageLifecyclePlugin().configureServer(stubServer as never);
+    const reopened = await request('/entry?key=chat%3Ahttp-1', { method: 'GET' });
+    assert.equal(reopened.status, 200);
+    assert.deepEqual(await reopened.json(), { found: true, value: sqliteValue },
+      'HTTP consumers retain SQLite authority across restart despite stale backups and env=0');
+    resetSearchForTests();
+    resetSqliteStoreForTests();
+    rmSync(storePath(), { force: true });
+    rmSync(`${storePath()}-wal`, { force: true });
+    rmSync(`${storePath()}-shm`, { force: true });
+    await assert.rejects(
+      storageLifecyclePlugin().configureServer(stubServer as never),
+      /unreadable legacy record/,
+      'server startup must reject an incomplete import instead of falling back to JSON',
+    );
+    assert.equal(sqliteStoreReady(), false);
+    const failedRead = await request('/entry?key=chat%3Ahttp-1', { method: 'GET' });
+    assert.equal(failedRead.status, 400, 'failed storage cannot return an empty successful response');
+    assert.equal(readFileSync(legacyPath, 'utf8'), '{outdated-backup');
+    resetSqliteStoreForTests();
 
-    // 5. Status now reports enabled + receipt + SQLite rows.
-    const status1 = await request('/migrate-status', { method: 'GET' });
-    const body1 = await status1.json() as { enabled: boolean; receipt: { count: number } | null; sqliteKeyCount: number };
-    assert.equal(body1.enabled, true);
-    assert.equal(body1.receipt?.count, 3);
-    assert.equal(body1.sqliteKeyCount, 3);
-
-    // 6. Idempotent re-run stays 200.
-    const setEntry = await request('/migrate', { method: 'POST' });
-    assert.equal(setEntry.status, 200);
-    await sleep(30);
-
-    console.log('✓ migrate-http verify: read-status / no-origin 403 / seed / loopback migrate / status-after / idempotent all passed');
+    console.log('SQLite startup HTTP: automatic import, authorization, persistence and fail-closed recovery passed');
   } finally {
-    serverHandle.close();
+    if (app) await new Promise<void>((resolve, reject) => app!.close((error) => error ? reject(error) : resolve()));
+    if (previousSwitch === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;
+    else process.env.OPENCHATCUT_SQLITE_STORE = previousSwitch;
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
     rmSync(root, { recursive: true, force: true });

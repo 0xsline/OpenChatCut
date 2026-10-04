@@ -24,7 +24,7 @@ import {
   relocatedMediaDestination,
   writeDataDirPointer,
 } from '../data-dir.ts';
-import { sqliteStoreEnabled } from '../storage/sqlite-store.ts';
+import { sqliteStoreReady } from '../storage/sqlite-store.ts';
 
 const ISOLATED_R2_SETTINGS = [
   'R2_ACCOUNT_ID',
@@ -127,10 +127,10 @@ async function applyDataDirChange(
   // the copy, and lose the projects exactly like the case this guards against.
   const destination = target ?? defaultRootDir(profile);
   if (destination !== profile.rootDir) {
-    const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreEnabled());
+    const outcome = await relocateDataDir(profile.rootDir, destination, log, sqliteStoreReady());
     if (outcome.refused === 'sqlite-store-active') {
       throw new Error(
-        'the project store has been migrated to SQLite and cannot be relocated yet: '
+        'the SQLite project store cannot be relocated while it is open: '
         + 'moving a live database needs a quiesced snapshot, which this setting does not do',
       );
     }

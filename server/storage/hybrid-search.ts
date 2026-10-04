@@ -4,7 +4,7 @@
 // provides the query text embedding (the local model lives in the renderer).
 import { searchContent } from './fulltext-search.ts';
 import { searchSemanticVectors } from './semantic-vectors.ts';
-import { sqliteStoreEnabled } from './sqlite-store.ts';
+import { sqliteStoreReady } from './sqlite-store.ts';
 
 export interface HybridHit {
   kind: 'visual' | 'chat' | 'caption' | 'transcript';
@@ -45,14 +45,14 @@ export interface HybridSearchOptions {
 /**
  * Fuse text + visual lanes. The visual lane needs a project scope (vectors are
  * stored per project) and a query vector; without either it degrades to text
- * only. Returns [] when no lane is usable (e.g. store not migrated).
+ * only. Returns [] when no lane is usable (e.g. storage is not initialized).
  */
 export function hybridSearch(
   query: string,
   queryVector: number[] | undefined,
   options: HybridSearchOptions = {},
 ): HybridHit[] {
-  if (!sqliteStoreEnabled()) return [];
+  if (!sqliteStoreReady()) return [];
   const bounded = Math.min(50, Math.max(1, Math.round(Number(options.limit) || 20)));
   const lanes: Array<Array<{ id: string; hit: Omit<HybridHit, 'score'> }>> = [];
 
