@@ -29,11 +29,11 @@ export function SectionLabel({
         <button
           className="cc-insp-group-reset"
           disabled={resetDisabled}
-          title={t('重置整个分组')}
+          title="Reset Group"
           type="button"
           onClick={onReset}
         >
-          {t('重置')}
+          Reset
         </button>
       )}
     </div>
@@ -47,7 +47,6 @@ export function FilterControl({ item, mixed, onChange, autoGrade }: {
   onChange: (p: ClipFilters) => void;
   autoGrade?: AutoGradeControlProps;
 }) {
-  const t = useT();
   const fl: ClipFilters = { ...item.filters, ...(autoGrade?.selectedPreview?.filters ?? {}) };
   return (
     <div className="cc-insp-stack">
@@ -55,8 +54,8 @@ export function FilterControl({ item, mixed, onChange, autoGrade }: {
         <div className={`cc-auto-grade${autoGrade.previewCount ? ' previewing' : ''}`}>
           <div className="cc-auto-grade-head">
             <div>
-              <strong>{t('自动校色')}</strong>
-              <span>{t('保守型技术修正')}</span>
+              <strong>Auto Color Grade</strong>
+              <span>Conservative Technical Correction</span>
             </div>
             <button
               type="button"
@@ -64,19 +63,19 @@ export function FilterControl({ item, mixed, onChange, autoGrade }: {
               disabled={autoGrade.busy || autoGrade.targetCount === 0}
               onClick={() => void autoGrade.onAnalyze()}
             >
-              {autoGrade.busy ? t('分析中…') : t('分析选中片段')}
+              {autoGrade.busy ? 'Analyzing...' : 'Analyze Selected Clips'}
             </button>
           </div>
           <div className="cc-auto-grade-note">
             {autoGrade.targetCount === 0
-              ? t('请选择已导入媒体池的视频、图片或 GIF 片段')
-              : t('本机抽样分析，仅做小幅亮度、对比和饱和度修正，不添加创意 LUT。')}
+              ? 'Please select video, image, or GIF clips imported into the media pool'
+              : 'Local sampling analysis: subtle brightness, contrast, and saturation corrections without creative LUTs.'}
           </div>
           {autoGrade.previewCount > 0 && (
             <div className="cc-auto-grade-result">
               <div>
-                <b>{t('预览中 · {n} 个片段', { n: autoGrade.previewCount })}</b>
-                {autoGrade.failedCount > 0 && <span>{t(' · {n} 个失败', { n: autoGrade.failedCount })}</span>}
+                <b>{`Previewing · ${autoGrade.previewCount} clip(s)`}</b>
+                {autoGrade.failedCount > 0 && <span>{` · ${autoGrade.failedCount} failed`}</span>}
                 {autoGrade.selectedPreview && (
                   <span>
                     {` · ${autoGrade.selectedPreview.bitDepth}-bit${autoGrade.selectedPreview.hdr ? ' HDR' : ' SDR'}`}
@@ -85,20 +84,20 @@ export function FilterControl({ item, mixed, onChange, autoGrade }: {
                 )}
               </div>
               <div className="cc-insp-actions">
-                <button type="button" className="cc-insp-btn primary" onClick={autoGrade.onApply}>{t('应用校色')}</button>
-                <button type="button" className="cc-insp-btn" onClick={autoGrade.onCancel}>{t('取消预览')}</button>
+                <button type="button" className="cc-insp-btn primary" onClick={autoGrade.onApply}>Apply Grade</button>
+                <button type="button" className="cc-insp-btn" onClick={autoGrade.onCancel}>Cancel Preview</button>
               </div>
             </div>
           )}
         </div>
       )}
-      <SliderRow label={t('亮度')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.brightness ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.brightness}
+      <SliderRow label="Brightness" val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.brightness ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.brightness}
         onReset={() => onChange({ brightness: 1 })} resetDisabled={Math.abs((fl.brightness ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ brightness: v })} />
-      <SliderRow label={t('对比')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.contrast ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.contrast}
+      <SliderRow label="Contrast" val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.contrast ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.contrast}
         onReset={() => onChange({ contrast: 1 })} resetDisabled={Math.abs((fl.contrast ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ contrast: v })} />
-      <SliderRow label={t('饱和')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.saturate ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.saturate}
+      <SliderRow label="Saturation" val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.saturate ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.saturate}
         onReset={() => onChange({ saturate: 1 })} resetDisabled={Math.abs((fl.saturate ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ saturate: v })} />
-      <SliderRow label={t('模糊')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${compactNumber(fl.blur ?? 0)}px`} mixed={mixed?.blur}
+      <SliderRow label="Blur" val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${compactNumber(fl.blur ?? 0)}px`} mixed={mixed?.blur}
         onReset={() => onChange({ blur: 0 })} resetDisabled={(fl.blur ?? 0) === 0} onChange={(v) => onChange({ blur: v })} />
     </div>
   );
@@ -133,10 +132,10 @@ export function EffectsControl({ item, onChange, previewStatus }: { item: Timeli
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <select value="" onChange={(e) => addEffect(e.target.value)}
         style={{ width: '100%', background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '5px 7px', fontSize: 12 }}>
-        <option value="">{t('＋ 添加特效…')}</option>
+        <option value="">+ Add Effect...</option>
         {FX_IDS.map((id) => <option key={id} value={id}>{t(FX_EFFECTS[id].name)}</option>)}
       </select>
-      {active.length === 0 && <div style={{ fontSize: 10.5, color: theme.textDim }}>{t('尚未添加特效。')}</div>}
+      {active.length === 0 && <div style={{ fontSize: 10.5, color: theme.textDim }}>No effects added yet.</div>}
       {active.length > 0 && <PreviewFidelityStatus status={previewStatus} />}
       {active.map((effect, index) => {
         const def = FX_EFFECTS[effect.assetId];
@@ -146,9 +145,9 @@ export function EffectsControl({ item, onChange, previewStatus }: { item: Timeli
               <b style={{ flex: 1 }}>{index + 1}. {t(def.name)}
                 {effect.assetId in LUT_EFFECTS && <span style={{ fontSize: 9, fontWeight: 700, color: theme.textDim, border: `0.5px solid ${theme.border}`, borderRadius: 3, padding: '0 3px', marginLeft: 5, verticalAlign: 'middle' }}>LUT</span>}
               </b>
-              <button title={t('上移')} disabled={index === 0} onClick={() => moveEffect(index, -1)}>↑</button>
-              <button title={t('下移')} disabled={index === active.length - 1} onClick={() => moveEffect(index, 1)}>↓</button>
-              <button title={t('移除特效')} onClick={() => onChange(effects.filter((fx) => fx.id !== effect.id))}>×</button>
+              <button title="Move Up" disabled={index === 0} onClick={() => moveEffect(index, -1)}>↑</button>
+              <button title="Move Down" disabled={index === active.length - 1} onClick={() => moveEffect(index, 1)}>↓</button>
+              <button title="Remove Effect" onClick={() => onChange(effects.filter((fx) => fx.id !== effect.id))}>×</button>
             </div>
             <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.75, lineHeight: 1.4 }}>{t(def.desc)}</div>
             {def.props.map((p) => {

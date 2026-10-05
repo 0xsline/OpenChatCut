@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { theme } from '../../theme';
 import type { PropSpec } from '../../types';
 import { FONT_CATALOG } from '../../fonts/googleFonts';
+import { FontFamilyPicker } from './FontFamilyPicker';
 import { useT } from '../../i18n/locale';
 import { importMedia } from '../../media/upload';
 import { resolveInspectorTextAreaRows } from './inspectorTextArea';
@@ -73,15 +74,12 @@ function NumberField({ spec, value, onChange }: PropSchemaFieldProps) {
 }
 
 function FontField({ spec, value, onChange }: PropSchemaFieldProps) {
-  const t = useT();
   const selected = String(value ?? spec.defaultValue ?? 'Inter');
   return (
-    <select value={selected} onChange={(event) => onChange(event.target.value)} style={{ ...FIELD_STYLE, fontFamily: selected }}>
-      {FONT_CATALOG.map((font) => <option key={font.family} value={font.family} style={{ fontFamily: font.family }}>
-        {font.family}{font.aliases[0] ? ` · ${font.aliases[0]}` : ''}{font.loadable ? '' : ` ${t('(预览)')}`}
-      </option>)}
-      {typeof value === 'string' && value && !FONT_CATALOG.some((font) => font.family === value) ? <option value={value}>{value}</option> : null}
-    </select>
+    <FontFamilyPicker
+      value={selected}
+      onChange={(fam) => onChange(fam)}
+    />
   );
 }
 
@@ -111,7 +109,7 @@ function MediaField({ spec, value, onChange }: PropSchemaFieldProps) {
   const isVideo = spec.type === 'video' || /\.(mp4|webm|mov)(\?|$)/i.test(source);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <input type="text" placeholder={spec.type === 'video' ? t('视频 URL 或 /media/uploads/…') : t('图片 URL 或 /media/uploads/…')} value={source} onChange={(event) => onChange(event.target.value)} style={FIELD_STYLE} />
+      <input type="text" placeholder={spec.type === 'video' ? 'Video URL or /media/uploads/…' : 'Image URL or /media/uploads/…'} value={source} onChange={(event) => onChange(event.target.value)} style={FIELD_STYLE} />
       <input type="file" accept={spec.type === 'video' ? 'video/*' : 'image/*,.svg,.gif'} onChange={(event) => {
         void importFieldMedia(event.target.files?.[0], onChange);
         event.target.value = '';

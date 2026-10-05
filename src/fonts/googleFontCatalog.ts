@@ -1,10 +1,13 @@
 import { LOCAL_CJK_FONTS, normalizeFontKey } from './localFonts';
+import { getAllDiscoveredFonts, isSystemOrCustomFont } from './systemFonts';
+
+export type FontSource = 'google' | 'bundled' | 'system' | 'custom';
 
 export interface FontCatalogEntry {
   family: string;
   aliases: string[];
   loadable: boolean;
-  source: 'google' | 'bundled';
+  source: FontSource;
 }
 
 export interface GoogleFontCatalogEntry extends FontCatalogEntry {
@@ -76,29 +79,50 @@ export function resolveCanonicalFamily(name: string): string | null {
     if (normalizeFontKey(entry.family) === key) return entry.family;
     if (entry.aliases.some((alias) => normalizeFontKey(alias) === key)) return entry.family;
   }
+  for (const sysFont of getAllDiscoveredFonts()) {
+    if (normalizeFontKey(sysFont) === key) return sysFont;
+  }
   return null;
 }
 
 export function isLoadableFontFamily(family: string): boolean {
-  return isGenericFontFamily(family) || resolveCanonicalFamily(family) !== null;
+  return isGenericFontFamily(family) || resolveCanonicalFamily(family) !== null || isSystemOrCustomFont(family);
 }
 
 export interface FontSearchHit {
   family: string;
   aliases: string[];
   loadable: boolean;
-  source: 'google' | 'bundled';
+  source: FontSource;
 }
 
 export function searchFontCatalog(query: string, limit = 25): FontSearchHit[] {
   const normalized = normalizeFontKey(query);
   if (!normalized) return [];
   const hits: FontSearchHit[] = [];
+  const seen = new Set<string>();
   for (const entry of FONT_CATALOG) {
     const haystack = [entry.family, ...entry.aliases].map(normalizeFontKey).join(' ');
     if (haystack.includes(normalized) || normalizeFontKey(entry.family).includes(normalized)) {
       hits.push({ ...entry });
+      seen.add(normalizeFontKey(entry.family));
       if (hits.length >= limit) break;
+    }
+  }
+  if (hits.length < limit) {
+    for (const sysFont of getAllDiscoveredFonts()) {
+      const norm = normalizeFontKey(sysFont);
+      if (seen.has(norm)) continue;
+      if (norm.includes(normalized)) {
+        hits.push({
+          family: sysFont,
+          aliases: [],
+          loadable: true,
+          source: 'system',
+        });
+        seen.add(norm);
+        if (hits.length >= limit) break;
+      }
     }
   }
   hits.sort((a, b) => Number(b.loadable) - Number(a.loadable));
