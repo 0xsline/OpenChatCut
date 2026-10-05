@@ -33,17 +33,17 @@ interface CaptionsControlsProps {
 }
 
 const PACINGS: { v: CaptionPacing; label: string; hint: string }[] = [
-  { v: 'phrase', label: 'Sentence / Phrase', hint: 'Shows one phrase at a time, ideal for speech & narration' },
-  { v: 'word', label: 'Word-by-word Highlight', hint: 'Highlights each spoken word as it is spoken (karaoke style)' },
+  { v: 'phrase', label: '按句/短语', hint: '一次显示一句话，适合纪录片口播' },
+  { v: 'word', label: '逐词高亮', hint: '当前说到的词会变色，像卡拉 OK' },
 ];
 
-/** Translation target = second line language. */
+/** Translation target = second line language. When the spoken broadcast is in Chinese, it will be translated into English by default. Do not select "Chinese" again. */
 const TRANSLATE_TO: { id: string; label: string }[] = [
-  { id: 'English', label: 'English' },
-  { id: '日本語', label: 'Japanese' },
-  { id: 'Español', label: 'Spanish' },
-  { id: 'Français', label: 'French' },
-  { id: '한국어', label: 'Korean' },
+  { id: 'English', label: '英文' },
+  { id: '日本語', label: '日文' },
+  { id: 'Español', label: '西班牙文' },
+  { id: 'Français', label: '法文' },
+  { id: '한국어', label: '韩文' },
 ];
 
 // Independent caption workspace: style, rhythm, manual captions and translation are all edited here.

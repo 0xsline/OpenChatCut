@@ -2,6 +2,7 @@ import React, { useState, type CSSProperties } from 'react';
 import { useSystemFonts } from '../../fonts/systemFonts';
 import { GOOGLE_FONT_CATALOG } from '../../fonts/googleFontCatalog';
 import { LOCAL_CJK_FONTS } from '../../fonts/localFonts';
+import { useT } from '../../i18n/locale';
 
 export interface FontFamilyPickerProps {
   value: string;
@@ -20,6 +21,7 @@ export function FontFamilyPicker({
   showRefresh = true,
   className,
 }: FontFamilyPickerProps) {
+  const t = useT();
   const { userFonts, systemFonts, customFonts, refresh, addCustomFont } = useSystemFonts();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [customInputOpen, setCustomInputOpen] = useState(false);
@@ -60,6 +62,7 @@ export function FontFamilyPicker({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', width: '100%' }}>
         <select
+          aria-label={t('字体')}
           className={className}
           value={currentVal}
           onChange={(e) => {
@@ -84,18 +87,18 @@ export function FontFamilyPicker({
           }}
         >
           {mixed && <option value="__mixed" disabled>—</option>}
-          <option value="">Default System Font (Geist / System UI)</option>
+          <option value="">{t('默认系统字体')}</option>
 
           {/* If the current value is not known yet, render it as an option */}
           {!isKnown && value && (
-            <optgroup label="Current Font">
+            <optgroup label={t('当前字体')}>
               <option value={value} style={{ fontFamily: value }}>{value}</option>
             </optgroup>
           )}
 
           {/* User Installed Fonts (e.g. from ~/Library/Fonts) */}
           {userFonts.length > 0 && (
-            <optgroup label={`Installed User Fonts (${userFonts.length})`}>
+            <optgroup label={`${t('用户安装字体')} (${userFonts.length})`}>
               {userFonts.map((f) => (
                 <option key={`user-${f}`} value={f} style={{ fontFamily: f }}>
                   {f}
@@ -106,7 +109,7 @@ export function FontFamilyPicker({
 
           {/* Custom Entered Fonts */}
           {customFonts.length > 0 && (
-            <optgroup label="Custom Fonts">
+            <optgroup label={t('自定义字体')}>
               {customFonts.map((f) => (
                 <option key={`custom-${f}`} value={f} style={{ fontFamily: f }}>
                   {f}
@@ -116,7 +119,7 @@ export function FontFamilyPicker({
           )}
 
           {/* Google Online Fonts */}
-          <optgroup label={`Google Fonts (${GOOGLE_FONT_CATALOG.length})`}>
+          <optgroup label={`${t('Google 字体')} (${GOOGLE_FONT_CATALOG.length})`}>
             {GOOGLE_FONT_CATALOG.map((f) => (
               <option key={`google-${f.family}`} value={f.family} style={{ fontFamily: f.family }}>
                 {f.family}
@@ -125,7 +128,7 @@ export function FontFamilyPicker({
           </optgroup>
 
           {/* Bundled Display Fonts */}
-          <optgroup label={`Bundled Display Fonts (${LOCAL_CJK_FONTS.length})`}>
+          <optgroup label={`${t('内置字体')} (${LOCAL_CJK_FONTS.length})`}>
             {LOCAL_CJK_FONTS.map((f) => (
               <option key={`cjk-${f.family}`} value={f.family} style={{ fontFamily: f.family }}>
                 {f.family}
@@ -135,27 +138,22 @@ export function FontFamilyPicker({
 
           {/* System Fonts */}
           {systemFonts.length > 0 && (
-            <optgroup label={`System Fonts (${systemFonts.length})`}>
-              {systemFonts.slice(0, 100).map((f) => (
+            <optgroup label={`${t('系统字体')} (${systemFonts.length})`}>
+              {systemFonts.map((f) => (
                 <option key={`sys-${f}`} value={f} style={{ fontFamily: f }}>
                   {f}
                 </option>
               ))}
-              {systemFonts.length > 100 && (
-                <option value="__more_sys__" disabled>
-                  {`... and ${systemFonts.length - 100} more system fonts`}
-                </option>
-              )}
             </optgroup>
           )}
 
-          <option value="__custom_entry__">✍️ + Enter Custom Font Name...</option>
+          <option value="__custom_entry__">{t('输入自定义字体名称…')}</option>
         </select>
 
         {showRefresh && (
           <button
             type="button"
-            title="Scan & refresh installed fonts"
+            title={t('扫描并刷新已安装字体')}
             onClick={handleRefresh}
             disabled={isRefreshing}
             style={{
@@ -191,7 +189,8 @@ export function FontFamilyPicker({
         >
           <input
             type="text"
-            placeholder="e.g. JetBrains Mono, Nexa, etc..."
+            placeholder={t('输入字体名称，例如 JetBrains Mono')}
+            aria-label={t('自定义字体名称')}
             value={customText}
             onChange={(e) => setCustomText(e.target.value)}
             autoFocus
@@ -217,10 +216,11 @@ export function FontFamilyPicker({
               cursor: 'pointer',
             }}
           >
-            Apply
+            {t('应用')}
           </button>
           <button
             type="button"
+            aria-label={t('取消')}
             onClick={() => setCustomInputOpen(false)}
             style={{
               padding: '2px 6px',

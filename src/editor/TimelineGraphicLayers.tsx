@@ -2,6 +2,7 @@ import { AbsoluteFill } from 'remotion';
 import { getCompiledTemplate } from '../template-host';
 import type { AspectFit, TimelineItem, Watermark } from './types';
 import { VisualClipSurface } from './TimelineMediaLayer';
+import { isGenericFontFamily } from '../fonts/googleFontCatalog';
 
 export function SolidLayer({ item, canvasW, canvasH, borderRadius }: {
   item: TimelineItem;
@@ -49,27 +50,26 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
   const align = (props.align === 'left' || props.align === 'right' ? props.align : 'center') as 'left' | 'center' | 'right';
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
 
-  const isSub = item.track === 'V6' || (item.name && item.name.startsWith('Sub '));
-  const isBadge = item.name && item.name.startsWith('Label ');
-
   // Typography properties:
-  const rawFam = props.fontFamily ? String(props.fontFamily).trim().replace(/^["']|["']$/g, '') : '';
-  const fontFamily = rawFam ? `"${rawFam}", system-ui, -apple-system, sans-serif` : 'Geist, system-ui, -apple-system, sans-serif';
+  const rawFamily = String(props.fontFamily ?? '').trim();
+  const rawFam = rawFamily.includes(',') ? rawFamily : rawFamily.replace(/^["']|["']$/g, '');
+  const fontFamily = !rawFam ? 'Geist, system-ui, -apple-system, sans-serif'
+    : rawFam.includes(',') || isGenericFontFamily(rawFam) ? rawFam
+    : `${JSON.stringify(rawFam)}, system-ui, -apple-system, sans-serif`;
   const fontStyle = (props.fontStyle ? String(props.fontStyle) : 'normal') as 'normal' | 'italic';
-  const fontWeight = Number(props.fontWeight ?? (isSub ? 600 : isBadge ? 700 : 700));
-  const fontSize = Number(props.fontSize ?? (isSub ? 30 : isBadge ? 26 : 96));
-  const color = String(props.color ?? (isSub ? '#F8FAFC' : '#ffffff'));
+  const fontWeight = Number(props.fontWeight ?? 700);
+  const fontSize = Number(props.fontSize ?? 96);
+  const color = String(props.color ?? '#ffffff');
   const letterSpacing = props.letterSpacing !== undefined
     ? (typeof props.letterSpacing === 'number' ? `${props.letterSpacing}px` : String(props.letterSpacing))
-    : (isSub ? '0.015em' : isBadge ? '0.03em' : 'normal');
-  const lineHeight = props.lineHeight !== undefined ? Number(props.lineHeight) : (isSub ? 1.35 : 1.2);
+    : 'normal';
+  const lineHeight = props.lineHeight !== undefined ? Number(props.lineHeight) : 1.2;
   const textShadow = props.textShadow !== undefined
     ? String(props.textShadow)
-    : (isSub ? '0 2px 8px rgba(0,0,0,0.7)' : '0 3px 16px rgba(0,0,0,0.55)');
+    : '0 3px 16px rgba(0,0,0,0.55)';
 
   // Container / backdrop properties:
-  const hasExplicitBg = props.bgEnabled !== undefined;
-  const bgEnabled = hasExplicitBg ? Boolean(props.bgEnabled) : (isSub || isBadge);
+  const bgEnabled = Boolean(props.bgEnabled ?? false);
 
   const textNode = (
     <div style={{
@@ -85,27 +85,20 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
       whiteSpace: 'pre-wrap',
       width: bgEnabled ? undefined : '100%',
     }}>
-      {String(props.text ?? 'Text')}
+      {String(props.text ?? '文字')}
     </div>
   );
 
   let body = textNode;
 
   if (bgEnabled) {
-    const isNew = item.name?.includes('New');
-    const defaultBg = isBadge
-      ? (isNew ? 'rgba(16, 185, 129, 0.4)' : 'rgba(71, 85, 105, 0.55)')
-      : 'rgba(10, 15, 26, 0.85)';
-    const defaultBorder = isBadge
-      ? (isNew ? '1px solid rgba(52, 211, 153, 0.6)' : '1px solid rgba(203, 213, 225, 0.4)')
-      : '1px solid rgba(255, 255, 255, 0.16)';
+    const defaultBg = 'rgba(10, 15, 26, 0.85)';
+    const defaultBorder = '1px solid rgba(255, 255, 255, 0.16)';
     const defaultRadius = 9999;
-    const defaultPadX = isBadge ? 22 : 32;
-    const defaultPadY = isBadge ? 6 : 10;
-    const defaultBlur = isBadge ? 16 : 20;
-    const defaultShadow = isBadge
-      ? '0 8px 24px rgba(0, 0, 0, 0.55)'
-      : '0 12px 36px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.4)';
+    const defaultPadX = 32;
+    const defaultPadY = 10;
+    const defaultBlur = 20;
+    const defaultShadow = '0 12px 36px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.4)';
 
     const bgColor = props.bgColor !== undefined ? String(props.bgColor) : defaultBg;
     const bgBorder = props.bgBorder !== undefined ? String(props.bgBorder) : defaultBorder;

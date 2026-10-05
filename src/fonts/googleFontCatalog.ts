@@ -1,5 +1,5 @@
 import { LOCAL_CJK_FONTS, normalizeFontKey } from './localFonts';
-import { getAllDiscoveredFonts, isSystemOrCustomFont } from './systemFonts';
+import { getAllDiscoveredFonts, isInstalledFont } from './systemFonts';
 
 export type FontSource = 'google' | 'bundled' | 'system' | 'custom';
 
@@ -86,7 +86,9 @@ export function resolveCanonicalFamily(name: string): string | null {
 }
 
 export function isLoadableFontFamily(family: string): boolean {
-  return isGenericFontFamily(family) || resolveCanonicalFamily(family) !== null || isSystemOrCustomFont(family);
+  if (isGenericFontFamily(family)) return true;
+  const canonical = resolveCanonicalFamily(family);
+  return FONT_CATALOG.some((entry) => entry.family === canonical) || isInstalledFont(canonical ?? family);
 }
 
 export interface FontSearchHit {
@@ -117,8 +119,8 @@ export function searchFontCatalog(query: string, limit = 25): FontSearchHit[] {
         hits.push({
           family: sysFont,
           aliases: [],
-          loadable: true,
-          source: 'system',
+          loadable: isInstalledFont(sysFont),
+          source: isInstalledFont(sysFont) ? 'system' : 'custom',
         });
         seen.add(norm);
         if (hits.length >= limit) break;

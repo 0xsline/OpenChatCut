@@ -1,260 +1,98 @@
-import { useState, useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
-const SYSTEM_FONTS_STORAGE_KEY = 'occ_system_fonts';
 const CUSTOM_FONTS_STORAGE_KEY = 'occ_custom_fonts';
+let userFonts: string[] = [];
+let systemFonts: string[] = [];
+let customFonts: string[] = [];
+let pending: Promise<string[]> | undefined;
+let pendingForce = false;
+let snapshot = 0;
+const listeners = new Set<() => void>();
 
-const DEFAULT_POPULAR_FONTS = [
-  // User installed fonts detected on system
-  'Akira Expanded',
-  'JetBrainsMono Nerd Font',
-  'JetBrainsMono Nerd Font Mono',
-  'JetBrainsMono Nerd Font Propo',
-  'Montserrat',
-  'Poppins',
-  'Raleway',
-  'Gotham',
-  'Cocogoose ProTrial',
-  'Adelia Alternate',
-  '3270 Nerd Font',
-  'Chalkboy',
-  'Nexa',
-  'Permanent Marker',
-  'Sofia Sans Extra Condensed',
-  'Sole Sans Extended',
-  'Komika Axis',
-  'Golos Text',
-  'Heebo',
-  'Ink Free',
-  'BlackSingature',
-  'Fort XCond',
-  'PRIMETIME',
-  'Obviously',
-  // Popular macOS system fonts
-  'Arial',
-  'Avenir',
-  'Avenir Next',
-  'Courier New',
-  'Futura',
-  'Georgia',
-  'Helvetica',
-  'Helvetica Neue',
-  'Impact',
-  'Menlo',
-  'Monaco',
-  'Optima',
-  'Palatino',
-  'PingFang SC',
-  'Hiragino Sans GB',
-  'Songti SC',
-  'Times New Roman',
-  'Trebuchet MS',
-  'Verdana',
-];
-
-interface StoredFontData {
-  userFonts: string[];
-  systemFonts: string[];
-  allFonts: string[];
-  timestamp: number;
+function fontNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((name): name is string =>
+    typeof name === 'string' && name.trim().length > 0 && name.length <= 160,
+  ).map((name) => name.trim()))].slice(0, 10000);
 }
 
-let memoryUserFonts: string[] = [];
-let memorySystemFonts: string[] = [];
-let memoryCustomFonts: string[] = [];
-let memoryAllFonts: string[] = [];
-let listeners = new Set<() => void>();
-let isFetching = false;
-
-function loadStoredData(): void {
-  if (typeof window === 'undefined') return;
-
+if (typeof window !== 'undefined') {
   try {
-    const rawCustom = window.localStorage.getItem(CUSTOM_FONTS_STORAGE_KEY);
-    if (rawCustom) {
-      memoryCustomFonts = JSON.parse(rawCustom) as string[];
-    }
-  } catch {
-    memoryCustomFonts = [];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(SYSTEM_FONTS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as StoredFontData;
-      if (Array.isArray(parsed.userFonts)) memoryUserFonts = parsed.userFonts;
-      if (Array.isArray(parsed.systemFonts)) memorySystemFonts = parsed.systemFonts;
-      if (Array.isArray(parsed.allFonts)) memoryAllFonts = parsed.allFonts;
-    }
-  } catch {
-    // fallback
-  }
-
-  // Ensure default fonts are present if empty
-  if (memoryUserFonts.length === 0 && memorySystemFonts.length === 0) {
-    memorySystemFonts = [...DEFAULT_POPULAR_FONTS];
-    memoryAllFonts = [...DEFAULT_POPULAR_FONTS];
-  }
+    customFonts = fontNames(JSON.parse(window.localStorage.getItem(CUSTOM_FONTS_STORAGE_KEY) ?? '[]'));
+  } catch { /* storage is optional */ }
 }
 
-// Initial sync load
-loadStoredData();
-
-function notifyListeners(): void {
-  listeners.forEach((l) => {
-    try { l(); } catch { /* ignore */ }
-  });
+function notify(): void {
+  snapshot++;
+  listeners.forEach((listener) => listener());
 }
 
+export function getUserFonts(): string[] { return [...userFonts]; }
+export function getSystemFonts(): string[] { return [...systemFonts]; }
+export function getCustomFonts(): string[] { return [...customFonts]; }
 export function getAllDiscoveredFonts(): string[] {
-  const set = new Set([...memoryCustomFonts, ...memoryUserFonts, ...memorySystemFonts, ...DEFAULT_POPULAR_FONTS]);
-  return Array.from(set).sort((a, b) => a.localeCompare(b));
+  return [...new Set([...userFonts, ...systemFonts, ...customFonts])].sort((a, b) => a.localeCompare(b));
 }
 
-export function getUserFonts(): string[] {
-  return [...memoryUserFonts];
-}
-
-export function getSystemFonts(): string[] {
-  return [...memorySystemFonts];
-}
-
-export function getCustomFonts(): string[] {
-  return [...memoryCustomFonts];
-}
-
-export function isSystemOrCustomFont(family: string): boolean {
-  if (!family) return false;
-  const clean = family.trim().replace(/^["']|["']$/g, '').toLowerCase();
-  if (memoryCustomFonts.some((f) => f.toLowerCase() === clean)) return true;
-  if (memoryUserFonts.some((f) => f.toLowerCase() === clean)) return true;
-  if (memorySystemFonts.some((f) => f.toLowerCase() === clean)) return true;
-  if (DEFAULT_POPULAR_FONTS.some((f) => f.toLowerCase() === clean)) return true;
-  return false;
+/** Only the rendering host's installed fonts satisfy export availability. */
+export function isInstalledFont(family: string): boolean {
+  const clean = family.split(',')[0]!.trim().replace(/^["']|["']$/g, '').toLowerCase();
+  return [...userFonts, ...systemFonts].some((name) => name.toLowerCase() === clean);
 }
 
 export function registerCustomFont(family: string): void {
   const clean = family.trim().replace(/^["']|["']$/g, '');
-  if (!clean || memoryCustomFonts.includes(clean)) return;
-
-  memoryCustomFonts = [clean, ...memoryCustomFonts];
+  if (!clean || clean.length > 160 || customFonts.some((name) => name.toLowerCase() === clean.toLowerCase())) return;
+  customFonts = [clean, ...customFonts].slice(0, 100);
   if (typeof window !== 'undefined') {
+    try { window.localStorage.setItem(CUSTOM_FONTS_STORAGE_KEY, JSON.stringify(customFonts)); }
+    catch { /* storage is optional */ }
+  }
+  notify();
+}
+
+/** Deduplicate callers; discovery never requests browser font permissions. */
+export function refreshSystemFonts(force = false): Promise<string[]> {
+  if (typeof window === 'undefined') return Promise.resolve(getAllDiscoveredFonts());
+  if (pending) return force && !pendingForce ? pending.then(() => refreshSystemFonts(true)) : pending;
+  pendingForce = force;
+  pending = (async () => {
     try {
-      window.localStorage.setItem(CUSTOM_FONTS_STORAGE_KEY, JSON.stringify(memoryCustomFonts));
-    } catch {
-      // ignore
-    }
-  }
-  notifyListeners();
-}
-
-export async function refreshSystemFonts(force = false): Promise<string[]> {
-  if (typeof window === 'undefined') return getAllDiscoveredFonts();
-  if (isFetching) return getAllDiscoveredFonts();
-
-  isFetching = true;
-  try {
-    // 1. Fetch from server endpoint
-    const url = force ? '/api/system-fonts?refresh=1' : '/api/system-fonts';
-    const res = await fetch(url).catch(() => null);
-
-    if (res && res.ok) {
-      const data = await res.json();
-      if (data && data.ok) {
-        if (Array.isArray(data.userFonts)) memoryUserFonts = data.userFonts;
-        if (Array.isArray(data.systemFonts)) memorySystemFonts = data.systemFonts;
-        if (Array.isArray(data.allFonts)) memoryAllFonts = data.allFonts;
-
-        try {
-          window.localStorage.setItem(
-            SYSTEM_FONTS_STORAGE_KEY,
-            JSON.stringify({
-              userFonts: memoryUserFonts,
-              systemFonts: memorySystemFonts,
-              allFonts: memoryAllFonts,
-              timestamp: Date.now(),
-            }),
-          );
-        } catch {
-          // ignore
+      const response = await fetch(force ? '/api/system-fonts?refresh=1' : '/api/system-fonts', {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) {
+        const data = await response.json() as { ok?: boolean; userFonts?: unknown; systemFonts?: unknown };
+        if (data.ok && Array.isArray(data.userFonts) && Array.isArray(data.systemFonts)) {
+          userFonts = fontNames(data.userFonts);
+          systemFonts = fontNames(data.systemFonts);
+          notify();
         }
       }
-    }
-
-    // 2. Also try window.queryLocalFonts() if available
-    if ('queryLocalFonts' in window && typeof (window as unknown as { queryLocalFonts?: () => Promise<Array<{ family: string }>> }).queryLocalFonts === 'function') {
-      try {
-        const localFonts = await (window as unknown as { queryLocalFonts: () => Promise<Array<{ family: string }>> }).queryLocalFonts();
-        if (Array.isArray(localFonts) && localFonts.length > 0) {
-          const browserFamilies = new Set<string>();
-          for (const f of localFonts) {
-            if (f.family && !f.family.startsWith('.')) {
-              browserFamilies.add(f.family);
-            }
-          }
-          for (const fam of browserFamilies) {
-            if (!memorySystemFonts.includes(fam) && !memoryUserFonts.includes(fam)) {
-              memorySystemFonts.push(fam);
-            }
-          }
-          memorySystemFonts.sort((a, b) => a.localeCompare(b));
-        }
-      } catch {
-        // queryLocalFonts permission denied or cancelled, ignore
-      }
-    }
-  } catch {
-    // ignore
-  } finally {
-    isFetching = false;
-    notifyListeners();
-  }
-
-  return getAllDiscoveredFonts();
+    } catch { /* discovery is optional; unknown names still require fallback consent */ }
+    return getAllDiscoveredFonts();
+  })().finally(() => { pending = undefined; pendingForce = false; });
+  return pending;
 }
 
-// Auto-trigger on initial load and window focus
-if (typeof window !== 'undefined') {
-  setTimeout(() => {
-    void refreshSystemFonts();
-  }, 100);
-
-  // When user switches back to OpenChatCut (e.g. after downloading a font in Finder/Browser), auto refresh!
-  window.addEventListener('focus', () => {
-    void refreshSystemFonts();
-  });
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
+function getSnapshot(): number { return snapshot; }
 
-function subscribe(callback: () => void): () => void {
-  listeners.add(callback);
-  return () => {
-    listeners.delete(callback);
-  };
-}
-
-let storeSnapshot = 0;
-function getSnapshot(): number {
-  return storeSnapshot;
-}
-
-// Hook for React components
 export function useSystemFonts() {
-  const [tick, setTick] = useState(0);
-
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   useEffect(() => {
-    const unsub = subscribe(() => {
-      storeSnapshot++;
-      setTick((t) => t + 1);
-    });
-    return unsub;
+    const refresh = () => { void refreshSystemFonts(); };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => { window.removeEventListener('focus', refresh); };
   }, []);
-
   return {
-    userFonts: memoryUserFonts,
-    systemFonts: memorySystemFonts,
-    customFonts: memoryCustomFonts,
+    userFonts, systemFonts, customFonts,
     allDiscoveredFonts: getAllDiscoveredFonts(),
     refresh: (force = true) => refreshSystemFonts(force),
     addCustomFont: registerCustomFont,
-    isSystemOrCustomFont,
   };
 }

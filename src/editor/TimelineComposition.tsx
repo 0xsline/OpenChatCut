@@ -24,7 +24,7 @@ import { continuousVideoAudioGroups, shareableVisualItem } from './transitionAud
 import { ItemLayer, SolidLayer, TextLayer, WatermarkLayer } from './TimelineGraphicLayers';
 import { isServerVideoDecoder, ServerVideoDecoderContext, type ServerVideoDecoder } from './serverVideoDecoder';
 
-const GRID = '#000000';
+const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
 function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, frameOffset, browserRenderer, sequenceLimits, muted }: {
   item: TimelineItem;

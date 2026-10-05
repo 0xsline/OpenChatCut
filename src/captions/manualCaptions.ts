@@ -40,7 +40,7 @@ export function newManualEntry(number: number): CaptionSourceEntry {
   return {
     id: laneId,
     itemId: `manual:${laneId}`,
-    label: `Manual Subtitles ${number}`,
+    label: `手动字幕 ${number}`,
     words: [],
   };
 }

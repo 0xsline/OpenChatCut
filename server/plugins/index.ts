@@ -62,8 +62,8 @@ import { systemFontsPlugin } from './system-fonts.ts';
 export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
   installSystemProxy();
   return [
-    systemFontsPlugin(),
     requestShapeGatePlugin(),
+    systemFontsPlugin(),
     crossOriginIsolationPlugin(),
     storageLifecyclePlugin(),
     llmProxyPlugin(),

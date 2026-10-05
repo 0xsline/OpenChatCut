@@ -1,4 +1,3 @@
-import { FONT_CATALOG } from '../../fonts/googleFonts';
 import { FontFamilyPicker } from './FontFamilyPicker';
 import {
   captionPreviewLayoutPatch,
@@ -136,44 +135,37 @@ export function CaptionInspectorControls({ selection, onUpdate }: CaptionInspect
 
   return (
     <div className="cc-insp-groups" data-caption-inspector="true">
-      <div className="cc-insp-section">Text</div>
+      <div className="cc-insp-section">{t('文字')}</div>
       <textarea className="cc-cap-input cc-cap-textarea" value={target.cue.text}
-        aria-label="Subtitle Text"
+        aria-label={t('字幕文字')}
         onChange={(event) => {
           const patch = captionPreviewTextPatch(captions, target, event.target.value);
           if (patch) onUpdate(patch);
         }} />
 
       <div className="cc-insp-section">
-        <span>Style</span>
+        <span>{t('样式')}</span>
         <button type="button" className="cc-insp-group-reset" disabled={styleResetDisabled}
-          onClick={() => onUpdate(captionPreviewStyleResetPatch(captions, target))}>Reset</button>
-      </div>
-      <div className="cc-insp-mg-field">
-        <span>Font Family</span>
-        <FontFamilyPicker
-          className="cc-insp-select cc-caption-font-select"
-          value={target.preset.fontFamily}
-          onChange={(fam) => patchStyle({ fontFamily: fam })}
-        />
+          onClick={() => onUpdate(captionPreviewStyleResetPatch(captions, target))}>{t('重置')}</button>
       </div>
       <label className="cc-insp-mg-field">
-        <span>Font Style</span>
+        <span>{t('字体')}</span>
+        <FontFamilyPicker className="cc-insp-select cc-caption-font-select" value={target.preset.fontFamily}
+          onChange={(fontFamily) => patchStyle({ fontFamily })} />
+      </label>
+      <label className="cc-insp-mg-field">
+        <span>{t('字体样式')}</span>
         <select
           className="cc-insp-select"
           value={target.preset.fontStyle ?? 'normal'}
           onChange={(e) => patchStyle({ fontStyle: e.target.value as 'normal' | 'italic' })}
         >
-          <option value="normal">Normal</option>
-          <option value="italic">Italic</option>
+          <option value="normal">{t('常规')}</option>
+          <option value="italic">{t('斜体')}</option>
         </select>
       </label>
-      <RangeRow label="Font Size" value={target.preset.fontSize} min={0.02} max={0.14} step={0.001}
-        display={`${Math.round(target.preset.fontSize * 1000) / 10}%`} onChange={(value) => patchStyle({ fontSize: value })} />
-      <RangeRow label="Font Weight" value={target.preset.fontWeight} min={100} max={900} step={100}
-        display={String(target.preset.fontWeight)} onChange={(value) => patchStyle({ fontWeight: value })} />
       <RangeRow
-        label="Letter Spacing"
+        label={t('字间距')}
         value={Number(target.preset.letterSpacing ?? 0)}
         min={-2}
         max={24}
@@ -182,59 +174,63 @@ export function CaptionInspectorControls({ selection, onUpdate }: CaptionInspect
         onChange={(value) => patchStyle({ letterSpacing: value })}
       />
       <RangeRow
-        label="Line Height"
-        value={Number(target.preset.lineHeight ?? 1.35)}
+        label={t('行高')}
+        value={Number(target.preset.lineHeight ?? 1.25)}
         min={0.8}
         max={2.5}
         step={0.05}
-        display={`${Number(target.preset.lineHeight ?? 1.35).toFixed(2)}×`}
+        display={`${Number(target.preset.lineHeight ?? 1.25).toFixed(2)}×`}
         onChange={(value) => patchStyle({ lineHeight: value })}
       />
-      <RangeRow label="Text Stroke" value={target.preset.strokeWidth} min={0} max={16} step={0.5}
+      <RangeRow label={t('字号')} value={target.preset.fontSize} min={0.02} max={0.14} step={0.001}
+        display={`${Math.round(target.preset.fontSize * 1000) / 10}%`} onChange={(value) => patchStyle({ fontSize: value })} />
+      <RangeRow label={t('字重')} value={target.preset.fontWeight} min={100} max={900} step={100}
+        display={String(target.preset.fontWeight)} onChange={(value) => patchStyle({ fontWeight: value })} />
+      <RangeRow label={t('文字描边')} value={target.preset.strokeWidth} min={0} max={16} step={0.5}
         display={`${Math.round(target.preset.strokeWidth * 10) / 10}px`} onChange={(value) => patchStyle({ strokeWidth: value })} />
-      <RangeRow label="Stroke Opacity" value={strokeOpacity} min={0} max={1} step={0.01}
+      <RangeRow label={t('文描透明度')} value={strokeOpacity} min={0} max={1} step={0.01}
         display={`${Math.round(strokeOpacity * 100)}%`} onChange={(value) => patchStyle({ strokeOpacity: value })} />
-      <RangeRow label="Text Shadow" value={textShadowSize} min={0} max={48} step={1}
+      <RangeRow label={t('文字阴影')} value={textShadowSize} min={0} max={48} step={1}
         display={`${Math.round(textShadowSize)}px`} onChange={(value) => patchStyle({ textShadowSize: value })} />
-      <RangeRow label="Box Border" value={boxBorderWidth} min={0} max={16} step={0.5}
+      <RangeRow label={t('边框描边')} value={boxBorderWidth} min={0} max={16} step={0.5}
         display={`${Math.round(boxBorderWidth * 10) / 10}px`} onChange={(value) => patchStyle({ boxBorderWidth: value })} />
-      <RangeRow label="Border Opacity" value={boxBorderOpacity} min={0} max={1} step={0.01}
+      <RangeRow label={t('边描透明度')} value={boxBorderOpacity} min={0} max={1} step={0.01}
         display={`${Math.round(boxBorderOpacity * 100)}%`} onChange={(value) => patchStyle({ boxBorderOpacity: value })} />
-      <RangeRow label="Corner Radius" value={boxBorderRadius} min={0} max={48} step={1}
+      <RangeRow label={t('边框圆角')} value={boxBorderRadius} min={0} max={48} step={1}
         display={`${Math.round(boxBorderRadius)}px`} onChange={(value) => patchStyle({ boxBorderRadius: value })} />
-      <RangeRow label="Box Shadow" value={boxShadowSize} min={0} max={48} step={1}
+      <RangeRow label={t('边框阴影')} value={boxShadowSize} min={0} max={48} step={1}
         display={`${Math.round(boxShadowSize)}px`} onChange={(value) => patchStyle({ boxShadowSize: value })} />
       <div className="cc-insp-color-row cc-caption-color-row">
-        <CaptionColorInput label="Text Color" value={textColor} fallback="#ffffff"
+        <CaptionColorInput label={t('文字颜色')} value={textColor} fallback="#ffffff"
           onChange={(value) => patchStyle({ color: value, highlightColor: value })} />
-        <CaptionColorInput label="Stroke Color" value={target.preset.strokeColor} fallback="#000000"
+        <CaptionColorInput label={t('文字描边')} value={target.preset.strokeColor} fallback="#000000"
           onChange={(value) => patchStyle({ strokeColor: value })} />
-        <CaptionColorInput label="Shadow Color" value={shadowColor(target.preset.textShadow)} fallback="#000000"
+        <CaptionColorInput label={t('文字阴影')} value={shadowColor(target.preset.textShadow)} fallback="#000000"
           onChange={(value) => patchStyle({ textShadow: withShadowColor(target.preset.textShadow, value) })} />
       </div>
       <div className="cc-insp-color-row cc-caption-color-row">
-        <CaptionColorInput label="Box Color" value={backgroundColor} fallback="#000000"
+        <CaptionColorInput label={t('边框颜色')} value={backgroundColor} fallback="#000000"
           onChange={(value) => patchStyle(target.preset.wholeLine ? { background: value } : { highlightBackground: value })} />
-        <CaptionColorInput label="Box Border Color" value={boxBorderColor} fallback="#000000"
+        <CaptionColorInput label={t('边框描边')} value={boxBorderColor} fallback="#000000"
           onChange={(value) => patchStyle({ boxBorderColor: value })} />
-        <CaptionColorInput label="Box Shadow Color" value={shadowColor(boxShadow || target.preset.textShadow)} fallback="#000000"
+        <CaptionColorInput label={t('边框阴影')} value={shadowColor(boxShadow || target.preset.textShadow)} fallback="#000000"
           onChange={(value) => patchStyle({ boxShadow: withShadowColor(boxShadow, value) })} />
       </div>
 
       <div className="cc-insp-section">
-        <span>Transform</span>
+        <span>{t('变换')}</span>
         <button type="button" className="cc-insp-group-reset" disabled={transformResetDisabled}
-          onClick={() => onUpdate(captionPreviewLayoutResetPatch(captions, target))}>Reset</button>
+          onClick={() => onUpdate(captionPreviewLayoutResetPatch(captions, target))}>{t('重置')}</button>
       </div>
-      <RangeRow label="Scale" value={scale} min={0.25} max={4} step={0.01}
+      <RangeRow label={t('缩放')} value={scale} min={0.25} max={4} step={0.01}
         display={`${Math.round(scale * 100)}%`} onChange={(value) => patchLayout({ scale: value })} />
-      <RangeRow label="Position X" value={x} min={-1} max={1} step={0.01}
+      <RangeRow label={t('水平')} value={x} min={-1} max={1} step={0.01}
         display={`${Math.round(x * 100)}%`} onChange={(value) => patchLayout({ offsetXRatio: value })} />
-      <RangeRow label="Position Y" value={y} min={-1} max={1} step={0.01}
+      <RangeRow label={t('垂直')} value={y} min={-1} max={1} step={0.01}
         display={`${Math.round(y * 100)}%`} onChange={(value) => patchLayout({ offsetYRatio: storedY(layout, value) })} />
-      <RangeRow label="Rotation" value={rotation} min={-180} max={180} step={1}
+      <RangeRow label={t('旋转')} value={rotation} min={-180} max={180} step={1}
         display={`${Math.round(rotation)}°`} onChange={(value) => patchLayout({ rotation: value })} />
-      <RangeRow label="Opacity" value={opacity} min={0} max={1} step={0.01}
+      <RangeRow label={t('透明')} value={opacity} min={0} max={1} step={0.01}
         display={`${Math.round(opacity * 100)}%`} onChange={(value) => patchLayout({ opacity: value })} />
     </div>
   );

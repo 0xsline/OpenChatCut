@@ -3,6 +3,7 @@ import type { Plugin } from 'vite';
 import { existsSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, platform } from 'node:os';
+import { projectStoreReadAuthorized, projectStoreHttpAuthorized } from '../project-store-http-auth';
 
 interface FontScanResult {
   ok: boolean;
@@ -13,7 +14,6 @@ interface FontScanResult {
 }
 
 let cachedResult: FontScanResult | null = null;
-let lastDirMtimes: Record<string, number> = {};
 
 function decodeUtf16BE(buf: Buffer, start: number, len: number): string {
   try {
@@ -47,8 +47,9 @@ function readFontFamiliesFromFile(filePath: string): string[] {
     }
 
     const families = new Set<string>();
+    const visitedNameTables = new Set<number>();
 
-    for (const baseOffset of fontOffsets) {
+    for (const baseOffset of new Set(fontOffsets)) {
       const tableHead = Buffer.alloc(12);
       readSync(fd, tableHead, 0, 12, baseOffset);
       const numTables = tableHead.readUInt16BE(4);
@@ -66,30 +67,40 @@ function readFontFamiliesFromFile(filePath: string): string[] {
           break;
         }
       }
-      if (!nameOffset || !nameLength || nameLength > 250000) continue;
+      if (!nameOffset || nameLength < 6 || nameLength > 250000 || visitedNameTables.has(nameOffset)) continue;
+      visitedNameTables.add(nameOffset);
 
       const nameBuf = Buffer.alloc(nameLength);
       readSync(fd, nameBuf, 0, nameLength, nameOffset);
       const count = nameBuf.readUInt16BE(2);
       const stringOffset = nameBuf.readUInt16BE(4);
 
-      let typoFamily = '';
-      let family = '';
+      let bestFamily = '';
+      let bestScore = -1;
 
       for (let i = 0; i < count; i++) {
         const rec = 6 + i * 12;
         if (rec + 12 > nameBuf.length) break;
         const pid = nameBuf.readUInt16BE(rec);
         const eid = nameBuf.readUInt16BE(rec + 2);
+        const language = nameBuf.readUInt16BE(rec + 4);
         const nid = nameBuf.readUInt16BE(rec + 6);
+        if (nid !== 1 && nid !== 16) continue;
         const slen = nameBuf.readUInt16BE(rec + 8);
         const soff = nameBuf.readUInt16BE(rec + 10);
         const strStart = stringOffset + soff;
-        if (strStart + slen > nameBuf.length) continue;
+        const unicode = pid === 0 || (pid === 3 && (eid === 1 || eid === 10));
+        if (!slen || slen > (unicode ? 320 : 160) || strStart + slen > nameBuf.length) continue;
+        // Prefer canonical English names that CSS can resolve. Decode only
+        // bounded family records that can improve the current candidate.
+        const languageScore = pid === 3 && language === 0x0409 ? 100
+          : pid === 1 && language === 0 ? 90 : pid === 0 ? 80 : 0;
+        const score = languageScore + (nid === 16 ? 2 : 1);
+        if (score <= bestScore) continue;
 
         let str = '';
         try {
-          if (pid === 0 || (pid === 3 && (eid === 1 || eid === 10))) {
+          if (unicode) {
             str = decodeUtf16BE(nameBuf, strStart, slen);
           } else {
             str = nameBuf.toString('latin1', strStart, strStart + slen);
@@ -98,15 +109,13 @@ function readFontFamiliesFromFile(filePath: string): string[] {
           // ignore decoding errors
         }
 
-        str = str.replace(/[\x00-\x1f]/g, '').trim();
-        // Ignore internal OS fonts starting with '.'
-        if (str && !str.startsWith('.') && str.length > 1) {
-          if (nid === 16 && !typoFamily) typoFamily = str;
-          if (nid === 1 && !family) family = str;
+        str = Array.from(str).filter((char) => char.charCodeAt(0) >= 32).join('').trim();
+        if (str.length > 1) {
+          bestFamily = str;
+          bestScore = score;
         }
       }
-      const best = typoFamily || family;
-      if (best) families.add(best);
+      if (bestFamily && !bestFamily.startsWith('.')) families.add(bestFamily);
     }
     closeSync(fd);
     return Array.from(families);
@@ -159,15 +168,27 @@ function scanDirectories(dirs: string[]): { fonts: Set<string>; mtimes: Record<s
   const fonts = new Set<string>();
   const mtimes: Record<string, number> = {};
 
-  for (const dir of dirs) {
+  const queue = dirs.map((dir) => ({ dir, depth: 0 }));
+  const visited = new Set<string>();
+  for (const { dir, depth } of queue) {
+    if (depth > 8 || visited.has(dir)) continue;
+    visited.add(dir);
+    if (visited.size > 10000) throw new Error('Font directory scan limit exceeded');
     if (!existsSync(dir)) continue;
     try {
       const dirStat = statSync(dir);
       mtimes[dir] = dirStat.mtimeMs;
-      const entries = readdirSync(dir);
+      const entries = readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
-        if (/\.(ttf|otf|ttc|dfont)$/i.test(entry)) {
-          const families = readFontFamiliesFromFile(join(dir, entry));
+        if (entry.isDirectory()) {
+          queue.push({ dir: join(dir, entry.name), depth: depth + 1 });
+        } else if ((entry.isFile() || entry.isSymbolicLink()) && /\.(ttf|otf|ttc|dfont)$/i.test(entry.name)) {
+          const path = join(dir, entry.name);
+          if (entry.isSymbolicLink()) {
+            try { if (!statSync(path).isFile()) continue; }
+            catch { continue; }
+          }
+          const families = readFontFamiliesFromFile(path);
           for (const fam of families) {
             fonts.add(fam);
           }
@@ -181,30 +202,11 @@ function scanDirectories(dirs: string[]): { fonts: Set<string>; mtimes: Record<s
   return { fonts, mtimes };
 }
 
-export function scanSystemFonts(force = false): FontScanResult {
-  const { userDirs, systemDirs } = resolveFontDirectories();
+export function scanSystemFonts(force = false, directories = resolveFontDirectories()): FontScanResult {
+  const { userDirs, systemDirs } = directories;
   const now = Date.now();
 
-  if (!force && cachedResult) {
-    // Check if any directory mtime changed
-    let mtimeChanged = false;
-    for (const dir of [...userDirs, ...systemDirs]) {
-      if (existsSync(dir)) {
-        try {
-          const s = statSync(dir);
-          if (s.mtimeMs !== lastDirMtimes[dir]) {
-            mtimeChanged = true;
-            break;
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-    if (!mtimeChanged) {
-      return cachedResult;
-    }
-  }
+  if (!force && cachedResult && now - cachedResult.timestamp < 30_000) return cachedResult;
 
   const userScan = scanDirectories(userDirs);
   const systemScan = scanDirectories(systemDirs);
@@ -218,7 +220,6 @@ export function scanSystemFonts(force = false): FontScanResult {
   const allSet = new Set([...userFonts, ...systemFonts]);
   const allFonts = Array.from(allSet).sort((a, b) => a.localeCompare(b));
 
-  lastDirMtimes = { ...userScan.mtimes, ...systemScan.mtimes };
   cachedResult = {
     ok: true,
     userFonts,
@@ -242,6 +243,15 @@ export function systemFontsPlugin(): Plugin {
     name: 'openchatcut-system-fonts',
     configureServer(server) {
       server.middlewares.use('/api/system-fonts', async (req: IncomingMessage, res: ServerResponse) => {
+        if (!projectStoreReadAuthorized(req) || (req.method === 'POST' && !projectStoreHttpAuthorized(req))) {
+          sendJson(res, 403, { ok: false, error: 'Forbidden' });
+          return;
+        }
+        if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') {
+          res.setHeader('Allow', 'GET, HEAD, POST');
+          sendJson(res, 405, { ok: false, error: 'Method not allowed' });
+          return;
+        }
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
           const isRefresh = url.searchParams.get('refresh') === '1' || req.method === 'POST';

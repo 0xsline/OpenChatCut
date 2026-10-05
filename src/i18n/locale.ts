@@ -23,28 +23,28 @@ const DOCUMENT_LANG: Record<Locale, string> = {
 };
 
 function systemLocale(): Locale {
-  return 'en';
+  try {
+    const tag = String(navigator.language ?? '').toLowerCase();
+    if (tag.startsWith('zh')) return 'zh';
+    if (tag.startsWith('it')) return 'it';
+    if (tag.startsWith('ru')) return 'ru';
+    return 'en';
+  } catch {
+    return 'en';
+  }
 }
 
 function readInitial(): Locale {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'it' || stored === 'ru') return stored;
-    if (stored === 'zh') {
-      localStorage.setItem(STORAGE_KEY, 'en');
-      return 'en';
-    }
-    if (stored === 'en') return 'en';
+    if (stored === 'zh' || stored === 'en' || stored === 'it' || stored === 'ru') return stored;
   } catch {
-    // Private mode / storage disabled
+    // Private mode / storage disabled → system language below.
   }
-  return 'en';
+  return systemLocale();
 }
 
 let current: Locale = readInitial();
-try {
-  if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, 'en');
-} catch {}
 if (typeof document !== 'undefined') document.documentElement.lang = DOCUMENT_LANG[current];
 const subscribers = new Set<() => void>();
 
@@ -127,6 +127,7 @@ export function useT(): typeof t {
       subscribers.add(onChange);
       return () => subscribers.delete(onChange);
     },
+    () => current,
     () => current,
   );
   return t;
