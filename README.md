@@ -553,6 +553,8 @@ OpenChatCut is built with the following core projects and specifications:
 | [Vercel AI SDK](https://ai-sdk.dev/) | Provider-neutral model streaming and tool calling for the built-in Agent. |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | Tool used to define, validate, and generate the README's runtime architecture diagram. |
 
+JianYing / CapCut draft export is powered by [capcut-cli](https://github.com/renezander030/capcut-cli).
+
 This list covers the project's major technical foundations. It does not replace the licenses bundled with individual dependencies, fonts, or binaries. See `package-lock.json` for JavaScript dependency versions and [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md) for font licenses.
 
 ---
