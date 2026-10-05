@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { ffmpegBin } from '../media-binaries.ts';
 
 type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => void;
 
@@ -12,7 +13,7 @@ const root = await mkdtemp(join(tmpdir(), 'occ-sonilo-sound-'));
 const media = join(root, 'media', 'uploads');
 await mkdir(media, { recursive: true });
 const cut = join(media, 'cut.mp4');
-const ffmpeg = (args: string[]) => spawnSync('ffmpeg', ['-loglevel', 'error', '-y', ...args], { encoding: 'utf8' });
+const ffmpeg = (args: string[]) => spawnSync(ffmpegBin(), ['-loglevel', 'error', '-y', ...args], { encoding: 'utf8' });
 assert.equal(ffmpeg(['-f', 'lavfi', '-i', 'color=c=black:s=16x16:d=0.2', '-c:v', 'mpeg4', cut]).status, 0);
 
 const oldEnv = { ...process.env };
@@ -105,6 +106,10 @@ try {
   // it (ENOTEMPTY under the parallel suite).
   const { persistJobs } = await import('./generation-job-store.ts');
   await persistJobs().catch(() => undefined);
+  const { resetSearchForTests } = await import('../storage/fulltext-search.ts');
+  const { resetSqliteStoreForTests } = await import('../storage/sqlite-store.ts');
+  resetSearchForTests();
+  resetSqliteStoreForTests();
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   process.env = oldEnv;
 }

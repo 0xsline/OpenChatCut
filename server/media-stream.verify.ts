@@ -84,6 +84,10 @@ try {
   for (const path of ['/race.mp4', '/race.js']) {
     await assert.rejects(async () => { await (await fetch(origin + path)).text(); });
   }
+  const errorDeadline = Date.now() + 2_000;
+  while (errors.length < 2 && Date.now() < errorDeadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
   assert.deepEqual(errors.map((error) => error.code), ['ENOENT', 'ENOENT'], 'async source errors reach existing middleware catch');
   await new Promise<void>((resolve, reject) => {
     get(`${origin}/cancel.mp4`, (res) => {

@@ -1,17 +1,19 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { exportRevealCandidate, resolveExportRevealTarget } from './export-reveal.ts';
 
-assert.equal(exportRevealCandidate('/tmp/exports', 'demo.mp4'), '/tmp/exports/demo.mp4');
-assert.equal(exportRevealCandidate('/tmp/exports', '../demo.mp4'), null, 'filenames must not escape the export directory');
-assert.equal(exportRevealCandidate('/tmp/exports', '/tmp/demo.mp4'), null, 'absolute filenames must be rejected');
+const exportsDir = resolve('/tmp/exports');
+assert.equal(exportRevealCandidate(exportsDir, 'demo.mp4'), join(exportsDir, 'demo.mp4'));
+assert.equal(exportRevealCandidate(exportsDir, '../demo.mp4'), null, 'filenames must not escape the export directory');
+assert.equal(exportRevealCandidate(exportsDir, '/tmp/demo.mp4'), null, 'absolute filenames must be rejected');
 assert.equal(exportRevealCandidate('relative', 'demo.mp4'), null, 'the export directory must be absolute');
 
 const grantA = 'a'.repeat(43);
 const grantB = 'b'.repeat(43);
 const destinations: Record<string, string> = {
-  [grantA]: '/tmp/exports-a',
-  [grantB]: '/tmp/exports-b',
+  [grantA]: resolve('/tmp/exports-a'),
+  [grantB]: resolve('/tmp/exports-b'),
 };
 let currentDestinationId = grantA;
 currentDestinationId = grantB;
@@ -22,11 +24,11 @@ const oldRecordTarget = await resolveExportRevealTarget(
 );
 assert.equal(currentDestinationId, grantB);
 assert.deepEqual(oldRecordTarget, {
-  directory: '/tmp/exports-a',
-  candidate: '/tmp/exports-a/demo.mp4',
+  directory: destinations[grantA],
+  candidate: join(destinations[grantA]!, 'demo.mp4'),
 }, 'switching to B must not retarget an A export-history row');
 assert.equal(
-  await resolveExportRevealTarget(undefined, 'demo.mp4', async () => '/tmp/downloads'),
+  await resolveExportRevealTarget(undefined, 'demo.mp4', async () => resolve('/tmp/downloads')),
   null,
   'legacy rows without a proven destination identity must disable reveal',
 );

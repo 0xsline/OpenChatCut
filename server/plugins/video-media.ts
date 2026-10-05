@@ -7,7 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 
-import { ffmpegBin } from '../media-binaries.ts';
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { isSafeUploadName, mimeFor, resolveUploadFile, uploadDir } from '../media-dir.ts';
@@ -256,7 +256,7 @@ export async function providerMediaUrl(path: string): Promise<string> {
 
 async function probeVideo(file: string): Promise<{ durationSeconds: number; width?: number; height?: number }> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', file]);
+    const child = spawn(ffprobeBin(), ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', file]);
     let output = '';
     child.stdout.on('data', (data) => { output += String(data); });
     child.on('error', reject);

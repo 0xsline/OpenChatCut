@@ -26,7 +26,7 @@ try {
   assert.deepEqual(await readFile(join(uploads, files[0]!)), Buffer.from([1, 2, 3, 4]));
 } finally {
   process.chdir(originalCwd);
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }
 
 console.log('music media atomic publication verification passed');

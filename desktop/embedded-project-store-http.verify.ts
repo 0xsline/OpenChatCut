@@ -5,11 +5,13 @@ import { join } from 'node:path';
 
 const root = mkdtempSync(join(tmpdir(), 'occ-embedded-project-store-'));
 const previousHome = process.env.HOME;
+const previousUserProfile = process.env.USERPROFILE;
 const previousAppData = process.env.APPDATA;
 const previousLocalAppData = process.env.LOCALAPPDATA;
 const previousDataDir = process.env.OPENCHATCUT_DATA_DIR;
 process.env.OPENCHATCUT_DATA_DIR = join(root, 'store');
 process.env.HOME = root;
+process.env.USERPROFILE = root;
 process.env.APPDATA = root;
 process.env.LOCALAPPDATA = root;
 
@@ -29,6 +31,7 @@ try {
   const embedded = await startEmbeddedServer(join(root, 'dist'));
   // Reuse the storage module initialized by the isolated embedded startup, never the real profile.
   const { resetSqliteStoreForTests, sqliteStoreReady } = await import('../server/storage/sqlite-store.ts');
+  const { resetSearchForTests } = await import('../server/storage/fulltext-search.ts');
   try {
     const editorHeaders = {
       Origin: embedded.origin,
@@ -56,11 +59,14 @@ try {
     assert.deepEqual(readBody, { found: true, value: { ready: true } });
   } finally {
     await new Promise<void>((resolve) => embedded.server.close(() => resolve()));
+    resetSearchForTests();
     resetSqliteStoreForTests();
   }
 } finally {
   if (previousHome === undefined) delete process.env.HOME;
   else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
   if (previousAppData === undefined) delete process.env.APPDATA;
   else process.env.APPDATA = previousAppData;
   if (previousLocalAppData === undefined) delete process.env.LOCALAPPDATA;

@@ -9,6 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { ffprobeBin } from '../media-binaries.ts';
 // Proxy-aware fetch: attaches the configured outbound proxy (keystore
 // PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
@@ -110,7 +111,7 @@ function localVideoUpload(uploadPath: string): { file: string; name: string } {
 
 export function probeMediaDurationSeconds(file: string): Promise<number> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
+    const child = spawn(ffprobeBin(), ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
     let output = '';
     child.stdout.on('data', (data) => { output += String(data); });
     child.on('error', reject);

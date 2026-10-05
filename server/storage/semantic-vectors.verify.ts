@@ -17,8 +17,10 @@ function vector(seed: number): number[] {
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-semantic-vec-verify-'));
   const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
   const previousEnv = process.env.OPENCHATCUT_SQLITE_STORE;
   process.env.HOME = root;
+  process.env.USERPROFILE = root;
   delete process.env.OPENCHATCUT_SQLITE_STORE;
 
   try {
@@ -109,6 +111,8 @@ async function main(): Promise<void> {
     else process.env.OPENCHATCUT_SQLITE_STORE = previousEnv;
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     rmSync(root, { recursive: true, force: true });
   }
 }

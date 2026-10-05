@@ -61,10 +61,12 @@ function readMigrationPhase(path: string): number | null {
 async function main(): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'occ-sqlite-migration-'));
   const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
   const previousStore = process.env.OPENCHATCUT_GENERATION_JOB_STORE;
   const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
   const customJobsPath = join(home, 'custom-profile', 'jobs-ledger.json');
   process.env.HOME = home;
+  process.env.USERPROFILE = home;
   process.env.OPENCHATCUT_GENERATION_JOB_STORE = customJobsPath;
   delete process.env.OPENCHATCUT_SQLITE_STORE;
 
@@ -418,6 +420,8 @@ async function main(): Promise<void> {
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     if (previousStore === undefined) delete process.env.OPENCHATCUT_GENERATION_JOB_STORE;
     else process.env.OPENCHATCUT_GENERATION_JOB_STORE = previousStore;
     if (previousSwitch === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;

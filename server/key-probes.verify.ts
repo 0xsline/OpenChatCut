@@ -220,7 +220,7 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   );
   const recorded = await runProbe('storage/projects', {});
   assert.equal(recorded.ok, true);
-  assert.match(recorded.message, new RegExp(`目录可写 · ${target}`));
+  assert.equal(recorded.message, `目录可写 · ${target}`);
 
   process.env.OPENCHATCUT_DATA_DIR = target;
   try {

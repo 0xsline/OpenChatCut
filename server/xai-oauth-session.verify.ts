@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const throwawayHome = mkdtempSync(join(tmpdir(), 'xai-oauth-verify-'));
+process.env.USERPROFILE = throwawayHome;
 process.env.HOME = throwawayHome;
 // Intentionally dynamic: the module resolves its profile paths (HOME-rooted)
 // at import time, so the throwaway HOME must exist before it loads.
@@ -123,7 +124,10 @@ globalThis.fetch = (async () => {
   });
 }) as typeof fetch;
 await importXaiOauthFromCli();
-await new Promise((resolve) => setTimeout(resolve, 1_200));
+const refreshDeadline = Date.now() + 5_000;
+while ((automaticRefreshes === 0 || xaiOauthAccessToken() !== 'auto-refreshed') && Date.now() < refreshDeadline) {
+  await new Promise((resolve) => setTimeout(resolve, 25));
+}
 assert.equal(automaticRefreshes, 1, 'successful timer refresh rearms from the new expiry');
 assert.equal(xaiOauthAccessToken(), 'auto-refreshed');
 

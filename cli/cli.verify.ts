@@ -522,5 +522,11 @@ try {
 
   process.stdout.write('occ cli verify: ok\n');
 } finally {
+  const { resetSearchForTests } = await import('../server/storage/fulltext-search.ts');
+  const { resetSemanticVectorsForTests } = await import('../server/storage/semantic-vectors.ts');
+  const { resetSqliteStoreForTests } = await import('../server/storage/sqlite-store.ts');
+  resetSearchForTests();
+  resetSemanticVectorsForTests();
+  resetSqliteStoreForTests();
   rmSync(HOME, { recursive: true, force: true });
 }

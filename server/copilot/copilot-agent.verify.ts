@@ -36,7 +36,8 @@ try {
   delete process.env.OPENCHATCUT_COPILOT_PATH;
   const bundled = fileURLToPath(import.meta.resolve(`@github/copilot-${process.platform}-${process.arch}`));
   assert.equal(await resolveCopilotCli(), bundled, 'the installed platform package is discovered without a PATH installation');
-  const archivePath = join(packageFixture, 'app.asar', 'node_modules', 'copilot', 'copilot');
+  const executableName = `copilot${process.platform === 'win32' ? '.exe' : ''}`;
+  const archivePath = join(packageFixture, 'app.asar', 'node_modules', 'copilot', executableName);
   const unpacked = archivePath.replace('app.asar', 'app.asar.unpacked');
   await mkdir(dirname(unpacked), { recursive: true });
   await copyFile(bundled, unpacked);

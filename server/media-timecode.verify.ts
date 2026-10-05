@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { transparentMovProxyArgs } from './local-media-import.ts';
 import { ffmpegBin } from './media-binaries.ts';
@@ -108,7 +108,7 @@ try {
   // The working copy the timeline plays must stay on the camera's clock: the
   // exporter lets it stand in for an offline original and keeps it as proxy.
   for (const [source, expected] of [[pal, 900_000], [ntscDf, 107_999_892], [mxf, 900_000]] as const) {
-    const output = join(root, `${source.split('/').pop()}.normalized.mp4`);
+    const output = join(root, `${basename(source)}.normalized.mp4`);
     const result = await normalizeMediaFile({
       inputPath: source, publicSrc: '/media/uploads/x.mov', outputPath: output,
       preserveInput: true, force: true, publishR2: false, uploadsDirectory: root,

@@ -22,7 +22,7 @@ function versionOptions(path) {
   assert.ok(list > field, `${path} lists version options`);
   const options = [];
   for (const line of lines.slice(list + 1)) {
-    const match = /^\s+- (.+)$/.exec(line);
+    const match = /^\s+- (.+)\r?$/.exec(line);
     if (!match) break;
     options.push(match[1].trim());
   }

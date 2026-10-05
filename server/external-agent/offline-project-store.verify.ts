@@ -38,7 +38,9 @@ function entryArray(value: unknown): unknown[] {
 
 const root = await mkdtemp(join(tmpdir(), 'occ-offline-store-'));
 const previousHome = process.env.HOME;
+const previousUserProfile = process.env.USERPROFILE;
 process.env.HOME = root;
+process.env.USERPROFILE = root;
 
 // Store paths are captured at module evaluation, so known modules load only
 // after HOME points at an isolated directory.
@@ -291,8 +293,14 @@ try {
   assert.deepEqual((await getStoredEntry(`project:${projectId}`)).value, projectDoc(1000, 1000),
     'browser ownership claimed first fences the stale offline writer');
 } finally {
+  const { resetSearchForTests } = await import('../storage/fulltext-search.ts');
+  resetSearchForTests();
+  const { resetSqliteStoreForTests } = await import('../storage/sqlite-store.ts');
+  resetSqliteStoreForTests();
   if (previousHome === undefined) delete process.env.HOME;
   else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
   await rm(root, { recursive: true, force: true });
 }
 

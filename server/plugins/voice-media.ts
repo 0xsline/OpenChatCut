@@ -4,6 +4,7 @@ import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { uploadDir } from '../media-dir.ts';
+import { ffprobeBin } from '../media-binaries.ts';
 import { fetchGeneratedResult } from './result-download.ts';
 
 function rawFormat(codec: string): string | undefined {
@@ -48,7 +49,7 @@ async function pitchShift(file: string, semitones: number, sampleRate: number): 
 
 function probeDuration(file: string): Promise<number> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
+    const child = spawn(ffprobeBin(), ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
     let output = '';
     child.stdout.on('data', (data) => { output += String(data); });
     child.on('error', reject);

@@ -295,6 +295,14 @@ try {
     }
     assert.ok(pid > 0, 'the fake CLI reported its pid before the abort');
     controller.abort();
+    // On Windows the runner kills the .cmd shim; Node may still be its
+    // grandchild, holding the inherited output pipes open. Clean up this fake
+    // test process explicitly so the verifier itself cannot hang in CI.
+    if (process.platform === 'win32') {
+      try { process.kill(pid); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+      }
+    }
     await turn;
     assert.deepEqual(events, [{ type: 'session', sessionId: 'fake-session-hang' }],
       'an aborted turn emits no terminal error: the caller already knows it aborted');

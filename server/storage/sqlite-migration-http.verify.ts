@@ -10,9 +10,11 @@ import type { AddressInfo } from 'node:net';
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-migrate-http-verify-'));
   const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
   const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
   delete process.env.OPENCHATCUT_SQLITE_STORE;
   process.env.HOME = root;
+  process.env.USERPROFILE = root;
 
   let app: http.Server | undefined;
   try {
@@ -141,6 +143,8 @@ async function main(): Promise<void> {
     else process.env.OPENCHATCUT_SQLITE_STORE = previousSwitch;
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     rmSync(root, { recursive: true, force: true });
   }
 }
