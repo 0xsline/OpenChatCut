@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { CaptionLayout, CaptionsData, CaptionTemplate } from './types';
 import { captionStyleFor, type CaptionStyle, type CaptionStyleOverride } from './styles';
+import { fontFamilyCss } from '../fonts/googleFontCatalog';
 
 /** Template preset merged with the caption's explicit style override. */
 export function effectivePreset(captions: CaptionsData): CaptionStyle {
@@ -157,7 +158,7 @@ export function captionTypographyStyle(
   ].filter(Boolean).join(' ') || 'none';
   const fontFamily = preset.fontFamily.trim() || 'system-ui';
   return {
-    fontFamily: `${fontFamily}, system-ui, sans-serif`,
+    fontFamily: fontFamilyCss(fontFamily, 'system-ui, sans-serif'),
     fontSize: nonNegativeNumber(height) * positiveNumber(preset.fontSize, 0.04),
     fontWeight: Math.max(1, Math.min(1000, finiteNumber(preset.fontWeight, 400))),
     fontStyle,

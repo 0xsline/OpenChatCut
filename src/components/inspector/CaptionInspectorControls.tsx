@@ -1,4 +1,4 @@
-import { FONT_CATALOG } from '../../fonts/googleFonts';
+import { FontFamilyPicker } from './FontFamilyPicker';
 import {
   captionPreviewLayoutPatch,
   captionPreviewLayoutResetPatch,
@@ -150,11 +150,38 @@ export function CaptionInspectorControls({ selection, onUpdate }: CaptionInspect
       </div>
       <label className="cc-insp-mg-field">
         <span>{t('字体')}</span>
-        <select className="cc-insp-select cc-caption-font-select" value={target.preset.fontFamily}
-          onChange={(event) => patchStyle({ fontFamily: event.target.value })}>
-          {FONT_CATALOG.map((font) => <option key={font.family} value={font.family}>{font.family}</option>)}
+        <FontFamilyPicker className="cc-insp-select cc-caption-font-select" value={target.preset.fontFamily}
+          onChange={(fontFamily) => patchStyle({ fontFamily })} />
+      </label>
+      <label className="cc-insp-mg-field">
+        <span>{t('字体样式')}</span>
+        <select
+          className="cc-insp-select"
+          value={target.preset.fontStyle ?? 'normal'}
+          onChange={(e) => patchStyle({ fontStyle: e.target.value as 'normal' | 'italic' })}
+        >
+          <option value="normal">{t('常规')}</option>
+          <option value="italic">{t('斜体')}</option>
         </select>
       </label>
+      <RangeRow
+        label={t('字间距')}
+        value={Number(target.preset.letterSpacing ?? 0)}
+        min={-2}
+        max={24}
+        step={0.5}
+        display={`${Number(target.preset.letterSpacing ?? 0)}px`}
+        onChange={(value) => patchStyle({ letterSpacing: value })}
+      />
+      <RangeRow
+        label={t('行高')}
+        value={Number(target.preset.lineHeight ?? 1.25)}
+        min={0.8}
+        max={2.5}
+        step={0.05}
+        display={`${Number(target.preset.lineHeight ?? 1.25).toFixed(2)}×`}
+        onChange={(value) => patchStyle({ lineHeight: value })}
+      />
       <RangeRow label={t('字号')} value={target.preset.fontSize} min={0.02} max={0.14} step={0.001}
         display={`${Math.round(target.preset.fontSize * 1000) / 10}%`} onChange={(value) => patchStyle({ fontSize: value })} />
       <RangeRow label={t('字重')} value={target.preset.fontWeight} min={100} max={900} step={100}

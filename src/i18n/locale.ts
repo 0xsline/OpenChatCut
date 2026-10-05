@@ -128,6 +128,7 @@ export function useT(): typeof t {
       return () => subscribers.delete(onChange);
     },
     () => current,
+    () => current,
   );
   return t;
 }

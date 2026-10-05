@@ -20,6 +20,7 @@ import {
   type GenerationRetryClass,
 } from '../../persist/jobRegistryStore';
 import { fontFallbackGate } from './font-tools';
+import { refreshSystemFonts } from '../../fonts/systemFonts';
 import {
   buildSubmitImageArgs,
   buildSubmitMusicArgs,
@@ -280,7 +281,7 @@ interface ExportTarget {
 }
 
 function exportTarget(args: GenerateArgs, ctx: AgentContext): ExportTarget {
-  const project = ctx.getDoc();
+  const project = structuredClone(ctx.getDoc());
   const query = typeof args.timelineId === 'string' && args.timelineId.trim()
     ? args.timelineId.trim()
     : project.activeTimelineId;
@@ -349,6 +350,7 @@ async function submitExportHandler(args: GenerateArgs, ctx: AgentContext): Promi
   const format = args.format ?? 'video';
   const target = exportTarget(args, ctx);
   if (format === 'video' || format === 'xml') {
+    await refreshSystemFonts();
     const gate = fontFallbackGate(target.state, args.confirmFontFallback);
     if (gate) return gate;
   }
