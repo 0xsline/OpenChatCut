@@ -24,6 +24,19 @@ export function textBackdropColor(props: Record<string, unknown>): { hex: string
 export function textBackdropBorder(props: Record<string, unknown>): { prefix: string; hex: string; opacity: number } {
   const raw = String(props.bgBorder ?? '1px solid rgba(255, 255, 255, 0.16)').trim();
   if (raw === 'none') return { prefix: '0px solid', hex: '#ffffff', opacity: 0 };
-  const match = /^(\S+\s+(?:solid|dashed|dotted|double|groove|ridge|inset|outset))\s+(.+)$/.exec(raw);
-  return { prefix: match?.[1] ?? '1px solid', ...textBackdropColor({ bgColor: match?.[2] ?? 'rgba(255, 255, 255, 0.16)' }) };
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i <= raw.length; i++) {
+    if (raw[i] === '(') depth++;
+    if (raw[i] === ')') depth--;
+    if (i === raw.length || (/\s/.test(raw[i]!) && depth === 0)) {
+      if (i > start) parts.push(raw.slice(start, i));
+      start = i + 1;
+    }
+  }
+  const style = parts.find((part) => /^(none|hidden|solid|dashed|dotted|double|groove|ridge|inset|outset)$/i.test(part));
+  const width = parts.find((part) => /^(thin|medium|thick|0|\d*\.?\d+[a-z]+)$/i.test(part) || /^(calc|min|max|clamp)\(/i.test(part));
+  const color = parts.filter((part) => part !== width && part !== style).join(' ') || 'currentColor';
+  return { prefix: `${width ?? 'medium'} ${style ?? 'none'}`, ...textBackdropColor({ bgColor: color }) };
 }

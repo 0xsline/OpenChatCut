@@ -76,7 +76,7 @@ assert.deepEqual(
     borderRadius: rendered.borderRadius,
   },
   {
-    fontFamily: 'Noto Sans SC, system-ui, sans-serif',
+    fontFamily: '"Noto Sans SC", system-ui, sans-serif',
     fontSize: 64,
     fontWeight: 650,
     fontStyle: 'italic',

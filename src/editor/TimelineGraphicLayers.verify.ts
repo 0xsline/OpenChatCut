@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { TextLayer } from './TimelineGraphicLayers';
 import { TextControl } from '../components/inspector/InspectorMediaControls';
 import { textBackdropBorder, textBackdropColor, textBackdropRgba } from '../components/inspector/textBackdrop';
+import { captionTypographyStyle } from '../captions/renderStyles';
+import { captionStyleFor } from '../captions/styles';
 import type { TimelineItem } from './types';
 
 const title: TimelineItem = {
@@ -22,8 +24,10 @@ assert.match(styled, /letter-spacing:2px/);
 assert.match(styled, /line-height:1.5/);
 assert.match(styled, /font-style:italic/);
 assert.match(styled, /backdrop-filter:blur/);
-assert.match(render({ ...title, props: { fontFamily: 'serif' } }), /font-family:serif;/);
+assert.match(render({ ...title, props: { fontFamily: 'serif' } }), /font-family:serif[,;]/);
 assert.match(render({ ...title, props: { fontFamily: 'Menlo, monospace' } }), /font-family:Menlo, monospace;/);
+assert.equal(captionTypographyStyle({ ...captionStyleFor('black-bar'), fontFamily: 'Bodoni 72' }, 1080).fontFamily, '"Bodoni 72", system-ui, sans-serif');
+assert.equal(captionTypographyStyle({ ...captionStyleFor('black-bar'), fontFamily: 'Menlo, monospace' }, 1080).fontFamily, 'Menlo, monospace');
 const redProps = { bgEnabled: true, bgColor: 'rgba(255, 0, 0, 0.4)', bgColorHex: '#000000', bgOpacity: 0.85 };
 assert.deepEqual(textBackdropColor(redProps), { hex: '#ff0000', opacity: 0.4 });
 assert.equal(textBackdropRgba(textBackdropColor(redProps).hex, 0.7), 'rgba(255, 0, 0, 0.7)');
@@ -31,5 +35,8 @@ const inspector = renderToStaticMarkup(createElement(TextControl, { item: { ...t
 assert.match(inspector, /type="color"[^>]*value="#ff0000"/);
 assert.match(inspector, /type="range" min="0" max="1"[^>]*value="0.4"/);
 assert.deepEqual(textBackdropBorder({ bgBorder: '4px dashed rgba(255, 0, 0, 0.75)' }), { prefix: '4px dashed', hex: '#ff0000', opacity: 0.75 });
+for (const bgBorder of ['rgba(255, 0, 0, 0.75) dashed 4px', 'dashed 4px rgba(255, 0, 0, 0.75)']) {
+  assert.deepEqual(textBackdropBorder({ bgBorder }), { prefix: '4px dashed', hex: '#ff0000', opacity: 0.75 });
+}
 assert.deepEqual(textBackdropColor({ bgColorHex: '#ff0000', bgOpacity: 0.4 }), { hex: '#0a0f1a', opacity: 0.85 });
 console.log('TimelineGraphicLayers.verify: legacy defaults and explicit typography/backdrops passed');

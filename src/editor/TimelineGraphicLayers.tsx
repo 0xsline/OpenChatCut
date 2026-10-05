@@ -2,7 +2,7 @@ import { AbsoluteFill } from 'remotion';
 import { getCompiledTemplate } from '../template-host';
 import type { AspectFit, TimelineItem, Watermark } from './types';
 import { VisualClipSurface } from './TimelineMediaLayer';
-import { isGenericFontFamily } from '../fonts/googleFontCatalog';
+import { fontFamilyCss } from '../fonts/googleFontCatalog';
 
 export function SolidLayer({ item, canvasW, canvasH, borderRadius }: {
   item: TimelineItem;
@@ -52,10 +52,8 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
 
   // Typography properties:
   const rawFamily = String(props.fontFamily ?? '').trim();
-  const rawFam = rawFamily.includes(',') ? rawFamily : rawFamily.replace(/^["']|["']$/g, '');
-  const fontFamily = !rawFam ? 'Geist, system-ui, -apple-system, sans-serif'
-    : rawFam.includes(',') || isGenericFontFamily(rawFam) ? rawFam
-    : `${JSON.stringify(rawFam)}, system-ui, -apple-system, sans-serif`;
+  const fontFamily = rawFamily ? fontFamilyCss(rawFamily, 'system-ui, -apple-system, sans-serif')
+    : 'Geist, system-ui, -apple-system, sans-serif';
   const fontStyle = (props.fontStyle ? String(props.fontStyle) : 'normal') as 'normal' | 'italic';
   const fontWeight = Number(props.fontWeight ?? 700);
   const fontSize = Number(props.fontSize ?? 96);

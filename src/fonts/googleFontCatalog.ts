@@ -72,6 +72,15 @@ export function isGenericFontFamily(family: string): boolean {
   return !key || key in GENERIC_FAMILIES;
 }
 
+/** Quote individual native families, preserving explicit CSS stacks. */
+export function fontFamilyCss(family: string, fallback: string): string {
+  const raw = family.trim();
+  if (!raw) return fallback;
+  if (raw.includes(',')) return raw;
+  const clean = raw.replace(/^["']|["']$/g, '');
+  return `${isGenericFontFamily(clean) ? clean : JSON.stringify(clean)}, ${fallback}`;
+}
+
 export function resolveCanonicalFamily(name: string): string | null {
   const key = normalizeFontKey(name.split(',')[0]?.trim().replace(/^["']|["']$/g, '') ?? '');
   if (!key) return null;

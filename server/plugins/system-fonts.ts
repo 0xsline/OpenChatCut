@@ -48,8 +48,10 @@ function readFontFamiliesFromFile(filePath: string): string[] {
 
     const families = new Set<string>();
     const visitedNameTables = new Set<number>();
+    let remainingNameBytes = 256_000;
 
     for (const baseOffset of new Set(fontOffsets)) {
+      if (remainingNameBytes <= 0) break;
       const tableHead = Buffer.alloc(12);
       readSync(fd, tableHead, 0, 12, baseOffset);
       const numTables = tableHead.readUInt16BE(4);
@@ -97,6 +99,8 @@ function readFontFamiliesFromFile(filePath: string): string[] {
           : pid === 1 && language === 0 ? 90 : pid === 0 ? 80 : 0;
         const score = languageScore + (nid === 16 ? 2 : 1);
         if (score <= bestScore) continue;
+        if (slen > remainingNameBytes) { remainingNameBytes = 0; break; }
+        remainingNameBytes -= slen;
 
         let str = '';
         try {
