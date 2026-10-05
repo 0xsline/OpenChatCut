@@ -11,6 +11,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import {
   cancelEditorCallsForOwner,
+  editorBindingMatches,
   editSessionOwnerMatches,
   ExternalEditorCallError,
   invokeEditorTool,
@@ -227,6 +228,9 @@ function makeServer(baseUrl: string, session: McpSession): Server {
         request.params.name !== 'get_edit_session'
         && error instanceof ExternalEditorCallError
         && error.outcome === 'stale'
+        // An obsolete call can finish after target_project or revision adoption
+        // recovered the binding; its result must not poison the live session.
+        && (!session.binding || !editorBindingMatches(session.binding))
       ) {
         markMcpSessionStale(session, error.message);
       }
