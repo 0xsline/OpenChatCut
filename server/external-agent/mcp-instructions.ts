@@ -7,6 +7,7 @@ export function mcpServerInstructions(
   return [
     `OpenChatCut external skill baseline: ${skillBaseline}. Update with npx skills update openchatcut when the installed skill is older.`,
     'Bind this MCP transport with target_project before editing. A connected browser is preferred; an existing stored project can use the offline fallback when no browser owns it.',
+    'If a browser editor refresh makes the binding stale, keep this MCP transport and call target_project with the same project id. The old draft is not automatically adopted; recover it explicitly or start a new edit session.',
     'The target response and openchatcut_status report bindingMode. Offline bindings expose only server-direct data tools and require approvalMode="auto".',
     exposureMode === 'progressive'
       ? 'This client negotiated progressive tool exposure. Call ToolSearch for list_edit_sessions and recover_edit_session before browser session recovery; tools/list_changed is sent when the visible set grows.'

@@ -142,6 +142,18 @@ export class EditSessionOwnershipRegistry {
     }
   }
 
+  orphanStaleOwnedSessions(ownerId: string, binding: EditorBinding): void {
+    for (const [sessionId, owner] of this.owners) {
+      if (owner.ownerId !== ownerId) continue;
+      if (sameEditorIdentity(owner.binding, binding) && owner.binding.baseRevision === binding.baseRevision) {
+        owner.binding = { ...binding };
+        continue;
+      }
+      this.owners.delete(sessionId);
+      this.orphans.set(sessionId, { ...owner.binding });
+    }
+  }
+
   reset(): void {
     this.owners.clear();
     this.orphans.clear();

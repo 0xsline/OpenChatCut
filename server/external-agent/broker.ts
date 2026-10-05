@@ -65,7 +65,6 @@ const cancellationWaiters = new Map<string, Set<() => void>>();
 
 const editorKey = (projectId: string, editorInstanceId: string) => `${projectId}\u0000${editorInstanceId}`;
 
-
 function removeQueuedCall(call: QueuedCall): void {
   if (call.state !== 'queued') return;
   const queue = queues.get(call.binding.projectId);
@@ -473,6 +472,11 @@ export function cancelEditorCallsForOwner(
 ): number {
   sessionOwnership.disconnectOwner(ownerId);
   return cancelCalls((call) => call.ownerId === ownerId, outcome, message);
+}
+
+export function orphanStaleEditorSessions(ownerId: string, binding: EditorBinding): void {
+  sessionOwnership.orphanStaleOwnedSessions(ownerId, binding);
+  cancelCalls((call) => call.ownerId === ownerId && !sameBinding(call.binding, binding), 'stale', 'MCP editor binding changed.');
 }
 
 export function pendingEditorCallsForTest(ownerId?: string): Array<{

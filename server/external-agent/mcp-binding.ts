@@ -5,6 +5,7 @@ import {
   editorBindingIdentityMatches,
   editorBindingMatches,
   ExternalEditorCallError,
+  orphanStaleEditorSessions,
   type EditorBinding,
 } from './broker.ts';
 import { sameEditorIdentity } from './broker-registry.ts';
@@ -70,18 +71,18 @@ export function validateBrowserBinding(
   // A same-editor revision advance between bind and an editor tool call (an
   // autosave landing, a tool settle syncing the registry) is a legitimate
   // progression, not a stale takeover: re-bind to the registry's current
-  // snapshot instead of poisoning the whole session. Control/status tools keep
-  // the strict check so a replaced binding is still reported as stale there.
+  // snapshot. Explicit edit-session calls retain their revision guard.
   const current = editorBinding(session.binding.projectId);
   if (adoptSameIdentity
     && current
     && sameEditorIdentity(current, session.binding)
     && (!requireSameRevisionForAdopt || current.baseRevision === session.binding.baseRevision)
     && editorBindingMatches(current)) {
+    if (session.id) orphanStaleEditorSessions(session.id, current);
     session.binding = current;
     return current;
   }
-  const message = `MCP session binding for project ${session.binding.projectId} is stale. Re-initialize the MCP session.`;
+  const message = `MCP session binding for project ${session.binding.projectId} is stale. Call target_project with the same project id to reconnect; old edit sessions still require explicit recovery.`;
   markMcpSessionStale(session, message);
   throw new ExternalEditorCallError('stale', message);
 }
@@ -140,7 +141,16 @@ export async function targetMcpProject(
       `This MCP session is bound to project ${currentProjectId}; it cannot operate project ${projectId}.`,
     );
   }
-  if (session.binding) return validateBrowserBinding(session)!;
+  if (session.binding) {
+    const browser = editorBinding(projectId);
+    if (!browser || !editorBindingMatches(browser)) {
+      throw new ExternalEditorCallError('rejected', `Project ${projectId} is not open in a connected OpenChatCut editor.`);
+    }
+    if (session.id) orphanStaleEditorSessions(session.id, browser);
+    session.binding = browser;
+    session.staleReason = null;
+    return browser;
+  }
   if (session.offline) {
     await validateOfflineBinding(session);
     return session.offline.binding();
