@@ -543,6 +543,8 @@ OpenChatCut 基于以下核心项目与规范构建：
 | [Vercel AI SDK](https://ai-sdk.dev/) | 内置 Agent 的多厂商模型流式响应与工具调用基础。 |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | README 运行时架构图的定义、校验与 SVG 生成工具。 |
 
+剪映 / CapCut 草稿导出由 [capcut-cli](https://github.com/renezander030/capcut-cli) 提供支持。
+
 这里列出的是项目的主要技术基础，不替代各依赖、字体和内置二进制随附的许可证。完整 JavaScript 依赖版本见 `package-lock.json`，字体授权见 [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md)。
 
 ---
