@@ -8,8 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / 未发布
 
+## [0.2.16] - 2026-10-07
+
+### Upgrade note / 升级提示
+
+Project data remains in its current directory; moving it through Settings is unavailable in this version, and the original JSON backups contain only the data from before the upgrade.
+工程数据保留在原目录，本版本暂不支持在设置中迁移工程目录；保留的 JSON 备份只包含升级前的数据，不会同步升级后的编辑。
+
 ### Added / 新增
 
+- Choose installed fonts for text and captions, adjust letter and line spacing, and style text backdrops while keeping preview and export in sync (#198).
+  文字和字幕支持选择已安装字体、调整字间距与行间距，以及设置文字底板样式，预览和导出保持一致（#198）。
+- Added Cheaper Inference as a named LLM provider with separate API key, base URL and model settings (#194).
+  新增 Cheaper Inference 模型供应商，可单独配置 API Key、Base URL 和模型（#194）。
 - Publish completed video exports through Upload-Post with an explicit preview and confirmation. Approval is bound to the account, profile, platforms, title and exported file; a durable delivery record prevents duplicate submissions after retries or restarts. Configure the provider under Settings → Social Publishing (#188).
   支持通过 Upload-Post 发布已导出的视频，发布前必须预览并确认。确认与账号、Profile、平台、标题及导出文件绑定；持久化投递记录防止重试或重启后重复发布。供应商可在“设置 → 社交发布”中配置（#188）。
 
@@ -17,11 +28,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - SQLite is now the only project-store backend. Startup automatically imports existing JSON project data, chats, history, generation jobs and deletion records in one transaction; original files remain untouched backups. Failed imports stop startup instead of falling back to JSON, and completed databases never replay stale backups. Removed the migration banner, manual migration dialog/endpoints and backend opt-out.
   工程库统一使用 SQLite。启动时自动以事务导入已有 JSON 工程、聊天、历史版本、生成任务和删除记录，原文件保持不变，仅作备份。导入失败时停止启动，不再回退到 JSON；迁移完成后不会用旧备份覆盖 SQLite。移除迁移横幅、手动迁移对话框及接口，以及旧后端开关。
+- The preview canvas now defaults to a solid black background (#198).
+  预览画布默认背景改为纯黑色（#198）。
 
 ### Fixed / 修复
 
+- Long Agent runs can continue beyond 100 tool calls without misleading HTTP 404 errors, interrupted text output or failures caused by retained events and draft artifacts (#186).
+  Agent 长任务可继续执行超过 100 次工具调用，修复误报 HTTP 404、文字输出中断，以及事件和草稿保留上限导致的任务失败（#186）。
+- Identical parallel tool calls and streamed tool calls with an empty type no longer fail an Agent run.
+  修复相同工具并行调用，以及流式工具调用的类型字段为空时导致 Agent 任务失败的问题。
+- MCP connections stay open when the editor binding becomes stale, allowing clients to reconnect to the same project while still requiring explicit recovery of old drafts (#195).
+  编辑器绑定失效时保留 MCP 连接，客户端可重新连接同一工程，旧草稿仍需显式恢复（#195）。
 - MCP clients can reuse their active edit draft with `begin_edit_session({ reuseExisting: true })`, or adopt an unchanged orphan after its owner disconnects. Reuse preserves staged operations and approval mode, rejects stale drafts and prevents another transport from taking an owned or recovering session (#196).
   MCP 客户端可通过 `begin_edit_session({ reuseExisting: true })` 复用自己的编辑草稿，或在原客户端断开后接管工程未变化的孤立草稿。复用保留已有操作及审批模式，拒绝过期草稿，也不允许抢占其他客户端持有或正在恢复的会话（#196）。
+- Rate stretching no longer alters transcript-driven audio, and slip edits honor the explicitly selected source (#189, #190).
+  文字稿驱动的音频不再允许拖拽变速，滑移编辑会使用明确指定的源素材（#189、#190）。
+- Media cleanup preserves files that may still be referenced by unreadable project snapshots (#191).
+  历史快照无法读取时，素材清理会保留可能仍被这些快照引用的文件（#191）。
+- Reopening a completed export dialog restores the Export action (#192).
+  重新打开已完成的导出对话框后，可再次点击导出（#192）。
 
 ## [0.2.15] - 2026-09-29
 
@@ -953,6 +978,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added Electron desktop packaging for macOS, Windows, and Linux.  
   提供 macOS、Windows 与 Linux 的 Electron 桌面端打包能力。
 
+[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.2.16...HEAD
+[0.2.16]: https://github.com/0xsline/OpenChatCut/compare/v0.2.15...v0.2.16
 [0.2.1]: https://github.com/0xsline/OpenChatCut/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/0xsline/OpenChatCut/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/0xsline/OpenChatCut/compare/v0.1.8...v0.1.9
