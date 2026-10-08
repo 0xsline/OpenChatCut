@@ -46,6 +46,14 @@ function authorizedRoots(): readonly string[] {
   return parseAuthorizedRoots(getKey(AGENT_IMPORT_ROOTS_KEY as never));
 }
 
+/** Whether the explicit allowlist is set. Browser-hosted routes demand it:
+ *  the desktop app treats an empty value as "trust the person who installed
+ *  this app", but a page load carries no operating-system folder grant, so an
+ *  empty allowlist must refuse instead of exposing every path on the machine. */
+export function agentImportRootsConfigured(): boolean {
+  return authorizedRoots().length > 0;
+}
+
 async function canonicalRoots(roots: readonly string[]): Promise<string[]> {
   const resolved = await Promise.all(roots.map((root) => realpath(root).catch(() => null)));
   return resolved.filter((root): root is string => root !== null);

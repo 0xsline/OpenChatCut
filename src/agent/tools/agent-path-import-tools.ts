@@ -1,10 +1,14 @@
-// Agent-initiated local-path media import (issue #84 Feature B). Desktop-only:
-// the Electron main process scans the requested path, imports files through the
-// same fingerprint/reference/probe chain as watched folders, and returns pool-ready
-// assets. Browsers have no local filesystem bridge and get a clear error.
+// Agent-initiated local-path media import (issue #84 Feature B; browser hosts
+// added in #185). The host scans the requested path, imports files through the
+// same fingerprint/reference/probe chain as watched folders, and returns
+// pool-ready assets. The desktop app ships that host over Electron IPC; a browser
+// tab reaches the identical core through the same-origin /api/local-media routes,
+// which require an explicit AGENT_IMPORT_ROOTS allowlist
+// (server/plugins/local-media.ts).
 import type { AgentContext } from '../context';
 import type { AgentToolSchema } from '../tool-schema';
 import { directoryFileToAsset } from '../../media/directoryImportAsset';
+import { browseLocalMediaOverHttp, importAgentPathsOverHttp } from '../../media/localMediaServerApi';
 import type { AgentPathImportResult } from '../../../shared/directory-import';
 import { isAgentLocalMediaRequest, type AgentLocalMediaRequest, type AgentLocalMediaResult } from '../../../shared/agent-local-media';
 
@@ -13,8 +17,8 @@ export const AGENT_PATH_IMPORT_SCHEMAS: AgentToolSchema[] = [
     name: 'browse_local_media',
     description: [
       'Browse local directories or search local media filenames before importing into the media pool.',
-      'Desktop only. Defaults to the home directory; absolute paths may include external drives.',
-      'Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access.',
+      'Desktop access is enabled by default and an explicit AGENT_IMPORT_ROOTS setting restricts it; a browser session requires that allowlist.',
+      'Defaults to the home directory; pass an absolute path to browse a specific folder or drive.',
       'Returns directories and supported media paths, sizes, and modification times without importing.',
       'Use recursive with query/kind to find candidates, then import_assets for selected files.',
       'Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.',
@@ -33,7 +37,7 @@ export const AGENT_PATH_IMPORT_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'import_assets',
-    description: 'Import selected local media paths into the media pool in one batch. Desktop only. Local access is enabled by default; explicit AGENT_IMPORT_ROOTS restricts access. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.',
+    description: 'Import selected local media paths into the media pool in one batch. Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.',
     input_schema: {
       type: 'object',
       properties: {
@@ -46,7 +50,7 @@ export const AGENT_PATH_IMPORT_SCHEMAS: AgentToolSchema[] = [
     name: 'import_asset',
     description: [
       'Import ONE local media file (video/audio/image) by its absolute disk path into the media pool.',
-      'Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access.',
+      'Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist.',
       'Returns the imported pool asset(s); duplicates already in the pool are skipped.',
     ].join(' '),
     input_schema: {
@@ -61,7 +65,7 @@ export const AGENT_PATH_IMPORT_SCHEMAS: AgentToolSchema[] = [
     name: 'import_folder',
     description: [
       'Import every supported media file inside a local directory (recursive, bounded) into the media pool.',
-      'Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access.',
+      'Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist.',
       'Returns imported assets, duplicate counts, unsupported file names, and per-file errors.',
       'Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.',
     ].join(' '),
@@ -98,6 +102,30 @@ function desktopApi(): DesktopPathImportApi | null {
   return bridge?.openChatCutDesktop ?? null;
 }
 
+/** The same-origin server routes a plain browser tab can reach (issue #185). */
+const serverPathImportApi: DesktopPathImportApi = {
+  browseLocalMedia: browseLocalMediaOverHttp,
+  importAgentPaths: importAgentPathsOverHttp,
+};
+
+/** Where local media lives for this host: the Electron bridge in the desktop
+ *  app, otherwise the server routes above. Non-browser hosts (offline MCP, occ
+ *  CLI) call the core in-process and never reach this resolver. */
+function hostApi(): DesktopPathImportApi | null {
+  const bridge = desktopApi();
+  if (bridge) return bridge;
+  return typeof window === 'undefined' ? null : serverPathImportApi;
+}
+
+/** Keep the host's error `code` (IMPORT_ROOTS_NOT_CONFIGURED,
+ *  PATH_OUTSIDE_IMPORT_ROOTS) so the model sees the same actionable shape from
+ *  either host instead of a bare message. */
+function toolError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { error: String(error) };
+  const code = (error as { code?: unknown }).code;
+  return { error: error.message, ...(typeof code === 'string' ? { code } : {}) };
+}
+
 /** The subset the browse path needs, so a non-Electron host can supply it too. */
 export type LocalMediaBrowseApi = Pick<DesktopPathImportApi, 'browseLocalMedia'>;
 
@@ -113,11 +141,11 @@ export async function browseLocalMediaResult(
 ): Promise<Record<string, unknown>> {
   if (name !== 'browse_local_media') return { error: `unknown tool ${name}` };
   if (!isAgentLocalMediaRequest(args)) return { error: 'invalid local media browse request' };
-  if (!api.browseLocalMedia) return { error: 'browse_local_media is available in the desktop app only' };
+  if (!api.browseLocalMedia) return { error: 'browse_local_media is not available on this host' };
   try {
     return { ok: true, ...await api.browseLocalMedia(args) };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    return toolError(error);
   }
 }
 
@@ -127,14 +155,12 @@ export async function execAgentPathImportTool(
   ctx: AgentContext,
 ): Promise<Record<string, unknown>> {
   if (!AGENT_PATH_IMPORT_TOOL_NAMES.has(name)) return { error: `unknown tool ${name}` };
-  if (name === 'browse_local_media') {
-    return browseLocalMediaResult(name, args, desktopApi() ?? {});
-  }
-  const api = desktopApi();
+  const api = hostApi();
+  if (name === 'browse_local_media') return browseLocalMediaResult(name, args, api ?? {});
   if (!api?.importAgentPaths) {
     return {
-      error: 'local media imports are available in the desktop app only; '
-        + 'use the media pool upload UI or watched folders in the browser',
+      error: 'local media imports are not available on this host; '
+        + 'use the media pool upload UI or watched folders instead',
     };
   }
   return importLocalPaths(name, args, ctx, api);
@@ -177,7 +203,7 @@ async function importPathsIntoProject(
   try {
     result = await api.importAgentPaths({ paths, projectId, knownHashes });
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    return toolError(error);
   }
   if (!result.imported.length && result.errors.length) {
     const first = result.errors[0]!;
