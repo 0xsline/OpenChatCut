@@ -152,6 +152,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'gpt-5.4-mini',
   },
   {
+    id: 'opper',
+    label: 'Opper',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.opper.ai/v3/compat',
+    defaultModel: 'claude-sonnet-4-6',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',

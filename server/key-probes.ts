@@ -25,6 +25,7 @@ import {
   classifyStatus,
   networkMessage,
   parseModelCatalog,
+  parseOpperChatModelCatalog,
   parseTextModelCatalog,
   sanitizeProbeText,
   type ProbeResult,
@@ -253,6 +254,11 @@ const cheaperInferenceProbe: ProbeDef = {
   models: parseTextModelCatalog,
 };
 
+const opperProbe: ProbeDef = {
+  ...llmProbe('opper'),
+  models: parseOpperChatModelCatalog,
+};
+
 
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
@@ -262,6 +268,7 @@ export const PROBES: Record<string, ProbeDef> = {
   ])),
   'llm/requesty': requestyProbe,
   'llm/cheaperinference': cheaperInferenceProbe,
+  'llm/opper': opperProbe,
   'image/openai': {
     needs: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
     run: (get) => fetch(`${base(get, 'IMAGE_BASE_URL', 'https://api.openai.com')}/v1/models`, {
