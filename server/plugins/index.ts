@@ -52,6 +52,7 @@ import { claudeCodeAgentPlugin } from "./claude-code-agent.ts";
 import { xaiOauthPlugin } from "./xai-oauth.ts";
 import { llmProxyPlugin } from "./llm-proxy.ts";
 import { agentRunsPlugin } from "../agent-runs/routes.ts";
+import { localMediaPlugin } from "./local-media.ts";
 import { resourcePreviewPlugin } from "./resource-preview.ts";
 import { getKey } from "../keystore.ts";
 
@@ -69,6 +70,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     llmProxyPlugin(),
     xaiOauthPlugin(),
     agentRunsPlugin(),
+    localMediaPlugin(),
     skillFilesPlugin(),
     skillInstallPlugin(),
     skillExecPlugin(),
