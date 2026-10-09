@@ -141,8 +141,10 @@ export function matchShortcut(
         // allow arrowleft vs ← already normalized to arrowleft
         if (chord.key !== key) continue;
       }
-      // Mod = meta on Mac, ctrl on Windows
-      const wantMod = chord.mod;
+      // Mod = meta on Mac, ctrl on Windows. A chord spelled "Ctrl + …" (the
+      // move-to-boundary rows) wants that same key off Mac, where Control is
+      // not a separate modifier.
+      const wantMod = chord.mod || (!isMac && chord.ctrl);
       const hasMod = isMac ? e.metaKey : e.ctrlKey;
       if (wantMod !== hasMod) continue;
       // explicit Ctrl (rare) — on Mac must be ctrlKey; on Win same as mod if only ctrl
