@@ -12,6 +12,7 @@ import { selectEffectPreviewAdapter, type SelectedPreviewStatusListener } from '
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
 import { voiceIsolationMix } from '../audio/voiceMix';
+import { audibleTranscriptSegments } from './audioTranscriptGuard';
 import { backgroundFillAppearanceFor, backgroundFillFilter } from './backgroundFill';
 import { appearanceAt } from './clipFade';
 import { zoomAt } from './zoom';
@@ -129,29 +130,19 @@ export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, 
 }) {
   const volumeAt = (localFrame: number) => (muted ? 0 : volumeAtFrame(item, localFrame));
   if (!item.src) return null;
-  // A transcript-driven clip plays the source windows its words describe. ASR
-  // run over non-speech audio (a sound effect, say) hallucinates words with
-  // timestamps far past the end of the file — "Music" at 24.4s inside a 3s
-  // sting — and honouring those trims the clip to a window containing no
-  // audio at all, so the SFX goes silent with nothing on screen to explain it.
-  // A window starting past the end of the media is never a real edit: drop
-  // those segments, and fall back to plain playback when none survive.
+  // Hallucinated ASR words on non-speech audio must not silence the clip
+  // (see audibleTranscriptSegments); null means play the clip plainly.
   const segments = hasOperationalTranscript(item)
-    ? keptSegments(item.transcript, new Set(item.deletedWordIdx ?? []), fps, item.startFrame, {
+    ? audibleTranscriptSegments(keptSegments(item.transcript, new Set(item.deletedWordIdx ?? []), fps, item.startFrame, {
       ...itemEditOpts(item),
       window: itemWindow(item),
-    }).filter((segment) => sourceDurationInFrames === undefined
-      || segment.srcStartFrame < sourceDurationInFrames)
-    : [];
-  // Second symptom of the same hallucination: a single bogus word *inside* the
-  // file trims the clip to a fraction of itself, e.g. a 1.8s sting reduced to
-  // one 0.5s window with the rest silent. Nobody deleted anything, so this is
-  // not an edit either — an untouched transcript that would swallow more than
-  // half the clip is discarded rather than obeyed.
-  const keptFrames = segments.reduce((total, segment) => total + segment.durFrames, 0);
-  const editedByUser = (item.deletedWordIdx?.length ?? 0) > 0;
-  const swallowsClip = !editedByUser && keptFrames * 2 < item.durationInFrames;
-  if (segments.length && !swallowsClip) {
+    }), {
+      durationInFrames: item.durationInFrames,
+      deletedWordCount: item.deletedWordIdx?.length ?? 0,
+      sourceDurationInFrames,
+    })
+    : null;
+  if (segments) {
     return <>{segments.map((segment, index) => (
       <Sequence key={`${item.id}_${index}`} from={segment.fromFrame} durationInFrames={segment.durFrames} premountFor={premountFor} name={item.name}>
         <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={segment.srcStartFrame} trimAfter={segment.srcEndFrame}

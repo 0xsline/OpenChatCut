@@ -3,44 +3,66 @@
 // AudioClip 会把这些词当作源窗口播放,于是音效被裁到一段根本没有声音的区间,
 // 时间线上看起来一切正常,却完全听不见。守卫有两条:
 //   1) 源窗口起点超出媒体长度 → 丢弃
-//   2) 用户没删过词,却只留下不到一半的片段 → 丢弃
+//   2) 用户没删过词,却只留下不到一半的片段 → 整段平铺播放
 // 两条都不满足时行为保持不变(真实的逐词删除仍然照常生效)。
-import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { keptSegments } from '../transcript/edit';
+import type { TranscriptWord } from '../transcript/types';
+import { audibleTranscriptSegments } from './audioTranscriptGuard';
 
-const source = readFileSync(new URL('./TimelineMediaLayer.tsx', import.meta.url), 'utf8');
+const fps = 30;
+const segmentsOf = (words: TranscriptWord[], deleted: number[] = []) => keptSegments(words, new Set(deleted), fps, 0, {});
 
-assert.match(source, /sourceDurationInFrames\?: number;/, 'AudioClip 必须能接收媒体长度');
-assert.match(
-  source,
-  /segment\.srcStartFrame < sourceDurationInFrames/,
-  '必须丢弃起点超出媒体长度的片段',
-);
-assert.match(source, /const swallowsClip = !editedByUser && keptFrames \* 2 < item\.durationInFrames;/, '必须丢弃未编辑却吞掉大半片段的转写');
-assert.match(source, /if \(segments\.length && !swallowsClip\)/, '两条守卫都要作用在转写分支上');
+// 音效幻觉 1:3s(90 帧)的 sting,ASR 给出 "Music" 24.42–24.44s → 窗口起点在文件之外
+{
+  const segs = segmentsOf([{ text: 'Music', start: 24420, end: 24440 }]);
+  assert.ok(segs[0]!.srcStartFrame >= 90, 'keptSegments 确实给出了越界窗口(前提)');
+  assert.equal(audibleTranscriptSegments(segs, { durationInFrames: 90, deletedWordCount: 0, sourceDurationInFrames: 90 }), null,
+    '越界窗口 → 平铺播放');
+}
 
-// 组合逻辑本身(与实现同构,防止阈值被悄悄改写)
-const decide = (
-  segs: Array<{ srcStartFrame: number; durFrames: number }>,
-  itemDuration: number,
-  deleted: number,
-  sourceDuration?: number,
-) => {
-  const kept = segs.filter((s) => sourceDuration === undefined || s.srcStartFrame < sourceDuration);
-  const keptFrames = kept.reduce((t, s) => t + s.durFrames, 0);
-  const swallows = deleted === 0 && keptFrames * 2 < itemDuration;
-  return kept.length > 0 && !swallows ? 'transcript' : 'plain';
-};
+// 音效幻觉 2:1.8s(55 帧)的 sting,只有一个落在文件内的假词 → 留下 15 帧,不到一半
+{
+  const segs = segmentsOf([{ text: 'Uh', start: 500, end: 1000 }]);
+  assert.equal(audibleTranscriptSegments(segs, { durationInFrames: 55, deletedWordCount: 0, sourceDurationInFrames: 55 }), null,
+    '未编辑却吞掉大半 → 平铺播放');
+}
 
-// 音效幻觉:词在 24.4s,媒体只有 91 帧 → 整段被丢弃
-assert.equal(decide([{ srcStartFrame: 733, durFrames: 1 }], 53, 0, 91), 'plain', '越界窗口 → 平铺播放');
-// 音效幻觉:词落在文件内,但只留 16 帧 / 55 帧 → 仍然丢弃
-assert.equal(decide([{ srcStartFrame: 66, durFrames: 16 }], 55, 0, 91), 'plain', '吞掉大半 → 平铺播放');
-// 真实逐词删除:用户删过词,短片段是有意的 → 照常走转写
-assert.equal(decide([{ srcStartFrame: 10, durFrames: 16 }], 55, 3, 300), 'transcript', '有删除 → 尊重转写');
-// 正常语音:转写覆盖大部分片段 → 照常走转写
-assert.equal(decide([{ srcStartFrame: 10, durFrames: 50 }], 55, 0, 300), 'transcript', '覆盖完整 → 尊重转写');
-// 媒体长度未知时不做越界判断
-assert.equal(decide([{ srcStartFrame: 733, durFrames: 60 }], 55, 0, undefined), 'transcript', '长度未知 → 不误伤');
+const speech: TranscriptWord[] = [
+  { text: 'one', start: 0, end: 900 },
+  { text: 'two', start: 1000, end: 1900 },
+  { text: 'three', start: 2000, end: 2900 },
+  { text: 'four', start: 3000, end: 3900 },
+];
 
-console.log('audio-transcript-guard.verify: ok (越界丢弃/吞片丢弃/删除词照常/长度未知不误伤)');
+// 正常语音:转写覆盖整段 → 原样走转写
+{
+  const segs = segmentsOf(speech);
+  assert.deepEqual(audibleTranscriptSegments(segs, { durationInFrames: 118, deletedWordCount: 0, sourceDurationInFrames: 120 }), segs,
+    '覆盖完整 → 尊重转写');
+}
+
+// 真实逐词删除:用户删了三个词,只剩一小段是有意的 → 照常走转写
+{
+  const segs = segmentsOf(speech, [1, 2, 3]);
+  assert.deepEqual(audibleTranscriptSegments(segs, { durationInFrames: 118, deletedWordCount: 3, sourceDurationInFrames: 120 }), segs,
+    '有删除 → 尊重转写');
+}
+
+// 媒体长度未知时不做越界判断(只看吞片规则)
+{
+  const segs = segmentsOf(speech);
+  assert.deepEqual(audibleTranscriptSegments(segs, { durationInFrames: 118, deletedWordCount: 0 }), segs, '长度未知 → 不误伤');
+}
+
+// 部分越界:文件内的窗口保留,越界的丢掉
+{
+  const segs = [
+    { srcStartFrame: 0, srcEndFrame: 60, fromFrame: 0, durFrames: 60 },
+    { srcStartFrame: 733, srcEndFrame: 734, fromFrame: 60, durFrames: 1 },
+  ];
+  assert.deepEqual(audibleTranscriptSegments(segs, { durationInFrames: 61, deletedWordCount: 0, sourceDurationInFrames: 90 }), [segs[0]],
+    '只丢越界窗口');
+}
+
+console.log('audio-transcript-guard.verify: ok (越界丢弃/吞片平铺/删除词照常/长度未知不误伤/部分越界)');
