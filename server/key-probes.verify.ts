@@ -220,7 +220,12 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   );
   const recorded = await runProbe('storage/projects', {});
   assert.equal(recorded.ok, true);
-  assert.match(recorded.message, new RegExp(`目录可写 · ${target}`));
+  // A Windows path interpolated into a RegExp loses separators to escape
+  // sequences ("\T", "\S"), so match the recorded path literally.
+  assert.ok(
+    recorded.message.includes(`目录可写 · ${target}`),
+    `expected the recorded root to be reported, got: ${recorded.message}`,
+  );
 
   process.env.OPENCHATCUT_DATA_DIR = target;
   try {
