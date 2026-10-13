@@ -3,9 +3,11 @@ import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 
 export interface SubmitVideoArgs {
   operationId?: string;
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal' | 'dreamapi';
   /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
   falModel?: string;
+  dreamapiModel?: string;
+  dreamapi?: Record<string, unknown>;
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;

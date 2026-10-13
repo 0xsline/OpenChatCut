@@ -66,6 +66,9 @@ const submitImageHandler: Handler = async (args, ctx) => {
 const submitVoiceHandler: Handler = async (args, ctx) => {
   const input = buildSubmitVoiceArgs(args);
   const asset = await submitVoice(input, ctx.getState());
+  if (!('kind' in asset)) {
+    return { ok: true, provider: input.provider, cloneId: asset.cloneId, addedTo: 'dreamapi-voice-clone' };
+  }
   addAsset(ctx, asset);
   return {
     ok: true, provider: input.provider, voiceId: input.voiceId, assetId: asset.id,

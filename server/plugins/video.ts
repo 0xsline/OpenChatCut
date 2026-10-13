@@ -1,4 +1,5 @@
 import { generateFalVideo } from './fal-client.ts';
+import { generateDreamApi } from './dreamapi-provider.ts';
 import { getKey } from '../keystore.ts';
 import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -18,6 +19,7 @@ import {
   materializeVideoReferences,
   mediaDataUrl,
   providerMediaUrl,
+  saveVideo,
   ServerReferencePreflightError,
 } from './video-media.ts';
 import { generateGrokVideo } from './grok-video-provider.ts';
@@ -342,6 +344,28 @@ async function runVideoOperation(
   const checkpoint = generationResultCheckpoint(storedResultUrls, expectedResultCount, providerTaskId);
   let urls = checkpoint.urls;
   if (!checkpoint.complete) {
+    if (providerTaskId?.startsWith('dreamapi:') || (!providerTaskId && input.model === 'dreamapi')) {
+      const generated = await generateDreamApi(input.dreamapiModel, input.dreamapi ?? {}, {
+        existingTaskId: providerTaskId,
+        registerTask: (taskId) => registerProviderTask('dreamapi', taskId),
+      });
+      if (!generated.urls.length) throw new Error('DreamAPI video generation returned no URL');
+      const downloadDream = async () => {
+        const items = [];
+        for (const [index, url] of generated.urls.entries()) {
+          const saved = await saveVideo(url);
+          items.push({
+            assetId: index === 0 ? operationId : `${operationId}:${index}`,
+            kind: 'video' as const,
+            name: index === 0 ? name : `${name} · ${index + 1}`,
+            ...saved,
+          });
+        }
+        return items.length === 1 ? items[0] : items;
+      };
+      for (const [index, url] of generated.urls.entries()) await registerDownload(url, downloadDream, index);
+      return downloadDream();
+    }
     if (providerTaskId?.startsWith('fal:') || (!providerTaskId && input.model === 'fal')) {
       urls = requireGenerationResultUrls([await generateFalVideo(input, registerProviderTask, providerTaskId)], expectedResultCount);
     } else if (input.model === 'seedance2' || input.model === 'byteplus') {
@@ -377,7 +401,7 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'fal'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'fal', 'dreamapi'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,
@@ -408,6 +432,7 @@ export function videoGenerationPlugin(options: VideoOptions): Plugin {
         try {
           const raw = await readJson(req);
           if (raw.model === 'fal' && !raw.falModel) raw.falModel = getKey('FAL_VIDEO_MODEL').trim() || undefined;
+          if (raw.model === 'dreamapi' && !raw.dreamapiModel) raw.dreamapiModel = getKey('DREAMAPI_VIDEO_MODEL').trim() || undefined;
           const input = validateVideoRequest(await materializeVideoReferences(raw));
           // Persist the resolved choice so settings changes cannot redirect a retry.
           if (input.model === 'fal') raw.falModel = input.falModel;

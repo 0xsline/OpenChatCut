@@ -3,6 +3,7 @@ import type { SubmitMusicArgs } from '../../generate/music';
 import type { SubmitSoundArgs } from '../../generate/sound';
 import type { SubmitVideoArgs } from '../../generate/video';
 import type { SubmitVoiceArgs, VoiceProvider } from '../../generate/voice';
+import { dreamApiInputFromArgs } from '../../../shared/dreamapi-models';
 
 export type GenerateArgs = Record<string, unknown>;
 export const shouldAddImageToTimeline = (args: GenerateArgs): boolean => args.addToTimeline !== false;
@@ -29,6 +30,9 @@ export function buildSubmitImageArgs(args: GenerateArgs): SubmitImageArgs {
     model, falModel: str(args.falModel), prompt: String(args.prompt ?? ''), name: String(args.name ?? ''), aspectRatio,
     referenceAssetIds: references, count: num(args.count),
   };
+  if (model === 'dreamapi') {
+    return { ...shared, dreamapiModel: str(args.dreamapiModel), dreamapi: dreamApiInputFromArgs(str(args.dreamapiModel), args) };
+  }
   if (model === 'fal') {
     for (const key of ['width', 'height', 'quality', 'maskAssetId', 'background', 'moderation', 'inputFidelity', 'outputFormat', 'outputCompression', 'seed', 'promptOptimizer']) {
       if (args[key] !== undefined) throw new Error(`${key} is not supported by the Fal image integration`);
@@ -131,6 +135,11 @@ const VOICE_STRATEGIES = {
   gemini: (args) => genericVoice(args, 'gemini'),
   mistral: (args) => genericVoice(args, 'mistral'),
   cartesia: (args) => genericVoice(args, 'cartesia'),
+  dreamapi: (args) => ({
+    ...voiceBase(args, 'dreamapi'), dreamapiModel: str(args.dreamapiModel),
+    dreamapi: dreamApiInputFromArgs(str(args.dreamapiModel), args),
+    text: String(args.text ?? ''),
+  }),
 } satisfies Record<VoiceProvider, (args: GenerateArgs) => SubmitVoiceArgs>;
 
 export function buildSubmitVoiceArgs(args: GenerateArgs): SubmitVoiceArgs {
@@ -236,10 +245,14 @@ const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
   });
 };
 
-const VIDEO_STRATEGIES = { fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo } as const;
+const dreamapiVideo = (args: GenerateArgs): SubmitVideoArgs => ({
+  ...videoBase(args, 'dreamapi'), dreamapiModel: str(args.dreamapiModel),
+  dreamapi: dreamApiInputFromArgs(str(args.dreamapiModel), args),
+});
+const VIDEO_STRATEGIES = { fal: falVideo, dreamapi: dreamapiVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
   const model = args.model === undefined ? 'seedance2' : args.model;
-  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'fal') {
+  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'fal' && model !== 'dreamapi') {
     throw new Error('Unsupported video model; select an available provider before submitting or rerunning.');
   }
   return VIDEO_STRATEGIES[model](args);

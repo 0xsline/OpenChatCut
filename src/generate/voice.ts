@@ -11,10 +11,13 @@ export type VoiceProvider =
   | 'openai'
   | 'gemini'
   | 'mistral'
-  | 'cartesia';
+  | 'cartesia'
+  | 'dreamapi';
 
 export interface SubmitVoiceArgs {
   provider: VoiceProvider;
+  dreamapiModel?: string;
+  dreamapi?: Record<string, unknown>;
   text: string;
   voiceId: string;
   modelId?: string;
@@ -67,8 +70,11 @@ interface VoiceResponse {
   path?: string;
   subtitlePath?: string;
   durationSeconds?: number;
+  cloneId?: string;
   error?: string;
 }
+
+export type VoiceGenerationResult = MediaAsset | { cloneId: string };
 
 const newId = () => crypto.randomUUID?.() ?? `generated_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
@@ -89,11 +95,11 @@ function probeAudio(src: string, fps: number): Promise<number> {
   });
 }
 
-export async function submitVoice(args: SubmitVoiceArgs, state: TimelineState): Promise<MediaAsset> {
+export async function submitVoice(args: SubmitVoiceArgs, state: TimelineState): Promise<VoiceGenerationResult> {
   const text = args.text.trim();
   const voiceId = args.voiceId.trim();
-  if (!text) throw new Error('text is required');
-  if (!voiceId && !args.timbreWeights?.length) throw new Error('voiceId is required unless MiniMax timbreWeights are provided');
+  if (args.provider !== 'dreamapi' && !text) throw new Error('text is required');
+  if (args.provider !== 'dreamapi' && !voiceId && !args.timbreWeights?.length) throw new Error('voiceId is required unless MiniMax timbreWeights are provided');
   const response = await fetch('/generate/voice', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -101,6 +107,7 @@ export async function submitVoice(args: SubmitVoiceArgs, state: TimelineState): 
   });
   const result = await response.json().catch(() => ({})) as VoiceResponse;
   if (!response.ok) throw new Error(result.error ?? `voice generation failed (${response.status})`);
+  if (!result.path && result.cloneId) return { cloneId: result.cloneId };
   if (!result.path) throw new Error('voice generation returned no audio asset');
   const durationInFrames = result.durationSeconds && Number.isFinite(result.durationSeconds)
     ? Math.max(1, Math.round(result.durationSeconds * state.fps))

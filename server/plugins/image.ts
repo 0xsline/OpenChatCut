@@ -1,4 +1,6 @@
 import { generateFalCatalogImage } from './fal-client.ts';
+import { buildDreamApiCall } from '../../shared/dreamapi-models.ts';
+import { generateDreamApi } from './dreamapi-provider.ts';
 import { getKey } from '../keystore.ts';
 import { buildFalCatalogImageRequest, type FalCatalogInput } from './fal-catalog-input.ts';
 import { proxyDispatcher } from '../outbound-proxy.ts';
@@ -60,6 +62,8 @@ interface ImagePluginOptions {
 interface ImageRequest {
   model?: string;
   falModel?: string;
+  dreamapiModel?: string;
+  dreamapi?: Record<string, unknown>;
   prompt?: string;
   aspectRatio?: string;
   imageSize?: string;
@@ -80,9 +84,12 @@ interface ImageRequest {
 }
 
 export interface ValidImageRequest {
-  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'fal';
+  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'fal' | 'dreamapi';
   falModel?: string;
   falInput?: FalCatalogInput;
+  dreamapiModel?: string;
+  dreamapi?: Record<string, unknown>;
+  dreamapiCall?: ReturnType<typeof buildDreamApiCall>;
   prompt: string;
   aspectRatio?: string;
   imageSize: string;
@@ -163,6 +170,15 @@ export function validateImageRequest(input: ImageRequest): ValidImageRequest {
     return { model, falModel: input.falModel, falInput, prompt: falInput.prompt, count: input.count ?? 1,
       referencePaths: input.referencePaths ?? [], aspectRatio: input.aspectRatio ?? '16:9',
       imageSize: input.imageSize ?? '1K', quality: 'high', outputFormat: 'png' };
+  }
+  if (model === 'dreamapi') {
+    const dreamapiCall = buildDreamApiCall(input.dreamapiModel, input.dreamapi ?? {});
+    if (dreamapiCall.model.kind !== 'image') throw new Error(`${dreamapiCall.model.id} is not a DreamAPI image model`);
+    return {
+      model, dreamapiModel: dreamapiCall.model.id, dreamapi: input.dreamapi ?? {}, dreamapiCall, prompt: String(input.prompt ?? input.dreamapi?.prompt ?? input.dreamapi?.text ?? ''),
+      count: 1, referencePaths: input.referencePaths ?? [], aspectRatio: input.aspectRatio ?? '16:9',
+      imageSize: input.imageSize ?? '1K', quality: 'high', outputFormat: 'png',
+    };
   }
   if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01' && model !== 'wavespeed' && model !== 'byteplus' && model !== 'grok-imagine') {
     throw new Error(`unsupported model ${model}`);
@@ -385,6 +401,7 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
         try {
           const raw = await readJson(req);
           if (raw.model === 'fal' && !raw.falModel) raw.falModel = getKey('FAL_IMAGE_MODEL').trim() || undefined;
+          if (raw.model === 'dreamapi' && !raw.dreamapiModel) raw.dreamapiModel = getKey('DREAMAPI_IMAGE_MODEL').trim() || undefined;
           const input = validateImageRequest(raw);
           const {
             model, prompt, aspectRatio, imageSize, quality, count, referencePaths, maskPath,
@@ -393,10 +410,14 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
           } = input;
           const [width, height] = input.width != null && input.height != null
             ? [input.width, input.height]
-            : model === 'fal' ? [0, 0] : dimensions(aspectRatio!, imageSize);
+            : model === 'fal' || model === 'dreamapi' ? [0, 0] : dimensions(aspectRatio!, imageSize);
           let images: ProviderImage[];
           if (model === 'fal') {
             images = await generateFalCatalogImage(input.falInput!);
+          } else if (model === 'dreamapi') {
+            const generated = await generateDreamApi(input.dreamapiModel, input.dreamapi ?? {}, {});
+            if (!generated.urls.length) throw new Error('DreamAPI image generation returned no URL');
+            images = generated.urls.map((url) => ({ url }));
           } else if (model === 'nano-banana') {
             if (!options.geminiApiKey) throw new Error('Nano Banana is not configured. Set GEMINI_API_KEY in .env.local.');
             if (!aspectRatio) throw new Error('Nano Banana requires aspectRatio');
@@ -434,7 +455,7 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
           }
           const paths = await Promise.all(images.map((image) => saveImage(image, model === 'gpt-image-2' ? outputFormat : 'png')));
           const reportDimensions = model !== 'image-01' || input.width != null;
-          const imageDimensions = model === 'fal'
+          const imageDimensions = model === 'fal' || model === 'dreamapi'
             ? (images[0].width && images[0].height ? { width: images[0].width, height: images[0].height } : {})
             : reportDimensions ? { width, height } : {};
           sendJson(res, 200, { paths, ...imageDimensions });
