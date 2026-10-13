@@ -1,4 +1,5 @@
 import { FAL_IMAGE_MODELS, FAL_VIDEO_MODELS, falModelSummary } from '../../../shared/fal-models';
+import { DREAMAPI_MODELS } from '../../../shared/dreamapi-models';
 import type { AgentToolSchema } from '../tool-schema';
 import { MINIMAX_LANGUAGE_BOOSTS } from '../../../shared/media-provider-params';
 
@@ -10,8 +11,10 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana', 'image-01', 'wavespeed', 'byteplus', 'grok-imagine', 'fal'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K).' },
+        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana', 'image-01', 'wavespeed', 'byteplus', 'grok-imagine', 'fal', 'dreamapi'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K). dreamapi is DreamAPI; pair it with dreamapiModel.' },
         falModel: { type: 'string', enum: FAL_IMAGE_MODELS.map((model) => model.id), description: `With model=fal, select a curated Fal image model; omitted uses the saved Fal image default. ${FAL_IMAGE_MODELS.map((model) => `${model.id}: ${falModelSummary(model)}`).join('; ')}. Model-specific limits are validated before submission.` },
+        dreamapiModel: { type: 'string', enum: DREAMAPI_MODELS.filter((model) => model.kind === 'image').map((model) => model.id), description: `With model=dreamapi, select a DreamAPI image model. ${DREAMAPI_MODELS.filter((model) => model.kind === 'image').map((model) => `${model.id}: ${model.note}`).join('; ')}` },
+        dreamapi: { type: 'object', description: 'DreamAPI model inputs such as image, images, url, face, width, height, seedreamModel, size, text. Keys are validated against the selected dreamapiModel before any request is sent.' },
         prompt: { type: 'string', description: 'Detailed description of the image to generate.' },
         name: { type: 'string', description: 'Short descriptive asset name shown in the media pool.' },
         addToTimeline: { type: 'boolean', description: 'Defaults to true. Set false when the user asks to keep the result in the media pool/library only or says not to modify the timeline.' },
@@ -40,7 +43,9 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fishaudio', 'speechify', 'openai', 'gemini', 'mistral', 'cartesia'], description: 'Required opt-in provider. Use only a provider listed as configured in capabilities. Voice IDs and catalogs are never interchangeable.' },
+        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fishaudio', 'speechify', 'openai', 'gemini', 'mistral', 'cartesia', 'dreamapi'], description: 'Required opt-in provider. Use only a provider listed as configured in capabilities. Voice IDs and catalogs are never interchangeable. dreamapi is DreamAPI TTS or voice clone.' },
+        dreamapiModel: { type: 'string', enum: DREAMAPI_MODELS.filter((model) => model.kind === 'voice').map((model) => model.id), description: 'With provider=dreamapi, select tts-common, tts-pro, tts-clone, or voice-clone.' },
+        dreamapi: { type: 'object', description: 'DreamAPI voice inputs: text, lang, audioId, cloneId, or voiceUrl.' },
         text: { type: 'string', minLength: 1, description: 'Text to synthesize.' },
         voiceId: { type: 'string', description: 'Concrete provider-specific voice ID confirmed by the user. Required except MiniMax timbreWeights mixing, where it must be empty. Do not invent a preset or reuse an ID from another provider.' },
         modelId: { type: 'string', description: 'ElevenLabs, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia only. Omit to use the configured model.' },
@@ -152,8 +157,10 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'fal'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet.' }, // minimax: hailuo enum
+        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'fal', 'dreamapi'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet. dreamapi is DreamAPI; pair it with dreamapiModel.' }, // minimax: hailuo enum
         falModel: { type: 'string', enum: FAL_VIDEO_MODELS.map((model) => model.id), description: `With model=fal, select a curated Fal video model; omitted uses the saved Fal video default. ${FAL_VIDEO_MODELS.map((model) => `${model.id}: ${falModelSummary(model)}`).join('; ')}. Omit duration/resolution to use model defaults.` },
+        dreamapiModel: { type: 'string', enum: DREAMAPI_MODELS.filter((model) => model.kind === 'video').map((model) => model.id), description: `With model=dreamapi, select a DreamAPI video model. ${DREAMAPI_MODELS.filter((model) => model.kind === 'video').map((model) => `${model.id}: ${model.note}`).join('; ')}` },
+        dreamapi: { type: 'object', description: 'DreamAPI video inputs such as prompt, image, images, srcVideo, audio, resolution, duration, sourceLanguage, and targetLanguage. Keys are validated against dreamapiModel before any request is sent.' },
         prompt: { type: 'string', description: 'Required for normal generation and Kling intelligence; omit for Kling customize.' },
         name: { type: 'string' },
         durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'For Fal, see falModel limits and omit to use model default. Native providers: integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API).' }, // minimax: hailuo durations

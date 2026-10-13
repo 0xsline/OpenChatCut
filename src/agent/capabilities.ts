@@ -1,4 +1,5 @@
 import { FAL_MODELS } from '../../shared/fal-models';
+import { dreamApiModelsByKind } from '../../shared/dreamapi-models';
 // Which key-gated capabilities are actually configured. The booleans are computed
 // SERVER-SIDE in config/vite.config.ts (from .env.local) and injected via `define` as
 // __CONFIGURED_CAPS__ — BOOLEANS ONLY, never any key value reaches the browser.
@@ -66,6 +67,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'WaveSpeed', arg: 'wavespeed', argKey: 'model', need: [['WAVESPEED_API_KEY']] },
     { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
     { label: 'xAI Grok', arg: 'grok-imagine', argKey: 'model', need: [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']] },
+    { label: 'DreamAPI', arg: 'dreamapi', argKey: 'model', need: [['DREAMAPI_API_KEY']] },
   ],
   voice: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
@@ -78,6 +80,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Gemini', arg: 'gemini', argKey: 'provider', need: [['GEMINI_API_KEY']] },
     { label: 'Mistral Voxtral', arg: 'mistral', argKey: 'provider', need: [['LLM_MISTRAL_API_KEY']] },
     { label: 'Cartesia', arg: 'cartesia', argKey: 'provider', need: [['CARTESIA_API_KEY']] },
+    { label: 'DreamAPI', arg: 'dreamapi', argKey: 'provider', need: [['DREAMAPI_API_KEY']] },
   ],
   video: [
     { label: 'OFox', arg: 'ofox', argKey: 'model', need: [['LLM_OFOX_API_KEY']] },
@@ -87,6 +90,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Hailuo', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
     { label: 'xAI Grok', arg: 'grok-imagine-video', argKey: 'model', need: [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']] },
     { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
+    { label: 'DreamAPI', arg: 'dreamapi', argKey: 'model', need: [['DREAMAPI_API_KEY']] },
   ],
   music: [
     { label: 'Mureka', arg: 'mureka', argKey: 'provider', need: [['MUREKA_API_KEY']] },
@@ -135,6 +139,19 @@ function falModelSuffix(cap: CapabilityKey): string {
     + (selected ? `Saved Fal default: ${selected.id}; honor it unless the user explicitly requests another model.`
       : 'No Fal model selected: ask which model to use before submitting; do not silently default to Seedance.')
     + ' Only the documented common inputs are supported; use the selected model constraints in the tool schema.';
+}
+
+function dreamApiSuffix(cap: CapabilityKey): string {
+  if (cap !== 'image' && cap !== 'video' && cap !== 'voice') return '';
+  if (!liveKeys?.DREAMAPI_API_KEY?.configured) return '';
+  const models = dreamApiModelsByKind(cap);
+  const preferredKey = cap === 'image' ? 'DREAMAPI_IMAGE_MODEL' : cap === 'video' ? 'DREAMAPI_VIDEO_MODEL' : 'DREAMAPI_VOICE_MODEL';
+  const preferred = liveModels?.[preferredKey];
+  const selected = models.find((model) => model.id === preferred);
+  const arg = cap === 'voice' ? 'provider=dreamapi and dreamapiModel' : 'model=dreamapi and dreamapiModel';
+  return `\nDreamAPI ${cap} models (use ${arg}=<id>): ${models.map((model) => `${model.label}=${model.id}`).join(', ')}. `
+    + (selected ? `Saved DreamAPI default: ${selected.id}; honor it unless the user explicitly requests another model.`
+      : 'No DreamAPI model selected: ask which DreamAPI model to use before submitting.');
 }
 
 /** Routing suffix for an ON capability, mode-aware:
@@ -191,7 +208,8 @@ export function capabilitiesPrompt(
   }
   return `\n\n# Available capabilities (based on configured API keys; local editing is always available without keys)\n`
     + `✅ Configured: ${on.length ? on.join(', ') : '(no key-gated capabilities)'}.\n`
-    + falModelSuffix('image') + falModelSuffix('video') + '\n'
+    + falModelSuffix('image') + falModelSuffix('video')
+    + dreamApiSuffix('image') + dreamApiSuffix('video') + dreamApiSuffix('voice') + '\n'
     + `⬜ Not configured — do not promise these in a plan or call them; they return "not configured" and waste a turn:\n`
     + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
     + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured'
