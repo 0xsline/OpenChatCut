@@ -180,6 +180,33 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   }
 }
 
+// 7d. Opper checks the key on /v3/compat/models and leaves embedding models out of the chat list.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), auth: new Headers(init?.headers).get('authorization') });
+    return Response.json({
+      data: [
+        { id: 'claude-sonnet-4-6', opper: { kind: 'pool', type: 'llm' } },
+        { id: 'anthropic/claude-sonnet-4-6', opper: { kind: 'model', type: 'llm' } },
+        { id: 'gpt-5.4-mini', opper: { kind: 'pool', type: 'llm' } },
+        { id: 'openai/text-embedding-3-small', opper: { kind: 'model', type: 'embedding' } },
+      ],
+    });
+  };
+  try {
+    const ok = await runProbe('llm/opper', { LLM_OPPER_API_KEY: 'op_test' });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.models, ['anthropic/claude-sonnet-4-6', 'claude-sonnet-4-6', 'gpt-5.4-mini']);
+    assert.deepEqual(calls, [
+      { url: 'https://api.opper.ai/v3/compat/models', auth: 'Bearer op_test' },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 
 // 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
 // Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.

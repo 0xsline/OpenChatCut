@@ -47,6 +47,7 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   orcarouter: 'OrcaRouter',
   requesty: 'Requesty',
   cheaperinference: 'Cheaper Inference',
+  opper: 'Opper',
   ollama: 'Ollama',
   lmstudio: 'LM Studio',
 };

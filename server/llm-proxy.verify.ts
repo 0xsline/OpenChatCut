@@ -34,6 +34,7 @@ assert.equal(resolveLlmBaseUrl('orcarouter', ''), 'https://api.orcarouter.ai/v1'
 assert.equal(resolveLlmBaseUrl('requesty', ''), 'https://router.requesty.ai/v1');
 assert.equal(resolveLlmBaseUrl('requesty', 'https://router.eu.requesty.ai/v1'), 'https://router.eu.requesty.ai/v1');
 assert.equal(resolveLlmBaseUrl('cheaperinference', ''), 'https://api.cheaperinference.com/v1');
+assert.equal(resolveLlmBaseUrl('opper', ''), 'https://api.opper.ai/v3/compat');
 assert.equal(resolveLlmBaseUrl('gemini', ''), 'https://generativelanguage.googleapis.com/v1beta');
 assert.equal(resolveLlmBaseUrl('openai', 'https://api.openai.com', ''), 'https://api.openai.com/v1');
 assert.equal(resolveLlmBaseUrl('anthropic', 'https://relay.test/api', ''), 'https://relay.test/api/v1');
@@ -41,6 +42,7 @@ assert.equal(llmOperationPath('kimi'), '/chat/completions');
 assert.equal(llmOperationPath('orcarouter'), '/chat/completions');
 assert.equal(llmOperationPath('requesty'), '/chat/completions');
 assert.equal(llmOperationPath('cheaperinference'), '/chat/completions');
+assert.equal(llmOperationPath('opper'), '/chat/completions');
 
 // ── llmHeaders: Inject upstream authentication according to the protocol (google=x-goog-api-key;anthropic=x-api-key; the rest Bearer) ──
 {
@@ -54,6 +56,7 @@ assert.equal(llmOperationPath('cheaperinference'), '/chat/completions');
     LLM_ORCAROUTER_API_KEY: 'ork-1',
     LLM_REQUESTY_API_KEY: 'rqsty-1',
     LLM_CHEAPERINFERENCE_API_KEY: 'ci_live_1',
+    LLM_OPPER_API_KEY: 'op-1',
     LLM_XAI_OAUTH_API_KEY: 'stale-oauth-token',
     LLM_API_KEY: 'ak-1',
   } as Record<string, string>);
@@ -73,6 +76,8 @@ assert.equal(llmOperationPath('cheaperinference'), '/chat/completions');
     'Requesty uses its own provider key as an OpenAI-compatible Bearer');
   assert.deepEqual(llmHeaders(reqFor('cheaperinference')), { authorization: 'Bearer ci_live_1' },
     'Cheaper Inference uses its own provider key as an OpenAI-compatible Bearer');
+  assert.deepEqual(llmHeaders(reqFor('opper')), { authorization: 'Bearer op-1' },
+    'Opper uses its own provider key as an OpenAI-compatible Bearer');
   assert.deepEqual(llmHeaders(reqFor('anthropic')), { 'x-api-key': 'ak-1', 'anthropic-version': '2023-06-01' }, 'anthropic x-api-key(经遗留迁移)');
   assert.deepEqual(llmHeaders(reqFor('xai-oauth')), {}, 'xAI OAuth 不回退到可能失效的持久化 token');
   assert.match(llmErrorMessage(401, reqFor('gemini')), /Gemini.*设置.*API Key/, '认证错误给设置入口');
