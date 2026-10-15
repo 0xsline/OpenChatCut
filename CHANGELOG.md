@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / 未发布
 
+## [0.2.17] - 2026-10-15
+
 ### Added / 新增
 
 - The built-in Agent can browse and import local media in a browser-hosted editor once `AGENT_IMPORT_ROOTS` lists the directories to expose, reaching the same probe/hash/dedupe chain the desktop app uses; the desktop app keeps its default access (#185).
@@ -17,6 +19,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Doubao 配音改走火山新版音频生成接口 `POST /api/v3/tts/create`，`X-Api-Key` 单头鉴权，Base URL 填完整接口地址也能正常请求；配置项改为 `DOUBAO_TTS_API_KEY` + `DOUBAO_TTS_MODEL`（默认 `seed-audio-1.0`），旧的 App ID / Access Key / 音色资源 ID 不再使用，需用新版控制台的 API Key 重填。支持 `speedRatio` / `loudnessRatio` / 原生 `pitch`，`emotion` / `emotionScale` / `performancePrompt` / 方言不再支持。
   Doubao TTS now uses the new Volcengine audio-generation endpoint `POST /api/v3/tts/create` with single-header `X-Api-Key` auth, and accepts a full endpoint URL as Base URL. Config is now `DOUBAO_TTS_API_KEY` + `DOUBAO_TTS_MODEL` (default `seed-audio-1.0`); the old App ID / Access Key / resource ID are removed, refill with a new-console API key. Supports `speedRatio` / `loudnessRatio` / native `pitch`; `emotion` / `emotionScale` / `performancePrompt` / dialect are no longer supported.
+
+### Fixed / 修复
+
+- Move left/right to boundary (`Ctrl + E` / `Ctrl + R`) now fires on Windows and Linux; every shortcut catalog row is asserted to match its advertised chord on both platforms (#202, #203).
+  「左贴边 / 右贴边」（`Ctrl + E` / `Ctrl + R`）在 Windows 与 Linux 上恢复可用；新增断言要求快捷键目录里每一行在两种平台都能被自己的写法命中（#202、#203）。
+- Desktop whisper.cpp transcripts group BPE tokens into words: multi-token words (Russian, German compounds, …) no longer split with inner spaces, punctuation stays attached to its word, and scripts without spaces (Chinese, Japanese, Thai) still split per chunk (#206, #207).
+  桌面端 whisper.cpp 转写按 BPE 规则把 token 还原成词：俄语、德语复合词等多 token 词不再被拆开并插入空格，标点跟随其所属单词；中日泰等无空格文字仍按块切分（#206、#207）。
+- Windows verification gates pass on a stock checkout, and verification suites no longer read or write the developer's real profile (`USERPROFILE`) (#208, #209, #210, #211).
+  Windows 上验证门禁在全新检出即可通过；验证套件不再读写开发者真实用户目录（`USERPROFILE`）（#208、#209、#210、#211）。
+- Preview: the CC button and the rendered picture share one caption-visibility decision, hallucinated ASR words no longer silence an audio clip, and transcript windows starting past the end of the media are rejected (#213).
+  预览：字幕开关与画面共用同一可见性判定，幻觉出的 ASR 词不再把音频片段静音，转写窗口越过素材末尾时会被拒绝（#213）。
+- Internal: `server/key-probes.ts` split back under the 500-line gate (MiniMax/Doubao HTTP-200 business-code checks moved into `server/key-probe-result.ts`), unbreaking `npm test` on `main`.
+  内部：`server/key-probes.ts` 拆回 500 行门禁以内（MiniMax/Doubao 的「HTTP 200 业务码」后检移入 `server/key-probe-result.ts`），修复 `main` 上 `npm test` 的红灯。
 
 ## [0.2.16] - 2026-10-07
 
