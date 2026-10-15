@@ -1,8 +1,10 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { CopilotClient, RuntimeConnection, type ModelInfo } from '@github/copilot-sdk';
+import { CopilotClient, RuntimeConnection, type CopilotClientOptions, type ModelInfo } from '@github/copilot-sdk';
 import type { CopilotAccountSummary, CopilotAgentModel } from '../../shared/copilot-agent.ts';
 import { resolveCopilotCli } from './installation.ts';
+import { copilotOAuth } from './oauth-service.ts';
+import { CopilotAuthError, type CopilotCredentialLease } from './oauth-types.ts';
 
 /**
  * Isolated Copilot home, mirroring `CODEX_HOME = ~/.openchatcut/codex`. Keeps
@@ -50,6 +52,16 @@ function childEnvironment(): Record<string, string> {
 
 let started: Promise<CopilotClient> | null = null;
 
+export function copilotRuntimeOptions(path: string, gitHubToken?: string): CopilotClientOptions {
+  return {
+    mode: 'empty',
+    connection: RuntimeConnection.forStdio({ path, env: childEnvironment() }),
+    baseDirectory: COPILOT_HOME,
+    ...(gitHubToken ? { gitHubToken, useLoggedInUser: false } : {}),
+    logLevel: 'error',
+  };
+}
+
 async function runtimeRequest<T>(request: Promise<T>, operation: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -66,18 +78,13 @@ async function runtimeRequest<T>(request: Promise<T>, operation: string): Promis
   }
 }
 
-async function startCopilotClient(): Promise<CopilotClient> {
+async function startCopilotClient(gitHubToken?: string): Promise<CopilotClient> {
   const path = await resolveCopilotCli();
   if (!path) throw new CopilotProcessError(
     'Copilot CLI not found. Install it (`brew install copilot` or `npm i -g @github/copilot`) '
     + 'or set OPENCHATCUT_COPILOT_PATH.',
   );
-  const client = new CopilotClient({
-    mode: 'empty',
-    connection: RuntimeConnection.forStdio({ path, env: childEnvironment() }),
-    baseDirectory: COPILOT_HOME,
-    logLevel: 'error',
-  });
+  const client = new CopilotClient(copilotRuntimeOptions(path, gitHubToken));
   try {
     await runtimeRequest(client.start(), 'startup');
     return client;
@@ -93,17 +100,42 @@ async function startCopilotClient(): Promise<CopilotClient> {
  * Lazily start a single shared runtime. The SDK multiplexes sessions over one
  * process, so unlike the Codex client there is no need to respawn per turn.
  */
-export function copilotClient(): Promise<CopilotClient> {
-  started ??= startCopilotClient().catch((error) => {
+export async function copilotClient(): Promise<CopilotClient> {
+  let token: string | undefined;
+  try {
+    token = await copilotOAuth()?.accessToken();
+  } catch (error) {
+    if (error instanceof CopilotAuthError) throw new CopilotProcessError(error.message);
+    throw error;
+  }
+  return sharedClient(token);
+}
+
+function sharedClient(token?: string): Promise<CopilotClient> {
+  started ??= startCopilotClient(token).catch((error) => {
     started = null;
     throw error;
   });
   return started;
 }
 
+export async function withCopilotClient<T>(operation: (client: CopilotClient) => Promise<T>): Promise<T> {
+  let lease: CopilotCredentialLease | undefined;
+  try {
+    lease = await copilotOAuth()?.acquireForTurn();
+    return await operation(await sharedClient(lease?.token));
+  } catch (error) {
+    if (error instanceof CopilotAuthError) throw new CopilotProcessError(error.message);
+    throw error;
+  } finally {
+    lease?.release();
+  }
+}
+
 export async function stopCopilotClient(): Promise<void> {
   const pending = started;
   started = null;
+  cache = null;
   if (!pending) return;
   await pending.then((client) => client.stop()).catch(() => undefined);
 }

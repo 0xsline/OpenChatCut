@@ -5,7 +5,7 @@ import type {
   CopilotTurnRequest,
   CopilotTurnStreamEvent,
 } from '../../shared/copilot-agent.ts';
-import { copilotClient, CopilotProcessError } from './client.ts';
+import { withCopilotClient, CopilotProcessError } from './client.ts';
 
 /**
  * Idle cap, not a wall-clock cap. A long agentic turn (scouting footage, placing
@@ -315,26 +315,27 @@ export async function runCopilotTurn(
   if (sessions.has(request.requestId)) {
     throw new CopilotProcessError(`Copilot turn ${request.requestId} is already running.`);
   }
-  const client = await copilotClient();
-  let active: TurnSession | undefined;
-  let armIdle = (): void => undefined;
-  const session = await client.createSession(copilotSessionConfig(request, () => active));
-  active = {
-    requestId: request.requestId, session, pendingTools: new Map(), terminal: false,
-    emit: (event) => { armIdle(); emit(event); },
-  };
-  sessions.set(request.requestId, active);
-  const lifecycle = turnLifecycle(active);
-  const watchdog = idleWatchdog(lifecycle);
-  armIdle = watchdog.arm;
-  trackSessionEvents(lifecycle, options.contextWindowTokens ?? null);
-  armIdle();
-  try {
-    await sendSessionPrompt(lifecycle, request.prompt, signal);
-  } finally {
-    watchdog.stop();
-    await disconnectTurn(active);
-  }
-  const message = lifecycle.error();
-  emit(message ? { type: 'error', message } : { type: 'done' });
+  return withCopilotClient(async (client) => {
+    let active: TurnSession | undefined;
+    let armIdle = (): void => undefined;
+    const session = await client.createSession(copilotSessionConfig(request, () => active));
+    active = {
+      requestId: request.requestId, session, pendingTools: new Map(), terminal: false,
+      emit: (event) => { armIdle(); emit(event); },
+    };
+    sessions.set(request.requestId, active);
+    const lifecycle = turnLifecycle(active);
+    const watchdog = idleWatchdog(lifecycle);
+    armIdle = watchdog.arm;
+    trackSessionEvents(lifecycle, options.contextWindowTokens ?? null);
+    armIdle();
+    try {
+      await sendSessionPrompt(lifecycle, request.prompt, signal);
+    } finally {
+      watchdog.stop();
+      await disconnectTurn(active);
+    }
+    const message = lifecycle.error();
+    emit(message ? { type: 'error', message } : { type: 'done' });
+  });
 }

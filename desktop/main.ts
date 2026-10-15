@@ -15,6 +15,7 @@ import {
 } from 'electron';
 import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
+import { installDesktopCopilotAuth } from './copilot-auth.ts';
 import { createTransparentMovProxy, importLocalMedia } from '../server/local-media-import.ts';
 import {
   createLocalMediaImportHandler,
@@ -328,6 +329,8 @@ function registerDesktopHandlers(trustedOrigin: string): void {
 
 async function boot(): Promise<void> {
   await app.whenReady();
+  const copilotAuth = installDesktopCopilotAuth();
+  app.once('before-quit', () => copilotAuth.dispose());
   if (app.isPackaged) {
     const missing = missingRuntimeAssets(packagedRuntimeAssetChecks({
       resourcesPath: process.resourcesPath,

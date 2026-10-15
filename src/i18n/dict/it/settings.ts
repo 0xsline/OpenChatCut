@@ -147,6 +147,25 @@ const overrides: Record<string, string> = {
   '已登录 ChatGPT': 'Accesso ChatGPT effettuato',
   '凭据与续期均由 Codex CLI 管理。': 'Credenziali e rinnovo sono gestiti da Codex CLI.',
   // ── GitHub Copilot ──
+  '使用 GitHub 登录': 'Accedi con GitHub',
+  '请更新或重新安装桌面应用，然后刷新状态。': 'Aggiorna o reinstalla l’app desktop, quindi aggiorna lo stato.',
+  '打开 GitHub': 'Apri GitHub',
+  '等待 GitHub 授权': 'In attesa dell’autorizzazione GitHub',
+  '使用 GitHub 账号连接你的 Copilot 订阅。': 'Collega il tuo abbonamento Copilot con il tuo account GitHub.',
+  '在 GitHub 页面输入设备代码，完成授权后此处会自动刷新。':
+    'Inserisci il codice dispositivo su GitHub. Questa pagina si aggiornerà automaticamente dopo l’autorizzazione.',
+  '桌面版已内置 Copilot 运行时，无需安装 gh 或单独的 CLI。':
+    'L’app desktop include il runtime Copilot. Non occorre installare gh o una CLI separata.',
+  '已在此应用中连接 GitHub 账号。': 'Il tuo account GitHub è collegato in questa app.',
+  '有效期至 {time}': 'Scade alle {time}',
+  '设备代码已过期，请重新登录。': 'Il codice dispositivo è scaduto. Accedi di nuovo.',
+  'Copilot 返回了无效的验证地址。': 'Copilot ha restituito un URL di verifica non valido.',
+  '正在取消…': 'Annullamento…',
+  '退出此应用的登录': 'Esci da questa app',
+  '仅移除此应用的 OAuth 登录，不会撤销 GitHub 授权或退出其他应用。':
+    'Viene rimosso solo l’accesso OAuth di questa app. L’autorizzazione GitHub non viene revocata e le altre app restano connesse.',
+  '无法读取 Copilot 登录状态，请刷新后重试。': 'Impossibile leggere lo stato di accesso a Copilot. Aggiorna e riprova.',
+  '无法更新 Copilot 登录状态，请稍后重试。': 'Impossibile aggiornare lo stato di accesso a Copilot. Riprova.',
   '版本过低': 'Versione troppo vecchia',
   '正在检查 Copilot CLI…': 'Controllo di Copilot CLI…',
   '正在读取本机 Copilot 运行时状态。': 'Lettura dello stato del runtime Copilot locale.',
@@ -404,6 +423,7 @@ const overrides: Record<string, string> = {
   '基底模型不支持图片输入时（如 DeepSeek 系），图片由所选视觉模型理解后以文本注入。': 'Quando il modello base non supporta immagini (es. DeepSeek), il modello visivo scelto le interpreta e le inietta come testo.',
   '图片与时间线帧由所选视觉模型理解后以文本注入。': 'Immagini e frame timeline sono interpretati dal modello visivo scelto e inseriti come testo.',
   '主模型不支持图片时维持现状（图片剥离为文本）。': 'Mantieni il comportamento attuale quando il modello principale non supporta immagini (immagini convertite in testo).',
+  '忽略': 'Ignora',
   '不描述图片，一律剥离。': 'Non descrivere immagini; estrai sempre solo testo.',
   '内置 Agent 需要 Anthropic API Key。Claude Code 订阅用户请通过「外部 Agent 接入 (MCP)」连接；OpenChatCut 不接收 Claude OAuth。': 'L’Agent integrato richiede una chiave API Anthropic. Gli utenti Claude Code possono collegarsi tramite “Agent esterno (MCP)”; OpenChatCut non accetta OAuth di Claude.',
   '该模型不在内置目录，以上数值为估算（上下文 {context} / 输出 {output}）。若与实际不符，点「展开」手动修改。': 'Questo modello non è nel catalogo integrato: i valori sono stimati (contesto {context} / output {output}). Se non corrispondono, apri “Espandi” e modificali manualmente.',
