@@ -29,12 +29,14 @@ import {
   type ServerRunDraftToolBody,
 } from './serverRunDraftStore';
 import { ServerRunTerminalHandoffs } from './serverRunTerminalHandoff';
+import { landableOperations, projectWriteOutcome } from './serverRunProjectWrite';
 import { permanentServerRunRecoveryError } from './serverRunRecovery';
 import type {
   ServerRunPreparation,
   ServerRunRecovery,
   ServerRunStart,
   ServerRunTerminal,
+  ServerRunProjectWrite,
   ServerRunTerminalResolution,
   ServerRunToolAction,
 } from './serverRunProtocol';
@@ -52,7 +54,6 @@ export function serverRunDraftBaseChanged(
 ): boolean {
   return projectDocsDiffer(baseDoc, currentDoc);
 }
-
 
 function turnContext(ctx: AgentContext, doc: ProjectDoc) {
   const draft = makeDraft(doc);
@@ -253,12 +254,12 @@ async function persistToolAction(
   projectId: string,
   input: ServerRunToolAction,
   ref: ProposalRunRef,
-): Promise<void> {
+): Promise<ServerRunProjectWrite> {
   const turn = ref.current.turn;
   if (!turn || turn.runId !== input.runId) {
     throw new Error('Server run proposal state is unavailable.');
   }
-  if (ref.current.seenToolCalls.has(input.toolCallId)) return;
+  if (ref.current.seenToolCalls.has(input.toolCallId)) return 'none';
   if (input.error === undefined && !isFailedToolResult(input.result) && input.actions.length) {
     replayActions(turn.draft.getDoc(), input.actions);
   }
@@ -271,11 +272,14 @@ async function persistToolAction(
     actions: input.actions,
   });
   ref.current.seenToolCalls.add(input.toolCallId);
+  const before = landableOperations(turn);
   applyToolActions(turn, input, projectId);
+  const added = landableOperations(turn);
   // Pool imports land now, not when the run ends: the file is already on disk and the
   // model reads the pool back on its next step, so the user sees it at the same time.
   if (turn.persistentOps.length) await commitPersistentOperations(turn);
   if (turn.liveEdits && turn.ops.length) await landLiveEdits(turn, input, projectId);
+  return projectWriteOutcome(before, added, landableOperations(turn));
 }
 
 /**
