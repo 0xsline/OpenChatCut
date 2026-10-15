@@ -1,7 +1,7 @@
 import {
   defaultModelForProvider,
   normalizeLlmProvider,
-  normalizeOpenAiApiMode,
+  resolveModelRequestPolicy,
   requireLlmProvider,
 } from '../../shared/llm-providers';
 import { resolveLlmProviderConfig } from '../llm-config';
@@ -35,7 +35,7 @@ export function resolveRunExecution(
   const effectiveModel = backend === 'copilot'
     ? requestedModel
     : requestedModel || config.model || defaultModelForProvider(effectiveProvider);
-  const openAiApiMode = normalizeOpenAiApiMode(body.openAiApiMode);
+  const openAiApiMode = resolveModelRequestPolicy(effectiveProvider, body.openAiApiMode).apiMode;
   const tools = resolveServerRunToolCatalog(input.tools, askOnly);
   return {
     messages: input.messages,

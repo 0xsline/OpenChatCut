@@ -4,6 +4,7 @@ import {
   generateText,
   jsonSchema,
   simulateReadableStream,
+  streamText,
   tool,
   type ModelMessage,
   type ToolResultPart,
@@ -48,6 +49,8 @@ assert.equal(normalizeLlmProvider('glm'), 'glm');
 assert.equal(normalizeLlmProvider('OpenRouter'), 'openrouter');
 assert.equal(normalizeLlmProvider('OFox'), 'ofox');
 assert.equal(normalizeLlmProvider('OrcaRouter'), 'orcarouter');
+assert.equal(normalizeLlmProvider('Requesty'), 'requesty');
+assert.equal(normalizeLlmProvider('CheaperInference'), 'cheaperinference');
 assert.equal(normalizeLlmProvider('unexpected'), 'anthropic');
 assert.equal(defaultModelForProvider('anthropic'), 'claude-fable-5');
 assert.equal(defaultModelForProvider('openai'), 'gpt-5');
@@ -57,14 +60,19 @@ assert.equal(defaultModelForProvider('glm'), 'glm-5.2');
 assert.equal(defaultModelForProvider('openrouter'), 'openrouter/auto');
 assert.equal(defaultModelForProvider('ofox'), 'deepseek/deepseek-v3.2');
 assert.equal(defaultModelForProvider('orcarouter'), 'orcarouter/auto');
+assert.equal(defaultModelForProvider('requesty'), 'claude-sonnet-5');
+assert.equal(defaultModelForProvider('cheaperinference'), 'gpt-5.4-mini');
 assert.equal(providerApiPath('anthropic'), '/messages');
 assert.equal(providerApiPath('openai'), '/responses');
 assert.equal(providerApiPath('openai', 'chat'), '/chat/completions');
+assert.equal(providerApiPath('xai-oauth', 'chat'), '/responses');
 assert.equal(providerApiPath('kimi'), '/chat/completions');
 assert.equal(providerApiPath('gemini'), '/models');
 assert.equal(providerApiPath('openrouter'), '/chat/completions');
 assert.equal(providerApiPath('ofox'), '/chat/completions');
 assert.equal(providerApiPath('orcarouter'), '/chat/completions');
+assert.equal(providerApiPath('requesty'), '/chat/completions');
+assert.equal(providerApiPath('cheaperinference'), '/chat/completions');
 
 const strippedVisualMessages = withoutModelImages([{
   role: 'user',
@@ -91,6 +99,8 @@ assert.equal((await getLanguageModel('gemini', 'test-model')).provider, 'google.
 assert.equal((await getLanguageModel('openrouter', 'openrouter/auto')).provider, 'openrouter.chat');
 assert.equal((await getLanguageModel('ofox', 'deepseek/deepseek-v3.2')).provider, 'ofox.chat');
 assert.equal((await getLanguageModel('orcarouter', 'orcarouter/auto')).provider, 'orcarouter.chat');
+assert.equal((await getLanguageModel('requesty', 'openai/gpt-4o-mini')).provider, 'requesty.chat');
+assert.equal((await getLanguageModel('cheaperinference', 'gpt-5.4-mini')).provider, 'cheaperinference.chat');
 assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
 assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
 assert.deepEqual(getLanguageModelProviderOptions('minimax'), {
@@ -180,6 +190,67 @@ assert.deepEqual(serialized.map(({ url, body, provider }) => ({
   { path: '/llm/chat/completions', model: 'kimi-test', provider: 'kimi' },
   { path: '/llm/responses', model: 'grok-test', provider: 'xai' },
 ]);
+
+// #187: compatible gateways send empty metadata on continuation tool deltas.
+// Exercise the real provider parsers, including interleaved calls and split UTF-8.
+{
+  const chunk = (toolCalls: unknown[], finishReason: string | null = null) => ({
+    id: 'completion-187', object: 'chat.completion.chunk', created: 1, model: 'step-5-preview',
+    choices: [{ index: 0, delta: { role: 'assistant', content: '', tool_calls: toolCalls }, finish_reason: finishReason }],
+  });
+  const events = [
+    chunk([{ index: 0, id: 'call-0', type: 'function', function: { name: 'read_project', arguments: '{"view":' } }]),
+    chunk([{ index: 1, id: 'call-1', type: 'function', function: { name: 'read_project', arguments: '{"view":' } }]),
+    chunk([{ index: 1, id: '', type: '', function: { name: '', arguments: '"概览"}' } }]),
+    chunk([{ index: 0, function: { arguments: '"timeline"}' } }]),
+    chunk([], 'tool_calls'),
+  ];
+  let continuationType = '';
+  globalThis.fetch = async () => {
+    const fixture = structuredClone(events);
+    fixture[2]!.choices[0]!.delta.tool_calls = [{
+      index: 1, id: '', type: continuationType, function: { name: '', arguments: '"概览"}' },
+    }];
+    const bytes = new TextEncoder().encode(fixture.map((event) => `data: ${JSON.stringify(event)}\r\n\r\n`).join('') + 'data: [DONE]\r\n\r\n');
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7));
+        controller.close();
+      },
+    }), { headers: { 'content-type': 'text/event-stream' } });
+  };
+  const collect = async (provider: 'openai' | 'stepfun') => {
+    const result = streamText({
+      model: await getLanguageModel(provider, 'step-5-preview', 'chat'),
+      prompt: 'inspect both views',
+      maxRetries: 0,
+      onError: () => {}, // The invalid-type case below asserts the emitted error.
+      tools: { read_project: tool({ inputSchema: jsonSchema<{ view: string }>({
+        type: 'object', properties: { view: { type: 'string' } }, required: ['view'],
+      }) }) },
+    });
+    const parts = [];
+    for await (const part of result.fullStream) parts.push(part);
+    return parts;
+  };
+  try {
+    for (const provider of ['openai', 'stepfun'] as const) {
+      const parts = await collect(provider);
+      assert.deepEqual(parts.filter((part) => part.type === 'error'), [], `${provider}: blank continuation types must not abort the stream`);
+      assert.deepEqual(parts.filter((part) => part.type === 'tool-call').map((part) => ({
+        id: part.toolCallId, name: part.toolName, input: part.input,
+      })), [
+        { id: 'call-0', name: 'read_project', input: { view: 'timeline' } },
+        { id: 'call-1', name: 'read_project', input: { view: '概览' } },
+      ]);
+    }
+    continuationType = 'invalid-tool-type';
+    assert.ok((await collect('openai')).some((part) => part.type === 'error'),
+      'nonempty invalid types must still fail SDK validation');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
 
 const legacy = normalizeLlmMessages([
   { role: 'user', content: '把第一段放到时间线' },

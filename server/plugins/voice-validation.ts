@@ -30,28 +30,24 @@ function validateEleven(input: VoiceRequest): void {
     throw new Error('optimizeStreamingLatency must be an integer from 0 to 4');
   }
   if (input.pronunciationDictionaryLocators && input.pronunciationDictionaryLocators.length > 3) throw new Error('ElevenLabs supports at most 3 pronunciation dictionaries');
-  reject([input.speedRatio, input.emotion, input.emotionScale, input.loudnessRatio, input.pitch, input.volume, input.performancePrompt,
-    input.explicitDialect, input.sampleRate, input.bitrate, input.audioFormat, input.channel, input.forceCbr, input.languageBoost,
+  reject([input.speedRatio, input.emotion, input.loudnessRatio, input.pitch, input.volume,
+    input.sampleRate, input.bitrate, input.audioFormat, input.channel, input.forceCbr, input.languageBoost,
     input.stream, input.excludeAggregatedAudio, input.textNormalization, input.latexRead, input.pronunciations,
     input.timbreWeights, input.voiceModify, input.subtitleEnable, input.subtitleType],
   'ElevenLabs does not accept Doubao/MiniMax-only voice parameters');
 }
 
-function validateDoubao(input: VoiceRequest, voiceId: string): void {
+function validateDoubao(input: VoiceRequest): void {
   range(input.speedRatio, 0.5, 2, 'speedRatio');
-  range(input.emotionScale, 1, 5, 'emotionScale');
   range(input.loudnessRatio, 0.5, 2, 'loudnessRatio');
   range(input.pitch, -12, 12, 'pitch');
-  if (input.performancePrompt && input.performancePrompt.length > 200) throw new Error('performancePrompt must be 200 characters or fewer');
-  if (input.emotionScale != null && !input.emotion) throw new Error('emotionScale requires emotion');
-  if (input.explicitDialect && voiceId !== 'vivi') throw new Error('explicitDialect is only supported by the Vivi preset');
   reject([input.modelId, input.stability, input.speed, input.similarityBoost, input.style, input.useSpeakerBoost, input.languageCode,
     input.seed, input.outputFormat, input.optimizeStreamingLatency, input.enableLogging, input.applyTextNormalization,
     input.applyLanguageTextNormalization, input.pronunciationDictionaryLocators, input.previousText, input.nextText,
     input.previousRequestIds, input.nextRequestIds, input.volume, input.sampleRate, input.bitrate, input.audioFormat, input.channel,
     input.forceCbr, input.stream, input.excludeAggregatedAudio, input.languageBoost, input.textNormalization, input.latexRead,
-    input.pronunciations, input.timbreWeights, input.voiceModify, input.subtitleEnable, input.subtitleType],
-  'Doubao does not accept ElevenLabs/MiniMax-only voice parameters');
+    input.pronunciations, input.timbreWeights, input.voiceModify, input.subtitleEnable, input.subtitleType, input.emotion],
+  'Doubao (seed-audio-1.0) accepts only text, voiceId, speedRatio, loudnessRatio, and pitch');
 }
 
 function validateMinimax(input: VoiceRequest, text: string): void {
@@ -87,8 +83,8 @@ function validateMinimax(input: VoiceRequest, text: string): void {
   reject([input.modelId, input.stability, input.similarityBoost, input.style, input.useSpeakerBoost, input.languageCode,
     input.seed, input.outputFormat, input.optimizeStreamingLatency, input.enableLogging, input.applyTextNormalization,
     input.applyLanguageTextNormalization, input.pronunciationDictionaryLocators, input.previousText, input.nextText,
-    input.previousRequestIds, input.nextRequestIds, input.speedRatio, input.emotionScale, input.loudnessRatio,
-    input.performancePrompt, input.explicitDialect], 'MiniMax does not accept ElevenLabs/Doubao-only voice parameters');
+    input.previousRequestIds, input.nextRequestIds, input.speedRatio, input.loudnessRatio],
+    'MiniMax does not accept ElevenLabs/Doubao-only voice parameters');
 }
 
 /** Inworld / Fish Audio / Speechify only take text, voiceId, and an optional modelId override. */
@@ -96,8 +92,8 @@ function validateMinimalProvider(input: VoiceRequest, label: string): void {
   reject([input.stability, input.speed, input.similarityBoost, input.style, input.useSpeakerBoost, input.languageCode,
     input.seed, input.outputFormat, input.optimizeStreamingLatency, input.enableLogging, input.applyTextNormalization,
     input.applyLanguageTextNormalization, input.pronunciationDictionaryLocators, input.previousText, input.nextText,
-    input.previousRequestIds, input.nextRequestIds, input.speedRatio, input.emotion, input.emotionScale, input.loudnessRatio,
-    input.pitch, input.volume, input.performancePrompt, input.explicitDialect, input.sampleRate, input.bitrate,
+    input.previousRequestIds, input.nextRequestIds, input.speedRatio, input.emotion, input.loudnessRatio,
+    input.pitch, input.volume, input.sampleRate, input.bitrate,
     input.audioFormat, input.channel, input.forceCbr, input.stream, input.excludeAggregatedAudio, input.languageBoost,
     input.textNormalization, input.latexRead, input.pronunciations, input.timbreWeights, input.voiceModify,
     input.subtitleEnable, input.subtitleType],
@@ -122,8 +118,8 @@ function validateAiProvider(input: VoiceRequest, provider: 'openai' | 'gemini' |
   reject([input.stability, input.similarityBoost, input.style, input.useSpeakerBoost, input.seed,
     input.optimizeStreamingLatency, input.enableLogging, input.applyTextNormalization, input.applyLanguageTextNormalization,
     input.pronunciationDictionaryLocators, input.previousText, input.nextText, input.previousRequestIds, input.nextRequestIds,
-    input.speedRatio, input.emotion, input.emotionScale, input.loudnessRatio, input.pitch, input.volume,
-    input.performancePrompt, input.explicitDialect, input.sampleRate, input.bitrate, input.audioFormat, input.channel,
+    input.speedRatio, input.emotion, input.loudnessRatio, input.pitch, input.volume,
+    input.sampleRate, input.bitrate, input.audioFormat, input.channel,
     input.forceCbr, input.stream, input.excludeAggregatedAudio, input.languageBoost, input.textNormalization,
     input.latexRead, input.pronunciations, input.timbreWeights, input.voiceModify, input.subtitleEnable, input.subtitleType],
   `${provider} only accepts text, voiceId, modelId, speed, languageCode, outputFormat, and instructions`);
@@ -141,7 +137,7 @@ export function validateVoiceRequest(input: VoiceRequest): ValidVoiceRequest {
   if (!text) throw new Error('text is required');
   if (!voiceId && !(provider === 'minimax' && input.timbreWeights?.length)) throw new Error('voiceId is required');
   if (provider === 'elevenlabs') validateEleven(input);
-  else if (provider === 'doubao') validateDoubao(input, voiceId);
+  else if (provider === 'doubao') validateDoubao(input);
   else if (provider === 'minimax') validateMinimax(input, text);
   else if (isAiProvider(provider)) validateAiProvider(input, provider);
   else {

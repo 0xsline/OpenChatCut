@@ -36,10 +36,9 @@ jobs:
           cache: npm
       - run: npm ci --loglevel=error
         env:
-          # onnxruntime-node@1.22.0's postinstall downloads extra platform binaries
-          # from NuGet, which misses the win-x64 CUDA .so on ubuntu CI runners and
-          # fails. CI only validates logic and doesn't load the desktop-native ORT
-          # runtime, so skip that download.
+          # onnxruntime-node's postinstall downloads its optional CUDA provider from
+          # NuGet on linux-x64 (several hundred MB). CI only validates logic and
+          # doesn't load the desktop-native ORT runtime, so skip that download.
           ONNXRUNTIME_NODE_INSTALL: 'skip'
       - name: Install ffmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
@@ -76,3 +75,9 @@ jobs:
       # Linux skips exact frame mapping; macOS executes every existing assertion.
       - name: Verify effect and transition frame synchronization
         run: node src/gl/clipFxExport.verify.mjs
+      # Windows server renders decode video with <OffthreadVideo> (#162). Pin
+      # that decoder's frame sync and Player parity here at full strength too.
+      - name: Verify frame synchronization through the Windows video decoder
+        run: node src/gl/clipFxExport.offthread.verify.mjs
+      - name: Verify both server video decoders show the Player's frames
+        run: node remotion/video-decoder-render.verify.mjs

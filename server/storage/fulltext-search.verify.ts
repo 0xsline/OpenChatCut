@@ -5,17 +5,17 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isolateVerifyHome } from '../../shared/verify-home.ts';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-fts-verify-'));
-  const previousHome = process.env.HOME;
-  process.env.HOME = root;
-  process.env.OPENCHATCUT_SQLITE_STORE = '1';
+  const restoreHome = isolateVerifyHome(root);
+  const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
+  delete process.env.OPENCHATCUT_SQLITE_STORE;
 
   try {
-    const { initializeSqliteProjectStore, SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
-    process.env[SQLITE_STORE_ENV] = '1';
-    await initializeSqliteProjectStore();
+    // Runtime profile is cached at module load; install the isolated HOME first.
+    const { initializeSqliteProjectStore, resetSqliteStoreForTests, sqliteWriteEntry } = await import('./sqlite-store.ts');
     const {
       indexStoreKey,
       removeStoreKey,
@@ -25,6 +25,8 @@ async function main(): Promise<void> {
     } = await import('./fulltext-search.ts');
     const { segmentForIndex } = await import('./search-tokenizer.ts');
 
+    assert.deepEqual(searchContent('字幕'), [], 'no partial database access before startup');
+    await initializeSqliteProjectStore();
     // ── tokenizer: Chinese 2-char words and mixed text ──
     assert.equal(segmentForIndex('字幕'), '字幕', 'a 2-char word must stay whole');
     assert.ok(segmentForIndex('把背景音乐的音量降低').includes('背景音乐'), 'domain words must segment');
@@ -97,7 +99,6 @@ async function main(): Promise<void> {
 
     // ── rebuild (post-migration backfill) ──
     // Seed a kv row first: rebuild scans the kv table (created by store writes).
-    const { sqliteWriteEntry } = await import('./sqlite-store.ts');
     await sqliteWriteEntry('chat:rebuild-src', {
       messages: [{ role: 'user', text: '重建索引测试文本' }],
     });
@@ -106,15 +107,22 @@ async function main(): Promise<void> {
     assert.ok(searchContent('重建索引').some((hit) => hit.ref.startsWith('chat:rebuild-src:')),
       'rebuild must restore hits');
 
-    // ── search unavailable without SQLite enabled ──
-    process.env[SQLITE_STORE_ENV] = '0';
+    // Persisted search is available after restart without any backend switch.
+    process.env.OPENCHATCUT_SQLITE_STORE = '0';
+    resetSqliteStoreForTests();
+    assert.deepEqual(searchContent('重建索引'), [], 'cached search connections respect readiness');
     resetSearchForTests();
-    assert.equal(searchContent('字幕').length, 0, 'search must be a no-op without the SQLite store');
+    await initializeSqliteProjectStore();
+    assert.ok(searchContent('重建索引').some((hit) => hit.ref.startsWith('chat:rebuild-src:')),
+      'search survives restart and ignores the obsolete opt-out');
+    resetSearchForTests();
+    resetSqliteStoreForTests();
 
     console.log('✓ fulltext-search verify: tokenizer/index/search/ranking/scoping/delete-sync/rebuild all passed');
   } finally {
-    if (previousHome === undefined) delete process.env.HOME;
-    else process.env.HOME = previousHome;
+    if (previousSwitch === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;
+    else process.env.OPENCHATCUT_SQLITE_STORE = previousSwitch;
+    restoreHome();
     rmSync(root, { recursive: true, force: true });
   }
 }

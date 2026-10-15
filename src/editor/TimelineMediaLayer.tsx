@@ -5,19 +5,21 @@ import {
   type AudioProps as BrowserAudioProps,
   type VideoProps as BrowserVideoProps,
 } from '@remotion/media';
-import { AbsoluteFill, Audio as ServerAudio, Img, Sequence, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Audio as ServerAudio, Img, OffthreadVideo, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
 import { ClipFx } from '../gl/ClipFx';
 import { firstGlEffect } from '../gl/clipEffects';
 import { selectEffectPreviewAdapter, type SelectedPreviewStatusListener } from '../gl/previewAdapter';
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
 import { voiceIsolationMix } from '../audio/voiceMix';
+import { audibleTranscriptSegments } from './audioTranscriptGuard';
 import { backgroundFillAppearanceFor, backgroundFillFilter } from './backgroundFill';
 import { appearanceAt } from './clipFade';
 import { zoomAt } from './zoom';
 import { clipFadeFactor, clipOpacityAt } from './clipFade';
 import { volumeAtFrame } from './keyframes';
 import { sourceFrameAt } from './sourceLimit';
+import { offthreadTrimBefore, offthreadVideoTransparent, useRuntimeVideoDecoder } from './serverVideoDecoder';
 import type { AspectFit, TimelineItem, TransitionItem } from './types';
 import { isAudioTransition } from './types';
 import { clampVisualBorderRadius, objectFitInsideVisualFrame, visibleVisualFrameRect } from './visualFrameGeometry';
@@ -33,7 +35,14 @@ function RuntimeAudio({ browserRenderer, ...props }: BrowserAudioProps & { brows
 }
 
 function RuntimeVideo({ browserRenderer, style, ...props }: RuntimeVideoProps) {
-  void browserRenderer;
+  // The Player and browser export always use @remotion/media; only a server
+  // render the server marked 'offthread' (Windows, #162) decodes with FFmpeg.
+  const decoder = useRuntimeVideoDecoder(browserRenderer);
+  const { fps } = useVideoConfig();
+  if (decoder === 'offthread') {
+    return <OffthreadVideo {...props} trimBefore={offthreadTrimBefore(props.trimBefore, fps)} style={style}
+      transparent={offthreadVideoTransparent(props.src)} />;
+  }
   const { objectFit, ...browserStyle } = style ?? {};
   return <BrowserVideo {...props} style={browserStyle} objectFit={objectFit as BrowserVideoProps['objectFit']} />;
 }
@@ -108,7 +117,7 @@ function audioCrossfadeMultiplier(item: TimelineItem, localFrame: number, transi
   return multiplier;
 }
 
-export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browserRenderer }: {
+export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browserRenderer, sourceDurationInFrames }: {
   item: TimelineItem;
   fps: number;
   muted: boolean;
@@ -116,15 +125,25 @@ export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, 
   transitions?: TransitionItem[];
   premountFor: number;
   browserRenderer: boolean;
+  /** Length of the underlying media, when the pool knows it. */
+  sourceDurationInFrames?: number;
 }) {
   const volumeAt = (localFrame: number) => (muted ? 0 : volumeAtFrame(item, localFrame));
   if (!item.src) return null;
-  if (hasOperationalTranscript(item)) {
-    const deleted = new Set(item.deletedWordIdx ?? []);
-    return <>{keptSegments(item.transcript, deleted, fps, item.startFrame, {
+  // Hallucinated ASR words on non-speech audio must not silence the clip
+  // (see audibleTranscriptSegments); null means play the clip plainly.
+  const segments = hasOperationalTranscript(item)
+    ? audibleTranscriptSegments(keptSegments(item.transcript, new Set(item.deletedWordIdx ?? []), fps, item.startFrame, {
       ...itemEditOpts(item),
       window: itemWindow(item),
-    }).map((segment, index) => (
+    }), {
+      durationInFrames: item.durationInFrames,
+      deletedWordCount: item.deletedWordIdx?.length ?? 0,
+      sourceDurationInFrames,
+    })
+    : null;
+  if (segments) {
+    return <>{segments.map((segment, index) => (
       <Sequence key={`${item.id}_${index}`} from={segment.fromFrame} durationInFrames={segment.durFrames} premountFor={premountFor} name={item.name}>
         <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={segment.srcStartFrame} trimAfter={segment.srcEndFrame}
           volume={(frame) => volumeAt(segment.fromFrame - item.startFrame + frame) * gainAt(segment.fromFrame + frame)

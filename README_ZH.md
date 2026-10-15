@@ -197,6 +197,7 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 | AI 生成 | 图片、视频、语音、音乐和音效任务，支持进度追踪 |
 | 素材 | 上传、文件夹、在线图片/视频/音频检索、Firecrawl 视觉素材兜底 |
 | 导出 | MP4、音频、字幕、FCPXML、工程导入导出、导出历史、硬件感知的 H.264 加速和资源感知的导出排队 |
+| 发布 | Agent 通过 Upload-Post 把成片发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky，先预览、确认后才上传 |
 | Agent | 内置对话 Agent、技能系统、提案式编辑、外部 Streamable HTTP MCP |
 
 ---
@@ -258,6 +259,8 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 需要 Node.js 24.x 和 npm。`package.json` 会约束支持的 Node.js 范围，`.nvmrc` 可供 Node 版本管理器直接选择对应主版本。
 
+在 Linux x64 上，`npm install` 还会从 NuGet 下载 ONNX Runtime 可选的 CUDA 组件（数百 MB）。只需 CPU 推理时，可改用 `ONNXRUNTIME_NODE_INSTALL=skip npm install`。
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut
@@ -271,6 +274,8 @@ npm run dev
 ```text
 http://localhost:5199
 ```
+
+编辑器需要浏览器的[安全上下文](https://developer.mozilla.org/zh-CN/docs/Web/Security/Defenses/Secure_Contexts)：请在运行 OpenChatCut 的电脑上通过 `http://localhost` 或 `http://127.0.0.1` 访问，或通过 HTTPS 提供服务。从其他设备以普通 HTTP 访问（局域网 IP 或反向代理）时，浏览器会禁用 Web Crypto、WebCodecs 和剪贴板，工程列表仍可打开，但编辑器会显示这一要求而不会进入。
 
 `.env.local` 中只需填写你实际使用的模型或素材服务。没有配置的第三方能力会明确提示缺少对应 Key，不影响本地时间线编辑、内置素材和已配置的其他能力。
 
@@ -289,9 +294,9 @@ http://localhost:5199
 
 ### Agent 本地路径访问（高级）
 
-桌面端 Agent 默认可以访问操作系统允许读取的任意本地目录，包括外接素材盘。`browse_local_media` 可浏览文件夹，按文件名、相对路径和媒体类型搜索，并分页返回结果，不会自动导入。Agent 选好素材后，可用 `import_assets` 批量导入最多 100 个路径，也可用 `import_asset` 导入单个路径、`import_folder` 导入整个文件夹。导入复用媒体探测和源文件引用流程，保留原文件，并跳过媒体池及同一批次中的重复内容。TXT、Markdown、DOCX、PDF 等文稿请作为对话附件添加。这些工具仅在桌面应用中可用。
+桌面端 Agent 默认可以访问操作系统允许读取的任意本地目录，包括外接素材盘。`browse_local_media` 可浏览文件夹，按文件名、相对路径和媒体类型搜索，并分页返回结果，不会自动导入。Agent 选好素材后，可用 `import_assets` 批量导入最多 100 个路径，也可用 `import_asset` 导入单个路径、`import_folder` 导入整个文件夹。导入复用媒体探测和源文件引用流程，保留原文件，并跳过媒体池及同一批次中的重复内容。TXT、Markdown、DOCX、PDF 等文稿请作为对话附件添加。桌面端默认启用这些工具；在浏览器中使用时，只有 `AGENT_IMPORT_ROOTS` 中列出的目录可用，且浏览器需与运行 OpenChatCut 的机器相同（本机访问）。
 
-需要限制目录范围时，可在 `.env.local` 中填写英文逗号分隔的绝对路径，例如 `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects`；留空表示默认放行。手动设置的范围同时适用于浏览和导入。源码运行会读取仓库根目录的文件；桌面安装包会从 Electron 用户数据目录读取：macOS 为 `~/Library/Application Support/OpenChatCut/`，Windows 为 `%APPDATA%\OpenChatCut\`，Linux 为 `$XDG_CONFIG_HOME/OpenChatCut/`（通常是 `~/.config/OpenChatCut/`）。修改后请重启应用。
+需要限制目录范围时，可在 `.env.local` 中填写英文逗号分隔的绝对路径，例如 `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects`；留空表示桌面端默认放行；浏览器端必须设置该白名单，留空时会拒绝这些工具。手动设置的范围同时适用于浏览和导入。源码运行会读取仓库根目录的文件；桌面安装包会从 Electron 用户数据目录读取：macOS 为 `~/Library/Application Support/OpenChatCut/`，Windows 为 `%APPDATA%\OpenChatCut\`，Linux 为 `$XDG_CONFIG_HOME/OpenChatCut/`（通常是 `~/.config/OpenChatCut/`）。修改后请重启应用。
 
 
 本地 H.264 导出会在 macOS 上优先使用 VideoToolbox，在兼容的 Windows 设备上优先使用 NVENC，失败时自动回退软件编码。可用 `OPENCHATCUT_RENDER_CONCURRENCY` 和 `OPENCHATCUT_MAX_ACTIVE_EXPORTS` 调整渲染并发及重型导出上限，用 `OPENCHATCUT_DISABLE_HARDWARE_ENCODING` 关闭硬件编码，或用 `OPENCHATCUT_H264_ENCODER` 覆盖 FFmpeg 侧的编码器选择；详见 [`.env.example`](.env.example)。
@@ -450,7 +455,7 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 |---|---|
 | 前端 | React 19、TypeScript 6、Vite 8 |
 | 编辑核心 | 不可变时间线状态、命令层、提案式应用 |
-| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral、xAI Grok（API Key 或 SuperGrok/X Premium+ 订阅登录）、OpenRouter、OrcaRouter、OFox 与兼容接口）、Agent Skills、MCP SDK |
+| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral、xAI Grok（API Key 或 SuperGrok/X Premium+ 订阅登录）、OpenRouter、OrcaRouter、OFox、Requesty、Cheaper Inference 与兼容接口）、Agent Skills、MCP SDK |
 | 预览与视觉 | Remotion Player、WebGL / GLSL |
 | 服务端 | Vite / Electron 双宿主插件、服务端密钥仓 |
 | 持久化 | `~/.openchatcut` 下的本机共享工程库、IndexedDB 缓存、可配置本地素材目录、可选 Cloudflare R2 |
@@ -537,6 +542,8 @@ OpenChatCut 基于以下核心项目与规范构建：
 | [Model Context Protocol](https://modelcontextprotocol.io/) | Codex、Claude Code 等外部 Agent 访问工程与时间线工具的协议基础。 |
 | [Vercel AI SDK](https://ai-sdk.dev/) | 内置 Agent 的多厂商模型流式响应与工具调用基础。 |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | README 运行时架构图的定义、校验与 SVG 生成工具。 |
+
+剪映 / CapCut 草稿导出由 [capcut-cli](https://github.com/renezander030/capcut-cli) 提供支持。
 
 这里列出的是项目的主要技术基础，不替代各依赖、字体和内置二进制随附的许可证。完整 JavaScript 依赖版本见 `package-lock.json`，字体授权见 [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md)。
 

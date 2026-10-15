@@ -11,7 +11,7 @@ import {
 } from '../../editor/types';
 import { upsertKeyframe } from '../../editor/keyframes';
 import { getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
-import { rateStretchGeometry } from '../../editor/rateStretch';
+import { canRateStretchItem, rateStretchGeometry } from '../../editor/rateStretch';
 import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import { planSlip } from '../../editor/slip';
 import type { EditorCommands } from '../../editor/store';
@@ -252,7 +252,8 @@ export function TrackLane({
           && pointer.dragSelection.itemIds.includes(it.id));
         const dragging = drag?.id === it.id || groupMove;
         const stretchEdge = drag?.mode === 'trim-left' ? 'left' : drag?.mode === 'trim-right' ? 'right' : null;
-        const stretch = editMode === 'rate-stretch' && drag?.id === it.id && stretchEdge
+        const canRateStretch = canRateStretchItem(it);
+        const stretch = canRateStretch && editMode === 'rate-stretch' && drag?.id === it.id && stretchEdge
           ? rateStretchGeometry(it, stretchEdge, drag.deltaF) : null;
         const moveDelta = captionInitiatedMove
           ? captionInitiatedDelta
@@ -275,7 +276,6 @@ export function TrackLane({
               ).startFrame
             : it.srcInFrame ?? 0;
         const renderPlaybackRate = stretch?.playbackRate ?? (it.playbackRate ?? 1);
-        const canRateStretch = it.kind === 'video' || it.kind === 'audio';
         const canSlip = it.kind === 'video' || it.kind === 'audio';
         const audioMuted = muted && (it.kind === 'audio' || it.kind === 'video');
         const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen' && editMode !== 'slip'

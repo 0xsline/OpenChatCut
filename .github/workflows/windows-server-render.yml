@@ -1,0 +1,55 @@
+# Server-side export on Windows (issue #162). Windows server renders decode
+# video with <OffthreadVideo> (Remotion's FFmpeg compositor) instead of
+# WebCodecs, which can wedge on D3D11 hardware decoders and hang the export at
+# ~10%. This job renders H.264, VP9-alpha and ProRes sources through that path
+# on a Windows runner and checks each output frame against the frame the Player
+# shows. The runner has no GPU, so it cannot reproduce the D3D11 hang itself; it
+# proves the path that replaces WebCodecs works on Windows.
+#
+# Same trigger policy as ci.yml: pull requests that touch the render path, v*
+# release tags, and workflow_dispatch. Ordinary pushes stay quiet.
+name: Windows server render
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-server-render.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'remotion/**'
+      - 'src/editor/serverVideoDecoder.ts'
+      - 'src/editor/TimelineComposition.tsx'
+      - 'src/editor/TimelineMediaLayer.tsx'
+      - 'src/gl/ClipFx.tsx'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-server-render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offthread-render:
+    name: Server render decodes video with the compositor
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --loglevel=error
+        env:
+          ONNXRUNTIME_NODE_INSTALL: 'skip'
+      - name: Ensure Remotion browser
+        run: node -e "import('@remotion/renderer').then(m => m.ensureBrowser()).then(() => console.log('browser ready'))"
+      - name: Resolve the Windows video decoder
+        run: node remotion/video-decoder.verify.mjs
+      - name: Render H.264, VP9-alpha and ProRes sources server-side
+        run: node remotion/video-decoder-render.verify.mjs

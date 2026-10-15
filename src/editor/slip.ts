@@ -93,7 +93,9 @@ export function planSlip(
       return failure(itemId, 'no-source-handles', 'clip has no usable edited transcript stream');
     }
   } else {
-    const asset = state.assets?.find((candidate) => candidate.src === item.src);
+    const asset = item.sourceAssetId
+      ? state.assets?.find((candidate) => candidate.id === item.sourceAssetId)
+      : state.assets?.find((candidate) => candidate.src === item.src);
     if (!asset || !(asset.durationInFrames > 0)) {
       return failure(itemId, 'source-unavailable', 'source duration is unavailable');
     }

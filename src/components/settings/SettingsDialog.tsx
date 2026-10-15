@@ -11,6 +11,7 @@ import {
   setPreferredTranscriptionProvider,
 } from '../../transcript/provider';
 import { isTranscriptionProviderId } from '../../transcript/types';
+import { isAsrModelTier } from '../../../shared/asr-models';
 import { setAutoTranscribeIngest } from '../../transcript/provider';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import { useCodexSettings } from './useCodexSettings';
@@ -97,9 +98,9 @@ function syncTranscriptionPreferences(models: Record<string, string>): void {
 /** Keep the runtime ASR model tier in sync with the saved setting ('' → auto). */
 function syncLocalAsrModel(saved: string | undefined): void {
   try {
-    if (saved === 'tiny' || saved === 'base' || saved === 'small' || saved === 'medium' || saved === '') {
-      localStorage.setItem('cc.asrModel', saved ?? '');
-    }
+    // Validate against the catalog, never a hand-written list: a tier missing
+    // here is discarded silently and the previous selection stays in force.
+    if (isAsrModelTier(saved ?? '')) localStorage.setItem('cc.asrModel', saved ?? '');
   } catch {
     // Best-effort; the auto tier stays in effect.
   }
@@ -169,6 +170,7 @@ function useHover(): [boolean, { onMouseEnter: () => void; onMouseLeave: () => v
 function useTreeSelection(initialVendor?: string): {
   group: SettingsGroup; page: SettingsVendorPage;
   selectGroup: (key: string) => void; selectVendor: (key: string) => void;
+  openPage: (vendorKey: string) => void;
 } {
   const seeded = seedSelection(initialVendor);
   const [groupKey, setGroupKey] = useState<string>(seeded.group.key);
@@ -180,7 +182,13 @@ function useTreeSelection(initialVendor?: string): {
     setGroupKey(key);
     setVendorKey(nextGroup.vendors[0].key);
   };
-  return { group, page, selectGroup, selectVendor: setVendorKey };
+  // Jump to a page in any group, resolved the same way as initialVendor.
+  const openPage = (vendorKey: string): void => {
+    const target = seedSelection(vendorKey);
+    setGroupKey(target.group.key);
+    setVendorKey(target.vendor.key);
+  };
+  return { group, page, selectGroup, selectVendor: setVendorKey, openPage };
 }
 
 /** Open on a specific vendor page when the caller routed here (e.g. the chat's missing-model-pack button). */
@@ -213,6 +221,7 @@ function useFieldContext(
   reveal: boolean,
   refreshStatus: () => Promise<void>,
   copilotEnabled: boolean,
+  openPage: (route: string) => void,
 ): FieldCtx {
   const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
   const [autoClearedEffort, setAutoClearedEffort] = useState<string | null>(null);
@@ -243,7 +252,7 @@ function useFieldContext(
   };
   return {
     status, values, reveal, onStage, onToggleClear, modelOptions, codex, copilot, claudeCode,
-    refreshStatus,
+    refreshStatus, openPage,
     onModelsDiscovered: (name, models) => {
       setModelOptions((previous) => ({ ...previous, [name]: [...new Set(models)] }));
     },
@@ -259,7 +268,7 @@ export function SettingsDialog({ onClose, initialVendor }: { onClose: () => void
   );
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
-  const { group, page, selectGroup, selectVendor } = useTreeSelection(initialVendor);
+  const { group, page, selectGroup, selectVendor, openPage } = useTreeSelection(initialVendor);
   const [reveal, setReveal] = useState(false);
   const refreshStatus = async (): Promise<void> => {
     try {
@@ -272,7 +281,7 @@ export function SettingsDialog({ onClose, initialVendor }: { onClose: () => void
     }
   };
   const ctx = useFieldContext(status, values, setValues, reveal, refreshStatus,
-    page.connection === 'copilot');
+    page.connection === 'copilot', openPage);
   useEffect(() => {
     if (!status?.models) return;
     syncTranscriptionPreferences(status.models);

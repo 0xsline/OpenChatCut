@@ -35,6 +35,7 @@ const EXPECTED_PAGES = [
   'transcription/deepgram', 'transcription/groq', 'transcription/elevenlabs', 'transcription/cartesia',
   'sandbox/e2b',
   'web/firecrawl',
+  'publish/upload-post',
   'storage/r2', 'storage/local',
 ];
 for (const page of EXPECTED_PAGES) assert.ok(PROBES[page], `probe missing for ${page}`);
@@ -80,8 +81,8 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   const unconfigured = await runProbe('voice/elevenlabs', {});
   assert.equal(unconfigured.ok, false);
   assert.match(unconfigured.message, /尚未填写 API Key/);
-  // Doubao requires both keys: only the App ID is still unconfigured
-  const half = await runProbe('voice/doubao', { DOUBAO_TTS_APP_ID: 'a' });
+  // Doubao needs its API key: empty overrides stay unconfigured
+  const half = await runProbe('voice/doubao', { DOUBAO_TTS_API_KEY: ' ' });
   assert.match(half.message, /尚未填写 API Key/);
 }
 
@@ -111,6 +112,68 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
       'https://proxy.example/v1/models',
       'https://proxy.example/v1beta/models?pageSize=1',
       'https://proxy.example/v1/models',
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// 7b. Requesty checks the key on /models, then lists the curated /models/managed ids; a rejected key stops there.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string | null }> = [];
+  let keyStatus = 200;
+  let managedStatus = 200;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    calls.push({ url, auth: new Headers(init?.headers).get('authorization') });
+    if (url.endsWith('/models/managed')) {
+      return Response.json({ data: [{ id: 'gpt-5.4-mini' }] }, { status: managedStatus });
+    }
+    return Response.json({ data: [{ id: 'openai/gpt-4o-mini' }] }, { status: keyStatus });
+  };
+  try {
+    const ok = await runProbe('llm/requesty', { LLM_REQUESTY_API_KEY: 'rq-test' });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.models, ['gpt-5.4-mini']);
+    assert.deepEqual(calls, [
+      { url: 'https://router.requesty.ai/v1/models', auth: 'Bearer rq-test' },
+      { url: 'https://router.requesty.ai/v1/models/managed', auth: null },
+    ]);
+    managedStatus = 500;
+    const fallback = await runProbe('llm/requesty', { LLM_REQUESTY_API_KEY: 'rq-test' });
+    assert.deepEqual(fallback.models, ['openai/gpt-4o-mini']);
+    calls.length = 0;
+    keyStatus = 403;
+    const rejected = await runProbe('llm/requesty', { LLM_REQUESTY_API_KEY: 'rq-bad' });
+    assert.equal(rejected.ok, false);
+    assert.equal(calls.length, 1, 'a rejected key never reaches the managed list');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// 7c. Cheaper Inference checks the key on /models and lists only the chat (type "text") models.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), auth: new Headers(init?.headers).get('authorization') });
+    return Response.json({
+      data: [
+        { id: 'gpt-5.4-mini', type: 'text' },
+        { id: 'claude-sonnet-5', type: 'text' },
+        { id: 'image-model', type: 'image' },
+        { id: 'video-model', type: 'video' },
+      ],
+    });
+  };
+  try {
+    const ok = await runProbe('llm/cheaperinference', { LLM_CHEAPERINFERENCE_API_KEY: 'ci_live_test' });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.models, ['claude-sonnet-5', 'gpt-5.4-mini']);
+    assert.deepEqual(calls, [
+      { url: 'https://api.cheaperinference.com/v1/models', auth: 'Bearer ci_live_test' },
     ]);
   } finally {
     globalThis.fetch = originalFetch;
@@ -157,7 +220,12 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   );
   const recorded = await runProbe('storage/projects', {});
   assert.equal(recorded.ok, true);
-  assert.match(recorded.message, new RegExp(`目录可写 · ${target}`));
+  // A Windows path interpolated into a RegExp loses separators to escape
+  // sequences ("\T", "\S"), so match the recorded path literally.
+  assert.ok(
+    recorded.message.includes(`目录可写 · ${target}`),
+    `expected the recorded root to be reported, got: ${recorded.message}`,
+  );
 
   process.env.OPENCHATCUT_DATA_DIR = target;
   try {

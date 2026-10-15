@@ -99,6 +99,12 @@ try {
 } finally {
   if (app) await new Promise<void>((resolve) => app?.close(() => resolve()));
   await new Promise<void>((resolve) => provider.close(() => resolve()));
-  await rm(root, { recursive: true, force: true });
+  // The failed job's terminal snapshot is persisted into `root` (the data dir)
+  // through an async queue that can still be writing when the assertions
+  // finish. Drain it, and retry the removal in case a late write still races
+  // it (ENOTEMPTY under the parallel suite).
+  const { persistJobs } = await import('./generation-job-store.ts');
+  await persistJobs().catch(() => undefined);
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   process.env = oldEnv;
 }

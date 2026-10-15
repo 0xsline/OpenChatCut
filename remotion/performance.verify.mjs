@@ -45,7 +45,10 @@ assert.equal(remotionHardwareAcceleration('h264', {
 assert.equal(resolveH264VideoBitrate({ width: 854, height: 480, fps: 30 }), '4000k');
 assert.equal(resolveH264VideoBitrate({ width: 1920, height: 1080, fps: 30 }), '10000k');
 assert.equal(resolveH264VideoBitrate({ width: 1920, height: 1080, fps: 60 }), '20000k');
-assert.equal(resolveH264VideoBitrate({ width: 3840, height: 2160, fps: 60 }), '30000k');
+// Auto hardware exports must match the UI and FPS-retiming bitrate policy.
+assert.equal(resolveH264VideoBitrate({ width: 3840, height: 2160, fps: 30 }), '40000k');
+assert.equal(resolveH264VideoBitrate({ width: 3840, height: 2160, fps: 60 }), '60000k');
+assert.equal(resolveH264VideoBitrate({ width: 1920, height: 1080, fps: 60, scale: 2 }), '60000k');
 
 assert.equal(isHardwareEncoderFailure(new Error('No NVENC capable devices found')), true);
 assert.equal(isHardwareEncoderFailure(new Error('VideoToolbox encoder failed')), true);

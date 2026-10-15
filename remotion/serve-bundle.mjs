@@ -75,6 +75,28 @@ async function buildBundle(outDir) {
   return serveUrl;
 }
 
+/**
+ * Delete the serve bundle this process webpacked into the OS temp dir (~150 MB
+ * each); the next getServeUrl() builds a fresh one. For scripts that render
+ * and exit, such as the render verifies: nothing else removes it. A prebuilt
+ * CC_REMOTION_BUNDLE is never touched.
+ */
+export async function disposeServeBundle() {
+  const pending = bundlePromise;
+  if (!pending || process.env.CC_REMOTION_BUNDLE) return;
+  bundlePromise = undefined;
+  uploadsLive = false;
+  linkedDir = null;
+  const serveUrl = await pending.catch(() => null);
+  if (!serveUrl) return;
+  // media/uploads is normally a symlink (junction on Windows) to the live
+  // uploads dir: unlink it on its own first, so the recursive delete below can
+  // only ever see the bundle's own files. A real directory here is the per-call
+  // copy fallback and goes with the bundle.
+  await rm(path.join(serveUrl, 'media', 'uploads'), { force: true }).catch(() => {});
+  await rm(serveUrl, { recursive: true, force: true });
+}
+
 /** During the packaging period, pre-load serve bundle to outDir (desktop/prebuild-remotion.mts).*/
 export async function prebuildServeBundle(outDir) {
   await rm(outDir, { recursive: true, force: true });

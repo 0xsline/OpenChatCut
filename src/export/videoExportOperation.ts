@@ -2,6 +2,7 @@ import { timelineDuration } from '../editor/types';
 import { resolveTimelineRenderPlan, sequenceGraphError } from '../editor/sequenceGraph';
 import { recordExport } from '../persist/exportHistoryStore';
 import {
+  browserFallbackReason,
   browserScaledExportDimensions,
   isAbortError,
   renderTimelineInBrowser,
@@ -16,7 +17,7 @@ import {
   type ExportDestination,
 } from './exportDestination';
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
-import { isServerRenderError } from './serverExportOperation';
+import { isServerRenderError, type ServerRenderError } from './serverExportOperation';
 import { createSequenceGraphExportFailure, ExportFailureError } from './exportFailure';
 import { exportMediaExtension } from './exportMediaExtension';
 import type {
@@ -48,6 +49,9 @@ export interface VideoExportContext {
   setRenderEngine: StateSetter<RenderEngine>;
   t: Translate;
   verifyCompletedExport: (completed: ExportJobResult, signal?: AbortSignal) => Promise<void>;
+  /** Seams for verifies; production plans and renders with the real browser modules. */
+  planRoute?: (options: BrowserExportOptions) => Promise<ExportRoutePlan>;
+  renderInBrowser?: (options: BrowserExportOptions) => Promise<BrowserExportAttempt>;
 }
 
 export function validateVideoExportSequenceGraph(options: Pick<UseExportWorkflowOptions, 'project'>): void {
@@ -231,7 +235,8 @@ async function runBrowserRoute(
   controller: AbortController,
   engine: ExportEngineInfo,
 ): Promise<BrowserExportAttempt> {
-  const attempt = await renderTimelineInBrowser(browserOptions(context, controller.signal));
+  const render = context.renderInBrowser ?? renderTimelineInBrowser;
+  const attempt = await render(browserOptions(context, controller.signal));
   if (attempt.status === 'rendered') {
     context.setRenderEngine('browser');
     context.setEngineInfo(engine);
@@ -250,7 +255,11 @@ async function runBrowserThenServer(
     attempt = await runBrowserRoute(context, controller, plan.browserEngine);
   } catch (error) {
     if (isAbortError(error)) throw error;
-    switchToServer(context, plan.serverEngine, error instanceof Error ? error.message : '浏览器快导失败');
+    // The local renderer is taking over, so this is a route change, not the
+    // export's outcome: show a neutral notice and keep WebCodecs' own words
+    // for diagnostics.
+    console.warn('[export] browser fast export stopped; continuing with the local renderer', error);
+    switchToServer(context, plan.serverEngine, browserFallbackReason(error));
     await context.exportServerVideo(controller.signal);
     return;
   }
@@ -262,23 +271,48 @@ async function runBrowserThenServer(
   await context.exportServerVideo(controller.signal);
 }
 
+/**
+ * The browser is only a rescue once the local render has failed: if it cannot
+ * finish either, the local renderer's error is the export's outcome. Surfacing
+ * the rescue's WebCodecs error instead would blame the wrong engine, long
+ * after the local render the user was watching.
+ */
+function localFailureAfterRescue(
+  context: VideoExportContext,
+  plan: ExportRoutePlan,
+  localFailure: ServerRenderError,
+  rescueFailure: unknown,
+): ServerRenderError {
+  console.warn('[export] browser rescue after the local render failed did not finish either', rescueFailure);
+  context.setRenderEngine('server');
+  context.setEngineInfo(plan.serverEngine);
+  return localFailure;
+}
+
 async function runServerThenBrowser(
   context: VideoExportContext,
   controller: AbortController,
   plan: ExportRoutePlan,
 ): Promise<void> {
+  let localFailure: ServerRenderError;
   try {
     await context.exportServerVideo(controller.signal);
     return;
   } catch (error) {
     if (isAbortError(error)) throw error;
     if (!isServerRenderError(error) || plan.browser.status !== 'supported') throw error;
-    const reason = error.message || '本机渲染失败';
-    switchToBrowser(context, plan.browserEngine, reason);
+    localFailure = error;
+    switchToBrowser(context, plan.browserEngine, error.message || '本机渲染失败');
   }
   const startedAt = performance.now();
-  const attempt = await runBrowserRoute(context, controller, plan.browserEngine);
-  if (attempt.status !== 'rendered') throw new Error(attempt.reason);
+  let attempt: BrowserExportAttempt;
+  try {
+    attempt = await runBrowserRoute(context, controller, plan.browserEngine);
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw localFailureAfterRescue(context, plan, localFailure, error);
+  }
+  if (attempt.status !== 'rendered') throw localFailureAfterRescue(context, plan, localFailure, attempt.reason);
   await saveBrowserResult(context, attempt, plan.browserEngine, startedAt, controller.signal);
 }
 
@@ -294,7 +328,7 @@ async function exportVideo(context: VideoExportContext, ownerSignal?: AbortSigna
   context.setEngineReason(null);
   try {
     const options = browserOptions(context, controller.signal);
-    const plan = await planVideoExportRoute(options);
+    const plan = await (context.planRoute ?? planVideoExportRoute)(options);
     controller.signal.throwIfAborted();
     setPlannedRoute(context, plan);
     if (plan.route === 'browser') await runBrowserThenServer(context, controller, plan);

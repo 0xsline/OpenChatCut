@@ -40,27 +40,15 @@ Use Doubao for Chinese-optimized narration.
 | `shuanglangshaonian` | 爽朗少年         | Cheerful Teen        | male, young, cheerful, youthful, roleplay, character           | Bright roleplay, teen/creator dialogue, youthful scenes       |
 | `tangseng`           | 唐僧             | Tang Seng            | male, old-like, calm, roleplay, character                      | Monk-like dialogue, traditional stories, steady narration     |
 
-Important caveat: the current Doubao seed-tts-2.0 resource does not expose an
-explicit general-purpose old-male voice. `qingcang` and `tangseng` are
+Important caveat: the current Doubao `seed-audio-1.0` endpoint does not expose
+emotion, performance-prompt, or dialect controls. `qingcang` and `tangseng` are
 old-like approximations, not guaranteed old-male controls.
 
 ### Doubao Control Support
 
 Base controls for curated Doubao voices: `speedRatio`, `loudnessRatio`, and
-`pitch`.
-
-Expressive controls:
-
-- Supports `emotion`, `emotionScale`, `performancePrompt`, and ASMR-style prompt
-  directions: `vivi`, `xiaohe`, `yunzhou`, `xiaotian`, `naiqimengwa`,
-  `yingtaowanzi`, `wenroumama`, `zhixingnv`, `dayi`, `jitangnv`, `liuchang`,
-  `ruyayichen`, `morgan`, `qingcang`, `huiben`, `popo`, `yuanboxiaoshu`,
-  `baqiqingshu`, `tangseng`.
-- `shuanglangshaonian` supports `performancePrompt` and COT/QA-style
-  instruction following only. Do not use `emotion`, `emotionScale`, or
-  ASMR-style prompt directions with this voice.
-- `explicitDialect` is only supported by `vivi`; allowed values are `dongbei`,
-  `shaanxi`, and `sichuan`.
+native `pitch` (`pitch_rate` −12–12). `text_prompt` carries the plain narration
+text; the speaker comes from `references[].speaker`.
 
 ## ElevenLabs English / Multilingual Voices
 
@@ -139,8 +127,8 @@ See [minimax-tts.md](minimax-tts.md) for tool knobs (`speed`, `emotion`).
 - `speed` roughly `0.5–2` (server enforces range).
 - Optional `emotion` labels when the model accepts them: happy, sad, angry,
   fearful, disgusted, surprised, calm, fluent, whisper.
-- Do **not** pass Doubao-only fields (`speedRatio`, `performancePrompt`,
-  `explicitDialect`, …) or ElevenLabs-only fields (`modelId`, `stability`).
+- Do **not** pass Doubao-only fields (`speedRatio`, `loudnessRatio`, …) or
+  ElevenLabs-only fields (`modelId`, `stability`).
 
 ## Audition Samples
 

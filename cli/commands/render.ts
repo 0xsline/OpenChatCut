@@ -11,7 +11,8 @@ import { printJson, writeStderr, writeStdout } from '../output.ts';
 import { readProjectDoc, resolveProject } from '../store.ts';
 import { resolveH264TargetBitrate } from '../../server/media-acceleration.ts';
 import { acceptExportSubmission } from '../../server/plugins/export-submission.ts';
-import { h264RenderOptions, renderTimeline } from '../../server/plugins/export-rendering.ts';
+import { h264RenderOptions, renderTimeline, setUploadsDirProvider } from '../../server/plugins/export-rendering.ts';
+import { uploadDir } from '../../server/media-dir.ts';
 import { exportOutputSize, retimeFps, withExportPermit } from '../../server/plugins/export-runtime.ts';
 import { GLOBAL_FLAGS, parseFrames, projectReference } from './common.ts';
 
@@ -39,6 +40,9 @@ function positiveNumber(input: string, flag: string): number {
 
 export async function runRenderCommand(commandLine: CommandLine, json: boolean): Promise<void> {
   rejectUnknownFlags(commandLine, FLAGS);
+  // The CLI does not mount exportPlugin, which normally wires the active library
+  // into Remotion. Use the same provider for materialization and media serving.
+  setUploadsDirProvider(uploadDir);
   const outPath = flagText(commandLine, 'out');
   if (outPath === undefined || !outPath.trim()) {
     throw new UsageError('render needs --out <file> (for example: occ render --out cut.mp4)');

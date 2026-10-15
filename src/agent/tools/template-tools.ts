@@ -2,6 +2,7 @@ export { TEMPLATE_TOOL_SCHEMAS, TEMPLATE_TOOL_NAMES } from './schemas/template-t
 import type { AgentContext } from '../context';
 import type { DesignStyle, ProjectDoc, Timeline, TimelineItem, TrackId } from '../../editor/types';
 import { activeTimeline, resolveTrackId, timelineTrackIds, trackKind } from '../../editor/types';
+import { recountAssetDuration } from '../../editor/timelineFrameRate';
 import { migrateProjectDoc } from '../../persist/projectStore';
 import { listTemplates, getTemplate, saveTemplate, type ProjectTemplate } from '../../persist/templateStore';
 import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
@@ -229,7 +230,9 @@ function mergeTemplate(current: ProjectDoc, tpl: ProjectTemplate, placement: Tem
   const active = activeTimeline(current);
   const nextActive = applyPlacement(active, tplActive, keptItems, placement);
 
-  const carriedAssets = tplDoc.assets.filter((a) => !omit.has(a.id));
+  // Template media durations are counted at the template's rate; the pool keeps the project's.
+  const carriedAssets = tplDoc.assets.filter((a) => !omit.has(a.id))
+    .map((asset) => recountAssetDuration(asset, tplActive.fps, active.fps));
   const designStyle = tplDoc.designStyle ?? current.designStyle; // The template carries the design style, apply it
 
   return {
@@ -245,10 +248,11 @@ function mergeTemplate(current: ProjectDoc, tpl: ProjectTemplate, placement: Tem
 
 export function copyTemplateAssets(current: ProjectDoc, tpl: ProjectTemplate) {
   const carried = new Set(tpl.assetIds);
+  const templateFps = activeTimeline(tpl.doc).fps;
   const copied = tpl.doc.assets.filter((asset) => carried.has(asset.id)).map((asset) => {
     const assetId = uid('asset');
     return {
-      asset: { ...asset, id: assetId, folderId: undefined },
+      asset: { ...recountAssetDuration(asset, templateFps, activeTimeline(current).fps), id: assetId, folderId: undefined },
       result: { templateAssetId: asset.id, assetId, name: asset.name, kind: asset.kind },
     };
   });

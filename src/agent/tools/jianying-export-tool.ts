@@ -1,6 +1,6 @@
 import type { AgentContext } from '../context';
 import type { AgentToolSchema } from '../tool-schema';
-import type { TimelineItem } from '../../editor/types';
+import { jianyingDraftPayload, type JianyingDraftPayload } from '../../export/jianyingDraftRequest';
 
 type Args = Record<string, unknown>;
 
@@ -19,50 +19,6 @@ export const jianyingExportToolSchema: AgentToolSchema = {
   },
 };
 
-export function mediaItems(items: TimelineItem[]): TimelineItem[] {
-  return items.filter((item) => item.kind === 'video' || item.kind === 'image' || item.kind === 'gif' || item.kind === 'audio');
-}
-
-/** Caption cues from the active captions overlay: merge transcript words into
- * phrase cues (timeline ms). Falls back to the source item's transcript. */
-export function captionCues(state: { fps: number; items: TimelineItem[] }, captions: { enabled?: boolean; sourceItemId?: string | null; sourceMode?: 'item' | 'timeline'; sources?: string[] } | null | undefined): { startMs: number; endMs: number; text: string }[] {
-  if (!captions?.enabled) return [];
-  const cueWords = (item: TimelineItem | undefined): { start: number; end: number; text: string }[] | undefined => {
-    if (!item?.transcript || item.transcript.length === 0) return undefined;
-    return item.transcript;
-  };
-  let words: { start: number; end: number; text: string }[] = [];
-  if (captions.sourceMode === 'timeline') {
-    for (const item of state.items) {
-      const candidate = cueWords(item);
-      if (candidate) words = [...words, ...candidate];
-    }
-  } else if (captions.sourceItemId) {
-    words = cueWords(state.items.find((item) => item.id === captions.sourceItemId)) ?? [];
-  }
-  if (words.length === 0) return [];
-  words = [...words].sort((a, b) => a.start - b.start);
-  const cues: { startMs: number; endMs: number; text: string }[] = [];
-  let current: { startMs: number; endMs: number; text: string } | null = null;
-  for (const word of words) {
-    if (!word.text.trim()) continue;
-    if (!current) {
-      current = { startMs: word.start, endMs: word.end, text: word.text.trim() };
-      continue;
-    }
-    const gap = word.start - current.endMs;
-    if (gap <= 450) {
-      current.endMs = Math.max(current.endMs, word.end);
-      current.text = `${current.text} ${word.text.trim()}`;
-    } else {
-      cues.push(current);
-      current = { startMs: word.start, endMs: word.end, text: word.text.trim() };
-    }
-  }
-  if (current) cues.push(current);
-  return cues;
-}
-
 export interface JianyingExportResponse {
   ok?: boolean;
   error?: string;
@@ -74,23 +30,18 @@ export interface JianyingExportResponse {
   warnings?: string[];
 }
 
-/** The exporter request body, built from the draft state (shared by both hosts). */
-export function jianyingExportBody(args: Args, ctx: AgentContext): Record<string, unknown> {
-  const state = ctx.getState();
-  const items = mediaItems(state.items);
+export interface JianyingExportBody extends JianyingDraftPayload {
+  draftName: string;
+  draftsDir: string;
+}
+
+/** The exporter request body, built from the draft project (shared by both hosts
+ * and, through jianyingDraftPayload, by the export dialog). */
+export function jianyingExportBody(args: Args, ctx: AgentContext): JianyingExportBody {
   return {
     draftName: typeof args.draftName === 'string' && args.draftName.trim() ? String(args.draftName).trim().slice(0, 60) : '',
     draftsDir: typeof args.draftsDir === 'string' && args.draftsDir.trim() ? String(args.draftsDir).trim() : '',
-    fps: state.fps,
-    items: items.map((item) => ({
-      kind: item.kind,
-      src: item.src ?? '',
-      startFrame: item.startFrame,
-      durationInFrames: item.durationInFrames,
-      volume: item.volume,
-      name: item.name,
-    })),
-    captions: captionCues(state, state.captions),
+    ...jianyingDraftPayload(ctx.getDoc()),
   };
 }
 

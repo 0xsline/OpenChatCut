@@ -11,6 +11,8 @@ import { extensionStorePlugin } from "./extension-store.ts";
 import { exportPlugin } from "./export.ts";
 import { exportQaPlugin } from "./export-qa.ts";
 import { exportDestinationPlugin } from "./export-destination.ts";
+import { uploadPostPlugin } from "./upload-post.ts";
+import { exportMediaSourcesPlugin } from "./export-media-sources.ts";
 import { exportStagePlugin } from "./export-stage.ts";
 import { uploadPlugin } from "./upload.ts";
 import { mobileUploadPlugin } from "./mobile-upload.ts";
@@ -50,21 +52,25 @@ import { claudeCodeAgentPlugin } from "./claude-code-agent.ts";
 import { xaiOauthPlugin } from "./xai-oauth.ts";
 import { llmProxyPlugin } from "./llm-proxy.ts";
 import { agentRunsPlugin } from "../agent-runs/routes.ts";
+import { localMediaPlugin } from "./local-media.ts";
 import { resourcePreviewPlugin } from "./resource-preview.ts";
 import { getKey } from "../keystore.ts";
 
 import { installSystemProxy } from '../net.ts';
 import { requestShapeGatePlugin } from './request-shape-gate';
+import { systemFontsPlugin } from './system-fonts.ts';
 
 export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
   installSystemProxy();
   return [
     requestShapeGatePlugin(),
+    systemFontsPlugin(),
     crossOriginIsolationPlugin(),
     storageLifecyclePlugin(),
     llmProxyPlugin(),
     xaiOauthPlugin(),
     agentRunsPlugin(),
+    localMediaPlugin(),
     skillFilesPlugin(),
     skillInstallPlugin(),
     skillExecPlugin(),
@@ -83,6 +89,8 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     exportStagePlugin(),
     exportPlugin(),
     exportDestinationPlugin(),
+    uploadPostPlugin(),
+    exportMediaSourcesPlugin(),
     exportQaPlugin(),
     uploadMultipartPlugin(),
     uploadPlugin(),
@@ -171,14 +179,11 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
           getKey("DOUBAO_TTS_BASE_URL") || "https://openspeech.bytedance.com"
         );
       },
-      get doubaoAppId() {
-        return getKey("DOUBAO_TTS_APP_ID");
+      get doubaoApiKey() {
+        return getKey("DOUBAO_TTS_API_KEY");
       },
-      get doubaoAccessKey() {
-        return getKey("DOUBAO_TTS_ACCESS_KEY");
-      },
-      get doubaoResourceId() {
-        return getKey("DOUBAO_TTS_RESOURCE_ID") || "seed-tts-2.0";
+      get doubaoModel() {
+        return getKey("DOUBAO_TTS_MODEL") || "seed-audio-1.0";
       },
       get minimaxBaseUrl() {
         return getKey("MINIMAX_BASE_URL") || "https://api.minimaxi.com";

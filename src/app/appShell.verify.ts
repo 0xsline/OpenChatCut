@@ -62,7 +62,7 @@ assert.deepEqual(
 );
 
 const appSource = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
-assert.match(appSource, /useInferenceWarmup\(route\.name === 'editor'\)/, 'App wires unified inference warmup only while editing');
+assert.match(appSource, /useInferenceWarmup\(route\.name === 'editor' && window\.isSecureContext\)/, 'App wires unified inference warmup only while editing in a secure context');
 assert.doesNotMatch(appSource, /useLocalAsrWarmup/, 'App no longer wires the ASR-only warmup path');
 
 const descriptors = {

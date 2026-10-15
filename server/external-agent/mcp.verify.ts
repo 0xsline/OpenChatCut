@@ -79,6 +79,8 @@ const extraTool = {
   input_schema: { type: 'object' as const, properties: {} },
 };
 const editTools = [
+  { name: 'list_edit_sessions', input_schema: { type: 'object' as const, properties: {} } },
+  { name: 'recover_edit_session', input_schema: { type: 'object' as const, properties: {} } },
   {
     name: 'begin_edit_session',
     input_schema: { type: 'object' as const, properties: {} },
@@ -258,26 +260,65 @@ try {
   assert.equal(callOutcome(crossProject), 'rejected');
   assert.equal(pendingEditorCallsForTest().length, 0, 'wrong-project calls never reach another editor queue');
 
+  const beginPending = boundA.client.callTool({ name: 'begin_edit_session', arguments: {} });
+  const begin = await nextEditorCall(projectA, editorA, revisionA, AbortSignal.timeout(1_000));
+  assert.equal(begin?.name, 'begin_edit_session');
+  settleEditorCall(begin!.id, 'applied', { editSessionId: 'recovery-draft', status: 'drafting' });
+  await beginPending;
   registerEditor(projectA, editorA, 'v2-mcp-project-a', editorTools);
-  const staleSession = await boundA.client.callTool({
-    name: 'openchatcut_status',
-    arguments: {},
-  });
+  const statusAfterSave = await boundA.client.callTool({ name: 'openchatcut_status', arguments: {} });
+  assert.notEqual(statusAfterSave.isError, true, 'read-only status survives autosave revision changes');
+  const adoptedPending = boundA.client.callTool({ name: dynamicTool.name, arguments: {} });
+  const adopted = await nextEditorCall(projectA, editorA, 'v2-mcp-project-a', AbortSignal.timeout(1_000));
+  settleEditorCall(adopted!.id, 'applied', { ok: true });
+  await adoptedPending;
+  await boundA.client.callTool({ name: 'target_project', arguments: { projectId: projectA } });
+  const listPending = boundA.client.callTool({ name: 'list_edit_sessions', arguments: {} });
+  const listing = await nextEditorCall(projectA, editorA, 'v2-mcp-project-a', AbortSignal.timeout(1_000));
+  settleEditorCall(listing!.id, 'applied', [{ editSessionId: 'recovery-draft', status: 'drafting', stale: true }]);
+  const listed = (await listPending).structuredContent?.result as Array<{ orphaned: boolean; ownerOnline: boolean; recoveryActions: string[] }>;
+  assert.ok(Array.isArray(listed));
+  assert.equal(listed[0]!.orphaned, true, 'adopting a new revision must not strand the old draft under a live owner');
+  assert.equal(listed[0]!.ownerOnline, false);
+  assert.deepEqual(listed[0]!.recoveryActions, ['discard'], 'stale drafts can only be explicitly discarded');
+  const discardPending = boundA.client.callTool({ name: 'recover_edit_session', arguments: { editSessionId: 'recovery-draft', action: 'discard' } });
+  const discard = await nextEditorCall(projectA, editorA, 'v2-mcp-project-a', AbortSignal.timeout(1_000));
+  assert.equal(discard?.name, 'recover_edit_session');
+  settleEditorCall(discard!.id, 'applied', { editSessionId: 'recovery-draft', status: 'discarded' });
+  assert.notEqual((await discardPending).isError, true);
+  const healthyPending = boundA.client.callTool({ name: 'begin_edit_session', arguments: {} });
+  const healthy = await nextEditorCall(projectA, editorA, 'v2-mcp-project-a', AbortSignal.timeout(1_000));
+  settleEditorCall(healthy!.id, 'applied', { editSessionId: 'healthy-draft', status: 'drafting' });
+  await healthyPending;
+  await boundA.client.callTool({ name: 'target_project', arguments: { projectId: projectA } });
+  const healthyRead = boundA.client.callTool({ name: 'get_edit_session', arguments: { editSessionId: 'healthy-draft' } });
+  const read = await nextEditorCall(projectA, editorA, 'v2-mcp-project-a', AbortSignal.timeout(1_000));
+  settleEditorCall(read!.id, 'applied', { editSessionId: 'healthy-draft', status: 'drafting' });
+  assert.notEqual((await healthyRead).isError, true, 'repeated targeting preserves healthy draft ownership');
+
+  registerEditor(projectA, 'refreshed-editor-a', 'v2-mcp-project-a', editorTools);
+  const staleSession = await boundA.client.callTool({ name: dynamicTool.name, arguments: {} });
   assert.equal(staleSession.isError, true);
-  assert.equal(callOutcome(staleSession), 'stale', 'every tool call revalidates editor instance and base revision');
-  // After a stale error the transport is closed so subsequent requests fail
-  // with a session-not-found error instead of returning another stale result.
+  assert.equal(callOutcome(staleSession), 'stale', 'replacement editors require an explicit rebind');
+  assert.notEqual((await boundA.client.callTool({ name: 'openchatcut_status', arguments: {} })).isError, true);
+  assert.equal((await rawSessionRequest(mcpUrl, boundA.sessionId, 'POST')).status, 200);
+  assert.equal(mcpSessionsForTest().some((session) => session.id === boundA.sessionId), true,
+    'a stale editor binding must not evict the MCP transport session');
+  assert.equal(callOutcome(await boundA.client.callTool({
+    name: 'target_project', arguments: { projectId: projectB },
+  })), 'rejected', 'recovery never switches to another project');
+  const recovered = await boundA.client.callTool({ name: 'target_project', arguments: { projectId: projectA } });
+  assert.notEqual(recovered.isError, true);
+  assert.equal(mcpSessionsForTest().find((session) => session.id === boundA.sessionId)?.binding?.editorInstanceId, 'refreshed-editor-a');
+  const oldDraft = await boundA.client.callTool({ name: 'review_edit_session', arguments: { editSessionId: 'healthy-draft' } });
+  assert.equal(oldDraft.isError, true, 'recovery cannot silently apply an old editor draft');
+  assert.equal(pendingEditorCallsForTest(boundA.sessionId).length, 0);
+  const resumedPending = boundA.client.callTool({ name: dynamicTool.name, arguments: {} });
+  const resumed = await nextEditorCall(projectA, 'refreshed-editor-a', 'v2-mcp-project-a', AbortSignal.timeout(1_000));
+  assert.equal(resumed?.name, dynamicTool.name);
+  settleEditorCall(resumed!.id, 'applied', { ok: true });
+  assert.notEqual((await resumedPending).isError, true, 'the same transport can call the recovered editor');
   registerEditor(projectA, editorA, revisionA, editorTools);
-  await assert.rejects(
-    boundA.client.callTool({ name: 'openchatcut_status', arguments: {} }),
-    (error: unknown) => error instanceof Error && /session not found or expired/i.test(error.message),
-    'a stale transport is closed and its session is evicted',
-  );
-  assert.equal(
-    mcpSessionsForTest().some((session) => session.id === boundA.sessionId),
-    false,
-    'stale transport session is removed from the sessions map',
-  );
 
   const switchClient = await connectClient(mcpUrl, 'openchatcut-mcp-switch');
   clients.push(switchClient);

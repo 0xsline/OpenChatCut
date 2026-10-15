@@ -87,8 +87,15 @@ const catalogProviders = modelsDevCatalog.providers as unknown as Partial<
   Record<LlmProvider, Readonly<Record<string, CatalogModel>>>
 >;
 
-/** The xAI subscription provider shares the xai catalog entries. */
-function catalogProviderId(provider: LlmProvider): LlmProvider {
+/** Subscription and gateway models reuse their known upstream catalog entries. */
+function catalogProviderId(provider: LlmProvider, modelId?: string): LlmProvider {
+  if (provider === 'cheaperinference' && modelId) {
+    const providers = [copilotProviderForModel(modelId), ...Object.keys(catalogProviders) as LlmProvider[]];
+    // Exact ids win over snapshot prefixes, including non-Copilot model families.
+    return providers.find((id) => catalogProviders[id]?.[modelId])
+      ?? providers.find((id) => Object.keys(catalogProviders[id] ?? {}).some((base) => modelId.startsWith(`${base}-`)))
+      ?? provider;
+  }
   return provider === 'xai-oauth' ? 'xai' : provider;
 }
 
@@ -242,6 +249,10 @@ export function listVisionModels(
   provider: LlmProvider,
   configuredModel?: string,
 ): readonly string[] {
+  if (provider === 'cheaperinference') {
+    return configuredModel && resolveModelCapabilities({ backend: 'api', provider, modelId: configuredModel }).supportsImages.value
+      ? [configuredModel] : [];
+  }
   const catalog = catalogProviders[catalogProviderId(provider)] ?? {};
   const ids = Object.keys(catalog).filter((id) => (catalog[id]?.input ?? []).includes('image'));
   if (ids.length === 0 && provider !== 'ollama' && provider !== 'lmstudio') return [];
@@ -255,7 +266,7 @@ export function resolveModelCapabilities(
 ): ModelCapabilities {
   // Snapshot model ids (e.g. qwen3.7-plus-2026-05-26) share the base model's
   // catalog entry: match exact first, then the longest `base-` prefix.
-  const catalog = catalogProviders[catalogProviderId(identity.provider)] ?? {};
+  const catalog = catalogProviders[catalogProviderId(identity.provider, identity.modelId)] ?? {};
   const model = catalog[identity.modelId]
     ?? (() => {
       const snapshotBase = Object.keys(catalog)

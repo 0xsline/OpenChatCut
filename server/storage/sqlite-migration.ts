@@ -1,14 +1,14 @@
 // Atomic JSON→SQLite project-store migration.
 //
 // The SQLite marker is authoritative. Imported rows and that marker commit in
-// one transaction, so a crash exposes either the legacy backend or the complete
-// import phase. A phase-1 marker preserves current SQLite project authority
+// one transaction, so a crash cannot expose partial imports to consumers.
+// A phase-1 marker preserves current SQLite project authority
 // while phase 2 atomically adds missing auxiliary stores. A validated cfc-era
 // completion sidecar may transactionally promote an already-authoritative
 // SQLite database; modern sidecars are only repairable inspection copies.
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  existsSync,
+  accessSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -18,6 +18,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { isProjectStoreEntries, isProjectStoreKey, isProjectStoreRecord } from '../../shared/project-store-validation.ts';
 import { runtimeProfile, type RuntimeProfile } from '../runtime-profile.ts';
 import {
   collectAuxiliaryRecords,
@@ -46,7 +47,7 @@ export interface ImportSummary {
   imported: number;
   /** Already present with an identical content hash. */
   skipped: number;
-  /** Unreadable / unparseable files; skipped and retained in legacy storage. */
+  /** Unreadable records block the entire import and remain untouched. */
   quarantined: number;
   /** True only when the authoritative SQLite completion marker committed. */
   receiptWritten: boolean;
@@ -56,7 +57,7 @@ export interface ImportReceiptSource {
   /** Exact absolute source used for this imported record. */
   path: string;
   sha256: string;
-  kind: 'project-store-entry' | 'generation-jobs' | 'deleted-projects';
+  kind: 'project-store-entry' | 'project-store-monolith' | 'generation-jobs' | 'deleted-projects';
 }
 
 export interface ImportReceipt {
@@ -92,6 +93,7 @@ function parseReceipt(raw: string): ImportReceipt | null {
       || typeof receipt.importedAt !== 'string'
       || typeof receipt.phase !== 'number'
       || !Number.isSafeInteger(receipt.phase)
+      || (receipt.phase !== 1 && receipt.phase !== RECEIPT_PHASE)
       || !receipt.keys
       || typeof receipt.keys !== 'object'
       || Array.isArray(receipt.keys)
@@ -107,6 +109,7 @@ function parseReceipt(raw: string): ImportReceipt | null {
       if (typeof source.path !== 'string'
         || typeof source.sha256 !== 'string'
         || (source.kind !== 'project-store-entry'
+          && source.kind !== 'project-store-monolith'
           && source.kind !== 'generation-jobs'
           && source.kind !== 'deleted-projects')) return null;
       if (receipt.keys[key] !== source.sha256) return null;
@@ -181,7 +184,10 @@ export function readAuthoritativeImportReceipt(db: DatabaseSync): ImportReceipt 
   const row = db.prepare(
     'SELECT receipt FROM storage_migration_state WHERE singleton = ? AND state = ?'
   ).get(MIGRATION_ROW_ID, 'complete') as { receipt: string } | undefined;
-  return row ? parseReceipt(row.receipt) : null;
+  if (!row) return null;
+  const receipt = parseReceipt(row.receipt);
+  if (!receipt) throw new Error('SQLite migration refused an invalid authoritative receipt');
+  return receipt;
 }
 
 function expectedSource(
@@ -227,17 +233,17 @@ function readValidatedLegacyCandidate(profile: RuntimeProfile): ValidatedLegacyC
   const sources: Record<string, ImportReceiptSource> = {};
   for (const [key, hash] of Object.entries(legacy.keys)) {
     const source = expectedSource(key, hash, profile);
-    if (existsSync(source.path)) {
-      let bytes: Buffer;
-      try {
-        bytes = readFileSync(source.path);
-        JSON.parse(bytes.toString('utf8'));
-      } catch {
+    let bytes: Buffer | undefined;
+    try {
+      bytes = readFileSync(source.path);
+      JSON.parse(bytes.toString('utf8'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw new Error(`SQLite migration refused unreadable candidate source ${source.path}`);
       }
-      if (sha256(bytes) !== hash) {
-        throw new Error(`SQLite migration refused candidate source hash mismatch for ${source.path}`);
-      }
+    }
+    if (bytes && sha256(bytes) !== hash) {
+      throw new Error(`SQLite migration refused candidate source hash mismatch for ${source.path}`);
     }
     sources[key] = source;
   }
@@ -302,6 +308,35 @@ export function synchronizeImportReceiptSidecar(
 }
 
 
+/** Before .ready, the monolith wins over partial directory writes, as before. */
+function collectMonolithicRecords(profile: RuntimeProfile): LegacyRecord[] {
+  try {
+    accessSync(profile.projectStore.readyPath);
+    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(profile.projectStore.legacyStorePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+  const parsed: unknown = JSON.parse(bytes.toString('utf8'));
+  if (!isProjectStoreRecord(parsed) || parsed.version !== 1 || !isProjectStoreEntries(parsed.entries)) {
+    throw new Error('SQLite migration refused an invalid legacy project store');
+  }
+  const source: ImportReceiptSource = {
+    path: profile.projectStore.legacyStorePath,
+    sha256: sha256(bytes),
+    kind: 'project-store-monolith',
+  };
+  return Object.entries(parsed.entries).map(([key, value]) => ({
+    key, raw: JSON.stringify(value), source,
+  }));
+}
+
 /** Re-read every live legacy source while the process-wide migration lease is held. */
 function collectLegacyRecords(profile: RuntimeProfile, summary: ImportSummary): LegacyRecord[] {
   const records = new Map<string, LegacyRecord>();
@@ -319,6 +354,7 @@ function collectLegacyRecords(profile: RuntimeProfile, summary: ImportSummary): 
     let key: string;
     try {
       key = decodeURIComponent(file.slice(0, -'.json'.length));
+      if (!isProjectStoreKey(key) || records.has(key)) throw new Error('invalid or duplicate legacy key');
     } catch {
       summary.quarantined += 1;
       continue;
@@ -334,7 +370,11 @@ function collectLegacyRecords(profile: RuntimeProfile, summary: ImportSummary): 
       summary.quarantined += 1;
     }
   }
-  for (const record of collectAuxiliaryRecords(profile, summary)) records.set(record.key, record);
+  for (const record of collectMonolithicRecords(profile)) records.set(record.key, record);
+  for (const record of collectAuxiliaryRecords(profile, summary)) {
+    if (records.has(record.key)) throw new Error(`SQLite migration refused duplicate auxiliary key ${record.key}`);
+    records.set(record.key, record);
+  }
   return [...records.values()];
 }
 

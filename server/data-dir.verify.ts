@@ -97,14 +97,22 @@ try {
   await writeFile(join(source, 'project-store-v1', 'projects.json'), '[]');
   await writeFile(join(source, 'deleted-projects-v1.json'), '{}');
   await writeFile(join(source, 'export-cache.log'), 'regenerated, stays behind');
+  // The Upload-Post publish record: an ambiguous publish lost here could be sent again after restart.
+  const publishRecord = JSON.stringify({ 'ocut-0123456789abcdef0123456789abcdef': { state: 'ambiguous', at: 1 } });
+  await writeFile(join(source, 'upload-post-publishes.json'), publishRecord);
 
   const logs: string[] = [];
   const destination = join(fixture, 'destination');
   assert.deepEqual(
     await relocateDataDir(source, destination, (msg) => logs.push(msg), false),
-    { copiedEntries: 2 },
+    { copiedEntries: 3 },
   );
   assert.equal(await readFile(join(destination, 'project-store-v1', 'projects.json'), 'utf8'), '[]');
+  assert.equal(
+    await readFile(join(destination, 'upload-post-publishes.json'), 'utf8'),
+    publishRecord,
+    'the duplicate-publish record travels with the root',
+  );
   assert.ok(existsSync(join(source, 'project-store-v1', 'projects.json')), 'the source is kept intact');
   assert.equal(existsSync(join(destination, 'export-cache.log')), false, 'regenerated files are not carried over');
   assert.deepEqual(
@@ -148,7 +156,7 @@ try {
   await writeFile(join(resumed, 'project-store-v1.incoming', 'half.json'), 'truncated');
   assert.deepEqual(
     await relocateDataDir(source, resumed, () => undefined, false),
-    { copiedEntries: 2 },
+    { copiedEntries: 3 },
   );
   assert.equal(
     await readFile(join(resumed, 'project-store-v1', 'projects.json'), 'utf8'),
@@ -172,6 +180,36 @@ try {
   assert.deepEqual(again, { copiedEntries: 0 });
   assert.equal(await readFile(join(destination, 'deleted-projects-v1.json'), 'utf8'), 'newer, must win');
   assert.ok(logs.some((msg) => msg.includes('skipped')), 'a skipped entry is reported, never silent');
+
+  // Publish histories are the exception: both roots' tombstones must survive.
+  const ledgerName = 'upload-post-publishes.json';
+  const sourceOnly = 'ocut-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const targetOnly = 'ocut-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const shared = 'ocut-cccccccccccccccccccccccccccccccc';
+  await writeFile(join(source, ledgerName), JSON.stringify({
+    [sourceOnly]: { state: 'ambiguous', at: 1 },
+    [shared]: { state: 'accepted', at: 2 },
+  }));
+  await writeFile(join(destination, ledgerName), JSON.stringify({
+    [targetOnly]: { state: 'sending', at: 3 },
+    [shared]: { state: 'rejected', at: 4 },
+  }));
+  assert.deepEqual(await relocateDataDir(source, destination, () => undefined, false), { copiedEntries: 1 });
+  const merged = JSON.parse(await readFile(join(destination, ledgerName), 'utf8'));
+  assert.deepEqual(merged, {
+    [targetOnly]: { state: 'sending', at: 3 },
+    [shared]: { state: 'accepted', at: 2 },
+    [sourceOnly]: { state: 'ambiguous', at: 1 },
+  }, 'relocation unions dedup history and never changes an accepted upload into a retryable rejection');
+  assert.deepEqual(await relocateDataDir(source, destination, () => undefined, false), { copiedEntries: 0 });
+  await relocateDataDir(destination, source, () => undefined, false);
+  assert.deepEqual(JSON.parse(await readFile(join(source, ledgerName), 'utf8')), merged, 'moving back keeps both histories');
+  await writeFile(join(destination, ledgerName), JSON.stringify({ [shared]: null }));
+  await assert.rejects(
+    relocateDataDir(source, destination, () => undefined, false),
+    /invalid publish record/,
+    'a damaged destination ledger refuses relocation instead of silently discarding protection',
+  );
 
   // 7. Creating the root up front is idempotent, so a first run never races a first write.
   const eager = join(fixture, 'eager', 'nested');

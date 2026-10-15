@@ -89,6 +89,7 @@ export function Timeline(props: TimelineProps) {
         timecodeRef={toolbarTimecodeRef} playheadFrame={playheadRef.current} total={total}
         captionsVisible={captionsVisible}
         zoom={zoom} setZoom={setZoom}
+        frameRateLock={props.frameRateLock ?? null}
       />
 
       {/* selection-mode hint strip (subtle banner while picking refs) */}

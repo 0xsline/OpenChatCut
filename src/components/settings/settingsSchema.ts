@@ -29,6 +29,7 @@ import {
   type SettingsVendorPage,
 } from './settingsFields';
 import {
+  LOCAL_ASR_SETTINGS_ROUTE,
   ROUTE_NEEDS,
   TRANSCRIPTION_SETTINGS_GROUP,
   VOICE_SETTINGS_GROUP,
@@ -270,6 +271,17 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'web/firecrawl', vendor: 'firecrawl', title: 'Firecrawl',
             fields: [secret('FIRECRAWL_API_KEY', 'API Key')] },
         ] },
+      { key: 'publish', title: '发布到社交平台', hint: 'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。',
+        vendors: [
+          { key: 'publish/upload-post', vendor: 'uploadpost', title: 'Upload-Post',
+            note: '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。'
+              + '先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。'
+              + 'Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。',
+            fields: [
+              secret('UPLOAD_POST_API_KEY', 'API Key'),
+              text('UPLOAD_POST_PROFILE', 'Profile', undefined, '在 Upload-Post 控制台创建、已连接社交账号的 Profile 名称。'),
+            ] },
+        ] },
     ],
   },
   {
@@ -298,7 +310,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     groups: [
       { key: 'local', title: '本地模型', hint: '本地转写、节拍与音乐分析、画面语义搜索。模型按需安装，数据不出本机。',
         vendors: [
-          { key: 'local/asr', vendor: 'localasr', title: '本地转写', icon: 'mic', kind: 'local-models', fields: localAsrPage.fields },
+          { key: LOCAL_ASR_SETTINGS_ROUTE, vendor: 'localasr', title: '本地转写', icon: 'mic', kind: 'local-models', fields: localAsrPage.fields },
           { key: 'local/music/packs', vendor: 'localasr', title: '节拍与音乐分析', icon: 'music', kind: 'local-models', fields: [] },
           { key: 'local/semantic/setup', vendor: 'localasr', title: '画面语义搜索', icon: 'search', kind: 'local-models', fields: [] },
         ] },
@@ -337,8 +349,7 @@ export function modelValue(status: KeyStatusResponse | null, name: string): stri
   return status?.models?.[name] ?? '';
 }
 
-/** provider page "Configured": All secrets in the page are configured (doubao = double keys);
- * Pages without secret (local disk) to see if any field has been set.*/
+/** provider page "Configured": Every secret field on the page is configured; */
 export function vendorConfigured(
   status: KeyStatusResponse | null,
   page: SettingsVendorPage,

@@ -6,8 +6,13 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { renderTimeline, setUploadsDirProvider } from '../../remotion/render.mjs';
+import { disposeServeBundle } from '../../remotion/serve-bundle.mjs';
+import { resolveServerVideoDecoder } from '../../remotion/video-decoder.mjs';
 
 const run = promisify(execFile);
+// The platform's server decoder unless CC_RENDER_VIDEO_DECODER overrides it
+// (clipFxExport.offthread.verify.mjs pins the Windows one).
+const decoder = resolveServerVideoDecoder();
 const width = 160;
 const height = 90;
 const fps = 30;
@@ -164,15 +169,15 @@ try {
       }
     }
 
-    assert.deepEqual(mismatches, [], `${label} effect export reused baseline frames: ${JSON.stringify(mismatches)}`);
+    assert.deepEqual(mismatches, [], `[${decoder}] ${label} effect export reused baseline frames: ${JSON.stringify(mismatches)}`);
     const maximumSameFrameDistance = Math.max(...sameFrameDistances);
     if (exactMappingSupported) {
       assert.ok(
         maximumSameFrameDistance < 500,
-        `${label} effect export diverged from the inverse of its same-index baseline frame: ${maximumSameFrameDistance}`,
+        `[${decoder}] ${label} effect export diverged from the inverse of its same-index baseline frame: ${maximumSameFrameDistance}`,
       );
     }
-    console.log(`clipFxExport.verify: ${frameCount}/${frameCount} ${label} fractional-rate effect frames are transformed and frame-accurate${exactMappingSupported ? '' : ' (frame-sync assertions skipped on Linux CI)'} (max inverse MSE ${maximumSameFrameDistance.toFixed(2)})`);
+    console.log(`clipFxExport.verify [${decoder}]: ${frameCount}/${frameCount} ${label} fractional-rate effect frames are transformed and frame-accurate${exactMappingSupported ? '' : ' (frame-sync assertions skipped on Linux CI)'} (max inverse MSE ${maximumSameFrameDistance.toFixed(2)})`);
   }
 
   const transitionClipFrames = 45;
@@ -277,7 +282,9 @@ try {
       `transition start diverged from the filtered outgoing frame (inverse MSE ${transitionStartInverseDistance})`,
     );
   }
-  console.log(`clipFxExport.verify: transition start preserves the outgoing effect (MSE ${transitionStartDistance.toFixed(2)}, inverse MSE ${transitionStartInverseDistance.toFixed(2)}${exactMappingSupported ? '' : '; frame-sync assertions skipped on Linux CI'})`);
+  console.log(`clipFxExport.verify [${decoder}]: transition start preserves the outgoing effect (MSE ${transitionStartDistance.toFixed(2)}, inverse MSE ${transitionStartInverseDistance.toFixed(2)}${exactMappingSupported ? '' : '; frame-sync assertions skipped on Linux CI'})`);
 } finally {
   await rm(directory, { recursive: true, force: true });
+  // The serve bundle this run webpacked (~150 MB in the OS temp dir).
+  await disposeServeBundle();
 }

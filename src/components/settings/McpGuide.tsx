@@ -102,6 +102,7 @@ function connectErrorMessage(t: ReturnType<typeof useT>, error: string): string 
   if (error === 'config-parse-error') return t('目标配置文件不是有效 JSON，为避免覆盖未写入。');
   if (error === 'config-write-error') return t('写入配置文件失败。');
   if (error === 'codex-cli-failed') return t('执行 codex mcp add 失败。');
+  if (error === 'token-env-write-error') return t('已在 Codex 注册，但令牌未能保存为 Windows 用户环境变量，连接未完成。');
   return t('连接失败');
 }
 
@@ -123,10 +124,15 @@ function ConnectButton({ client, onStatus }: { client: ClientSnippet['client']; 
         })
           .then(async (response) => {
             const data: unknown = await response.json().catch(() => null);
-            const result = data as { ok?: boolean; paths?: string[]; error?: string } | null;
+            const result = data as { ok?: boolean; paths?: string[]; error?: string; notice?: string } | null;
             if (response.ok && result?.ok) {
               setState('done');
-              onStatus(t('已写入 {paths}', { paths: (result.paths ?? []).join('、') }), true);
+              const paths = (result.paths ?? []).join('、');
+              // Only processes started after a Windows user variable is saved see it.
+              const message = result.notice === 'restart-codex'
+                ? t('已写入 {paths}。请完全退出并重新打开 Codex，令牌才会生效。', { paths })
+                : t('已写入 {paths}', { paths });
+              onStatus(message, true);
               setTimeout(() => setState('idle'), 2500);
             } else {
               setState('error');

@@ -1,10 +1,13 @@
 import { LOCAL_CJK_FONTS, normalizeFontKey } from './localFonts';
+import { getAllDiscoveredFonts, isInstalledFont } from './systemFonts';
+
+export type FontSource = 'google' | 'bundled' | 'system' | 'custom';
 
 export interface FontCatalogEntry {
   family: string;
   aliases: string[];
   loadable: boolean;
-  source: 'google' | 'bundled';
+  source: FontSource;
 }
 
 export interface GoogleFontCatalogEntry extends FontCatalogEntry {
@@ -69,6 +72,15 @@ export function isGenericFontFamily(family: string): boolean {
   return !key || key in GENERIC_FAMILIES;
 }
 
+/** Quote individual native families, preserving explicit CSS stacks. */
+export function fontFamilyCss(family: string, fallback: string): string {
+  const raw = family.trim();
+  if (!raw) return fallback;
+  if (raw.includes(',')) return raw;
+  const clean = raw.replace(/^["']|["']$/g, '');
+  return `${isGenericFontFamily(clean) ? clean : JSON.stringify(clean)}, ${fallback}`;
+}
+
 export function resolveCanonicalFamily(name: string): string | null {
   const key = normalizeFontKey(name.split(',')[0]?.trim().replace(/^["']|["']$/g, '') ?? '');
   if (!key) return null;
@@ -76,29 +88,52 @@ export function resolveCanonicalFamily(name: string): string | null {
     if (normalizeFontKey(entry.family) === key) return entry.family;
     if (entry.aliases.some((alias) => normalizeFontKey(alias) === key)) return entry.family;
   }
+  for (const sysFont of getAllDiscoveredFonts()) {
+    if (normalizeFontKey(sysFont) === key) return sysFont;
+  }
   return null;
 }
 
 export function isLoadableFontFamily(family: string): boolean {
-  return isGenericFontFamily(family) || resolveCanonicalFamily(family) !== null;
+  if (isGenericFontFamily(family)) return true;
+  const canonical = resolveCanonicalFamily(family);
+  return FONT_CATALOG.some((entry) => entry.family === canonical) || isInstalledFont(canonical ?? family);
 }
 
 export interface FontSearchHit {
   family: string;
   aliases: string[];
   loadable: boolean;
-  source: 'google' | 'bundled';
+  source: FontSource;
 }
 
 export function searchFontCatalog(query: string, limit = 25): FontSearchHit[] {
   const normalized = normalizeFontKey(query);
   if (!normalized) return [];
   const hits: FontSearchHit[] = [];
+  const seen = new Set<string>();
   for (const entry of FONT_CATALOG) {
     const haystack = [entry.family, ...entry.aliases].map(normalizeFontKey).join(' ');
     if (haystack.includes(normalized) || normalizeFontKey(entry.family).includes(normalized)) {
       hits.push({ ...entry });
+      seen.add(normalizeFontKey(entry.family));
       if (hits.length >= limit) break;
+    }
+  }
+  if (hits.length < limit) {
+    for (const sysFont of getAllDiscoveredFonts()) {
+      const norm = normalizeFontKey(sysFont);
+      if (seen.has(norm)) continue;
+      if (norm.includes(normalized)) {
+        hits.push({
+          family: sysFont,
+          aliases: [],
+          loadable: isInstalledFont(sysFont),
+          source: isInstalledFont(sysFont) ? 'system' : 'custom',
+        });
+        seen.add(norm);
+        if (hits.length >= limit) break;
+      }
     }
   }
   hits.sort((a, b) => Number(b.loadable) - Number(a.loadable));

@@ -1,4 +1,5 @@
 import { startUiLocaleSync } from '../i18n/localeSync';
+import { t } from '../i18n/locale';
 import { useCallback, useEffect, useState } from 'react';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../agent/capabilities';
 import { fetchCodexModels, fetchCodexStatus } from '../agent/codex/client';
@@ -172,7 +173,7 @@ const projectStartupSource: ProjectStartupSource = {
   list: listProjects,
   hasHistory: hasProjectHistory,
   canSeedDemo: () => kvRemoteMode() === 'local' || projectStoreWriteCredential(),
-  createDemo: async () => createProject('示例工程', await seedDoc()),
+  createDemo: async () => createProject(t('示例工程'), await seedDoc()),
 };
 
 export async function loadInitialProjects(

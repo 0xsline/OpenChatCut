@@ -1,8 +1,8 @@
-import type { TimelineState } from '../editor/types';
+import type { ProjectDoc, TimelineState } from '../editor/types';
 import { trackAlias } from '../editor/types';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
-import { captionCues, mediaItems } from '../agent/tools/jianying-export-tool';
+import { jianyingDraftPayload } from './jianyingDraftRequest';
 import {
   MAX_VIDEO_BITRATE_MBPS,
   MIN_VIDEO_BITRATE_MBPS,
@@ -17,12 +17,18 @@ import {
 } from './useExportDialogModel';
 import type { ExportQaUiState, ExportTab } from './useExportWorkflow';
 import { fcpxmlBackgroundFillCount } from './fcpxml';
-import { loadJianYingDraftPreference, saveJianYingDraftPreference, type JianYingDraftStore } from './jianyingDraftPreference';
+import {
+  jianyingDraftTarget,
+  jianyingStoreHint,
+  loadJianYingDraftPreference,
+  saveJianYingDraftPreference,
+  type JianYingDraftStore,
+} from './jianyingDraftPreference';
 import { useState } from 'react';
 
-/** macOS default store for the Chinese JianYing (剪映专业版) app; drafts in 6.0+
- * are encrypted and capcut-cli cannot decrypt them, hence the ≤5.9 note. */
-const JIANYING_STORE = '~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft';
+/** The local server this page exports through runs on the same machine, so the
+ * browser's OS is the one whose draft store the export writes to. */
+const windowsHost = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
 
 const resolutionLabel = (value: string): string => value === '4k' ? '4K' : value;
 const clampBitrate = (value: number): number => Math.max(
@@ -220,7 +226,7 @@ interface JianyingExportOutcome {
   warnings: string[];
 }
 
-function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
+function JianyingTab({ project, base }: { project: ProjectDoc; base: string }) {
   const t = useT();
   const initial = loadJianYingDraftPreference();
   const [draftName, setDraftName] = useState(initial.draftName || base);
@@ -229,7 +235,6 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<JianyingExportOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const draftsDir = store === 'jianying' ? JIANYING_STORE : store === 'custom' ? customDir.trim() : '';
   const updateStore = (next: JianYingDraftStore) => {
     setStore(next);
     saveJianYingDraftPreference({ store: next, customDir, draftName: draftName === base ? '' : draftName });
@@ -240,20 +245,7 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
     setError(null);
     setOutcome(null);
     try {
-      const body = {
-        draftName: draftName.trim(),
-        fps: state.fps,
-        items: mediaItems(state.items).map((item) => ({
-          kind: item.kind,
-          src: item.src ?? '',
-          startFrame: item.startFrame,
-          durationInFrames: item.durationInFrames,
-          volume: item.volume,
-          name: item.name,
-        })),
-        captions: captionCues(state, state.captions),
-        draftsDir,
-      };
+      const body = { draftName: draftName.trim(), ...jianyingDraftPayload(project), ...jianyingDraftTarget(store, customDir) };
       const response = await fetch('/api/external-agent/jianying-export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -291,7 +283,7 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
           onChange={updateStore}
         />
       </Row>
-      {store === 'jianying' && <p className="cc-export-footnote">{JIANYING_STORE}</p>}
+      {store === 'jianying' && <p className="cc-export-footnote">{jianyingStoreHint(windowsHost)}</p>}
       {store === 'custom' && (
         <Row label={t('草稿库路径')}>
           <input className="cc-export-select" placeholder="~/Movies/.../com.lveditor.draft"
@@ -338,6 +330,7 @@ function JianyingTab({ state, base }: { state: TimelineState; base: string }) {
 export interface ExportTabContentProps extends VideoTabProps, XmlTabProps {
   tab: ExportTab;
   state: TimelineState;
+  project: ProjectDoc;
   subtitles: ExportSubtitleSettings;
   mgCount: number;
   base: string;
@@ -348,6 +341,6 @@ export function ExportTabContent(props: ExportTabContentProps) {
   if (props.tab === 'audio') return <AudioTab />;
   if (props.tab === 'mg') return <MotionGraphicsTab count={props.mgCount} />;
   if (props.tab === 'subtitles') return <SubtitlesTab state={props.state} subtitles={props.subtitles} />;
-  if (props.tab === 'jianying') return <JianyingTab state={props.state} base={props.base} />;
+  if (props.tab === 'jianying') return <JianyingTab project={props.project} base={props.base} />;
   return <XmlTab {...props} />;
 }

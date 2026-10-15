@@ -1,17 +1,29 @@
 import assert from 'node:assert/strict';
-import { isExternalServerDirectCall } from '../../src/agent/external-tool-policy.ts';
-import { ExternalEditorCallError } from './broker.ts';
-import { OfflineExternalEditRuntime } from './offline-runtime.ts';
-import { offlineExternalToolSchemas } from './offline-tools.ts';
-import { executeOfflineTool } from './offline-executor.ts';
-import {
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { isolateVerifyHome } from '../../shared/verify-home.ts';
+
+const root = await mkdtemp(join(tmpdir(), 'occ-offline-runtime-'));
+const restoreHome = isolateVerifyHome(root);
+
+// The offline run ledger's project store captures the profile home at module
+// evaluation; delay these known modules so this verification can never touch
+// the user's real project data.
+const { isExternalServerDirectCall } = await import('../../src/agent/external-tool-policy.ts');
+const { ExternalEditorCallError } = await import('./broker.ts');
+const { OfflineExternalEditRuntime } = await import('./offline-runtime.ts');
+const { offlineExternalToolSchemas } = await import('./offline-tools.ts');
+const { executeOfflineTool } = await import('./offline-executor.ts');
+const {
   editorUrl,
   editSessionId,
   MemoryPersistence,
   projectDoc,
   projectId,
-} from './offline-runtime.verify-fixtures.ts';
-import { verifyOfflineCommitAndProjectionScenarios } from './offline-runtime-safety.verify-scenarios.ts';
+} = await import('./offline-runtime.verify-fixtures.ts');
+const { verifyOfflineCommitAndProjectionScenarios } =
+  await import('./offline-runtime-safety.verify-scenarios.ts');
 
 
 const toolNames = new Set(offlineExternalToolSchemas().map((schema) => schema.name));
@@ -67,6 +79,13 @@ assert.equal(persistence.commitCount, 0);
 
 const begun = await runtime.execute('begin_edit_session', { approvalMode: 'auto', clientName: 'External editor' });
 const sessionId = editSessionId(begun);
+await assert.rejects(
+  () => runtime.execute('begin_edit_session', { approvalMode: 'auto' }),
+  /Resolve or discard active edit session/,
+  'offline active conflict rejects when reuseExisting is not set',
+);
+const adoptedOffline = await runtime.execute('begin_edit_session', { approvalMode: 'auto', reuseExisting: true });
+assert.equal(editSessionId(adoptedOffline), sessionId, 'offline begin_edit_session with reuseExisting: true adopts active session');
 for (const action of ['preset_apply', 'preset_delete', 'preset_list', 'preset_rename', 'preset_save']) {
   await assert.rejects(
     () => runtime.execute('edit_captions', { editSessionId: sessionId, action }),
@@ -320,9 +339,21 @@ assert.deepEqual(raceStore.current, projectDoc());
 
 await verifyOfflineCommitAndProjectionScenarios();
 
-for (const instance of [
+await Promise.all([
   runtime, interruptedRuntime, resumedRuntime, concurrentRuntime, staleRuntime,
   takeoverRuntime, candidateRuntime, cancelledRuntime, raceRuntime,
-]) instance.dispose();
+].map((instance) => instance.dispose()));
+// dispose() also fires the per-run lease releases without awaiting them; let
+// those store writes settle before the close below so it is final.
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+const { resetSqliteStoreForTests } = await import('../storage/sqlite-store.ts');
+const { resetSearchForTests } = await import('../storage/fulltext-search.ts');
+// The store and its search index each keep the SQLite fixture files open;
+// Windows cannot remove the directory until both close.
+resetSqliteStoreForTests();
+resetSearchForTests();
+restoreHome();
+await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 10 });
 
 console.log('offline-runtime.verify: ok');

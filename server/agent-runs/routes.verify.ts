@@ -333,7 +333,7 @@ try {
   await flushServerRunPersistence(capRun);
   resetServerRunStoreForTest();
   const capRecovered = await recoverServerRun(capRun.projectId, capRun.id);
-  assert.equal(capRecovered?.status, 'failed', 'beyond the hard ceiling the run fails on recovery');
+  assert.equal(capRecovered?.status, 'failed', 'a run the restart cut off recovers as failed');
   const cappedResponse = await fetch(
     `${origin}/api/agent-runs/${capRun.id}/events?projectId=${capRun.projectId}&after=0`,
     {

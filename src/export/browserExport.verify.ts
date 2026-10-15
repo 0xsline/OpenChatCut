@@ -167,6 +167,9 @@ const runtime = {
   },
 };
 const loadComposition = async () => ({ TimelineComposition: () => null });
+// Node has no WebCodecs; these renders stand in a browser whose encoder accepts
+// the config (browserEncoderProbe.verify.ts covers a rejecting one).
+const probeVideoEncoder = async () => ({ supported: true });
 
 const rendered = await renderTimelineInBrowser({
   state,
@@ -176,6 +179,7 @@ const rendered = await renderTimelineInBrowser({
   onProgress: (progress) => progressSnapshots.push(progress.progress),
   loadRenderer: async () => runtime as never,
   loadComposition,
+  probeVideoEncoder,
 });
 assert.equal(rendered.status, 'rendered');
 if (rendered.status === 'rendered') assert.equal(await rendered.blob.text(), 'browser-video');
@@ -217,6 +221,7 @@ await renderTimelineInBrowser({
   videoBitrate: 12_000_000,
   loadRenderer: async () => runtime as never,
   loadComposition,
+  probeVideoEncoder,
 });
 assert.equal(capabilityCalls[1].container, 'webm');
 assert.equal(capabilityCalls[1].audioCodec, 'opus');

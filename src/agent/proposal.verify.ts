@@ -169,6 +169,24 @@ async function verifyProposalPersistenceFence(): Promise<void> {
   assert.equal(failedOrder.includes('apply'), false);
   assert.match(failedErrors[0] ?? '', /提案未应用/);
 }
+async function verifyStaleProposalBeforeWrite(): Promise<void> {
+  const proposal = buildProposal(
+    [buildOperation('rename_timeline', { name: 'Stale' }, [{ type: 'tl.rename', id: timeline.id, name: 'Stale' }])],
+    'Stale proposal', doc, { fps: 30, items: [] } as never,
+  );
+  const order: string[] = [];
+  const errors: string[] = [];
+  const state = proposalState(proposal, order, errors);
+  const newerDoc = { ...doc, timelines: [{ ...timeline, width: 1440 }] };
+  await applySelectedProposal(state, 'proposal-stage-race-verify', new Set([0]), proposalPersistence(order, {
+    markApplying: async () => { state.ctxRef.current.commands.applyDoc(newerDoc); },
+  }));
+  assert.equal(order.includes('save'), false, 'an edit made while staging must not be overwritten by a stale snapshot');
+  assert.equal(state.ctxRef.current.getDoc(), newerDoc);
+  assert.ok(order.includes('settle-stale'));
+  assert.equal(state.applyingProposalRef.current, false);
+}
+
 async function verifyConcurrentRestoreFailureFence(): Promise<void> {
   const proposal = buildProposal(
     [buildOperation(
@@ -611,6 +629,7 @@ async function verifyLiveEditLandingFence(): Promise<void> {
 }
 
 await verifyProposalPersistenceFence();
+await verifyStaleProposalBeforeWrite();
 await verifyConcurrentRestoreFailureFence();
 await verifyCommittedRecoveryFence();
 await verifyProposalOwnershipFence();

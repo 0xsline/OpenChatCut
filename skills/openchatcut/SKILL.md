@@ -30,10 +30,11 @@ running editor and is loaded on demand with `load_skill`.
    tools and emits `tools/list_changed`; refresh the list before continuing.
 4. Before project reads or edits, call `begin_edit_session`. Keep its
    `editSessionId` and pass it to every draft-safe editor tool.
-5. If `begin_edit_session` reports an active session, call `list_edit_sessions`.
-   An orphaned session may be resumed or discarded with `recover_edit_session`
-   using an action listed in `recoveryActions`; an online owner must finish or
-   discard its own session.
+5. Set `reuseExisting: true` on `begin_edit_session` to reuse your active draft
+   or adopt an unchanged orphan. Existing operations and approval mode are kept.
+   If reuse is rejected, call `list_edit_sessions`. Use `recover_edit_session`
+   only with a listed `recoveryActions` value; another online owner must finish
+   or discard its own session.
 6. Use `approvalMode: "manual"` unless the user explicitly asks for unattended
    application. In manual mode, the user approves the complete proposal in
    OpenChatCut. In auto mode, `review_edit_session` applies the complete draft.

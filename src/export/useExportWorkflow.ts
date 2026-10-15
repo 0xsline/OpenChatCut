@@ -4,6 +4,7 @@ import { loadExportAutoQaPreference, saveExportAutoQaPreference } from './autoQa
 import { createArtifactExporters } from './artifactExportOperations';
 import {
   type BackgroundExportJobSetters,
+  type BackgroundExportJob,
   type ExportJobStore,
 } from './backgroundExportStore';
 import { createExportVerifier } from './exportQaOperation';
@@ -138,6 +139,15 @@ const EMPTY_WORKFLOW = {
 };
 const RECOVERED_SERVER_EXPORT_PREFIX = 'server-export-';
 
+export function initialExportDialogJobId(jobs: readonly BackgroundExportJob[]): string | null {
+  // Reopening a finished export should offer a new export, while a render still
+  // in progress must retain its progress/cancel controls. Keep failure feedback.
+  const active = jobs.findLast((job) => !['completed', 'failed', 'cancelled'].includes(job.progress.phase));
+  if (active) return active.id;
+  const latest = jobs.at(-1);
+  return latest?.progress.phase === 'completed' ? null : latest?.id ?? null;
+}
+
 function recoveredServerRenderId(jobId: string | null): string | null {
   return jobId?.startsWith(RECOVERED_SERVER_EXPORT_PREFIX)
     ? jobId.slice(RECOVERED_SERVER_EXPORT_PREFIX.length)
@@ -147,7 +157,7 @@ function recoveredServerRenderId(jobId: string | null): string | null {
 export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs: ExportJobStore) {
   const t = useT();
   const initialJobs = exportJobs.getSnapshot().jobs;
-  const [viewedJobId, setViewedJobId] = useState<string | null>(() => initialJobs.at(-1)?.id ?? null);
+  const [viewedJobId, setViewedJobId] = useState<string | null>(() => initialExportDialogJobId(initialJobs));
   const [setupError, setSetupError] = useState<string | null>(null);
   const browserAbortRef = useRef<AbortController | null>(null);
   const [autoQaEnabled, setAutoQaEnabled] = useState(() => loadExportAutoQaPreference().enabled);

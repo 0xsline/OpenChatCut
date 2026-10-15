@@ -7,6 +7,7 @@ import {
   searchFontCatalog,
 } from '../../fonts/googleFontCatalog';
 import { collectReferencedFonts } from '../../fonts/projectFonts';
+import { refreshSystemFonts } from '../../fonts/systemFonts';
 
 export { collectReferencedFonts } from '../../fonts/projectFonts';
 
@@ -15,7 +16,10 @@ export { collectReferencedFonts } from '../../fonts/projectFonts';
 type Args = Record<string, unknown>;
 
 export async function execFontTool(name: string, args: Args, _ctx: AgentContext): Promise<unknown> {
-  if (name === 'search_fonts') return execSearchFonts(args);
+  if (name === 'search_fonts') {
+    await refreshSystemFonts();
+    return execSearchFonts(args);
+  }
   return { error: `unknown tool ${name}` };
 }
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { rateStretchItem } from './rateStretch';
+import { canRateStretchItem, rateStretchItem } from './rateStretch';
 import type { TimelineState } from './types';
 
 const state: TimelineState = {
@@ -34,5 +34,25 @@ assert.deepEqual(left.items[0]?.keyframes?.opacity?.[0]?.frame, 40);
 const clamped = rateStretchItem(state, 'clip', 'right', -99);
 assert.ok((clamped.items[0]?.playbackRate ?? 0) <= 8);
 assert.ok((clamped.items[0]?.durationInFrames ?? 0) >= 13);
+
+// Transcript audio renders an edited stream at 1x, regardless of playbackRate.
+const transcriptAudio: TimelineState = {
+  ...state,
+  items: [{ ...state.items[0]!, kind: 'audio', transcript: [{ text: 'hello', start: 0, end: 3333 }] }],
+};
+assert.equal(canRateStretchItem(transcriptAudio.items[0]!), false, 'the UI hides rate-stretch handles for word-driven audio');
+for (const edge of ['left', 'right'] as const) {
+  assert.strictEqual(rateStretchItem(transcriptAudio, 'clip', edge, 20), transcriptAudio,
+    'rate stretching must not change the duration of word-driven audio');
+}
+const staleAudio = {
+  ...transcriptAudio,
+  items: [{ ...transcriptAudio.items[0]!, transcriptStale: true }],
+};
+assert.equal(canRateStretchItem(staleAudio.items[0]!), true);
+assert.notStrictEqual(rateStretchItem(staleAudio, 'clip', 'right', 20), staleAudio,
+  'a stale transcript does not drive audio playback');
+const plainAudio = { ...state, items: [{ ...state.items[0]!, kind: 'audio' as const }] };
+assert.equal(rateStretchItem(plainAudio, 'clip', 'right', 100).items[0]?.playbackRate, 0.5);
 
 console.log('rateStretch.check: ok');

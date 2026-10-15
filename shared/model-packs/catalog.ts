@@ -162,14 +162,29 @@ export function modelPackDefinition(id: string): ModelPackDefinition | undefined
   return MODEL_PACKS.find((pack) => pack.id === id);
 }
 
+const MUSIC_PACK_PAGE = { zh: '节拍与音乐分析', en: 'Beat and music analysis' } as const;
+/** The 设置 → 本地模型 page whose buttons install each pack. */
+const PACK_SETTINGS_PAGES = new Map<string, { readonly zh: string; readonly en: string }>([
+  ['rhythm-lite', MUSIC_PACK_PAGE],
+  ['music-semantics-lite', MUSIC_PACK_PAGE],
+  ['visual-semantics-lite', { zh: '画面语义搜索', en: 'Visual semantic search' }],
+]);
+
 /**
  * User-facing install guidance for missing model packs (used by agent tools).
- * Bilingual because the assistant relays it in the user's language.
+ * Bilingual because the assistant relays it in the user's language. It names
+ * the page that has the install buttons; it used to send users to
+ * 设置 → 转写 → 本地模型, which has none (#126).
  */
 export function modelPackInstallGuidance(packs: readonly { id: string }[]): string {
   const names = packs.map((pack) => {
     const def = MODEL_PACKS.find((entry) => entry.id === pack.id);
     return def ? `${def.label}（${def.id}）` : pack.id;
   }).join('、');
-  return `请到 设置 → 转写 → 本地模型 下载：${names}（Settings → Transcription → Local models: ${packs.map((pack) => pack.id).join(', ')}）`;
+  const pages = packs.flatMap((pack) => PACK_SETTINGS_PAGES.get(pack.id) ?? []);
+  const page = (language: 'zh' | 'en'): string => {
+    const titles = [...new Set(pages.map((entry) => entry[language]))];
+    return titles.length > 0 ? ` → ${titles.join(' / ')}` : '';
+  };
+  return `请到 设置 → 本地模型${page('zh')} 下载：${names}（Settings → Local models${page('en')}: ${packs.map((pack) => pack.id).join(', ')}）`;
 }

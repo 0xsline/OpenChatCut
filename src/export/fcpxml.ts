@@ -16,70 +16,11 @@ import { sourceWindowForTimelineRange, timelineFramesToSourceFrames } from '../e
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
 import { backgroundFillStrengthOf, isBackgroundFillActive } from '../editor/backgroundFill';
+import type { ExportMediaSourceMap, ExportMediaStart } from '../../shared/export-media-sources';
+import { planAssetMedia, type AssetMedia } from './fcpxmlMedia';
+import { mediaStartTime, mediaTime, rationalTime, retimedClipTimes, timecodeFormatAttr } from './fcpxmlTime';
 
-/** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
-const UPLOAD_PREFIX = '/media/uploads/';
-
-/** Absolute disk path → file:// URL. Both POSIX and Windows drive letters are covered; path segmentation is based on URL rules
- * Encoding (Chinese/space file names cannot be parsed by NLE if they are not encoded), and the colon in the drive letter must remain intact. */
-function toFileUrl(absPath: string): string {
-  const slashed = absPath.replace(/\\/g, '/');
-  if (slashed.startsWith('//')) {
-    const encoded = slashed.slice(2).split('/').map(encodeURIComponent).join('/');
-    return `file://${encoded}`;
-  }
-  const rooted = /^[A-Za-z]:/.test(slashed) ? `/${slashed}` : slashed;
-  const encoded = rooted
-    .split('/')
-    .map((seg) => (/^[A-Za-z]:$/.test(seg) ? seg : encodeURIComponent(seg)))
-    .join('/');
-  return `file://${encoded}`;
-}
-/**
- * Absolute disk path → FCPXML <pathurl>. DaVinci Resolve reads this element
- * per the FCPXML spec, and on macOS it resolves native UTF-8 path segments but
- * NOT percent-encoded non-ASCII. Keep every segment byte-identical to the
- * on-disk name; encode only URL-breaking characters (space/#/?).
- */
-export function toPathUrl(absPath: string): string {
-  const slashed = absPath.replace(/\\/g, '/');
-  const rooted = slashed.startsWith('//') || /^[A-Za-z]:/.test(slashed)
-    ? `/${slashed}`.replace(/^\/\//, '//')
-    : slashed;
-  const encoded = rooted
-    .split('/')
-    .map((seg) => seg.replace(/ /g, '%20').replace(/#/g, '%23').replace(/\?/g, '%3F'))
-    .join('/');
-  return `file://${encoded}`;
-}
-
-/**
- * Fragment src → absolute disk path when the fragment names a local file.
- * /media/uploads/<name> resolves against mediaDir (MEDIA_DIR can change);
- * Windows/POSIX absolute sources pass through; remote/inline sources return
- * null so callers never fabricate a local address for them.
- */
-export function resolveAssetAbsPath(src: string, mediaDir?: string): string | null {
-  if (/^(?:https?|file|data|blob):/i.test(src)) return null;
-  if (/^(?:[A-Za-z]:[\\/]|\\\\)/.test(src)) return src;
-  if (mediaDir && src.startsWith(UPLOAD_PREFIX)) {
-    const name = decodeURIComponent(src.slice(UPLOAD_PREFIX.length));
-    return `${mediaDir.replace(/[/\\]+$/, '')}/${name}`;
-  }
-  return src.startsWith('/') ? src : null;
-}
-
-/**
- * Fragment src → NLE address that can be relinked. `/media/uploads/<name>` is the same origin URL, the physical location is
- * mediaDir is determined (MEDIA_DIR can be changed) and must be converted into an absolute path, otherwise every asset in NLE is
- * Offline. Remote/inline addresses are passed through as is (NLE can't turn them off, but lying about local paths is worse).
- */
-export function resolveAssetSrc(src: string, mediaDir?: string): string {
-  if (/^(?:https?|file|data|blob):/i.test(src)) return src;
-  const abs = resolveAssetAbsPath(src, mediaDir);
-  if (abs) return toFileUrl(abs);
-  return `file://${src}`;
-}
+export { resolveAssetAbsPath, resolveAssetSrc } from './fcpxmlMedia';
 
 /**
  * Transcript editing of audio files (word deletion/mute/block rearrangement) is split into multiple segments at the playback layer
@@ -87,8 +28,9 @@ export function resolveAssetSrc(src: string, mediaDir?: string): string {
  * Otherwise, NLE will play according to the continuous source interval, and the deleted words will be played back, and the entire subsequent content will be lost.
  * Share keptSegments with the rendering layer to ensure that both sides always have the same true source.
  * Deleting words from video files does not change the picture (plays continuously forever), so only audio needs to be segmented.
+ * The JianYing draft request splits word-driven audio with this same function.
  */
-function transcriptSegments(
+export function transcriptSegments(
   item: TimelineItem,
   fps: number,
 ): ReturnType<typeof keptSegments> | null {
@@ -117,18 +59,6 @@ function xmlComment(text: string): string {
 /** FCPXML resource/element id must be legal NCName: illegal character replacement + fixed prefix guaranteed not to start with a number.*/
 function sanitizeId(raw: string): string {
   return `id-${raw.replace(/[^A-Za-z0-9_.-]/g, '_')}`;
-}
-
-/**
- * Frame → FCPXML rational number time "N/Ds". Integer frame rate directly uses frames/fps; non-integer frame rate
- * (For example, 29.97) Amplify to the integer denominator and then round to an integer to ensure that it is exactly equivalent to frames/fps seconds——
- * Here is the simplest way to ensure accurate round-trip conversion, without pursuing NTSC 1001/30000
- * industry practice denominator.
- */
-function rationalTime(frames: number, fps: number): string {
-  if (Number.isInteger(fps)) return `${frames}/${fps}s`;
-  const scale = 1000;
-  return `${Math.round(frames * scale)}/${Math.round(fps * scale)}s`;
 }
 
 function validateState(state: TimelineState): void {
@@ -180,6 +110,11 @@ interface RenderedMotionGraphicInfo {
   key: string;
   filename: string;
   durationFrames: number;
+}
+
+/** An asset with its media representations and clock settled for this export. */
+interface PlannedAsset extends AssetInfo {
+  readonly media: AssetMedia;
 }
 
 /** Press src to remove duplicates and collect asset resources: only one asset will be registered if the same asset is used multiple times on the timeline.*/
@@ -235,45 +170,41 @@ function finalExtensionStem(filename: string): string {
 }
 
 
+/** `<!ELEMENT media-rep (bookmark?)>`: the location lives only in `src`. */
 function mediaRepXml(
   kind: 'original-media' | 'proxy-media',
   src: string,
   filename: string,
-  pathUrl?: string,
 ): string {
   const suggested = finalExtensionStem(filename);
   const suggestedAttr = suggested ? ` suggestedFilename="${escapeXml(suggested)}"` : '';
-  const inner = pathUrl ? `<pathurl>${escapeXml(pathUrl)}</pathurl>` : '';
-  return `<media-rep kind="${kind}" src="${escapeXml(src)}"${suggestedAttr}>${inner}</media-rep>`;
+  return `<media-rep kind="${kind}" src="${escapeXml(src)}"${suggestedAttr}/>`;
 }
 
-function assetResourceXml(
-  src: string,
-  info: AssetInfo,
-  fps: number,
-  formatId: string,
-  mediaDir?: string,
-): string {
-  const hasVideo = info.kind !== 'audio';
-  const hasAudio = info.kind === 'audio' || info.kind === 'video';
-  const name = escapeXml(info.name || decodedBasename(src));
+/** Settle every asset's media representations and start timecode once. */
+function planAssets(
+  assets: Map<string, AssetInfo>,
+  mediaDir: string | undefined,
+  mediaSources: ExportMediaSourceMap | undefined,
+): Map<string, PlannedAsset> {
+  return new Map(Array.from(assets, ([src, info]) => {
+    const located = mediaSources && Object.hasOwn(mediaSources, src) ? mediaSources[src] : undefined;
+    return [src, { ...info, media: planAssetMedia(src, info.originalFilePath, mediaDir, located) }];
+  }));
+}
+
+function assetResourceXml(src: string, asset: PlannedAsset, fps: number, formatId: string): string {
+  const hasVideo = asset.kind !== 'audio';
+  const hasAudio = asset.kind === 'audio' || asset.kind === 'video';
+  const name = escapeXml(asset.name || decodedBasename(src));
   const formatAttr = hasVideo ? ` format="${formatId}"` : '';
-  const internalAbs = resolveAssetAbsPath(src, mediaDir);
-  const internalHref = resolveAssetSrc(src, mediaDir);
-  const originalAbs = typeof info.originalFilePath === 'string' && info.originalFilePath
-    ? info.originalFilePath
-    : undefined;
-  const originalHref = originalAbs ? toFileUrl(originalAbs) : undefined;
-  const filename = info.sourceFilename ?? info.name;
-  const representations = originalHref
-    ? [
-        mediaRepXml('original-media', originalHref, filename, toPathUrl(originalAbs!)),
-        ...(originalHref === internalHref
-          ? []
-          : [mediaRepXml('proxy-media', internalHref, filename, internalAbs ? toPathUrl(internalAbs) : undefined)]),
-      ]
-    : [mediaRepXml('original-media', internalHref, filename, internalAbs ? toPathUrl(internalAbs) : undefined)];
-  return `<asset id="${info.id}" name="${name}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}>\n      ${representations.join('\n      ')}\n    </asset>`;
+  const { originalHref, proxyHref, start } = asset.media;
+  const filename = asset.sourceFilename ?? asset.name;
+  const representations = [
+    mediaRepXml('original-media', originalHref, filename),
+    ...(proxyHref ? [mediaRepXml('proxy-media', proxyHref, filename)] : []),
+  ];
+  return `<asset id="${asset.id}" name="${name}" start="${mediaStartTime(start)}" duration="${rationalTime(asset.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}>\n      ${representations.join('\n      ')}\n    </asset>`;
 }
 
 function collectRenderedMotionGraphics(
@@ -319,44 +250,53 @@ function backgroundFillMetadataXml(item: TimelineItem): string {
         </metadata>`;
 }
 /** Entries with src (video/audio/image/gif) → asset-clip; entries without src
- * (motion-graphic/text, MG does not have real media files) → placeholder gap with name + annotation,
- * The integrator can use export_motion_graphic_prores to render the transparent video and replace this gap.*/
+ * (motion-graphic/text, MG does not have real media files) → a named placeholder gap in a connected
+ * storyline on the item's lane. export_motion_graphic_prores can render the transparent video to replace it.*/
 /** Source frames consumed by a rate-stretched clip: timeline frames × rate. */
 export function retimeSourceFrames(item: TimelineItem): number {
   return timelineFramesToSourceFrames(item, item.durationInFrames);
 }
 
+/** A retimed clip's `start` and the `<timeMap>` that goes with it. */
+interface Retime {
+  readonly start: string;
+  readonly xml: string;
+}
+
 /**
  * `<timeMap>` for a constant speed change. The clip's rate was previously
  * dropped entirely, so a 2× clip imported at 1× and showed only the first half
- * of its source span.
- *
- * Mapping: `time` is the retimed (timeline) position, `value` the media
- * position it samples — a 2× clip covers `duration × 2` of source over its
- * timeline duration. Both are expressed relative to the clip's `start`
- * in-point. NOTE: the emitted XML has not been round-tripped through Final Cut
- * or Resolve here, so the intended rate is also written as a comment for the
- * integrator to sanity-check.
+ * of its source span; then the map started at 0 while `start` held the source
+ * in-point, so an NLE sampled speed × in-point. The map now starts at the
+ * media's origin and `start` is in the retimed clock (retimedClipTimes), so
+ * the clip's first frame samples the in-point. NOTE: the emitted XML has not
+ * been round-tripped through Final Cut or Resolve here, so the intended rate
+ * is also written as a comment for the integrator to sanity-check.
  */
-function retimeXml(item: TimelineItem, fps: number): string {
+function retimeOf(item: TimelineItem, fps: number, start: ExportMediaStart | undefined): Retime | null {
   const rate = item.playbackRate ?? 1;
-  if (!Number.isFinite(rate) || rate === 1 || rate <= 0) return '';
+  if (!Number.isFinite(rate) || rate === 1 || rate <= 0) return null;
   const sourceFrames = retimeSourceFrames(item);
-  if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) return '';
-  return [
-    xmlComment(`speed change ${rate}x: ${item.durationInFrames} timeline frames consume ${Math.round(sourceFrames)} source frames`),
-    '<timeMap>',
-    '  <timept time="0s" value="0s" interp="linear"/>',
-    `  <timept time="${rationalTime(item.durationInFrames, fps)}" value="${rationalTime(Math.round(sourceFrames), fps)}" interp="linear"/>`,
-    '</timeMap>',
-  ].join('\n        ');
+  if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) return null;
+  // The same floor timelineFramesToSourceFrames applies to playback.
+  const times = retimedClipTimes(start, item.srcInFrame ?? 0, item.durationInFrames, Math.max(0.01, rate), fps);
+  return {
+    start: times.start,
+    xml: [
+      xmlComment(`speed change ${rate}x: ${item.durationInFrames} timeline frames consume ${Math.round(sourceFrames)} source frames`),
+      '<timeMap>',
+      `  <timept time="${times.origin}" value="${times.origin}" interp="linear"/>`,
+      `  <timept time="${times.endTime}" value="${times.endValue}" interp="linear"/>`,
+      '</timeMap>',
+    ].join('\n        '),
+  };
 }
 
 function itemToSpineElement(
   item: TimelineItem,
   fps: number,
   lane: number,
-  assets: Map<string, AssetInfo>,
+  assets: Map<string, PlannedAsset>,
   renderedMotionGraphics: Map<string, RenderedMotionGraphicInfo>,
   backgroundFillActive: boolean,
 ): string {
@@ -364,17 +304,22 @@ function itemToSpineElement(
   const duration = rationalTime(item.durationInFrames, fps);
   const name = escapeXml(item.name);
   if (item.src) {
-    const ref = assets.get(item.src)?.id ?? '';
+    const asset = assets.get(item.src);
+    const ref = asset?.id ?? '';
+    // In-points count from the file's own start timecode (asset time).
+    const start = asset?.media.start;
+    const tcFormat = timecodeFormatAttr(start);
     const segs = transcriptSegments(item, fps);
     if (segs?.length) {
       // One clip for each reserved segment:offset is already the absolute frame of the timeline (keptSegments passed in startFrame)
       return segs
-        .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${rationalTime(seg.srcStartFrame, fps)}" name="${name}"/>`)
+        .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${mediaTime(start, seg.srcStartFrame, fps)}" name="${name}"${tcFormat}/>`)
         .join('\n        ');
     }
-    const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${rationalTime(item.srcInFrame ?? 0, fps)}" name="${name}"`;
-    const retime = retimeXml(item, fps);
-    const children = [retime, backgroundFillActive ? backgroundFillMetadataXml(item) : '']
+    const retime = retimeOf(item, fps, start);
+    const clipStart = retime?.start ?? mediaTime(start, item.srcInFrame ?? 0, fps);
+    const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${clipStart}" name="${name}"${tcFormat}`;
+    const children = [retime?.xml ?? '', backgroundFillActive ? backgroundFillMetadataXml(item) : '']
       .filter(Boolean)
       .join('\n        ');
     return children
@@ -389,7 +334,11 @@ function itemToSpineElement(
       return `<asset-clip ref="${rendered.id}" lane="${lane}" offset="${offset}" duration="${duration}" start="0s" name="${name}"/>`;
     }
   }
-  return `<gap name="MG: ${name}" lane="${lane}" offset="${offset}" duration="${duration}">${xmlComment(`motion graphic placeholder, render before NLE import: ${name}`)}</gap>`;
+  // A gap cannot be anchored or carry a lane (it is a clip_item, not an
+  // anchor_item), so the placeholder rides in a connected secondary storyline,
+  // whose children are timed from the storyline's own start.
+  const placeholder = `<gap name="MG: ${name}" offset="0s" duration="${duration}">${xmlComment(`motion graphic placeholder, render before NLE import: ${name}`)}</gap>`;
+  return `<spine lane="${lane}" offset="${offset}" name="MG: ${name}">${placeholder}</spine>`;
 }
 
 /**
@@ -414,6 +363,12 @@ export interface FcpxmlExportOptions {
   /** The absolute disk path of the asset directory (server uploadDir()); by default, /media/uploads is output as is,
    *NLE will mark all assets as offline. The caller should fetch from the mediaDir of /api/keys. */
   mediaDir?: string;
+  /**
+   * Export-time disk locations and start timecodes keyed by item src (POST
+   * /api/export-media-sources); they override the mediaDir guess and put asset
+   * and clip times on each file's own timecode.
+   */
+  mediaSources?: ExportMediaSourceMap;
 }
 
 export function fcpxmlBackgroundFillCount(state: TimelineState): number {
@@ -430,7 +385,7 @@ export function timelineToFcpxml(
   const title = escapeXml((opts.title ?? '').trim() || 'OpenChatCut Timeline');
   const nle: NleFormat = opts.nleFormat === 'fcp_xml_resolve' ? 'fcp_xml_resolve' : 'fcp_xml';
   const laneOf = buildLaneOf(state);
-  const assets = collectAssets(state);
+  const assets = planAssets(collectAssets(state), opts.mediaDir, opts.mediaSources);
   const renderedMotionGraphics = collectRenderedMotionGraphics(state, opts.motionGraphicRenderKeys ?? []);
 
   const formatId = 'fmt1';
@@ -439,8 +394,7 @@ export function timelineToFcpxml(
   const formatXml = nle === 'fcp_xml_resolve'
     ? `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}" colorSpace="1-1-1 (Rec. 709)"/>`
     : `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}"/>`;
-  const assetXmls = Array.from(assets.entries())
-    .map(([src, info]) => assetResourceXml(src, info, fps, formatId, opts.mediaDir));
+  const assetXmls = Array.from(assets, ([src, asset]) => assetResourceXml(src, asset, fps, formatId));
   const motionGraphicXmls = Array.from(renderedMotionGraphics.values())
     .map((info) => motionGraphicResourceXml(info, fps, formatId));
   const resourcesXml = [formatXml, ...assetXmls, ...motionGraphicXmls].join('\n    ');

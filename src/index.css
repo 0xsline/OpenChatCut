@@ -876,6 +876,11 @@ button, input, select { font: inherit; }
 .cc-aspect-select { position:relative; width:24px; height:24px; display:grid; place-items:center; color:var(--cc-text-muted); cursor:pointer; }
 .cc-aspect-select:hover { border-radius:4px; background:var(--cc-hover); }
 .cc-aspect-select select { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+.cc-fps-select { width:auto; padding:0 6px; font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cc-fps-select.is-locked { cursor:default; }
+.cc-fps-select.is-locked > span { opacity:.55; }
+.cc-fps-select.is-locked:hover { background:none; }
+.cc-fps-select.is-locked select { cursor:default; }
 .cc-caption-toggle { height:28px; display:flex; align-items:center; gap:6px; padding:0 8px; border:0.5px solid var(--cc-border); border-radius:4px; background:var(--cc-panel); color:var(--cc-text-muted); cursor:pointer; font-size:11px; }
 .cc-caption-toggle.active { color:var(--cc-text); }
 @container timeline (max-width:860px) {

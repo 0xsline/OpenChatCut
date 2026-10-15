@@ -36,6 +36,11 @@ export default {
   '增强工具': 'Power Tools',
   '沙箱执行': 'Sandbox Execution',
   '网页抓取': 'Web Scraping',
+  '发布到社交平台': 'Social Publishing',
+  'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。': 'publish_to_social · Publish finished exports to TikTok, Instagram, YouTube and more.',
+  '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。':
+    'One key publishes to TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest and Bluesky. Create a profile in Upload-Post, connect your accounts to it, then enter the profile name below. The Agent always previews the platforms, title and video and waits for your confirmation before uploading; YouTube defaults to private.',
+  '在 Upload-Post 控制台创建、已连接社交账号的 Profile 名称。': 'The Upload-Post profile name (created in the Upload-Post dashboard, with your social accounts connected).',
   'Anthropic / 兼容 API': 'Anthropic / Compatible API',
   'Anthropic / OpenAI': 'Anthropic / OpenAI',
   '模型供应商': 'Model providers',
@@ -87,7 +92,6 @@ export default {
   '生图模型': 'Image model',
   '配音模型': 'Voice model',
   '音效模型': 'Sound model',
-  '音色资源 ID': 'Voice resource ID',
   '视频模型': 'Video model',
   '音乐模型': 'Music model',
   '云同步': 'Cloud sync',
@@ -124,8 +128,9 @@ export default {
   '启用': 'On',
   '停用': 'Off',
   '本地模型（whisper）': 'Local model (Whisper)',
-  '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。':
-    'Transcription runs on this machine: free, offline, and private. Download models on demand below. OpenChatCut selects the best available backend and falls back to CPU when WebGPU is unavailable. Local transcription does not support speaker diarization.',
+  '转写在本机完成：免费、离线、素材不出本机。模型需先下载，下载与删除在 本地模型 → 本地转写 页（点下方按钮前往）。自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。':
+    'Transcription runs on this machine: free, offline, and private. Models must be downloaded first; download or delete them on the Local models → Local transcription page (use the button below). OpenChatCut selects the best available backend and falls back to CPU when WebGPU is unavailable. Local transcription does not support speaker diarization.',
+  '下载 / 管理本地模型': 'Download / manage local models',
 
   // ──Page Note/Field Note──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
@@ -460,10 +465,12 @@ export default {
   '已连接': 'Connected',
   '连接失败': 'Connect failed',
   '已写入 {paths}': 'Wrote {paths}',
+  '已写入 {paths}。请完全退出并重新打开 Codex，令牌才会生效。': 'Wrote {paths}. Fully quit and reopen Codex so it picks up the token.',
   '连接后重启对应客户端生效；Codex 需新开终端使环境变量生效。': 'Restart the client after connecting; Codex needs a new terminal for the env var.',
   '目标配置文件不是有效 JSON，为避免覆盖未写入。': 'Target config file is not valid JSON; nothing was written to avoid overwriting it.',
   '写入配置文件失败。': 'Failed to write the config file.',
   '执行 codex mcp add 失败。': 'Running codex mcp add failed.',
+  '已在 Codex 注册，但令牌未能保存为 Windows 用户环境变量，连接未完成。': 'Registered with Codex, but the token could not be saved as a Windows user environment variable, so the connection is incomplete.',
   'OpenChatCut 暴露一个 Streamable HTTP MCP 端点。Claude Code / Codex / Cursor 等外部 Agent 接入后,与内置 Agent 共用同一套编辑工具,可直接读写当前工程。':
     'OpenChatCut exposes a Streamable HTTP MCP endpoint. External agents such as Claude Code, Codex, and Cursor share the same editing tools as the built-in agent and can read and edit the current project directly.',
   '端点地址': 'Endpoint',
@@ -506,7 +513,7 @@ export default {
     'Settings → Connectors → Add custom connector, then paste the endpoint above.',
   '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
     'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
-  // Local ASR model management (Settings → 转写 → 本地模型)
+  // Local ASR model management (Settings → 本地模型 → 本地转写)
   '本地转写': 'Local transcription',
   '节拍与音乐分析': 'Beat and music analysis',
   '画面语义搜索': 'Visual semantic search',
@@ -527,6 +534,9 @@ export default {
   '未下载': 'Not downloaded',
   '删除': 'Delete',
   '下载': 'Download',
+  '补全': 'Complete',
+  '桌面引擎已就绪；补全浏览器引擎文件，供桌面推理失败时回退':
+    'The desktop engine is ready. Download the browser-engine files too, as a fallback when desktop inference fails.',
   '模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。':
     'Models are downloaded to this machine on demand — they are not bundled with the app. Downloads use the accelerated pipeline automatically.',
   '桌面原生推理加速': 'Native desktop inference acceleration',
@@ -571,31 +581,12 @@ export default {
   '未安装': 'Not installed',
   '重新安装': 'Reinstall',
   '安装': 'Install',
-  // ── Storage migration dialog ──
-  '数据存储': 'Data storage',
-  '当前存储': 'Current storage',
-  'SQLite 数据库': 'SQLite database',
-  'JSON 文件目录': 'JSON file directory',
-  '本地数据键': 'Local data entries',
-  '迁移时间': 'Migrated at',
-  'SQLite 键数': 'SQLite entries',
-  '迁移到 SQLite': 'Migrate to SQLite',
-  '迁移中…': 'Migrating…',
-  '迁移失败': 'Migration failed',
-  '迁移尚未完成，仍在使用 JSON 文件目录': 'Migration is not complete; the JSON file directory remains active',
-  '已迁移 {imported} 个数据键，跳过 {skipped} 个': 'Migrated {imported} entries, skipped {skipped}',
-  '，今后项目将默认使用 SQLite 存储工程数据': ', and new projects will now use SQLite by default',
-  '迁移后，工程数据保存到单一 SQLite 数据库文件：写入更可靠（事务）、加载更快、支持全文搜索。原始 JSON 文件将【只读保留】，旧版本、回滚与数据救援始终可用。': 'After migration, project data lives in a single SQLite database: transactional writes, faster loads and full-text search. The original JSON files stay read-only, so older versions, rollbacks and data rescue always work.',
-  '迁移后新编辑写入 SQLite；如需回滚到旧版本，迁移后新增的编辑不会出现在旧版本中。': 'New edits go to SQLite after migration; if you roll back to an older version, edits made after migration will not appear there.',
-  '可将工程数据迁移到 SQLite：写入更可靠、加载更快、支持全文搜索。原始 JSON 文件只读保留，随时可回滚。': 'Migrate project data to SQLite: more reliable writes, faster loading, full-text search. Original JSON files stay read-only, so you can always roll back.',
-  '忽略': 'Dismiss',
   '不描述图片，一律剥离。': 'Do not describe images; always strip them.',
   '主模型不支持图片时维持现状（图片剥离为文本）。': 'Keep current behavior when the main model cannot see images (images stripped to text).',
   '厂商（已配置 API Key）': 'Provider (API key configured)',
   '图片与时间线帧由所选视觉模型理解后以文本注入。': 'Images and timeline frames are understood by the selected vision model and injected as text.',
   '图片会发送给所选视觉模型厂商用于描述；视觉调用失败时自动回退为剥离文本，不阻塞对话。': 'Images are sent to the selected vision provider for description; on vision failure it falls back to stripping text and never blocks the conversation.',
   '基底模型不支持图片输入时（如 DeepSeek 系），图片由所选视觉模型理解后以文本注入。': 'When the base model cannot accept images (e.g. DeepSeek family), the chosen vision model understands them and injects text.',
-  '工程数据存储方式': 'Project data storage',
   '已指定': 'Custom',
   '已禁用': 'Disabled',
   '指定视觉模型': 'Use a specific vision model',
@@ -604,11 +595,6 @@ export default {
   '视觉模型': 'Vision model',
   '视觉理解': 'Vision understanding',
   '跟随主模型': 'Follow main model',
-  '清理旧 JSON 数据（{n} 个文件）': 'Clean up old JSON data ({n} files)',
-  '我确认已迁移完成，且不需要回滚到旧版本（删除后旧版本软件将看到空数据）': 'I confirm the migration is complete and I do not need to roll back to the old version (old versions will see empty data after deletion)',
-  '确认清理': 'Confirm cleanup',
-  '清理中…': 'Cleaning up…',
-  '已清理 {removed} 个旧 JSON 文件': 'Removed {removed} old JSON files',
   '默认工程位置': 'Default project location',
   '应用默认数据目录': 'Default app data folder',
   '新工程和生成素材的默认保存位置，以及可选的 R2 云备份。':

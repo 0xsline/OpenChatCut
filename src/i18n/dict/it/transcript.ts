@@ -36,4 +36,21 @@ export default {
   '({i}/{total}) 上传 {label}…': '({i}/{total}) Caricamento {label}...',
   '({i}/{total}) 转写 {label}…': '({i}/{total}) Trascrizione {label}...',
   '已完成 {ok}/{total} 段；失败：{fails}': 'Completati {ok}/{total} clip; errori: {fails}',
+  '桌面引擎的模型文件未下载，本次使用浏览器引擎': 'Il file del modello del motore desktop non è scaricato: questa volta si usa il motore del browser',
+  '桌面原生推理不可用，已回退浏览器引擎': 'Inferenza nativa desktop non disponibile: si passa al motore del browser',
+  '桌面原生推理（whisper.cpp）未能完成转写：{reason}。回退到浏览器引擎需要 {model} 的 ONNX 模型文件，但尚未下载完整。请到 设置 → 本地模型 → 本地转写 下载该模型后重试。':
+    'L’inferenza nativa desktop (whisper.cpp) non ha completato la trascrizione: {reason}. Per ripiegare sul motore del browser servono i file ONNX di {model}, che non sono stati scaricati per intero. Scarica il modello in Impostazioni → Modelli locali → Trascrizione locale e riprova.',
+  '本地转写模型 {model} 尚未下载：桌面引擎需要的 whisper.cpp 模型文件（GGML）和浏览器引擎需要的 ONNX 模型文件都未就绪。请到 设置 → 本地模型 → 本地转写 下载该模型后再试。':
+    'Il modello di trascrizione locale {model} non è scaricato: non sono pronti né il file whisper.cpp (GGML) del motore desktop né i file ONNX del motore del browser. Scarica il modello in Impostazioni → Modelli locali → Trascrizione locale e riprova.',
+  '本地转写模型 {model} 的浏览器引擎文件（ONNX）未下载完整或校验失败。请到 设置 → 本地模型 → 本地转写 下载该模型后再试。':
+    'I file del motore del browser (ONNX) del modello di trascrizione locale {model} sono incompleti o non hanno superato la verifica. Scarica il modello in Impostazioni → Modelli locali → Trascrizione locale e riprova.',
+  '{stage}失败：{detail}': '{stage}: errore — {detail}',
+  '音轨准备': 'Preparazione della traccia audio',
+  '音频解码': 'Decodifica audio',
+  '模型加载': 'Caricamento del modello',
+  '模型推理': 'Inferenza del modello',
+  '本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或开启「桌面原生推理加速」并下载该模型，改由没有此限制的 whisper.cpp 运行。':
+    'Il modello di trascrizione locale {model} ha esaurito la memoria del motore del browser (wasm). In Impostazioni → Modelli locali → Trascrizione locale scegli un modello più piccolo (Base / Small), oppure attiva «Accelerazione inferenza nativa desktop» e scarica questo modello, così lo esegue whisper.cpp, che non ha questo limite.',
+  '本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或改用桌面版，由没有此限制的 whisper.cpp 原生运行。':
+    'Il modello di trascrizione locale {model} ha esaurito la memoria del motore del browser (wasm). In Impostazioni → Modelli locali → Trascrizione locale scegli un modello più piccolo (Base / Small), oppure usa l’app desktop, che lo esegue in modo nativo con whisper.cpp senza questo limite.',
 } as Record<string, string>;

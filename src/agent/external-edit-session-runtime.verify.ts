@@ -66,6 +66,18 @@ await assert.rejects(
   /list_edit_sessions/,
   'active-session conflicts remain tool errors and point callers to recovery discovery',
 );
+const adopted = await runtime.execute(
+  'begin_edit_session',
+  { reuseExisting: true },
+  runtimeBinding,
+);
+assert(
+  adopted
+    && typeof adopted === 'object'
+    && 'editSessionId' in adopted
+    && (adopted as Record<string, unknown>).editSessionId === (begun as Record<string, unknown>).editSessionId,
+  'begin_edit_session with reuseExisting: true adopts active session instead of rejecting',
+);
 const listed = await runtime.execute('list_edit_sessions', {}, runtimeBinding);
 assert(Array.isArray(listed) && listed.some((entry) => (
   entry && typeof entry === 'object' && 'editSessionId' in entry

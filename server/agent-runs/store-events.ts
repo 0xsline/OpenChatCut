@@ -10,9 +10,9 @@ import {
   MAX_SERVER_RUN_BYTES,
   MAX_SERVER_TOOL_REQUEST_EVENT_BYTES,
   MAX_SERVER_RUN_EVENTS,
-  MAX_SERVER_RUN_EVENTS_HARD,
   RunStoreLimitError,
   type ServerRun,
+  type ServerRunEvent,
   type ServerRunStatus,
   type ServerToolRequest,
 } from './store-types';
@@ -66,24 +66,67 @@ const ROLLABLE_EVENT: ReadonlySet<string> = new Set([
   'context-usage',
 ]);
 
+function eventToolCallId(event: ServerRunEvent): string | undefined {
+  const data = event.data;
+  if (data === null || typeof data !== 'object') return undefined;
+  const id = (data as { toolCallId?: unknown }).toolCallId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function removeEventAt(run: ServerRun, index: number): void {
+  const [removed] = run.events.splice(index, 1);
+  if (removed) run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed));
+}
+
 /**
- * Long runs (no turn cap) would otherwise die on the event count/byte caps.
- * Make room by dropping the oldest rollable events; requests, results,
- * status, retries and terminal events always stay.
+ * A long run's replay window keeps its newest events. Once it is full, the
+ * oldest sheddable event leaves: rolled text and diagnostics, or a finished
+ * tool call, its request together with its result. The client rebuilds a run
+ * from its draft artifacts, not from tool events, and a window left to fill
+ * with them dropped every new text delta on arrival. Status, retries and
+ * other milestones stay, and so does a request the browser may still claim.
+ *
+ * The first event is never shed: it anchors replay, so a reconnect with an
+ * old cursor skips shed events instead of finding its cursor gone. Neither is
+ * `landed`, the event that just arrived and that no subscriber has seen.
  */
-function dropRollableForSpace(
+function shedOldest(run: ServerRun, landed?: ServerRunEvent): boolean {
+  const results = new Map<string, ServerRunEvent>();
+  for (const event of run.events) {
+    const id = event.type === 'tool-result' ? eventToolCallId(event) : undefined;
+    if (id !== undefined && !results.has(id)) results.set(id, event);
+  }
+  for (let index = 1; index < run.events.length; index += 1) {
+    const event = run.events[index]!;
+    if (event === landed) continue;
+    if (ROLLABLE_EVENT.has(event.type) || event.type === 'tool-result') {
+      removeEventAt(run, index);
+      return true;
+    }
+    if (event.type !== 'tool-request') continue;
+    const id = eventToolCallId(event);
+    const result = id === undefined ? undefined : results.get(id);
+    const request = id === undefined ? undefined : run.toolRequests.get(id);
+    // A request this process never registered is finished once its result arrived.
+    const finished = id === undefined || (request ? request.status !== 'pending' : result !== undefined);
+    if (!finished || (result !== undefined && result === landed)) continue;
+    const resultIndex = result === undefined ? -1 : run.events.indexOf(result);
+    removeEventAt(run, Math.max(index, resultIndex));
+    if (resultIndex >= 0) removeEventAt(run, Math.min(index, resultIndex));
+    return true;
+  }
+  return false;
+}
+
+function fitReplayWindow(
   run: ServerRun,
+  incomingEvents: number,
   incomingBytes: number,
+  landed?: ServerRunEvent,
 ): void {
-  let guard = run.events.length + 1;
-  while (guard > 0
-    && (run.events.length + 1 > MAX_SERVER_RUN_EVENTS
-      || run.retainedEventBytes + incomingBytes > MAX_SERVER_RUN_BYTES)) {
-    guard -= 1;
-    const index = run.events.findIndex((event) => ROLLABLE_EVENT.has(event.type));
-    if (index < 0) break;
-    const [removed] = run.events.splice(index, 1);
-    run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed!));
+  while (run.events.length + incomingEvents > MAX_SERVER_RUN_EVENTS
+    || run.retainedEventBytes + incomingBytes > MAX_SERVER_RUN_BYTES) {
+    if (!shedOldest(run, landed)) break;
   }
   updateReplayStart(run);
 }
@@ -102,18 +145,7 @@ function appendEvent(
   if (bytes > maxBytes) {
     throw new RunStoreLimitError(`Agent run event exceeds ${maxBytes} bytes.`);
   }
-  if (
-    run.events.length + 1 > MAX_SERVER_RUN_EVENTS
-    || run.retainedEventBytes + bytes > MAX_SERVER_RUN_BYTES
-  ) {
-    dropRollableForSpace(run, bytes);
-  }
-  if (
-    run.events.length + 1 > MAX_SERVER_RUN_EVENTS_HARD
-    || run.retainedEventBytes + bytes > MAX_SERVER_RUN_BYTES * 4
-  ) {
-    throw new RunStoreLimitError('Agent run event limit/replay retention limit reached.');
-  }
+  fitReplayWindow(run, 1, bytes);
   run.eventCursor = event.id;
   run.pendingEventCount += 1;
   run.pendingEventBytes += bytes;
@@ -122,21 +154,9 @@ function appendEvent(
       await appendAgentRunEvent(run.projectId, run.id, runtimeEvent(event));
       run.retainedEventBytes += bytes;
       run.events.push(event);
-      // In-flight mirrors from a synchronous burst settle one by one; roll
-      // the window again after each commit so bursts cannot overflow it.
-      while (run.events.length > MAX_SERVER_RUN_EVENTS
-        || run.retainedEventBytes > MAX_SERVER_RUN_BYTES) {
-        const index = run.events.findIndex((item) => ROLLABLE_EVENT.has(item.type));
-        if (index < 0) break;
-        const [removed] = run.events.splice(index, 1);
-        run.retainedEventBytes = Math.max(0, run.retainedEventBytes - eventBytes(removed!));
-      }
-      if (run.events.length > MAX_SERVER_RUN_EVENTS_HARD
-        || run.retainedEventBytes > MAX_SERVER_RUN_BYTES * 4) {
-        run.error = 'Agent run event limit/replay retention limit reached.';
-        run.abort?.abort(new Error(run.error));
-      }
-      updateReplayStart(run);
+      // In-flight mirrors from a synchronous burst settle one by one; fit the
+      // window again after each commit so bursts cannot overflow it.
+      fitReplayWindow(run, 0, 0, event);
       wakeSubscribers(run);
     } finally {
       run.pendingEventCount = Math.max(0, run.pendingEventCount - 1);
@@ -176,6 +196,10 @@ export function mirrorTool(
       toolCallId: request.toolCallId,
       toolName: request.toolName,
       argsDigest: request.argsDigest,
+      // Each tool call is its own operation. Without an id, two identical
+      // calls in one step read as one approval pending twice, and the second
+      // mirror fails the run.
+      operationId: request.toolCallId,
       status,
       createdAt: run.createdAt,
       ...(status !== 'pending' ? { decidedAt: Date.now() } : {}),
@@ -207,12 +231,15 @@ async function appendTerminalEvents(
       data: { status, error: run.error },
       at: Date.now(),
     });
+    // Make room for status and done the way a live run does; the anchoring
+    // first event goes only when nothing else can.
     while (
       run.events.length > MAX_SERVER_RUN_EVENTS - 2
       || run.retainedEventBytes + terminalBytes > MAX_SERVER_RUN_BYTES
     ) {
-      dropOldest(run);
+      if (!shedOldest(run)) dropOldest(run);
     }
+    updateReplayStart(run);
     await appendEvent(dependencies, run, 'status', { status, error: run.error });
     updateRuntimeContext(run, {
       transportStatus: status,

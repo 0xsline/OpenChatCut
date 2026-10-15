@@ -13,7 +13,7 @@ export const GENERATE_WORKFLOW = `
 - Providers: doubao, elevenlabs, minimax, inworld, fishaudio, speechify, openai, gemini, mistral, and cartesia. All are opt-in; use only choices listed as configured in the capabilities prompt, and never mix voice catalogs.
 - Curated choices exist only for Doubao, ElevenLabs, and MiniMax. Bundled samples exist only where references/voices.md lists one. For every other provider, do not invent a preset or sample URL; require a concrete voiceId from the user/provider account.
 - AI SDK-backed fields: OpenAI supports modelId/speed/outputFormat/instructions; Gemini supports modelId/outputFormat/instructions; Mistral supports modelId/outputFormat; Cartesia supports modelId/speed/languageCode/outputFormat. Inworld, Fish Audio, and Speechify accept only voiceId and optional modelId.
-- MiniMax supports speed (0.5–2), pitch (-12–12), volume (0–10), and emotion natively. Doubao pitch is post-process; emotionScale/performancePrompt are Doubao-only. ElevenLabs retains its dedicated delivery controls.
+- MiniMax supports speed (0.5–2), pitch (-12–12), volume (0–10), and emotion natively. Doubao supports speedRatio, loudnessRatio, and native pitch_rate (-12–12) via seed-audio-1.0. ElevenLabs retains its dedicated delivery controls.
 - submit_voice creates one media-pool audio asset only. Do not claim it was placed on the timeline.
 
 ## Sound-effect generation

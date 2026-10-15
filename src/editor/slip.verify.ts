@@ -241,4 +241,20 @@ for (const [rate, expectedSrcIn] of [
   assert.equal(undone.present.timelines[0]!.items[0]!.durationInFrames, 60);
 }
 
+// Explicit media identity wins over another pool entry with the same URL.
+{
+  const candidate = item(1, { sourceAssetId: 'selected-source' });
+  const state = {
+    ...stateOf(candidate),
+    assets: [asset, { ...asset, id: 'selected-source', durationInFrames: 600 }],
+  };
+  const plan = planSlip(state, candidate.id, 999);
+  assert.ok(plan.ok);
+  if (plan.ok) assert.equal(plan.srcInFrame, 540, 'slip uses the selected asset duration');
+
+  const missing = { ...state, assets: [asset] };
+  const unavailable = planSlip(missing, candidate.id, 20);
+  assert.equal(unavailable.ok, false, 'a missing explicit asset must not silently rematch by URL');
+  assert.strictEqual(reduce(missing, { type: 'slip', id: candidate.id, deltaInFrames: 20 }), missing);
+}
 console.log('slip.verify: media rates, edited transcript stream bounds, source-only placement, cancel preview, and single-step undo ok');

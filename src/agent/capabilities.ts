@@ -69,7 +69,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   ],
   voice: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
-    { label: 'Doubao', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
+    { label: 'Doubao', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_API_KEY']] },
     { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
     { label: 'Inworld', arg: 'inworld', argKey: 'provider', need: [['INWORLD_TTS_API_KEY']] },
     { label: 'Fish Audio', arg: 'fishaudio', argKey: 'provider', need: [['FISHAUDIO_TTS_API_KEY']] },

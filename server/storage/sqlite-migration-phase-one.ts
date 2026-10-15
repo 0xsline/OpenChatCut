@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
+import { isProjectStoreRecord } from '../../shared/project-store-validation.ts';
 import type { RuntimeProfile } from '../runtime-profile.ts';
 import type {
   ImportReceipt,
@@ -28,10 +29,30 @@ export function readLegacyJsonRecord(
   kind: ImportReceiptSource['kind'],
 ): LegacyRecord {
   const buffer = readFileSync(path);
-  JSON.parse(buffer.toString('utf8'));
+  const raw = buffer.toString('utf8');
+  const value: unknown = JSON.parse(raw);
+  if (kind === 'generation-jobs') {
+    if (!isProjectStoreRecord(value) || value.version !== 1 || !Array.isArray(value.jobs)) {
+      throw new Error('invalid legacy generation job store');
+    }
+    const ids = new Set<string>();
+    for (const row of value.jobs) {
+      if (!isProjectStoreRecord(row) || typeof row.id !== 'string' || ids.has(row.id)
+        || !['queued', 'running', 'succeeded', 'failed'].includes(String(row.status))
+        || typeof row.progress !== 'number' || !isProjectStoreRecord(row.params)
+        || typeof row.createdAt !== 'number' || typeof row.updatedAt !== 'number') {
+        throw new Error('invalid legacy generation job record');
+      }
+      ids.add(row.id);
+    }
+  } else if (kind === 'deleted-projects') {
+    if (!isProjectStoreRecord(value) || !Object.entries(value).every(([id, timestamp]) => (
+      /^[a-zA-Z0-9_-]{1,160}$/.test(id) && typeof timestamp === 'number'
+    ))) throw new Error('invalid legacy deleted project registry');
+  }
   return {
     key,
-    raw: buffer.toString('utf8'),
+    raw,
     source: {
       path,
       sha256: createHash('sha256').update(buffer).digest('hex'),

@@ -39,7 +39,10 @@ export type LocalAsrWorkerRequest =
   | { id: number; type: 'load'; device: AsrDevice; modelId: string; revision: string }
   | { id: number; type: 'transcribe'; samples: Float32Array; language: string };
 
+/** A worker failure the client explains in the UI language (the worker has no locale dictionaries). */
+export type LocalAsrWorkerFailure = 'wasm-out-of-memory';
+
 export type LocalAsrWorkerResponse =
   | { id: number; type: 'result'; result: AsrResult }
-  | { id: number; type: 'error'; message: string }
+  | { id: number; type: 'error'; message: string; failure?: LocalAsrWorkerFailure }
   | { id: number; type: 'progress'; progress?: number; file?: string };

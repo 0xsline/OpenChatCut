@@ -7,7 +7,7 @@ import type { ProjectDoc } from '../../editor/types';
 import { docFromTimeline } from '../../persist/projectStore';
 import { subscribeAgentExportSubmissions } from '../../export/agentExportTracking';
 import type { AgentContext } from '../context';
-import { execExportTool, EXPORT_TOOL_NAMES, EXPORT_TOOL_SCHEMAS, __resetExportSessionJobs } from './export-tools';
+import { execExportTool, fetchRenderJob, EXPORT_TOOL_NAMES, EXPORT_TOOL_SCHEMAS, __resetExportSessionJobs } from './export-tools';
 import { executeGenerateCommand } from './generate-tool-handlers';
 
 const draft = makeDraft(docFromTimeline({ fps: 30, width: 1920, height: 1080, items: [], selectedId: null, assets: [] }));
@@ -279,6 +279,30 @@ globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'render job
 const missing = await execExportTool('track_export', { renderId: 'nope', action: 'status' }, ctx) as { error?: string; ok?: boolean };
 assert.ok(missing.error, 'unknown renderId should return an error field');
 assert.ok(!('ok' in missing), 'a transport error should not claim ok:true');
+
+// The Agent preserves queue failure details and rejects malformed status responses.
+const queueFailure = {
+  stage: 'queue', code: 'export_queue_full', retryable: true,
+  cleanupStatus: 'not-required', targetPath: null, message: 'Export queue is full',
+};
+globalThis.fetch = async () => Response.json({ failure: queueFailure }, { status: 429 });
+assert.deepStrictEqual(await execExportTool('submit_render_job', {}, ctx), {
+  error: queueFailure.message, code: queueFailure.code, retryable: true,
+});
+assert.deepStrictEqual(await fetchRenderJob('r-123'), {
+  error: queueFailure.message, code: queueFailure.code, retryable: true,
+});
+globalThis.fetch = async () => Response.json({ id: 'r-123', status: 'failed', progress: 0, failure: queueFailure });
+assert.deepStrictEqual(await execExportTool('track_export', { renderId: 'r-123', action: 'wait' }, ctx), {
+  ok: true, renderId: 'r-123', status: 'failed', progress: 0,
+  error: queueFailure.message, code: queueFailure.code, retryable: true,
+});
+globalThis.fetch = async () => Response.json({ id: 'r-123', status: 'invalid', progress: 10 });
+assert.deepStrictEqual(await execExportTool('track_export', { renderId: 'r-123', action: 'wait' }, ctx), {
+  error: 'track_export failed (200)',
+});
+globalThis.fetch = async () => { throw new Error('connection closed'); };
+assert.deepStrictEqual(await fetchRenderJob('r-123'), { error: 'connection closed' });
 
 // ── Schema requires action and supports renderIds/latest/onlyActive/timelineId/timeoutSeconds ──
 {

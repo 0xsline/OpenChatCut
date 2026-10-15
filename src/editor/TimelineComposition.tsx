@@ -5,7 +5,8 @@ import { GlTransition } from '../gl/GlTransition';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
 import { selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPreviewFallbackStatus } from '../gl/previewAdapter';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
-import { captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
+import { timelineItemAssetId } from './mediaAssetUsage';
+import { captionOverlayVisible, captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import { previewTextEditFields } from '../components/preview/previewTextEdit';
 import type { AspectFit, CssTransitionType, GlslTransitionType, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection } from './types';
 import { sourceFrameAt } from './sourceLimit';
@@ -22,6 +23,7 @@ import { AudioClip, BackgroundFillLayer, ContinuousVideoAudio, MediaFill, Shared
 import { firstGlEffect } from '../gl/clipEffects';
 import { continuousVideoAudioGroups, shareableVisualItem } from './transitionAudio';
 import { ItemLayer, SolidLayer, TextLayer, WatermarkLayer } from './TimelineGraphicLayers';
+import { isServerVideoDecoder, ServerVideoDecoderContext, type ServerVideoDecoder } from './serverVideoDecoder';
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
@@ -92,6 +94,8 @@ export type TimelineCompositionProps = Record<string, unknown> & {
   transparent?: boolean;
   /** Use @remotion/media so @remotion/web-renderer can decode media via WebCodecs. */
   browserRenderer?: boolean;
+  /** Headless server render only (set by remotion/render.mjs): the video frame decoder. */
+  serverVideoDecoder?: ServerVideoDecoder;
   /** The selected clip is the Player's explicit full-fidelity GL preview target. */
   selectedItemId?: string | null;
   onSelectedPreviewStatus?: SelectedPreviewStatusListener;
@@ -127,6 +131,16 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
   if (state.fxDefs) {
     for (const def of Object.values(state.fxDefs)) if (!(def.id in ALL_FX)) registerCustomFx(def);
   }
+  const poolAssets = state.assets ?? project?.assets ?? [];
+  /** Media length from the pool, so the audio layer can reject a transcript
+   *  window that starts past the end of the file. */
+  const sourceDurationOf = (item: TimelineItem): number | undefined => {
+    const assetId = timelineItemAssetId(item, poolAssets);
+    const asset = assetId ? poolAssets.find((candidate) => candidate.id === assetId) : undefined;
+    return typeof asset?.durationInFrames === 'number' && asset.durationInFrames > 0
+      ? asset.durationInFrames
+      : undefined;
+  };
   const isHidden = (t: TimelineItem['track']) => state.tracks?.[t]?.hidden ?? false;
   const isMuted = (t: TimelineItem['track']) => forceMuted || (state.tracks?.[t]?.muted ?? false);
   const trackIds = timelineTrackIds(state);
@@ -307,8 +321,9 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         const ea = extendAfter.get(item.id) ?? 0;
         const entrance = entranceOf.get(item.id);
         // Captions off hides on-screen text clips too (render-layer only).
-        const captionsOff = state.captionsHidden === true
-          || (state.captionsHidden === undefined && captionEntries.length > 0 && captionEntries.every((entry) => !entry.captions?.enabled));
+        // Shares captionOverlayVisible with the toolbar so the CC button and the
+        // picture can never disagree about an unset captionsHidden flag.
+        const captionsOff = !captionOverlayVisible(state);
         const hiddenByCaptions = captionsOff && previewTextEditFields(item) !== null;
         const fillBackground = isBackgroundFillActive(state, item);
         const foreground = (
@@ -374,6 +389,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           transitions={state.transitions}
           premountFor={premountFrames}
           browserRenderer={browserRenderer}
+          sourceDurationInFrames={sourceDurationOf(item)}
         />
       ))}
       {videoAudioGroups.map((group) => (
@@ -416,9 +432,12 @@ export function TimelineComposition(props: TimelineCompositionProps) {
         .map((id) => props.project!.timelines.find((timeline) => timeline.id === id))
         .filter((timeline): timeline is Timeline => !!timeline)
     : [];
+  const videoDecoder = isServerVideoDecoder(props.serverVideoDecoder) ? props.serverVideoDecoder : 'webcodecs';
   return (
-    <TimelineReadinessGate key={timelineReadinessKey(props.state, dependencies)} state={props.state} dependencies={dependencies}>
-      {() => <TimelineContent {...props} timelineId={timelineId} />}
-    </TimelineReadinessGate>
+    <ServerVideoDecoderContext.Provider value={videoDecoder}>
+      <TimelineReadinessGate key={timelineReadinessKey(props.state, dependencies)} state={props.state} dependencies={dependencies}>
+        {() => <TimelineContent {...props} timelineId={timelineId} />}
+      </TimelineReadinessGate>
+    </ServerVideoDecoderContext.Provider>
   );
 }

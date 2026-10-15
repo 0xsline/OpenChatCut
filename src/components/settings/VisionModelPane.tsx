@@ -45,6 +45,8 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   openrouter: 'OpenRouter',
   ofox: 'OFox',
   orcarouter: 'OrcaRouter',
+  requesty: 'Requesty',
+  cheaperinference: 'Cheaper Inference',
   ollama: 'Ollama',
   lmstudio: 'LM Studio',
 };
