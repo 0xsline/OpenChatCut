@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / 未发布
 
+### Added / 新增
+
+- The built-in Agent can browse and import local media in a browser-hosted editor once `AGENT_IMPORT_ROOTS` lists the directories to expose, reaching the same probe/hash/dedupe chain the desktop app uses; the desktop app keeps its default access (#185).
+  浏览器端的内置 Agent 在 `AGENT_IMPORT_ROOTS` 列出允许目录后，也可以浏览和导入本地素材，复用桌面端相同的探测、哈希与去重流程；桌面端保持原有的默认访问行为（#185）。
+
 ### Changed / 调整
 
 - Doubao 配音改走火山新版音频生成接口 `POST /api/v3/tts/create`，`X-Api-Key` 单头鉴权，Base URL 填完整接口地址也能正常请求；配置项改为 `DOUBAO_TTS_API_KEY` + `DOUBAO_TTS_MODEL`（默认 `seed-audio-1.0`），旧的 App ID / Access Key / 音色资源 ID 不再使用，需用新版控制台的 API Key 重填。支持 `speedRatio` / `loudnessRatio` / 原生 `pitch`，`emotion` / `emotionScale` / `performancePrompt` / 方言不再支持。
