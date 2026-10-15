@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isolateVerifyHome } from '../../shared/verify-home.ts';
 
 function vector(seed: number): number[] {
   // Unit vector biased toward `seed`: cosine/L2 ranking is deterministic.
@@ -16,9 +17,8 @@ function vector(seed: number): number[] {
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-semantic-vec-verify-'));
-  const previousHome = process.env.HOME;
+  const restoreHome = isolateVerifyHome(root);
   const previousEnv = process.env.OPENCHATCUT_SQLITE_STORE;
-  process.env.HOME = root;
   delete process.env.OPENCHATCUT_SQLITE_STORE;
 
   try {
@@ -107,8 +107,7 @@ async function main(): Promise<void> {
   } finally {
     if (previousEnv === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;
     else process.env.OPENCHATCUT_SQLITE_STORE = previousEnv;
-    if (previousHome === undefined) delete process.env.HOME;
-    else process.env.HOME = previousHome;
+    restoreHome();
     rmSync(root, { recursive: true, force: true });
   }
 }

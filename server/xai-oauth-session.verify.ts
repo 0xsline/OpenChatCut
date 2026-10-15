@@ -5,11 +5,12 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isolateVerifyHome } from '../shared/verify-home.ts';
 
 const throwawayHome = mkdtempSync(join(tmpdir(), 'xai-oauth-verify-'));
-process.env.HOME = throwawayHome;
-// Intentionally dynamic: the module resolves its profile paths (HOME-rooted)
-// at import time, so the throwaway HOME must exist before it loads.
+isolateVerifyHome(throwawayHome);
+// Intentionally dynamic: the module resolves its profile paths (home-rooted)
+// at import time, so the throwaway home must exist before it loads.
 const mod = await import('./xai-oauth-session.ts');
 const {
   parseGrokAuthJson, refreshTokens, persistSession, readSessionFile, dropSessionFile,
@@ -123,7 +124,13 @@ globalThis.fetch = (async () => {
   });
 }) as typeof fetch;
 await importXaiOauthFromCli();
-await new Promise((resolve) => setTimeout(resolve, 1_200));
+// The automatic refresh fires ~1s before the new expiry. Await the refreshed
+// token with a deadline instead of sleeping a fixed 1.2s: under parallel test
+// load a fixed sleep can expire while the refresh response is still in flight.
+const automaticRefreshDeadline = Date.now() + 5_000;
+while (xaiOauthAccessToken() !== 'auto-refreshed' && Date.now() < automaticRefreshDeadline) {
+  await new Promise((resolve) => setTimeout(resolve, 25));
+}
 assert.equal(automaticRefreshes, 1, 'successful timer refresh rearms from the new expiry');
 assert.equal(xaiOauthAccessToken(), 'auto-refreshed');
 
