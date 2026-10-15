@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { getLoadablePath as sqliteVecPath } from 'sqlite-vec';
 import { unpackedPath } from '../media-binaries.ts';
 import { SEMANTIC_INFERENCE_CONTRACT } from '../../shared/vector-inference-contract.ts';
-import { sqliteStoreReady, storePath } from './sqlite-store.ts';
+import { registerSqliteStoreConnectionCloser, sqliteStoreReady, storePath } from './sqlite-store.ts';
 
 const VEC_TABLE = 'semantic_vectors';
 const VEC_DIMENSION = SEMANTIC_INFERENCE_CONTRACT.embeddingDimension;
@@ -79,6 +79,10 @@ export function resetSemanticVectorsForTests(): void {
   connection = null;
   extensionFailed = false;
 }
+
+// Closing the store must close this connection too: a verifier that deletes its
+// temp library on Windows gets EPERM while the file is still open.
+registerSqliteStoreConnectionCloser(resetSemanticVectorsForTests);
 
 function requireConnection(): DatabaseSync {
   const db = openConnection();
