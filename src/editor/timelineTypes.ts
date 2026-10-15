@@ -153,6 +153,25 @@ export function captionTrackEntries(s: TimelineState): Array<{ id: TrackId; capt
     .map((id) => ({ id, captions: captionsOnTrack(s, id) }));
 }
 
+/**
+ * Is the caption/text overlay showing?
+ *
+ * `captionsHidden` is the explicit toolbar toggle (字幕显示). When it has never
+ * been set, fall back to "is there anything overlay-ish in this project" —
+ * an enabled caption track OR any text/motion-graphic clip. The renderer and
+ * the toolbar MUST agree on this: they used to derive it separately, and the
+ * renderer's stricter version (enabled caption track only) meant that
+ * disabling a caption track silently hid every MG carrying a text or colour
+ * prop, while the toolbar still read "CC On" — picture missing with no
+ * explanation and no way to connect it to captions.
+ */
+export function captionOverlayVisible(s: TimelineState): boolean {
+  if (s.captionsHidden === true) return false;
+  if (s.captionsHidden === false) return true;
+  if (captionTrackEntries(s).some((entry) => entry.captions?.enabled)) return true;
+  return s.items.some((item) => item.kind === 'text' || item.kind === 'motion-graphic');
+}
+
 /** total timeline length = last item's end (min 1s). */
 export function timelineDuration(s: TimelineState): number {
   const end = s.items.reduce((m, it) => Math.max(m, it.startFrame + it.durationInFrames), 0);

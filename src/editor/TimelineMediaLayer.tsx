@@ -12,6 +12,7 @@ import { selectEffectPreviewAdapter, type SelectedPreviewStatusListener } from '
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
 import { voiceIsolationMix } from '../audio/voiceMix';
+import { audibleTranscriptSegments } from './audioTranscriptGuard';
 import { backgroundFillAppearanceFor, backgroundFillFilter } from './backgroundFill';
 import { appearanceAt } from './clipFade';
 import { zoomAt } from './zoom';
@@ -116,7 +117,7 @@ function audioCrossfadeMultiplier(item: TimelineItem, localFrame: number, transi
   return multiplier;
 }
 
-export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browserRenderer }: {
+export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browserRenderer, sourceDurationInFrames }: {
   item: TimelineItem;
   fps: number;
   muted: boolean;
@@ -124,15 +125,25 @@ export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, 
   transitions?: TransitionItem[];
   premountFor: number;
   browserRenderer: boolean;
+  /** Length of the underlying media, when the pool knows it. */
+  sourceDurationInFrames?: number;
 }) {
   const volumeAt = (localFrame: number) => (muted ? 0 : volumeAtFrame(item, localFrame));
   if (!item.src) return null;
-  if (hasOperationalTranscript(item)) {
-    const deleted = new Set(item.deletedWordIdx ?? []);
-    return <>{keptSegments(item.transcript, deleted, fps, item.startFrame, {
+  // Hallucinated ASR words on non-speech audio must not silence the clip
+  // (see audibleTranscriptSegments); null means play the clip plainly.
+  const segments = hasOperationalTranscript(item)
+    ? audibleTranscriptSegments(keptSegments(item.transcript, new Set(item.deletedWordIdx ?? []), fps, item.startFrame, {
       ...itemEditOpts(item),
       window: itemWindow(item),
-    }).map((segment, index) => (
+    }), {
+      durationInFrames: item.durationInFrames,
+      deletedWordCount: item.deletedWordIdx?.length ?? 0,
+      sourceDurationInFrames,
+    })
+    : null;
+  if (segments) {
+    return <>{segments.map((segment, index) => (
       <Sequence key={`${item.id}_${index}`} from={segment.fromFrame} durationInFrames={segment.durFrames} premountFor={premountFor} name={item.name}>
         <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={segment.srcStartFrame} trimAfter={segment.srcEndFrame}
           volume={(frame) => volumeAt(segment.fromFrame - item.startFrame + frame) * gainAt(segment.fromFrame + frame)
