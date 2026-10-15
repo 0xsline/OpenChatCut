@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / 未发布
 
+### Changed / 调整
+
+- Doubao 配音改走火山新版音频生成接口 `POST /api/v3/tts/create`，`X-Api-Key` 单头鉴权，Base URL 填完整接口地址也能正常请求；配置项改为 `DOUBAO_TTS_API_KEY` + `DOUBAO_TTS_MODEL`（默认 `seed-audio-1.0`），旧的 App ID / Access Key / 音色资源 ID 不再使用，需用新版控制台的 API Key 重填。支持 `speedRatio` / `loudnessRatio` / 原生 `pitch`，`emotion` / `emotionScale` / `performancePrompt` / 方言不再支持。
+  Doubao TTS now uses the new Volcengine audio-generation endpoint `POST /api/v3/tts/create` with single-header `X-Api-Key` auth, and accepts a full endpoint URL as Base URL. Config is now `DOUBAO_TTS_API_KEY` + `DOUBAO_TTS_MODEL` (default `seed-audio-1.0`); the old App ID / Access Key / resource ID are removed, refill with a new-console API key. Supports `speedRatio` / `loudnessRatio` / native `pitch`; `emotion` / `emotionScale` / `performancePrompt` / dialect are no longer supported.
+
 ## [0.2.16] - 2026-10-07
 
 ### Upgrade note / 升级提示

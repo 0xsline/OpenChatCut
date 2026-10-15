@@ -312,7 +312,6 @@ const overrides: Record<string, string> = {
   '配音模型': 'Modello voce',
   '音效模型': 'Modello effetti sonori',
   '豆包 TTS · 火山': 'Doubao TTS · Volcano',
-  '音色资源 ID': 'ID risorsa voce',
   'AssemblyAI（云端）': 'AssemblyAI (cloud)',
   '本地模型（免费 · 离线）': 'Modello locale (gratis · offline)',
   'OpenAI（云端）': 'OpenAI (cloud)',
