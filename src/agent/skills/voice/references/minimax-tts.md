@@ -30,7 +30,6 @@ Grounded in OpenChatCut’s voice tool + server adapter (`server/plugins/voice.t
 
 ## When not to use
 
-- Need Doubao dialect / `performancePrompt` → `doubao`
 - Need ElevenLabs multilingual catalog → `elevenlabs`
 - User has not picked a voice → offer candidates from [voices.md](voices.md) first
 

@@ -145,8 +145,16 @@ export function keptSegments(
         srcEnd += Math.max(0, Math.min(silence, half));
       }
     }
-    const durFrames = Math.max(1, srcEnd - srcStart);
-    segs.push({ srcStartFrame: srcStart, srcEndFrame: srcEnd, fromFrame: pos, durFrames });
+    // A word shorter than one frame (ASR sometimes emits start === end, or two
+    // timestamps that round to the same frame) collapses the source range to
+    // zero. durFrames already floors at 1; srcEndFrame must match, because it
+    // becomes `trimAfter` on the media element and Remotion throws
+    // "trimAfter prop must be greater than trimBefore prop" for an empty range —
+    // which unmounts the whole preview composition (black frame, no audio, the
+    // transport still reporting "playing") the moment that segment premounts.
+    const srcEndFrame = Math.max(srcEnd, srcStart + 1);
+    const durFrames = Math.max(1, srcEndFrame - srcStart);
+    segs.push({ srcStartFrame: srcStart, srcEndFrame, fromFrame: pos, durFrames });
     pos += durFrames;
     si = sj + 1;
   }

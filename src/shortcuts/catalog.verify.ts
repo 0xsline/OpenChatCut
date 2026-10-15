@@ -2,7 +2,7 @@
 // Wired into verify:shortcuts (npm pretest).
 import assert from 'node:assert';
 import { SHORTCUT_CATALOG, SHORTCUT_BY_ID } from './catalog';
-import { matchShortcut, parseBindingAlts, parseChord } from './match';
+import { matchShortcut, normalizeKey, parseBindingAlts, parseChord } from './match';
 
 assert.strictEqual(SHORTCUT_CATALOG.length, 56);
 assert.ok(SHORTCUT_BY_ID['play-pause']);
@@ -81,5 +81,30 @@ assert.strictEqual(
   matchShortcut(keyN({ key: 'j' }), catalog, { held: new Set(['k']), isMac: true }),
   'shuttle-jog-back',
 );
+
+// Every row must also be reachable through the chord it advertises, on both
+// platforms: the Ctrl + E / Ctrl + R rows matched nothing off Mac (issue #202).
+const ARROW_KEY: Record<string, string> = {
+  arrowleft: 'ArrowLeft', arrowright: 'ArrowRight', arrowup: 'ArrowUp', arrowdown: 'ArrowDown',
+};
+for (const isMac of [true, false]) {
+  for (const action of SHORTCUT_CATALOG) {
+    for (const chord of parseBindingAlts(action.keys)) {
+      const resolved = matchShortcut(
+        keyN({
+          key: ARROW_KEY[chord.key] ?? (chord.key === 'space' ? ' ' : chord.key),
+          shiftKey: chord.shift,
+          altKey: chord.alt,
+          metaKey: chord.mod && isMac,
+          ctrlKey: chord.ctrl || (!isMac && chord.mod),
+        }),
+        catalog,
+        { held: new Set(chord.withKey ? [normalizeKey(chord.withKey)] : []), isMac },
+      );
+      assert.strictEqual(resolved, action.id,
+        `"${action.keys}" must dispatch ${action.id} with isMac=${isMac}`);
+    }
+  }
+}
 
 console.log('shortcuts catalog.verify: ok');

@@ -64,27 +64,13 @@ Use `submit_voice` to create a TTS audio asset. The current MCP tool contract is
 - For long narration, multiple `submit_voice` calls can be useful: split at
   natural pauses, sentence groups, or script beat boundaries when the workflow
   benefits from separately timed or placed voice clips.
-- Doubao supports `speedRatio`, `loudnessRatio`, `pitch`, `emotion`,
-  `emotionScale`, `performancePrompt`, and `explicitDialect`, but not every
-  voice supports every expressive control. Check
-  [references/voices.md](references/voices.md) before using them.
+- Doubao (`seed-audio-1.0` via `/api/v3/tts/create`) supports `speedRatio`,
+  `loudnessRatio`, and native `pitch` (`pitch_rate` −12–12). `emotion`,
+  `emotionScale`, `performancePrompt`, and `explicitDialect` are not supported.
 - ElevenLabs retains its official voice settings, language, seed, output,
   normalization, pronunciation-dictionary, continuity, logging, and latency
   controls. MiniMax retains its dedicated controls documented in
   [references/minimax-tts.md](references/minimax-tts.md).
-
-Doubao control support for current curated voices:
-
-- `vivi`, `xiaohe`, `yunzhou`, `xiaotian`, `naiqimengwa`, `yingtaowanzi`,
-  `wenroumama`, `zhixingnv`, `dayi`, `jitangnv`, `liuchang`, `ruyayichen`,
-  `morgan`, `qingcang`, `huiben`, `popo`, `yuanboxiaoshu`, `baqiqingshu`, and
-  `tangseng` support explicit `emotion` / `emotionScale`,
-  `performancePrompt`, and ASMR-style prompt directions.
-- `shuanglangshaonian` supports `performancePrompt` and COT/QA-style
-  instruction following, but does not support explicit `emotion` /
-  `emotionScale` or ASMR-style control.
-- `explicitDialect` is only supported by `vivi` and can be `dongbei`,
-  `shaanxi`, or `sichuan`.
 
 ElevenLabs control support for current curated voices:
 
@@ -140,16 +126,14 @@ submit_voice({
   speedRatio: 1.5,
 });
 
-// With expressive Doubao controls
+// With Doubao delivery controls (speed / loudness / native pitch)
 submit_voice({
   provider: "doubao",
   text: "这次事故提醒我们，安全永远不能侥幸。",
   voiceId: "liuchang",
-  emotion: "sad",
-  emotionScale: 3,
-  performancePrompt: "痛心但克制，语速稍慢，像新闻专题旁白",
   pitch: -1,
   speedRatio: 0.92,
+  loudnessRatio: 1.1,
 });
 
 // With ElevenLabs delivery controls
@@ -388,7 +372,8 @@ submit_sound({
 | `outputFormat` | Provider-supported output format | ElevenLabs, OpenAI, Gemini, Mistral, Cartesia |
 | `instructions` | Natural-language delivery direction | OpenAI, Gemini |
 | `speedRatio` | Speech speed | Doubao only |
-| `name` | Media-pool asset name | Optional |
+| `loudnessRatio` | Loudness | Doubao only |
+| `pitch` | Pitch | Doubao (native `pitch_rate`), MiniMax (native) |
 
 ### Sound Effects
 

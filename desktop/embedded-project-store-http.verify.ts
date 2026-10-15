@@ -29,6 +29,7 @@ try {
   const embedded = await startEmbeddedServer(join(root, 'dist'));
   // Reuse the storage module initialized by the isolated embedded startup, never the real profile.
   const { resetSqliteStoreForTests, sqliteStoreReady } = await import('../server/storage/sqlite-store.ts');
+  const { resetSearchForTests } = await import('../server/storage/fulltext-search.ts');
   try {
     const editorHeaders = {
       Origin: embedded.origin,
@@ -57,6 +58,9 @@ try {
   } finally {
     await new Promise<void>((resolve) => embedded.server.close(() => resolve()));
     resetSqliteStoreForTests();
+    // The store's search index keeps its own connection; Windows cannot remove
+    // the fixture directory while that file handle is open.
+    resetSearchForTests();
   }
 } finally {
   if (previousHome === undefined) delete process.env.HOME;

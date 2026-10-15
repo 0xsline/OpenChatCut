@@ -38,13 +38,10 @@ export interface SubmitVoiceArgs {
   nextRequestIds?: string[];
   speedRatio?: number;
   emotion?: string;
-  emotionScale?: number;
   loudnessRatio?: number;
   pitch?: number;
   /** MiniMax only: voice_setting.vol 0–10. */
   volume?: number;
-  performancePrompt?: string;
-  explicitDialect?: 'dongbei' | 'shaanxi' | 'sichuan';
   sampleRate?: number;
   bitrate?: number;
   audioFormat?: 'mp3' | 'pcm' | 'flac' | 'wav' | 'pcmu_raw' | 'pcmu_wav' | 'opus';

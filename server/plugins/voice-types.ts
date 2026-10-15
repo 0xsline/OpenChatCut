@@ -25,9 +25,8 @@ export interface VoiceOptions {
   elevenApiKey: string;
   elevenModel: string;
   doubaoBaseUrl: string;
-  doubaoAppId: string;
-  doubaoAccessKey: string;
-  doubaoResourceId: string;
+  doubaoApiKey: string;
+  doubaoModel: string;
   minimaxBaseUrl: string;
   minimaxApiKey: string;
   minimaxModel: string;
@@ -68,12 +67,9 @@ export interface VoiceRequest {
   nextRequestIds?: string[];
   speedRatio?: number;
   emotion?: string;
-  emotionScale?: number;
   loudnessRatio?: number;
   pitch?: number;
   volume?: number;
-  performancePrompt?: string;
-  explicitDialect?: string;
   sampleRate?: number;
   bitrate?: number;
   audioFormat?: MinimaxVoiceFormat;

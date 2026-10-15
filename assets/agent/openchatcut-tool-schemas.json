@@ -1487,13 +1487,7 @@
           },
           "emotion": {
             "type": "string",
-            "description": "Doubao or MiniMax emotion label. MiniMax accepts: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper."
-          },
-          "emotionScale": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 5,
-            "description": "Doubao only. Requires emotion."
+            "description": "MiniMax only. One of: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper."
           },
           "loudnessRatio": {
             "type": "number",
@@ -1505,27 +1499,13 @@
             "type": "number",
             "minimum": -12,
             "maximum": 12,
-            "description": "Doubao: post-process semitones. MiniMax: native voice_setting.pitch (-12–12)."
+            "description": "Doubao: native audio_config.pitch_rate (-12–12). MiniMax: native voice_setting.pitch (-12–12)."
           },
           "volume": {
             "type": "number",
             "exclusiveMinimum": 0,
             "maximum": 10,
             "description": "MiniMax only. voice_setting.vol (>0–10). Defaults to 1."
-          },
-          "performancePrompt": {
-            "type": "string",
-            "maxLength": 200,
-            "description": "Doubao only. Natural-language performance direction."
-          },
-          "explicitDialect": {
-            "type": "string",
-            "enum": [
-              "dongbei",
-              "shaanxi",
-              "sichuan"
-            ],
-            "description": "Doubao only; supported by the Vivi preset."
           },
           "sampleRate": {
             "type": "integer",

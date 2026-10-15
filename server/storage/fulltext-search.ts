@@ -8,7 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { sqliteStoreReady, storePath } from './sqlite-store.ts';
+import { registerSqliteStoreConnectionCloser, sqliteStoreReady, storePath } from './sqlite-store.ts';
 import { segmentForIndex } from './search-tokenizer.ts';
 
 const FTS_TABLE = 'search_fts';
@@ -52,6 +52,10 @@ export function resetSearchForTests(): void {
   connection?.close();
   connection = null;
 }
+
+// Closing the store must close this connection too: a verifier that deletes its
+// temp library on Windows gets EPERM while the file is still open.
+registerSqliteStoreConnectionCloser(resetSearchForTests);
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
 

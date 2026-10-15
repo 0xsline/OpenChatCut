@@ -179,14 +179,11 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
           getKey("DOUBAO_TTS_BASE_URL") || "https://openspeech.bytedance.com"
         );
       },
-      get doubaoAppId() {
-        return getKey("DOUBAO_TTS_APP_ID");
+      get doubaoApiKey() {
+        return getKey("DOUBAO_TTS_API_KEY");
       },
-      get doubaoAccessKey() {
-        return getKey("DOUBAO_TTS_ACCESS_KEY");
-      },
-      get doubaoResourceId() {
-        return getKey("DOUBAO_TTS_RESOURCE_ID") || "seed-tts-2.0";
+      get doubaoModel() {
+        return getKey("DOUBAO_TTS_MODEL") || "seed-audio-1.0";
       },
       get minimaxBaseUrl() {
         return getKey("MINIMAX_BASE_URL") || "https://api.minimaxi.com";

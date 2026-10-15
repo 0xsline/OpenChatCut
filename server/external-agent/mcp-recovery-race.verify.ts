@@ -11,6 +11,7 @@ process.env.OPENCHATCUT_DATA_DIR = fixture;
 // Store paths are captured at import time; keep the real SQLite store isolated.
 const { setStoredEntry } = await import('../plugins/project-store.ts');
 const { resetSqliteStoreForTests } = await import('../storage/sqlite-store.ts');
+const { resetSearchForTests } = await import('../storage/fulltext-search.ts');
 const { claimBrowserProjectOwnership } = await import('./project-edit-ownership.ts');
 const { docFromTimeline } = await import('../../src/persist/projectStore.ts');
 const { INITIAL } = await import('../../src/editor/initial.ts');
@@ -79,6 +80,9 @@ try {
   resetExternalAgentBrokerForTest();
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   resetSqliteStoreForTests();
+  // The search index keeps a second connection to the store file; Windows
+  // cannot unlink it until that connection closes too.
+  resetSearchForTests();
   if (previousDataDir === undefined) delete process.env.OPENCHATCUT_DATA_DIR;
   else process.env.OPENCHATCUT_DATA_DIR = previousDataDir;
   await rm(fixture, { recursive: true, force: true });

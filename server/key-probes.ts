@@ -2,8 +2,8 @@
 // (read-only endpoint or near-zero cost call), verify that the Key + Base URL is available. The key comes from keystore,
 // Or the request body overrides (the temporary value that has not been saved in the panel will only take effect for this detection and will not be saved).
 // Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
-// The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each vite-plugin-* one by one
-// Real call writing method (beanbao three header / MiniMax base_resp / Gemini x-goog-api-key...).
+// The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each provider call one by one
+// (Doubao audio-generation X-Api-Key / MiniMax base_resp / Gemini x-goog-api-key...).
 import { proxyDispatcher } from './outbound-proxy.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
@@ -69,7 +69,7 @@ const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Respo
 type Get = (name: KeyName) => string;
 
 interface ProbeDef {
-  /** Starting test threshold: OR AND group (doubao = App ID + Access Key together) */
+  /** Starting test threshold: OR of AND-groups (every name in one inner list must be present) */
   readonly needs: readonly (readonly KeyName[])[];
   readonly run: (get: Get) => Promise<Response>;
   /** 2xx may also be a provider-level failure (MiniMax base_resp); return error text, null = true success */
@@ -135,7 +135,17 @@ const minimaxProbe: ProbeDef = {
   }),
   postCheck: minimaxPostCheck,
 };
-
+// Doubao 音频生成新版接口：X-Api-Key 单头鉴权；HTTP 200 也可能带业务 code，非 0 即失败。
+export function doubaoPostCheck(bodyText: string): string | null {
+  try {
+    const body = JSON.parse(bodyText) as { code?: number; message?: string };
+    if (body.code == null || body.code === 0) return null;
+    const hint = body.code === 401 || body.code === 403 ? '（鉴权失败，检查 API Key）' : '';
+    return `Doubao ${body.code}${body.message ? ` · ${sanitize(body.message)}` : ''}${hint}`;
+  } catch {
+    return null; // Non-JSON 2xx are counted as successful
+  }
+}
 const atlasMusicProbe: ProbeDef = {
   needs: [['ATLASCLOUD_API_KEY']],
   run: async (get) => {
@@ -283,22 +293,23 @@ export const PROBES: Record<string, ProbeDef> = {
   'voice/gemini': geminiMediaProbe,
   'voice/mistral': mistralMediaProbe,
   'voice/cartesia': cartesiaProbe,
-  // openpeech does not have free probing endpoints, synthesizing 1 word is the minimum real verification (the cost is negligible).
+  // Doubao 音频生成新版接口：X-Api-Key 单头鉴权；无免费探活端点，合成 1 个字做最小真实校验（成本可忽略）。
   'voice/doubao': {
-    needs: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
-    run: (get) => fetch(`${base(get, 'DOUBAO_TTS_BASE_URL', 'https://openspeech.bytedance.com')}/api/v3/tts/unidirectional`, {
-      method: 'POST', signal: t(),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Api-App-Id': get('DOUBAO_TTS_APP_ID'),
-        'X-Api-Access-Key': get('DOUBAO_TTS_ACCESS_KEY'),
-        'X-Api-Resource-Id': get('DOUBAO_TTS_RESOURCE_ID') || 'seed-tts-2.0',
-      },
-      body: JSON.stringify({
-        user: { uid: 'openchatcut-probe' },
-        req_params: { text: '测', speaker: 'zh_female_vv_uranus_bigtts', audio_params: { format: 'mp3', sample_rate: 24_000 } },
-      }),
-    }),
+    needs: [['DOUBAO_TTS_API_KEY']],
+    run: (get) => {
+      const root = base(get, 'DOUBAO_TTS_BASE_URL', 'https://openspeech.bytedance.com');
+      return fetch(root.endsWith('/api/v3/tts/create') ? root : `${root}/api/v3/tts/create`, {
+        method: 'POST', signal: t(),
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': get('DOUBAO_TTS_API_KEY') },
+        body: JSON.stringify({
+          model: get('DOUBAO_TTS_MODEL') || 'seed-audio-1.0',
+          text_prompt: '测',
+          references: [{ speaker: 'zh_female_vv_uranus_bigtts' }],
+          audio_config: { format: 'mp3', sample_rate: 24_000 },
+        }),
+      });
+    },
+    postCheck: doubaoPostCheck,
   },
   'voice/minimax': minimaxProbe,
   'voice/inworld': {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isolateVerifyHome } from '../../shared/verify-home.ts';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version.ts';
 import {
   checkpointExternalEditSession,
@@ -37,11 +38,12 @@ function entryArray(value: unknown): unknown[] {
 }
 
 const root = await mkdtemp(join(tmpdir(), 'occ-offline-store-'));
-const previousHome = process.env.HOME;
-process.env.HOME = root;
+const restoreHome = isolateVerifyHome(root);
 
 // Store paths are captured at module evaluation, so known modules load only
-// after HOME points at an isolated directory.
+// after the profile home points at an isolated directory.
+const { resetSqliteStoreForTests } = await import('../storage/sqlite-store.ts');
+const { resetSearchForTests } = await import('../storage/fulltext-search.ts');
 
 try {
   const { getStoredEntry, setStoredEntry } = await import('../plugins/project-store.ts');
@@ -291,8 +293,11 @@ try {
   assert.deepEqual((await getStoredEntry(`project:${projectId}`)).value, projectDoc(1000, 1000),
     'browser ownership claimed first fences the stale offline writer');
 } finally {
-  if (previousHome === undefined) delete process.env.HOME;
-  else process.env.HOME = previousHome;
+  // The store and its search index each keep the SQLite fixture files open;
+  // Windows cannot remove the directory until both close.
+  resetSqliteStoreForTests();
+  resetSearchForTests();
+  restoreHome();
   await rm(root, { recursive: true, force: true });
 }
 

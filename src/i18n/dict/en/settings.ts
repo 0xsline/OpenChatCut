@@ -92,7 +92,6 @@ export default {
   '生图模型': 'Image model',
   '配音模型': 'Voice model',
   '音效模型': 'Sound model',
-  '音色资源 ID': 'Voice resource ID',
   '视频模型': 'Video model',
   '音乐模型': 'Music model',
   '云同步': 'Cloud sync',

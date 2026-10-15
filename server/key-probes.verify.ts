@@ -81,8 +81,8 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   const unconfigured = await runProbe('voice/elevenlabs', {});
   assert.equal(unconfigured.ok, false);
   assert.match(unconfigured.message, /尚未填写 API Key/);
-  // Doubao requires both keys: only the App ID is still unconfigured
-  const half = await runProbe('voice/doubao', { DOUBAO_TTS_APP_ID: 'a' });
+  // Doubao needs its API key: empty overrides stay unconfigured
+  const half = await runProbe('voice/doubao', { DOUBAO_TTS_API_KEY: ' ' });
   assert.match(half.message, /尚未填写 API Key/);
 }
 
@@ -220,7 +220,12 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   );
   const recorded = await runProbe('storage/projects', {});
   assert.equal(recorded.ok, true);
-  assert.match(recorded.message, new RegExp(`目录可写 · ${target}`));
+  // A Windows path interpolated into a RegExp loses separators to escape
+  // sequences ("\T", "\S"), so match the recorded path literally.
+  assert.ok(
+    recorded.message.includes(`目录可写 · ${target}`),
+    `expected the recorded root to be reported, got: ${recorded.message}`,
+  );
 
   process.env.OPENCHATCUT_DATA_DIR = target;
   try {
