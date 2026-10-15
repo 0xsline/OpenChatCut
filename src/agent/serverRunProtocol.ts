@@ -42,6 +42,14 @@ export interface ServerRunToolAction {
   readonly baseDoc: ProjectDoc;
 }
 
+/**
+ * What happened to the project edits of one tool call. `none` when the call
+ * landed nothing (reads, proposal-only edits, tools outside the project);
+ * `queued` when its save failed and the edits wait in the run for the next
+ * landing, so repeating the call would apply them twice.
+ */
+export type ServerRunProjectWrite = 'none' | 'saved' | 'queued';
+
 export interface ServerRunRecovery {
   readonly tools: readonly Pick<
     ServerRunToolAction,
@@ -91,7 +99,9 @@ export interface ServerRunOptions {
   readonly onRunStart?: (
     start: ServerRunStart,
   ) => ServerRunRecovery | void | Promise<ServerRunRecovery | void>;
-  readonly onToolAction?: (action: ServerRunToolAction) => void | Promise<void>;
+  readonly onToolAction?: (
+    action: ServerRunToolAction,
+  ) => ServerRunProjectWrite | void | Promise<ServerRunProjectWrite | void>;
   readonly onTerminal?: (
     terminal: ServerRunTerminal,
   ) => ServerRunTerminalResolution | false | Promise<ServerRunTerminalResolution | false>;

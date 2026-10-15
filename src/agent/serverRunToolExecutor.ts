@@ -9,7 +9,8 @@ import type { ProjectDoc } from '../editor/types';
 import type { DisplayMessage, LiveTool } from './agent-session';
 
 import type { AgentEvent } from './runtime';
-import type { ServerRunToolAction } from './serverRunProtocol';
+import type { ServerRunProjectWrite, ServerRunToolAction } from './serverRunProtocol';
+import { withProjectSaveWarning } from './serverRunProjectWrite';
 import { ServerRunToolRequestQueue } from './serverRunEvents';
 import { toolExecutionMode } from './tools/execution-modes';
 import { environmentFailureHint } from './serverRunToolEnvironment';
@@ -23,7 +24,6 @@ import {
   storedClaimIdentity,
   type StoredToolAttempt,
 } from './serverRunSessionStorage';
-import { flushProjectSaves } from '../persist/projectStore';
 import {
   scheduleServerRunToolResultRetry, type BrowserToolRequest, type ToolClaimResponse,
 } from './serverRunToolTransport';
@@ -47,7 +47,9 @@ export type { RecoveredServerTool } from './serverRunToolRecovery';
 export interface ServerToolExecutorCallbacks {
   readonly ctx: () => AgentContext;
   readonly settings: () => AgentSettings;
-  readonly onToolAction: (action: ServerRunToolAction) => void | Promise<void>;
+  readonly onToolAction: (
+    action: ServerRunToolAction,
+  ) => ServerRunProjectWrite | void | Promise<ServerRunProjectWrite | void>;
   readonly updateMessages: (
     update: (messages: DisplayMessage[]) => DisplayMessage[],
   ) => void;
@@ -74,9 +76,6 @@ export interface ServerToolExecutorStart {
  * run started read the NEW run's capability, posted a foreign-authority
  * /tool-result (HTTP 403), and triggered stale-recovery against the new run.
  */
-/** Tool results between unawaited durability checkpoints. */
-const TOOL_RESULTS_PER_FLUSH = 8;
-
 export class ServerRunToolExecutor {
   private readonly projectId: string;
   private readonly requestQueue = new ServerRunToolRequestQueue();
@@ -87,7 +86,6 @@ export class ServerRunToolExecutor {
   private draft: DraftEngine | null = null;
   private baseDoc: ProjectDoc | null = null;
   private session: RunSession | null = null;
-  private resultsSinceFlush = 0;
   private readonly lockManager: ServerRunLockManager | null;
 
   constructor(
@@ -153,22 +151,8 @@ export class ServerRunToolExecutor {
     toolCallId: string,
     outcome: RecoveredServerTool,
   ): Promise<boolean> {
-    const posted = await postServerRunToolResult(this.projectId, session, toolCallId, outcome,
+    return postServerRunToolResult(this.projectId, session, toolCallId, outcome,
       (runId, error) => this.callbacks.abandonRecovery(runId, error));
-    if (posted) this.checkpointProjectSaves();
-    return posted;
-  }
-
-  /**
-   * Periodic durability checkpoint. Autosave already debounces at 500ms, so this
-   * only bounds exposure if that timer is starved; it is deliberately not
-   * awaited so tool throughput is unaffected.
-   */
-  private checkpointProjectSaves(): void {
-    this.resultsSinceFlush += 1;
-    if (this.resultsSinceFlush < TOOL_RESULTS_PER_FLUSH) return;
-    this.resultsSinceFlush = 0;
-    void flushProjectSaves(this.projectId).catch(() => undefined);
   }
 
   private retry(session: RunSession, toolCallId: string): void {
@@ -377,19 +361,23 @@ export class ServerRunToolExecutor {
         actions: this.draft.takeActions(),
         baseDoc: this.baseDoc ?? this.callbacks.ctx().getDoc(),
       };
+      let projectWrite: ServerRunProjectWrite | void;
       try {
-        await this.callbacks.onToolAction(outcome);
+        projectWrite = await this.callbacks.onToolAction(outcome);
       } catch {
         // The tool already executed; retry the durable draft write once so
         // its actions are not lost (reportFailure with persist=false would
         // drop them and a model-side retry could double-execute).
         try {
-          await this.callbacks.onToolAction(outcome);
+          projectWrite = await this.callbacks.onToolAction(outcome);
         } catch (retryError) {
           return this.reportFailure(session, toolCallId, request, retryError, false);
         }
       }
-      return this.finishExecution(session, toolCallId, request, update.execution.result);
+      const result = projectWrite === 'queued'
+        ? withProjectSaveWarning(update.execution.result)
+        : update.execution.result;
+      return this.finishExecution(session, toolCallId, request, result);
     } finally {
       // A stale run's cleanup must not blank the live-tool indicator the
       // current run is showing.

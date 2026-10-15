@@ -22,6 +22,7 @@ import type {
   ServerRunSession,
   ServerRunStart,
   ServerRunTerminal,
+  ServerRunProjectWrite,
   ServerRunTerminalResolution,
   ServerRunToolAction,
 } from './serverRunProtocol';
@@ -31,7 +32,7 @@ export interface ServerRunProposalBridge {
   readonly onRunPrepare: (input: ServerRunPreparation) => Promise<void>;
   readonly onRunAbandon: (runId: string) => Promise<void>;
   readonly onRunStart: (input: ServerRunStart) => Promise<ServerRunRecovery>;
-  readonly onToolAction: (input: ServerRunToolAction) => Promise<void>;
+  readonly onToolAction: (input: ServerRunToolAction) => Promise<ServerRunProjectWrite | void>;
   readonly onTerminal: (
     input: ServerRunTerminal,
   ) => Promise<ServerRunTerminalResolution | false>;
