@@ -39,6 +39,32 @@ export function sanitizeProbeText(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 140);
 }
 
+/** MiniMax: HTTP 200 may also cause authentication failure, the truth is in base_resp.status_code(0 = success).*/
+export function minimaxPostCheck(bodyText: string): string | null {
+  try {
+    const body = JSON.parse(bodyText) as { base_resp?: { status_code?: number; status_msg?: string } };
+    const code = body.base_resp?.status_code ?? 0;
+    if (code === 0) return null;
+    const msg = body.base_resp?.status_msg ?? '';
+    const hint = code === 1004 ? '（鉴权失败，检查 Key）' : '';
+    return `MiniMax base_resp ${code}${msg ? ` · ${sanitizeProbeText(msg)}` : ''}${hint}`;
+  } catch {
+    return null; // Non-JSON 2xx are counted as successful
+  }
+}
+
+/** Doubao 音频生成新版接口：HTTP 200 也可能带业务 code，非 0 即失败。 */
+export function doubaoPostCheck(bodyText: string): string | null {
+  try {
+    const body = JSON.parse(bodyText) as { code?: number; message?: string };
+    if (body.code == null || body.code === 0) return null;
+    const hint = body.code === 401 || body.code === 403 ? '（鉴权失败，检查 API Key）' : '';
+    return `Doubao ${body.code}${body.message ? ` · ${sanitizeProbeText(body.message)}` : ''}${hint}`;
+  } catch {
+    return null; // Non-JSON 2xx are counted as successful
+  }
+}
+
 /** Convert a provider response into a user-facing connectivity conclusion. */
 export function classifyStatus(status: number, bodyText: string): ProbeResult {
   if (status === 401 || status === 403) {

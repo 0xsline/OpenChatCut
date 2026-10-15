@@ -23,6 +23,8 @@ import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
 import { xaiOauthAccessToken } from './xai-oauth-session.ts';
 import {
   classifyStatus,
+  doubaoPostCheck,
+  minimaxPostCheck,
   networkMessage,
   parseModelCatalog,
   parseTextModelCatalog,
@@ -31,6 +33,7 @@ import {
 } from './key-probe-result.ts';
 import { PROBE_TIMEOUT_MS, runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
 export { classifyStatus, networkMessage, parseModelCatalog, type ProbeResult } from './key-probe-result.ts';
+export { doubaoPostCheck, minimaxPostCheck } from './key-probe-result.ts';
 export { runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
 // Proxy-aware fetch: attaches the configured outbound proxy (keystore
 // PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
@@ -110,20 +113,6 @@ export function sanitize(text: string): string {
   return sanitizeProbeText(text);
 }
 
-/** MiniMax: HTTP 200 may also cause authentication failure, the truth is in base_resp.status_code(0 = success).*/
-export function minimaxPostCheck(bodyText: string): string | null {
-  try {
-    const body = JSON.parse(bodyText) as { base_resp?: { status_code?: number; status_msg?: string } };
-    const code = body.base_resp?.status_code ?? 0;
-    if (code === 0) return null;
-    const msg = body.base_resp?.status_msg ?? '';
-    const hint = code === 1004 ? '（鉴权失败，检查 Key）' : '';
-    return `MiniMax base_resp ${code}${msg ? ` · ${sanitize(msg)}` : ''}${hint}`;
-  } catch {
-    return null; // Non-JSON 2xx are counted as successful
-  }
-}
-
 // The four capability pages of MiniMax share one detection: POST /v1/get_voice (free read-only;
 // The voice_cloning list is usually empty, minimal response).
 const minimaxProbe: ProbeDef = {
@@ -135,17 +124,6 @@ const minimaxProbe: ProbeDef = {
   }),
   postCheck: minimaxPostCheck,
 };
-// Doubao 音频生成新版接口：X-Api-Key 单头鉴权；HTTP 200 也可能带业务 code，非 0 即失败。
-export function doubaoPostCheck(bodyText: string): string | null {
-  try {
-    const body = JSON.parse(bodyText) as { code?: number; message?: string };
-    if (body.code == null || body.code === 0) return null;
-    const hint = body.code === 401 || body.code === 403 ? '（鉴权失败，检查 API Key）' : '';
-    return `Doubao ${body.code}${body.message ? ` · ${sanitize(body.message)}` : ''}${hint}`;
-  } catch {
-    return null; // Non-JSON 2xx are counted as successful
-  }
-}
 const atlasMusicProbe: ProbeDef = {
   needs: [['ATLASCLOUD_API_KEY']],
   run: async (get) => {
