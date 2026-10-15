@@ -2,6 +2,7 @@ import { AbsoluteFill } from 'remotion';
 import { getCompiledTemplate } from '../template-host';
 import type { AspectFit, TimelineItem, Watermark } from './types';
 import { VisualClipSurface } from './TimelineMediaLayer';
+import { fontFamilyCss } from '../fonts/googleFontCatalog';
 
 export function SolidLayer({ item, canvasW, canvasH, borderRadius }: {
   item: TimelineItem;
@@ -48,10 +49,86 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
   const props = item.props ?? {};
   const align = (props.align === 'left' || props.align === 'right' ? props.align : 'center') as 'left' | 'center' | 'right';
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+
+  // Typography properties:
+  const rawFamily = String(props.fontFamily ?? '').trim();
+  const fontFamily = rawFamily ? fontFamilyCss(rawFamily, 'system-ui, -apple-system, sans-serif')
+    : 'Geist, system-ui, -apple-system, sans-serif';
+  const fontStyle = (props.fontStyle ? String(props.fontStyle) : 'normal') as 'normal' | 'italic';
+  const fontWeight = Number(props.fontWeight ?? 700);
+  const fontSize = Number(props.fontSize ?? 96);
+  const color = String(props.color ?? '#ffffff');
+  const letterSpacing = props.letterSpacing !== undefined
+    ? (typeof props.letterSpacing === 'number' ? `${props.letterSpacing}px` : String(props.letterSpacing))
+    : 'normal';
+  const lineHeight = props.lineHeight !== undefined ? Number(props.lineHeight) : 1.2;
+  const textShadow = props.textShadow !== undefined
+    ? String(props.textShadow)
+    : '0 3px 16px rgba(0,0,0,0.55)';
+
+  // Container / backdrop properties:
+  const bgEnabled = Boolean(props.bgEnabled ?? false);
+
+  const textNode = (
+    <div style={{
+      color,
+      fontSize,
+      fontWeight,
+      fontStyle,
+      fontFamily,
+      letterSpacing,
+      lineHeight,
+      textAlign: align,
+      textShadow,
+      whiteSpace: 'pre-wrap',
+      width: bgEnabled ? undefined : '100%',
+    }}>
+      {String(props.text ?? '文字')}
+    </div>
+  );
+
+  let body = textNode;
+
+  if (bgEnabled) {
+    const defaultBg = 'rgba(10, 15, 26, 0.85)';
+    const defaultBorder = '1px solid rgba(255, 255, 255, 0.16)';
+    const defaultRadius = 9999;
+    const defaultPadX = 32;
+    const defaultPadY = 10;
+    const defaultBlur = 20;
+    const defaultShadow = '0 12px 36px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.4)';
+
+    const bgColor = props.bgColor !== undefined ? String(props.bgColor) : defaultBg;
+    const bgBorder = props.bgBorder !== undefined ? String(props.bgBorder) : defaultBorder;
+    const bgRadius = props.bgRadius !== undefined ? Number(props.bgRadius) : defaultRadius;
+    const bgPaddingX = props.bgPaddingX !== undefined ? Number(props.bgPaddingX) : defaultPadX;
+    const bgPaddingY = props.bgPaddingY !== undefined ? Number(props.bgPaddingY) : defaultPadY;
+    const bgBlur = props.bgBlur !== undefined ? Number(props.bgBlur) : defaultBlur;
+    const bgShadow = props.bgShadow !== undefined ? String(props.bgShadow) : defaultShadow;
+
+    body = (
+      <div style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: bgColor,
+        backdropFilter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined,
+        WebkitBackdropFilter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined,
+        border: bgBorder,
+        borderRadius: bgRadius,
+        padding: `${bgPaddingY}px ${bgPaddingX}px`,
+        boxShadow: bgShadow,
+        maxWidth: '88%',
+      }}>
+        {textNode}
+      </div>
+    );
+  }
+
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
       <div style={{ width: dw, height: dh, flexShrink: 0, transform: `scale(${scale})`, display: 'flex', alignItems: 'center', justifyContent: justify, padding: '0 96px', boxSizing: 'border-box' }}>
-        <div style={{ color: String(props.color ?? '#ffffff'), fontSize: Number(props.fontSize ?? 96), fontWeight: Number(props.fontWeight ?? 700), textAlign: align, width: '100%', fontFamily: 'Geist, system-ui, -apple-system, sans-serif', textShadow: '0 3px 16px rgba(0,0,0,0.55)', whiteSpace: 'pre-wrap', lineHeight: 1.2 }}>{String(props.text ?? '文字')}</div>
+        {body}
       </div>
     </AbsoluteFill>
   );

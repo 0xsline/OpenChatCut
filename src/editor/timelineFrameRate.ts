@@ -4,6 +4,7 @@ import {
   captionTrackEntries,
   isTimelineMediaAssetKind,
   type MediaAsset,
+  type MediaAssetKind,
   type ProjectDoc,
   type TimelineState,
 } from './types';
@@ -46,15 +47,23 @@ export function projectFrameRateLock(doc: ProjectDoc): string | null {
   return doc.timelines.some(timelineHasFramedContent) ? FRAME_RATE_LOCKED_REASON : null;
 }
 
+const isRate = (fps: number | undefined): fps is number => Number.isFinite(fps) && fps! > 0;
+
 /**
- * Pool durations were probed as seconds x the rate at import. Recount the
- * time-based kinds; a motion graphic's length is authored in frames and the
- * timeline plays it frame for frame, so it stays as authored.
+ * Pool durations are probed as seconds x the rate at import, and the rate can
+ * change before an import lands (an upload still transcoding, an agent's media
+ * replayed onto the live project). Recount a duration counted at `countedAt`
+ * at `fps`; a motion graphic's length is authored in frames and the timeline
+ * plays it frame for frame, so it stays as authored.
  */
-function recountAssetDuration(asset: MediaAsset, ratio: number): MediaAsset {
-  if (!isTimelineMediaAssetKind(asset.kind) || asset.kind === 'motion-graphic') return asset;
-  if (!Number.isFinite(asset.durationInFrames) || asset.durationInFrames <= 0) return asset;
-  const durationInFrames = Math.max(1, Math.round(asset.durationInFrames * ratio));
+export function recountDuration(kind: MediaAssetKind, frames: number, countedAt: number | undefined, fps: number | undefined): number {
+  if (!isTimelineMediaAssetKind(kind) || kind === 'motion-graphic') return frames;
+  if (!Number.isFinite(frames) || frames <= 0 || !isRate(countedAt) || !isRate(fps) || countedAt === fps) return frames;
+  return Math.max(1, Math.round(frames * (fps / countedAt)));
+}
+
+export function recountAssetDuration(asset: MediaAsset, countedAt: number | undefined, fps: number | undefined): MediaAsset {
+  const durationInFrames = recountDuration(asset.kind, asset.durationInFrames, countedAt, fps);
   return durationInFrames === asset.durationInFrames ? asset : { ...asset, durationInFrames };
 }
 
@@ -63,10 +72,11 @@ export function withProjectFrameRate(doc: ProjectDoc, fps: number): ProjectDoc {
   if (!TIMELINE_FPS_OPTIONS.includes(fps) || projectFrameRateLock(doc)) return doc;
   if (doc.timelines.every((timeline) => timeline.fps === fps)) return doc;
   const previous = activeTimeline(doc)?.fps;
-  const ratio = Number.isFinite(previous) && previous! > 0 ? fps / previous! : 1;
   return {
     ...doc,
     timelines: doc.timelines.map((timeline) => (timeline.fps === fps ? timeline : { ...timeline, fps })),
-    assets: ratio === 1 ? doc.assets : doc.assets.map((asset) => recountAssetDuration(asset, ratio)),
+    assets: !isRate(previous) || previous === fps
+      ? doc.assets
+      : doc.assets.map((asset) => recountAssetDuration(asset, previous, fps)),
   };
 }

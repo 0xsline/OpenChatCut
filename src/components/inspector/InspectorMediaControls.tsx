@@ -1,4 +1,6 @@
 import { useState, type CSSProperties } from 'react';
+import { FontFamilyPicker } from './FontFamilyPicker';
+import { textBackdropBorder, textBackdropColor, textBackdropRgba } from './textBackdrop';
 import { theme } from '../../theme';
 import type { TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../../editor/types';
 import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../../editor/types';
@@ -170,21 +172,41 @@ export function TextControl({ item, mixed, onPropChange }: { item: TimelineItem;
   const t = useT();
   const p = item.props ?? {};
   const selStyle: CSSProperties = { background: theme.bg, color: theme.text, border: `0.5px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
+
+  const bgActive = Boolean(p.bgEnabled ?? false);
+  const backdrop = textBackdropColor(p);
+  const border = textBackdropBorder(p);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* 1. Content */}
       <label style={{ fontSize: 11, color: theme.textDim }}>
-        <div style={{ marginBottom: 4 }}>{t('文字内容')}</div>
+        <div style={{ marginBottom: 4 }}>{t('文字')}</div>
         <textarea value={mixed?.('text') ? '' : String(p.text ?? '')} placeholder={mixed?.('text') ? '—' : undefined} onChange={(e) => onPropChange('text', e.target.value)} rows={2}
           style={{ width: '100%', padding: '6px 8px', background: theme.bg, color: theme.text, border: `0.5px solid ${theme.borderLight}`, borderRadius: 5, resize: 'vertical', fontFamily: 'inherit', fontSize: 12 }} />
       </label>
+
+      {/* 2. Font Family */}
+      <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ marginBottom: 2 }}>{t('字体')} {mixed?.('fontFamily') && <span>—</span>}</div>
+        <FontFamilyPicker
+          value={String(p.fontFamily ?? '')}
+          mixed={mixed?.('fontFamily')}
+          onChange={(fam) => onPropChange('fontFamily', fam)}
+        />
+      </label>
+
+      {/* 3. Font Size */}
       <label style={{ fontSize: 11, color: theme.textDim }}>
         <div style={{ marginBottom: 4 }}>{t('字号')} <span style={{ opacity: 0.7 }}>{mixed?.('fontSize') ? '—' : Number(p.fontSize ?? 96)}</span></div>
-        {mixed?.('fontSize') ? <input type="number" min={24} max={300} step={2} placeholder="—" onBlur={(e) => {
+        {mixed?.('fontSize') ? <input type="number" min={16} max={300} step={2} placeholder="—" onBlur={(e) => {
           const value = Number(e.currentTarget.value);
           if (e.currentTarget.value && Number.isFinite(value)) onPropChange('fontSize', value);
-        }} style={{ width: '100%', ...selStyle }} /> : <input type="range" min={24} max={300} step={2} value={Number(p.fontSize ?? 96)} onChange={(e) => onPropChange('fontSize', Number(e.target.value))} style={{ width: '100%' }} />}
+        }} style={{ width: '100%', ...selStyle }} /> : <input type="range" min={16} max={300} step={2} value={Number(p.fontSize ?? 96)} onChange={(e) => onPropChange('fontSize', Number(e.target.value))} style={{ width: '100%' }} />}
       </label>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+
+      {/* 4. Font Color, Align, Weight, Style */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
           {t('颜色')} {mixed?.('color') && <span>—</span>} <input type="color" value={String(p.color ?? '#ffffff')} onChange={(e) => onPropChange('color', e.target.value)} />
         </label>
@@ -199,9 +221,96 @@ export function TextControl({ item, mixed, onPropChange }: { item: TimelineItem;
           {t('粗细')}
           <select value={mixed?.('fontWeight') ? '__mixed' : String(p.fontWeight ?? 700)} onChange={(e) => onPropChange('fontWeight', Number(e.target.value))} style={selStyle}>
             {mixed?.('fontWeight') && <option value="__mixed" disabled>—</option>}
-            <option value="400">{t('常规')}</option><option value="700">{t('粗体')}</option><option value="900">{t('特粗')}</option>
+            <option value="300">{t('细体')}</option><option value="400">{t('常规')}</option><option value="600">{t('中等')}</option><option value="700">{t('粗体')}</option><option value="900">{t('特粗')}</option>
           </select>
         </label>
+        <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {t('字体样式')}
+          <select value={mixed?.('fontStyle') ? '__mixed' : String(p.fontStyle ?? 'normal')} onChange={(e) => onPropChange('fontStyle', e.target.value)} style={selStyle}>
+            {mixed?.('fontStyle') && <option value="__mixed" disabled>—</option>}
+            <option value="normal">{t('常规')}</option><option value="italic">{t('斜体')}</option>
+          </select>
+        </label>
+      </div>
+
+      {/* 5. Typography Spacing (Letter Spacing & Line Height) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4, paddingTop: 8, borderTop: `0.5px solid ${theme.borderLight}` }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: theme.text }}>{t('间距与排版')}</div>
+        <label style={{ fontSize: 11, color: theme.textDim }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span>{t('字间距')}</span>
+            <span style={{ opacity: 0.7 }}>{mixed?.('letterSpacing') ? '—' : `${p.letterSpacing ?? 0}px`}</span>
+          </div>
+          <input type="range" min={-2} max={24} step={0.5} value={Number(p.letterSpacing ?? 0)} onChange={(e) => onPropChange('letterSpacing', Number(e.target.value))} style={{ width: '100%' }} />
+        </label>
+        <label style={{ fontSize: 11, color: theme.textDim }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span>{t('行高')}</span>
+            <span style={{ opacity: 0.7 }}>{mixed?.('lineHeight') ? '—' : `${Number(p.lineHeight ?? 1.2).toFixed(2)}×`}</span>
+          </div>
+          <input type="range" min={0.8} max={2.5} step={0.05} value={Number(p.lineHeight ?? 1.2)} onChange={(e) => onPropChange('lineHeight', Number(e.target.value))} style={{ width: '100%' }} />
+        </label>
+      </div>
+
+      {/* 6. Backdrop & Capsule Pill Styling */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4, paddingTop: 8, borderTop: `0.5px solid ${theme.borderLight}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: theme.text }}>{t('文字背景')}</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: theme.textDim, cursor: 'pointer' }}>
+            <input type="checkbox" checked={bgActive} onChange={(e) => onPropChange('bgEnabled', e.target.checked)} />
+            {t('启用背景')}
+          </label>
+        </div>
+        {bgActive && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {t('背景颜色')} <input type="color" value={backdrop.hex}
+                  onChange={(e) => onPropChange('bgColor', textBackdropRgba(e.target.value, backdrop.opacity))} />
+              </label>
+              <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {t('透明度')}
+                <input type="range" min={0} max={1} step={0.05} value={backdrop.opacity}
+                  onChange={(e) => onPropChange('bgColor', textBackdropRgba(backdrop.hex, Number(e.target.value)))} style={{ width: 60 }} />
+                <span style={{ fontSize: 10, opacity: 0.7 }}>{Math.round(backdrop.opacity * 100)}%</span>
+              </label>
+            </div>
+
+            <label style={{ fontSize: 11, color: theme.textDim }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span>{t('圆角')}</span>
+                <span style={{ opacity: 0.7 }}>{Number(p.bgRadius ?? 9999) >= 9999 ? t('胶囊形状') : `${p.bgRadius ?? 9999}px`}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="range" min={0} max={40} step={2} value={Math.min(40, Number(p.bgRadius ?? 40))} onChange={(e) => onPropChange('bgRadius', Number(e.target.value))} style={{ flex: 1 }} />
+                <button type="button" onClick={() => onPropChange('bgRadius', 9999)} style={{ ...selStyle, fontSize: 10, cursor: 'pointer' }}>{t('胶囊形状')}</button>
+              </div>
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label style={{ fontSize: 11, color: theme.textDim }}>
+                <div style={{ marginBottom: 4 }}>{t('水平内边距')} ({Number(p.bgPaddingX ?? 32)}px)</div>
+                <input type="range" min={4} max={64} step={2} value={Number(p.bgPaddingX ?? 32)} onChange={(e) => onPropChange('bgPaddingX', Number(e.target.value))} style={{ width: '100%' }} />
+              </label>
+              <label style={{ fontSize: 11, color: theme.textDim }}>
+                <div style={{ marginBottom: 4 }}>{t('垂直内边距')} ({Number(p.bgPaddingY ?? 10)}px)</div>
+                <input type="range" min={2} max={32} step={1} value={Number(p.bgPaddingY ?? 10)} onChange={(e) => onPropChange('bgPaddingY', Number(e.target.value))} style={{ width: '100%' }} />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {t('背景模糊')}
+                <input type="range" min={0} max={30} step={2} value={Number(p.bgBlur ?? 20)} onChange={(e) => onPropChange('bgBlur', Number(e.target.value))} style={{ width: 60 }} />
+                <span style={{ fontSize: 10, opacity: 0.7 }}>{Number(p.bgBlur ?? 20)}px</span>
+              </label>
+              <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {t('边框')} <input type="color" value={border.hex}
+                  onChange={(e) => onPropChange('bgBorder', `${border.prefix} ${textBackdropRgba(e.target.value, border.opacity)}`)} />
+              </label>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -209,7 +318,7 @@ export function TextControl({ item, mixed, onPropChange }: { item: TimelineItem;
 
 
 // animated zoom (builtin:zoom): shape curve + magnification + focal point,
-// plus ReframeCurveV1 sparse keyframes (drop focal+mag at the playhead).
+
 export function ZoomControl({ zoom, mixed, onChange, getLocalFrame, fps, onSetKeyframe, onRemoveKeyframe }: {
   zoom: ZoomEffect | undefined;
   mixed?: Partial<Record<'shape' | 'magnification' | 'focalPointX' | 'focalPointY', boolean>>;
@@ -338,4 +447,3 @@ export function TransitionControl({ transition, fps, onAdd, onSet, onRemove, aud
     </div>
   );
 }
-

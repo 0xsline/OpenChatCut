@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isolateVerifyHome } from '../../shared/verify-home.ts';
 
 function vector(seed: number): number[] {
   const values = Array.from({ length: 512 }, (_, index) => Math.sin(seed * 1000 + index) * 0.05);
@@ -15,17 +16,19 @@ function vector(seed: number): number[] {
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-hybrid-verify-'));
-  const previousHome = process.env.HOME;
-  process.env.HOME = root;
-  process.env.OPENCHATCUT_SQLITE_STORE = '1';
+  const restoreHome = isolateVerifyHome(root);
+  const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
+  delete process.env.OPENCHATCUT_SQLITE_STORE;
 
   try {
-    const { initializeSqliteProjectStore, SQLITE_STORE_ENV } = await import('./sqlite-store.ts');
-    process.env[SQLITE_STORE_ENV] = '1';
-    await initializeSqliteProjectStore();
-    const { indexStoreKey } = await import('./fulltext-search.ts');
-    const { upsertSemanticVectors } = await import('./semantic-vectors.ts');
+    // Runtime profile is cached at module load; install the isolated HOME first.
+    const { initializeSqliteProjectStore, resetSqliteStoreForTests } = await import('./sqlite-store.ts');
+    const { indexStoreKey, resetSearchForTests } = await import('./fulltext-search.ts');
+    const { upsertSemanticVectors, resetSemanticVectorsForTests } = await import('./semantic-vectors.ts');
     const { hybridSearch } = await import('./hybrid-search.ts');
+    assert.deepEqual(hybridSearch('黄昏的海边', vector(1), { projectId: 'project-a' }), [],
+      'hybrid search cannot read an uninitialized database');
+    await initializeSqliteProjectStore();
 
     // ── text lane: chat mentioning the visual topic ──
     indexStoreKey('chat:project-a', {
@@ -61,19 +64,26 @@ async function main(): Promise<void> {
     assert.ok(textOnly.every((hit) => hit.kind !== 'visual'), 'no vector → text only');
     assert.ok(textOnly.some((hit) => hit.kind === 'chat'), 'text lane must still work');
 
-    // ── store disabled → no hits ──
-    process.env[SQLITE_STORE_ENV] = '0';
-    const { resetSearchForTests } = await import('./fulltext-search.ts');
-    const { resetSemanticVectorsForTests } = await import('./semantic-vectors.ts');
+    // Both lanes persist through restart; env=0 can no longer disable them.
+    process.env.OPENCHATCUT_SQLITE_STORE = '0';
+    resetSqliteStoreForTests();
+    assert.equal(hybridSearch('黄昏的海边', vector(1), { projectId: 'project-a' }).length, 0,
+      'cached search lanes must respect readiness');
     resetSearchForTests();
     resetSemanticVectorsForTests();
-    assert.equal(hybridSearch('黄昏的海边', vector(1), { projectId: 'project-a' }).length, 0,
-      'hybrid must be a no-op without the SQLite store');
+    await initializeSqliteProjectStore();
+    const reopened = hybridSearch('黄昏的海边', vector(1), { projectId: 'project-a' });
+    assert.ok(reopened.some((hit) => hit.kind === 'chat'));
+    assert.ok(reopened.some((hit) => hit.kind === 'visual' && hit.assetId === 'asset-sunset'));
+    resetSearchForTests();
+    resetSemanticVectorsForTests();
+    resetSqliteStoreForTests();
 
-    console.log('✓ hybrid-search verify: RRF fusion / dual-lane / scoping / disabled-store all passed');
+    console.log('hybrid-search verify: RRF fusion / dual-lane / scoping / default SQLite restart passed');
   } finally {
-    if (previousHome === undefined) delete process.env.HOME;
-    else process.env.HOME = previousHome;
+    if (previousSwitch === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;
+    else process.env.OPENCHATCUT_SQLITE_STORE = previousSwitch;
+    restoreHome();
     rmSync(root, { recursive: true, force: true });
   }
 }

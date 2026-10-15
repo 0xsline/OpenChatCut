@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import './project-store-merge.verify';
@@ -58,17 +58,13 @@ async function verifyCorruptEntryIsolation(root: string): Promise<void> {
     await writeFile(join(storeDir, `${encodeURIComponent('project:broken')}.json`), '{');
     // Dynamic import is intentional: project-store captures the resolved store root at module evaluation.
     const { readStore } = await import('./project-store.ts');
+    await assert.rejects(readStore(), /unreadable legacy record/);
+    assert.equal(await readFile(join(storeDir, `${encodeURIComponent('project:broken')}.json`), 'utf8'), '{',
+      'failed automatic migration must leave the original bytes untouched');
+    await writeFile(join(storeDir, `${encodeURIComponent('project:broken')}.json`), JSON.stringify({ recovered: true }));
     const store = await readStore();
     assert.deepEqual(store.entries['project:healthy'], { healthy: true });
-    const brokenEntry = store.entries['project:broken'];
-    assert(brokenEntry && typeof brokenEntry === 'object' && 'kind' in brokenEntry);
-    assert.equal(
-      brokenEntry.kind,
-      'quarantined-project-store-entry',
-      'one corrupt entry becomes an explicit marker instead of aborting the directory read',
-    );
-    const quarantine = await readdir(join(storeDir, '.quarantine'));
-    assert.equal(quarantine.length, 1);
+    assert.deepEqual(store.entries['project:broken'], { recovered: true });
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -99,6 +95,11 @@ try {
   await verifyCorruptEntryIsolation(storeRoot);
   await verifyConcurrentProjectIndexUpdates();
 } finally {
+  // runtimeProfile captures HOME at module load; storage modules load inside the isolated scenario.
+  const { resetSearchForTests } = await import('../storage/fulltext-search.ts');
+  const { resetSqliteStoreForTests } = await import('../storage/sqlite-store.ts');
+  resetSearchForTests();
+  resetSqliteStoreForTests();
   await rm(storeRoot, { recursive: true, force: true });
 }
 

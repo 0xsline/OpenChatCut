@@ -5,16 +5,14 @@ import {
   type ExternalEditSession,
   type ExternalEditSessionTerminalStatus,
 } from './external-edit-session';
-import {
-  storedExternalSession,
-  throwIfExternalCallCancelled,
-} from './external-bridge-session';
+import { storedExternalSession } from './external-bridge-session';
 import { isProposalStale, type Proposal } from './proposal';
 import { replayActions } from '../editor/store';
 import type { ProjectDoc } from '../editor/types';
 import { saveProject } from '../persist/projectStore';
 import { saveAutomaticVersion } from '../persist/versionStore';
 import { saveExternalProposal } from '../persist/externalProposalStore';
+import { commitProposalDocument } from './proposal-commit';
 
 export interface ExternalBridgePersistence {
   saveProject: typeof saveProject;
@@ -142,16 +140,44 @@ export async function commitExternalProposal(
   const chosen = input.proposal.options[0].operations
     .filter((_, index) => input.selected.has(index));
   const result = replayActions(currentDoc, chosen.flatMap((operation) => operation.actions));
-  await input.persistence.saveAutomaticVersion(input.projectId, '外部 Agent 修改前', currentDoc);
-  throwIfExternalCallCancelled(input.signal);
-  const saved = await input.persistence.saveProject(input.projectId, result);
-  if (!saved.saved) {
+  const expectedRevision = revisionOf(currentDoc);
+  const committed = await commitProposalDocument({
+    projectId: input.projectId,
+    before: currentDoc,
+    result,
+    versionLabel: '外部 Agent 修改前',
+    signal: input.signal,
+  }, {
+    saveVersion: input.persistence.saveAutomaticVersion,
+    saveDoc: input.persistence.saveProject,
+    getDoc: () => input.context.getDoc(),
+    isCurrent: () => revisionOf(input.context.getDoc()) === expectedRevision,
+  });
+  if (committed.status === 'save-failed') {
     throw new ExternalEditSessionOutcomeError(
       'failed',
       'The edited project could not be saved. The proposal remains pending.',
     );
   }
-  const expectedRevision = revisionOf(currentDoc);
+  if (committed.status === 'restore-failed') {
+    await input.markTerminal('failed');
+    throw new ExternalEditSessionOutcomeError(
+      'failed',
+      'The edited project could not be restored after its live commit was interrupted. Reload before continuing.',
+    );
+  }
+  if (committed.status !== 'saved') {
+    if (committed.status === 'stale' && input.exposeProposal) {
+      input.publishStale();
+      return { status: 'stale-exposed' };
+    }
+    throw new ExternalEditSessionOutcomeError(
+      committed.status,
+      committed.status === 'cancelled'
+        ? 'The apply was cancelled before its terminal commit was published; the proposal remains pending.'
+        : `Edit session ${input.session.id} became stale while applying; the proposal remains pending.`,
+    );
+  }
   const interruption = applyLiveResultIfCurrent(input, expectedRevision, result);
   if (interruption) {
     await restoreInterruptedApplyBeforePublication(input, interruption);
@@ -170,6 +196,6 @@ export async function commitExternalProposal(
   await publishAppliedProposal(input, chosen.length, currentDoc, result);
   return {
     status: 'committed', result,
-    appliedOperationCount: chosen.length, indexUpdated: saved.indexUpdated,
+    appliedOperationCount: chosen.length, indexUpdated: committed.save.indexUpdated,
   };
 }

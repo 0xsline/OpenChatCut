@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { TaskLimiter } from '../task-limiter.ts';
@@ -85,7 +85,6 @@ export async function verifyRestoredGenerationJobs(
     expiryAssetId,
     expiryExportName,
     providerMediaName,
-    storePath,
     uploadRoot,
     userMediaName,
   } = fixture;
@@ -154,7 +153,10 @@ export async function verifyRestoredGenerationJobs(
   assert.equal(restoredDownload?.status, 'succeeded');
   assert.equal(restoredDownload?.timestamps.acceptedAt, acceptedAt);
   assert.equal(restoredDownload?.result?.path, '/media/uploads/restored-accepted-download.mp4');
-  const persistedRecovery = JSON.parse(await readFile(storePath, 'utf8')) as {
+  // The profile is captured at module load, after setupGenerationJobsFixture isolates it.
+  const { sqliteReadEntry } = await import('../storage/sqlite-store.ts');
+  const { GENERATION_JOBS_KV_KEY } = await import('../storage/sqlite-migration.ts');
+  const persistedRecovery = (await sqliteReadEntry(GENERATION_JOBS_KV_KEY)).value as {
     jobs: Array<{ id: string; status: string; code?: string; retryable?: boolean }>;
   };
   for (const id of ['restored-queued-unknown', 'restored-running-export']) {
@@ -308,10 +310,9 @@ export async function verifySuccessfulGenerationJobs(
 }
 
 export async function verifyFailedAndResumableGenerationJobs(
-  fixture: GenerationJobsFixture,
+  _fixture: GenerationJobsFixture,
   generationJobs: GenerationJobsApi,
 ): Promise<void> {
-  const { storePath } = fixture;
   const {
     createGenerationJob,
     getGenerationJobSnapshot,
@@ -347,7 +348,10 @@ export async function verifyFailedAndResumableGenerationJobs(
   assert.equal(incompleteSnapshot?.code, 'generation_result_incomplete');
   assert.equal(incompleteSnapshot?.retryable, true);
   assert.equal(incompleteSnapshot?.results, undefined);
-  const persistedIncomplete = JSON.parse(await readFile(storePath, 'utf8')) as {
+  // The profile is captured at module load, after setupGenerationJobsFixture isolates it.
+  const { sqliteReadEntry } = await import('../storage/sqlite-store.ts');
+  const { GENERATION_JOBS_KV_KEY } = await import('../storage/sqlite-migration.ts');
+  const persistedIncomplete = (await sqliteReadEntry(GENERATION_JOBS_KV_KEY)).value as {
     jobs: Array<{ id: string; expectedResultCount?: number; resultUrls?: string[] }>;
   };
   const persistedIncompleteRow = persistedIncomplete.jobs.find((job) => job.id === incompleteCheckpoint.jobId);

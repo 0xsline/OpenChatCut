@@ -8,6 +8,7 @@ import {
   isLocalLlmProvider,
   llmProviderConfigNames,
   normalizeLlmProvider,
+  resolveModelRequestPolicy,
   type LlmProvider,
   type OpenAiApiMode,
 } from '../../shared/llm-providers';
@@ -111,11 +112,9 @@ function apiChoices(
       provider: preset.id,
       providerLabel: preset.label,
       model,
-      ...(preset.id === 'openai'
-        ? { openAiApiMode: models.LLM_OPENAI_API_MODE === 'chat' ? 'chat' : 'responses' }
-        : preset.id === 'xai-oauth'
-          ? { openAiApiMode: 'responses' as const }
-          : {}),
+      ...(preset.protocol === 'openai'
+        ? { openAiApiMode: resolveModelRequestPolicy(preset.id, models.LLM_OPENAI_API_MODE).apiMode }
+        : {}),
       capabilities: modelCapabilities(identity),
     }];
   });

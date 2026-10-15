@@ -1,6 +1,6 @@
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { atomicWriteFile, durableRemove } from '../plugins/project-store-durable.ts';
+import { atomicWriteFile, syncDirectory } from '../plugins/project-store-durable.ts';
 import {
   CopilotAuthError, parseStoredCopilotAuth,
   type CopilotCredentialStore, type CopilotStoredAuth,
@@ -45,8 +45,10 @@ export class EncryptedCopilotCredentialStore implements CopilotCredentialStore {
     this.requireEncryption();
     try {
       await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-      if (value === null) await durableRemove(this.path);
-      else await atomicWriteFile(this.path, this.encryption.encryptString(JSON.stringify(value)), { mode: 0o600 });
+      if (value === null) {
+        await rm(this.path, { force: true });
+        await syncDirectory(dirname(this.path));
+      } else await atomicWriteFile(this.path, this.encryption.encryptString(JSON.stringify(value)), { mode: 0o600 });
     } catch {
       throw new CopilotAuthError('Could not securely save the Copilot sign-in. Check storage access and try again.');
     }

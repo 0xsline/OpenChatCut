@@ -87,7 +87,7 @@ interface LibraryPanelProps {
     },
   ) => Promise<MediaAsset>;
   onImportMobileMedia: (record: MobileUploadRecord) => Promise<void>;
-  onIngestDirectoryAsset: (asset: MediaAsset) => void;
+  onIngestDirectoryAsset: (asset: MediaAsset, durationFps?: number) => void;
   onTranscribeAsset: (asset: MediaAsset) => void;
   onAddMediaItem: (asset: MediaAsset) => void;
   onAddMediaAssetsToTimeline: (assets: MediaAsset[]) => void;

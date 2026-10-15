@@ -14,7 +14,7 @@ import { assertCanonicalToolInvocation } from './tool-policy';
 import {
   digestToolArgs,
   pushRunEvent,
-  waitForToolResult,
+  registerToolRequest,
   type ServerRun,
 } from './store';
 
@@ -72,8 +72,17 @@ export async function executeBrowserTool(
     }
     activation.repeatGuardNote = undefined;
     activation.lastSuccessfulPureTool = undefined;
-    pushRunEvent(run, 'tool-request', { toolCallId, name: schema.name, args, argsDigest });
-    const delivered = await waitForToolResult(run, toolCallId, schema.name, argsDigest);
+    // Register before announcing: the browser claims every tool-request it sees,
+    // and a claim for a request that was never registered abandons the run.
+    const delivery = registerToolRequest(run, toolCallId, schema.name, argsDigest);
+    try {
+      pushRunEvent(run, 'tool-request', { toolCallId, name: schema.name, args, argsDigest });
+    } catch (error) {
+      // A failed announcement fails the run, which cancels this request.
+      void delivery.catch(() => undefined);
+      throw error;
+    }
+    const delivered = await delivery;
     const followup = delivered && typeof delivered === 'object'
       && '__followup' in delivered && typeof delivered.__followup === 'string'
       ? delivered.__followup

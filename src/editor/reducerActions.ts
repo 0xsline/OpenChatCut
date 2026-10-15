@@ -60,7 +60,8 @@ export type Action =
   | { type: 'remove'; id: string; ripple?: boolean }
   | { type: 'split'; id: string; atFrame: number; newId: string }
   | { type: 'clear' }
-  | { type: 'addAsset'; asset: MediaAsset }
+  /** `durationFps`: the rate `asset.durationInFrames` was counted at; the pool keeps the project's. */
+  | { type: 'addAsset'; asset: MediaAsset; durationFps?: number }
   | { type: 'setCanvas'; width: number; height: number; fit?: AspectFit }
   | { type: 'toggleTrack'; track: TrackId; flag: 'hidden' | 'muted' | 'collapsed' | 'locked' }
   | { type: 'track.create'; track: { id: TrackId; kind: TrackKind; name?: string; role?: TrackFlags['role']; audioRouting?: TrackFlags['audioRouting'] }; order?: number }

@@ -73,9 +73,8 @@ function elevenVoice(args: GenerateArgs): SubmitVoiceArgs {
 }
 
 const doubaoVoice = (args: GenerateArgs): SubmitVoiceArgs => ({
-  ...voiceBase(args, 'doubao'), speedRatio: num(args.speedRatio), emotion: str(args.emotion),
-  emotionScale: num(args.emotionScale), loudnessRatio: num(args.loudnessRatio), pitch: num(args.pitch),
-  performancePrompt: str(args.performancePrompt), explicitDialect: args.explicitDialect as SubmitVoiceArgs['explicitDialect'],
+  ...voiceBase(args, 'doubao'), speedRatio: num(args.speedRatio),
+  loudnessRatio: num(args.loudnessRatio), pitch: num(args.pitch),
 });
 
 function minimaxVoice(args: GenerateArgs): SubmitVoiceArgs {

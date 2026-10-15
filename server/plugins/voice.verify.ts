@@ -88,7 +88,7 @@ assert.throws(
   /unsupported ElevenLabs outputFormat/,
 );
 assert.throws(
-  () => validateVoiceRequest({ provider: 'minimax', text: 'x', voiceId: 'a', emotion: 'calm', emotionScale: 2 }),
+  () => validateVoiceRequest({ provider: 'minimax', text: 'x', voiceId: 'a', emotion: 'calm', speedRatio: 1.2 }),
   /MiniMax does not accept ElevenLabs\/Doubao-only/,
 );
 assert.throws(
@@ -101,10 +101,14 @@ const doubao = validateVoiceRequest({
   text: '你好',
   voiceId: 'vivi',
   pitch: 1,
-  emotion: 'happy',
-  emotionScale: 3,
+  speedRatio: 1.1,
+  loudnessRatio: 1.2,
 });
 assert.equal(doubao.provider, 'doubao');
+assert.throws(
+  () => validateVoiceRequest({ provider: 'doubao', text: '你好', voiceId: 'vivi', emotion: 'happy' }),
+  /Doubao \(seed-audio-1\.0\) accepts only/,
+);
 
 const inworld = validateVoiceRequest({ provider: 'inworld', text: 'Hello', voiceId: 'Dennis', modelId: 'inworld-tts-2' });
 assert.equal(inworld.provider, 'inworld');
@@ -134,7 +138,7 @@ assert.throws(
 
 const aiOptions: VoiceOptions = {
   elevenBaseUrl: '', elevenApiKey: '', elevenModel: '',
-  doubaoBaseUrl: '', doubaoAppId: '', doubaoAccessKey: '', doubaoResourceId: '',
+  doubaoBaseUrl: '', doubaoApiKey: '', doubaoModel: '',
   minimaxBaseUrl: '', minimaxApiKey: '', minimaxModel: '',
   inworldBaseUrl: '', inworldApiKey: '', inworldModel: '',
   fishAudioBaseUrl: '', fishAudioApiKey: '', fishAudioModel: '',

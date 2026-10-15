@@ -6,12 +6,16 @@ export type UploadedMediaRelinkSource = Pick<
   | 'sourceSize' | 'sourceModifiedAt'
 >;
 
-/** Copy every source-bound field when swapping a placeholder or relinking a file. */
-export function mediaAssetRelinkPatch(asset: MediaAsset): MediaAssetRelinkPatch {
+/**
+ * Copy every source-bound field when swapping a placeholder or relinking a file.
+ * `durationFps` is the rate the file was probed at, which the project may have left since.
+ */
+export function mediaAssetRelinkPatch(asset: MediaAsset, durationFps?: number): MediaAssetRelinkPatch {
   return {
     src: asset.src,
     name: asset.name,
     durationInFrames: asset.durationInFrames,
+    ...(durationFps === undefined ? {} : { durationFps }),
     width: asset.width,
     height: asset.height,
     kind: asset.kind,

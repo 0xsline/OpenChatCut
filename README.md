@@ -197,6 +197,7 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 | AI generation | Image, video, speech, music, and sound-effect jobs with progress tracking |
 | Media | Uploads, folders, online image/video/audio search, and Firecrawl visual-media fallback |
 | Export | MP4, audio, captions, FCPXML, project import/export, export history, hardware-aware H.264 acceleration, and resource-aware export queueing |
+| Publishing | Agent-driven publishing of finished renders to TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and Bluesky via Upload-Post, with a preview and explicit confirmation first |
 | Agent | Built-in conversational agent, skills, proposal-based edits, and external Streamable HTTP MCP |
 
 ---
@@ -258,6 +259,8 @@ These are early builds. The macOS packages are not yet signed or notarized, so t
 
 Requires Node.js 24.x and npm. The supported Node.js range is enforced by `package.json`, and `.nvmrc` selects the matching major version for Node version managers.
 
+On Linux x64, `npm install` also downloads ONNX Runtime's optional CUDA provider (several hundred MB from NuGet). For a CPU-only install, run `ONNXRUNTIME_NODE_INSTALL=skip npm install` instead.
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut
@@ -271,6 +274,8 @@ Open:
 ```text
 http://localhost:5199
 ```
+
+The editor needs a browser [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts): open OpenChatCut at `http://localhost` or `http://127.0.0.1` on the machine running it, or serve it over HTTPS. Over plain HTTP from another device (a LAN IP or reverse proxy), browsers disable Web Crypto, WebCodecs, and the clipboard, so the project list still loads but the editor shows this requirement instead of opening.
 
 Only add the model or media-service credentials you actually use to `.env.local`. Features without configured third-party credentials report the missing key explicitly; local timeline editing, built-in media, and other configured capabilities continue to work.
 
@@ -310,12 +315,14 @@ belongs to this fork's OpenChatCut desktop OAuth application.
 
 ### Agent local-path access (advanced)
 
-Desktop agents can browse any local directory allowed by the operating system by default, including mounted media drives. `browse_local_media` lists folders and supported media, searches by filename or relative path and media type, and returns paginated results without importing. The agent can then use `import_assets` for up to 100 selected paths, `import_asset` for one path, or `import_folder` for a whole folder. Imports reuse media probing and reference registration, preserve source files, and skip duplicate content, including duplicates within one batch. Document files such as TXT, Markdown, DOCX, and PDF should be attached to chat instead. These tools require the desktop app.
+Desktop agents can browse any local directory allowed by the operating system by default, including mounted media drives. `browse_local_media` lists folders and supported media, searches by filename or relative path and media type, and returns paginated results without importing. The agent can then use `import_assets` for up to 100 selected paths, `import_asset` for one path, or `import_folder` for a whole folder. Imports reuse media probing and reference registration, preserve source files, and skip duplicate content, including duplicates within one batch. Document files such as TXT, Markdown, DOCX, and PDF should be attached to chat instead. In the desktop app these tools are enabled by default; in a browser session they also work, but only for directories listed in `AGENT_IMPORT_ROOTS` and while the editor is served from the same machine that runs OpenChatCut.
 
-To restrict local access, set a comma-separated value such as `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects` in `.env.local`; leave it empty for default unrestricted directory access. Explicit restrictions apply to both browsing and import. Source checkouts read the repository file at startup. Packaged desktop builds read it from Electron's user-data directory: `~/Library/Application Support/OpenChatCut/` on macOS, `%APPDATA%\OpenChatCut\` on Windows, and `$XDG_CONFIG_HOME/OpenChatCut/` (normally `~/.config/OpenChatCut/`) on Linux. Restart after editing the file.
+To restrict local access, set a comma-separated value such as `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects` in `.env.local`; leave it empty for default unrestricted directory access in the desktop app (a browser session requires the allowlist and refuses these tools while it is empty). Explicit restrictions apply to both browsing and import. Source checkouts read the repository file at startup. Packaged desktop builds read it from Electron's user-data directory: `~/Library/Application Support/OpenChatCut/` on macOS, `%APPDATA%\OpenChatCut\` on Windows, and `$XDG_CONFIG_HOME/OpenChatCut/` (normally `~/.config/OpenChatCut/`) on Linux. Restart after editing the file.
 
 
 Local H.264 exports automatically prefer VideoToolbox on macOS and NVENC on compatible Windows systems, then fall back to software encoding. Tune render concurrency and the heavy-export limit with `OPENCHATCUT_RENDER_CONCURRENCY` and `OPENCHATCUT_MAX_ACTIVE_EXPORTS`, disable hardware encoding with `OPENCHATCUT_DISABLE_HARDWARE_ENCODING`, or override FFmpeg-side encoder selection with `OPENCHATCUT_H264_ENCODER`; see [`.env.example`](.env.example).
+
+On Apple Silicon, more render workers can slow down video-heavy exports even when VideoToolbox encoding is active. See [macOS render tuning](MACOS-RENDER-TUNING.md) for an M4 Max benchmark and a way to test your own workload. These measurements do not establish a default for other Macs or Windows.
 
 ### Desktop development
 
@@ -477,7 +484,7 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 |---|---|
 | Frontend | React 19, TypeScript 6, Vite 8 |
 | Editing core | Immutable timeline state, command layer, and proposal-based application |
-| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Xiaomi MiMo, Mistral, xAI Grok by API key or SuperGrok/X Premium+ subscription sign-in, OpenRouter, OrcaRouter, OFox, Requesty, and compatible APIs), Agent Skills, MCP SDK |
+| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Xiaomi MiMo, Mistral, xAI Grok by API key or SuperGrok/X Premium+ subscription sign-in, OpenRouter, OrcaRouter, OFox, Requesty, Cheaper Inference, and compatible APIs), Agent Skills, MCP SDK |
 | Preview and visuals | Remotion Player, WebGL / GLSL |
 | Server | Dual-host Vite / Electron plugins and a server-side keystore |
 | Persistence | Shared local project store under `~/.openchatcut`, IndexedDB cache, configurable local media directory, optional Cloudflare R2 |
@@ -565,6 +572,8 @@ OpenChatCut is built with the following core projects and specifications:
 | [Model Context Protocol](https://modelcontextprotocol.io/) | Protocol foundation that enables Codex, Claude Code, and other external agents to access projects and timeline tools. |
 | [Vercel AI SDK](https://ai-sdk.dev/) | Provider-neutral model streaming and tool calling for the built-in Agent. |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | Tool used to define, validate, and generate the README's runtime architecture diagram. |
+
+JianYing / CapCut draft export is powered by [capcut-cli](https://github.com/renezander030/capcut-cli).
 
 This list covers the project's major technical foundations. It does not replace the licenses bundled with individual dependencies, fonts, or binaries. See `package-lock.json` for JavaScript dependency versions and [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md) for font licenses.
 

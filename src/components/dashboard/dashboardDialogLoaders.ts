@@ -8,11 +8,10 @@ export const loadSettingsDialog = () => import('../settings/SettingsDialog');
 export const loadShortcutsDialog = () => import('../../shortcuts/ShortcutsDialog');
 export { loadMcpGuideDialog };
 export const loadMediaCleanupDialog = () => import('../../media/MediaCleanupDialog');
-export const loadStorageMigrationDialog = () => import('../settings/StorageMigrationDialog');
 
 const LOADERS = [
   loadSettingsDialog, loadShortcutsDialog, loadMcpGuideDialog,
-  loadMediaCleanupDialog, loadStorageMigrationDialog,
+  loadMediaCleanupDialog,
 ];
 
 /** Fetch the dialog chunks once the project list is idle, so opening one is instant. */

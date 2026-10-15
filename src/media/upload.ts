@@ -23,9 +23,10 @@ export interface ImportMediaHooks {
   /**
    * Fired ASAP after metadata probe with a blob: URL so the pool/timeline can
    * preview while the multi-GB upload + optional normalize still runs.
-   * Same asset id is reused when the server path is ready.
+   * Same asset id is reused when the server path is ready. Durations are counted
+   * at `durationFps`, the rate the import started with; the project may have left it.
    */
-  onPlaceholder?: (asset: MediaAsset) => void;
+  onPlaceholder?: (asset: MediaAsset, durationFps: number) => void;
   /**
    * Fired as soon as master bytes hit /media/uploads — *before* video normalize.
    * Use to race-ahead extract-audio / ASR while normalize still runs.
@@ -46,8 +47,8 @@ export interface ImportMediaHooks {
   resolveCanonicalAsset?: (sourceContentHash: string, importingAssetId: string) => MediaAsset | undefined;
   /** Fired instead of onUploaded/onReady when an existing content-addressed master is reused. */
   onCanonical?: (asset: MediaAsset, duplicateAssetId: string) => void;
-  /** Fired once server path (post-normalize) is ready — same id as placeholder. */
-  onReady?: (asset: MediaAsset) => void;
+  /** Fired once server path (post-normalize) is ready — same id as placeholder, same `durationFps`. */
+  onReady?: (asset: MediaAsset, durationFps: number) => void;
 }
 
 function hooksOf(arg?: UploadProgress | ImportMediaHooks): ImportMediaHooks {
@@ -398,7 +399,7 @@ export async function importMedia(
   const prepared = await prepareMediaImport(file, fps);
   const blobUrl = URL.createObjectURL(file);
   try {
-    hooks.onPlaceholder?.(placeholderAsset(prepared, blobUrl));
+    hooks.onPlaceholder?.(placeholderAsset(prepared, blobUrl), prepared.fps);
     const uploaded = await uploadPreparedMedia(prepared, hooks);
     if (uploaded.canonicalAsset) {
       hooks.onProgress?.(1);
@@ -418,7 +419,7 @@ export async function importMedia(
     }
     const ready = readyAsset(prepared, uploaded, readySource);
     (ready as MediaAsset & { __asrPath?: Promise<string | null> }).__asrPath = uploaded.asrPath;
-    hooks.onReady?.(ready);
+    hooks.onReady?.(ready, prepared.fps);
     return ready;
   } finally {
     setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);

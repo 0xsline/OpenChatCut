@@ -76,7 +76,8 @@ export function resolveH264VideoBitrate({ width, height, fps, scale = 1 } = {}) 
   const raw = Number.isFinite(outputWidth * outputHeight * frameRate)
     ? outputWidth * outputHeight * frameRate * 0.16
     : 10_000_000;
-  const clamped = Math.max(4_000_000, Math.min(30_000_000, raw));
+  // Keep Auto aligned with the export UI and server FPS-retiming policy.
+  const clamped = Math.max(4_000_000, Math.min(60_000_000, raw));
   return `${Math.ceil(clamped / 500_000) * 500}k`;
 }
 

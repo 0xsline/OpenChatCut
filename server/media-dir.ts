@@ -3,7 +3,7 @@
 // and legacy-copy behavior. Isolated development profiles use only their profile media
 // directory: no legacy fallback, legacy copy, MEDIA_DIR override, or R2 read-through.
 import { createReadStream, existsSync } from 'node:fs';
-import { copyFile, mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -338,6 +338,10 @@ export async function syncUploadDirectories(
     const part = join(target, `.${entry.name}.sync`);
     try {
       await copyFile(join(source, entry.name), part);
+      // copyFile resets the timestamps; keep the original ones so a migrated
+      // asset is the same file to anything that looks at its mtime.
+      const original = await stat(join(source, entry.name));
+      await utimes(part, original.atime, original.mtime);
       await rename(part, join(target, entry.name));
       copied += 1;
     } catch (err) {

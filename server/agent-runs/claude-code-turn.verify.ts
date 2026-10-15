@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import type { ModelMessage } from 'ai';
-import { createRunWithCapability, flushRunPersistence } from './store';
+import { createRunWithCapability, flushRunPersistence, MAX_SERVER_EVENT_BYTES } from './store';
 import { executeServerClaudeCodeTurn, type ServerClaudeCodeTurnDeps } from './claude-code-turn';
 import { ToolActivation } from '../../src/agent/tool-activation';
 import { TOOL_SCHEMAS } from '../../src/agent/tools';
@@ -141,6 +141,30 @@ function sequence(events: readonly ClaudeCodeTurnStreamEvent[]): ServerClaudeCod
     typeof message.content === 'string'
     && String(message.content).includes('[tool call: mcp__openchatcut__search_media]'));
   assert.equal(histories.length, 1, 'merged tool history entry is rebuilt for conversation continuity');
+}
+
+// ── A large MCP result is compacted for display instead of failing the run ──
+{
+  // Frame tools and long reads return results well past the 64 KiB event cap.
+  // The tool-result event is display-only, so it carries the compacted result.
+  const run = makeRun();
+  const input = makeInput(run);
+  const outcome = await executeServerClaudeCodeTurn(input, sequence([
+    { type: 'tool-start', callId: 'call-big', name: 'mcp__openchatcut__read_project', args: {} },
+    {
+      type: 'tool-end', callId: 'call-big', name: 'mcp__openchatcut__read_project',
+      args: {}, result: { text: 'x'.repeat(200_000) }, success: true,
+    },
+    { type: 'text-delta', delta: 'Read it.' },
+    { type: 'done' },
+  ]));
+  await flushRunPersistence(run);
+  assert.equal(outcome.text, 'Read it.', 'the turn finishes after a large tool result');
+  assert.equal(run.error, null, 'a large tool result does not fail the run');
+  const result = run.events.find((event) => event.type === 'tool-result');
+  assert.ok(result, 'the large result is still surfaced');
+  assert.ok(Buffer.byteLength(JSON.stringify(result!.data)) <= MAX_SERVER_EVENT_BYTES,
+    'the surfaced result fits one event');
 }
 
 // ── Consecutive CLI assistant messages are separated, not run together ───────

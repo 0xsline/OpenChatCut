@@ -61,7 +61,12 @@ const fcpxml = `<?xml version="1.0" encoding="UTF-8"?>
   assert.equal(draft.getDoc().activeTimelineId, originalTimelineId, 'activate=false keeps the current timeline selected');
   const imported = draft.getDoc().timelines.find((timeline) => timeline.id === result.timelineId)!;
   assert.equal(imported.name, 'FCP Import');
-  assert.equal(imported.fps, 25);
+  // The 25 fps sequence joins the 30 fps project at its rate (#184): 1 s in, 3 s long, from 2 s.
+  assert.equal(imported.fps, 30);
+  assert.equal(result.fps, 30);
+  assert.deepEqual(result.warnings, [
+    'the 25 fps sequence was converted to the project frame rate (30 fps); cut points are rounded to the nearest frame',
+  ]);
   assert.equal(imported.width, 1920);
   assert.equal(imported.items.length, 1);
   assert.deepEqual(
@@ -71,7 +76,7 @@ const fcpxml = `<?xml version="1.0" encoding="UTF-8"?>
       durationInFrames: imported.items[0]!.durationInFrames,
       srcInFrame: imported.items[0]!.srcInFrame,
     },
-    { sourceAssetId: 'video-asset', startFrame: 25, durationInFrames: 75, srcInFrame: 50 },
+    { sourceAssetId: 'video-asset', startFrame: 30, durationInFrames: 90, srcInFrame: 60 },
   );
 }
 
@@ -116,9 +121,12 @@ FCM: DROP FRAME
   const parsed = await parseTimelineImport('edl', dropFrame, longClip, draft.getState());
   assert.equal(parsed.ok, true);
   if (parsed.ok) {
-    assert.equal(parsed.timeline.clips[0]!.sourceStartFrame, 1800);
+    // 00:01:00;02 is frame 1800 at 29.97, 60.06 s: frame 1802 of the 30 fps project.
+    assert.equal(parsed.timeline.sourceFps, 30000 / 1001);
+    assert.equal(parsed.timeline.fps, 30);
+    assert.equal(parsed.timeline.clips[0]!.startFrame, 1802);
+    assert.equal(parsed.timeline.clips[0]!.sourceStartFrame, 1802);
     assert.equal(parsed.timeline.clips[0]!.durationInFrames, 30);
-    assert.equal(parsed.timeline.fps, 30000 / 1001);
   }
   const outside = await parseTimelineImport('edl', dropFrame, draft.getDoc().assets, draft.getState());
   assert.equal(outside.ok, false, 'a source timecode past the end of a file without timecode is reported, not imported');
@@ -235,8 +243,9 @@ FCM: DROP FRAME
     format: 'fcpxml', content: fcpxml, fps: 24, startTimecode: '01:00:00:00',
   }, ctx);
   assert.equal(result.ok, true);
-  assert.equal(result.fps, 25);
+  assert.equal(result.fps, 30);
   assert.match((result.warnings as string[])[0] ?? '', /apply to EDL only/);
+  assert.match((result.warnings as string[])[1] ?? '', /^the 25 fps sequence was converted/, 'read at the sequence format, not the fps argument');
 }
 
 // ── Malformed input fails as a result, never as an exception ──

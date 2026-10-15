@@ -36,6 +36,19 @@ const exactMapping = !(process.platform === 'linux' && !!process.env.CI);
 // identified by being much closer to one source frame than to any other.
 const IDENTIFIED_RATIO = 0.6;
 const BT709 = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'];
+// A GL transition that paints its outgoing input on the left half and its
+// incoming input on the right, so each half shows exactly one decoded frame.
+const SPLIT_TRANSITION = `#version 300 es
+precision highp float;
+uniform sampler2D u_outgoing;
+uniform sampler2D u_incoming;
+uniform float u_progress;
+in vec2 v_texCoord;
+out vec4 fragColor;
+void main() {
+  fragColor = v_texCoord.x < 0.5 ? texture(u_outgoing, v_texCoord) : texture(u_incoming, v_texCoord);
+}
+`;
 
 if (!ffmpegPath) throw new Error('ffmpeg-static binary unavailable');
 
@@ -73,6 +86,22 @@ function sourceIndexOf(frame, sources, context) {
   );
   return best.index;
 }
+
+/** Columns [x0, x1) of an RGB frame, as a frame of their own. */
+function columns(frame, x0, x1) {
+  const rowBytes = (x1 - x0) * 3;
+  const cropped = Buffer.alloc(rowBytes * HEIGHT);
+  for (let y = 0; y < HEIGHT; y += 1) frame.copy(cropped, y * rowBytes, (y * WIDTH + x0) * 3, (y * WIDTH + x1) * 3);
+  return cropped;
+}
+
+/**
+ * The 29.97 fps source frame the Player (@remotion/media) shows for a 30 fps
+ * source position: the last frame whose timestamp is at most 1 ms after the
+ * requested time. In 1/30000 s units a source frame lasts 1001, a timeline
+ * frame 1000 and the tolerance 30.
+ */
+const playerSourceFrame = (position) => Math.floor((position * 1000 + 30) / 1001);
 
 async function audioRms(path) {
   const { stdout } = await run(ffmpegPath, [
@@ -133,11 +162,8 @@ try {
     { label: 'normal', srcInFrame: 0, playbackRate: 1 },
     { label: 'trimmed-2x', srcInFrame: 5, playbackRate: 2 },
   ]) {
-    // The Player (@remotion/media) shows the last source frame whose timestamp
-    // is at most 1 ms after the requested time. In 1/30000 s units a source
-    // frame lasts 1001, a timeline frame 1000 and the tolerance 30.
     const expected = Array.from({ length: outputFrames },
-      (_, frame) => Math.floor(((srcInFrame + frame * playbackRate) * 1000 + 30) / 1001));
+      (_, frame) => playerSourceFrame(srcInFrame + frame * playbackRate));
     const selections = new Map();
     for (const decoder of DECODERS) {
       const output = media(`camera-${label}-${decoder}.mp4`);
@@ -160,6 +186,48 @@ try {
     }
     console.log(`video-decoder-render.verify: ${DECODERS.join(' + ')} ${label} 29.97→30 fps frames ${
       exactMapping ? 'match the Player frame for frame' : 'render (exact mapping skipped on Linux CI)'}`);
+  }
+
+  // GL transition windows: on EVERY window frame, both inputs must show the
+  // Player's frame. HTML5 <video> inputs did so only on the first window frame
+  // a render tab mounted; later ones drew what that tab's <video> showed before
+  // its seek, jumping back by up to the render concurrency.
+  if (exactMapping) {
+    const clipFrames = 30;
+    const windowFrames = 12;
+    const windowStart = clipFrames - windowFrames / 2;
+    const outgoing = videoItem('camera.mp4', clipFrames);
+    const incoming = videoItem('camera.mp4', clipFrames, { startFrame: clipFrames });
+    const state = {
+      ...timelineState('decoder-transition', [outgoing, incoming]),
+      transitions: [{
+        id: 'split', type: 'custom-shader', customFrag: SPLIT_TRANSITION, customUniforms: {},
+        durationInFrames: windowFrames, outgoingItemId: outgoing.id, incomingItemId: incoming.id,
+        trackId: 'V1', enabled: true,
+      }],
+    };
+    const halves = (frame) => [columns(frame, 0, WIDTH / 2 - 8), columns(frame, WIDTH / 2 + 8, WIDTH)];
+    const cameraHalves = cameraFrames.map(halves);
+    // The incoming clip's pre-roll is clamped to its in-point, so it enters
+    // the window at source frame 0.
+    const expected = Array.from({ length: windowFrames },
+      (_, index) => [playerSourceFrame(windowStart + index), playerSourceFrame(index)]);
+    for (const decoder of DECODERS) {
+      const output = media(`transition-${decoder}.mp4`);
+      await withDecoder(decoder, () => renderTimeline({
+        state, outputLocation: output, codec: 'h264', h264Profile: SOFTWARE_H264,
+      }));
+      const shown = (await rgbFrames(output)).slice(windowStart, windowStart + windowFrames)
+        .map((frame, index) => halves(frame).map((half, side) => sourceIndexOf(
+          half,
+          cameraHalves.map((pair) => pair[side]),
+          `${decoder} transition frame ${windowStart + index} ${side ? 'incoming' : 'outgoing'}`,
+        )));
+      assert.deepEqual(shown, expected, `${decoder} GL transition inputs must show the Player's frames on every window frame`);
+    }
+    console.log(`video-decoder-render.verify: ${DECODERS.join(' + ')} GL transition inputs match the Player on every window frame`);
+  } else {
+    console.log('video-decoder-render.verify: GL transition frame mapping skipped on Linux CI');
   }
 
   // WebM alpha: the overlay's transparent area must show the red track below.

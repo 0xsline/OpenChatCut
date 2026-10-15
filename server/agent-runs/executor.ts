@@ -5,7 +5,7 @@ import {
 } from 'ai';
 import {
   normalizeLlmProvider,
-  normalizeOpenAiApiMode,
+  resolveModelRequestPolicy,
   type LlmProvider,
   type OpenAiApiMode,
 } from '../../shared/llm-providers';
@@ -261,7 +261,7 @@ async function resolveCopilotRunCapabilities(
 
 async function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   const provider = normalizeLlmProvider(input.provider);
-  const apiMode = normalizeOpenAiApiMode(input.openAiApiMode);
+  const apiMode = resolveModelRequestPolicy(provider, input.openAiApiMode, input.cacheMode).apiMode;
   const backend = serverRunBackend(input.backend);
   const requested = resolveServerRunToolCatalog(input.tools, run.askOnly);
   const capabilities = backend === 'copilot'

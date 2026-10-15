@@ -1,33 +1,35 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  CAPCUT_CLI_PACKAGE,
-  capcutCommand,
   expandHomeDir,
   resolveMediaPath,
 } from './jianying-export.ts';
 
-// capcut-cli runs through `npx --yes` at export time; an unpinned spec would
-// fetch and execute whatever release is newest on npm.
-assert.match(CAPCUT_CLI_PACKAGE, /^capcut-cli@\d+\.\d+\.\d+$/, 'the default capcut-cli is an exact release');
-if (!process.env.CAPCUT_CLI) {
-  assert.deepEqual(capcutCommand(), ['npx', '--yes', CAPCUT_CLI_PACKAGE], 'the default runs the pinned release');
+// HOME is usually unset on Windows (#160): `~` used to become "" there, putting a
+// custom store at /Movies/…. os.homedir() still knows the account's home.
+{
+  const saved = process.env.HOME;
+  delete process.env.HOME;
+  try {
+    assert.notEqual(homedir(), '');
+    assert.equal(expandHomeDir('~/Movies'), `${homedir()}/Movies`, '`~` expands without HOME');
+  } finally {
+    if (saved !== undefined) process.env.HOME = saved;
+  }
 }
-assert.deepEqual(capcutCommand('capcut-cli@0.27.0'), ['npx', '--yes', 'capcut-cli@0.27.0'],
-  'a CAPCUT_CLI package spec still goes through npx');
-assert.deepEqual(capcutCommand('/opt/capcut/bin/capcut-cli'), ['/opt/capcut/bin/capcut-cli'],
-  'a CAPCUT_CLI path runs directly');
-assert.deepEqual(capcutCommand('C:\\tools\\capcut-cli.cmd'), ['C:\\tools\\capcut-cli.cmd'],
-  'a Windows CAPCUT_CLI path runs directly');
-
-assert.equal(expandHomeDir(''), '');
-assert.equal(expandHomeDir('/plain/path'), '/plain/path');
-assert.equal(expandHomeDir('~/Movies'), `${process.env.HOME}/Movies`);
-assert.equal(expandHomeDir('~other/path'), '~other/path');
-assert.equal(expandHomeDir('~/'), `${process.env.HOME}/`);
-assert.equal(expandHomeDir('~'), process.env.HOME);
+assert.equal(expandHomeDir('', 'darwin', '/Users/me'), '');
+assert.equal(expandHomeDir('/plain/path', 'darwin', '/Users/me'), '/plain/path');
+assert.equal(expandHomeDir('~/Movies', 'darwin', '/Users/me'), '/Users/me/Movies');
+assert.equal(expandHomeDir('~other/path', 'darwin', '/Users/me'), '~other/path');
+assert.equal(expandHomeDir('~/', 'darwin', '/Users/me'), '/Users/me/');
+assert.equal(expandHomeDir('~', 'darwin', '/Users/me'), '/Users/me');
+assert.equal(expandHomeDir('~\\Movies', 'darwin', '/Users/me'), '~\\Movies', 'a backslash separates nothing on macOS');
+assert.equal(expandHomeDir('~/x', 'linux', '/home/$&'), '/home/$&/x', 'the home is inserted literally');
+// Windows users write either separator.
+assert.equal(expandHomeDir('~\\Videos\\Drafts', 'win32', 'C:\\Users\\me'), 'C:\\Users\\me\\Videos\\Drafts');
+assert.equal(expandHomeDir('~/Videos', 'win32', 'C:\\Users\\me'), 'C:\\Users\\me/Videos');
 
 assert.equal(resolveMediaPath(''), undefined);
 assert.equal(resolveMediaPath('/media/uploads/../etc/passwd'), undefined);

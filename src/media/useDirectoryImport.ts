@@ -42,7 +42,8 @@ export interface DirectoryImportRuntimeOptions {
   getProjectId: () => string;
   getFps: () => number;
   getAssets: () => readonly MediaAsset[];
-  ingest: (asset: MediaAsset) => void;
+  /** `durationFps`: the rate the asset's duration was counted at, which the project may have left since. */
+  ingest: (asset: MediaAsset, durationFps: number) => void;
   convert?: typeof directoryFileToAsset;
   onWatchChange: (watch: ActiveDirectoryWatch | null) => void;
   onBusyChange: (busy: boolean) => void;
@@ -166,6 +167,7 @@ export class DirectoryImportRuntime {
   }
 
   async #processFile(session: RuntimeSession, file: DirectoryImportedFile): Promise<void> {
+    const fps = this.#options.getFps();
     let asset: MediaAsset;
     let hash: string | null;
     try {
@@ -178,7 +180,7 @@ export class DirectoryImportRuntime {
         await this.#acknowledge(session, file, 'duplicate');
         return;
       }
-      asset = await (this.#options.convert ?? directoryFileToAsset)(file, this.#options.getFps());
+      asset = await (this.#options.convert ?? directoryFileToAsset)(file, fps);
       if (!this.#isCurrent(session)) {
         await this.#acknowledge(session, file, 'rejected');
         return;
@@ -218,7 +220,7 @@ export class DirectoryImportRuntime {
     }
 
     try {
-      this.#options.ingest(asset);
+      this.#options.ingest(asset, fps);
     } catch (reason) {
       let rollbackFailed = false;
       let rollbackError: unknown;
@@ -306,7 +308,7 @@ interface UseDirectoryImportOptions {
   projectId: string;
   fps: number;
   assets: readonly MediaAsset[];
-  ingest: (asset: MediaAsset) => void;
+  ingest: (asset: MediaAsset, durationFps: number) => void;
   onError: (message: string | null) => void;
   t: typeof translate;
 }
@@ -346,7 +348,7 @@ export function useDirectoryImport(options: UseDirectoryImportOptions): UseDirec
       getProjectId: () => optionsRef.current.projectId,
       getFps: () => optionsRef.current.fps,
       getAssets: () => optionsRef.current.assets,
-      ingest: (asset) => optionsRef.current.ingest(asset),
+      ingest: (asset, durationFps) => optionsRef.current.ingest(asset, durationFps),
       onWatchChange: (watch) => { if (live) setActiveWatch(watch); },
       onBusyChange: (next) => { if (live) setBusy(next); },
       onError: (reason) => {

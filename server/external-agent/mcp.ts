@@ -11,6 +11,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import {
   cancelEditorCallsForOwner,
+  editorBindingMatches,
   editSessionOwnerMatches,
   ExternalEditorCallError,
   invokeEditorTool,
@@ -26,7 +27,6 @@ import {
   requestedProjectId,
   targetMcpProject,
   validateBrowserBinding,
-  validateOfflineBinding,
   type McpBindingSession,
 } from './mcp-binding.ts';
 import { MCP_CONTROL_TOOL_NAMES } from './mcp-controls.ts';
@@ -128,6 +128,10 @@ async function callTool(
   if (name === 'begin_edit_session' && session.builtinApprovalMode) {
     args.approvalMode = session.builtinApprovalMode;
   }
+  // Control calls remain available even when the editor binding is stale.
+  // target_project validates the project and explicitly recovers that binding.
+  const control = await callControlTool(session, name, args, baseUrl);
+  if (control !== undefined) return control;
   const allowRevisionDrift = name === 'get_edit_session'
     && Boolean(
       session.id
@@ -135,10 +139,6 @@ async function callTool(
       && editSessionOwnerMatches(session.id, session.binding, args.editSessionId),
     );
   if (session.offline) {
-    if (MCP_CONTROL_TOOL_NAMES[name] === true) {
-      await validateOfflineBinding(session);
-      return callControlTool(session, name, args, baseUrl);
-    }
     if (!session.id) throw new ExternalEditorCallError('failed', 'MCP session initialization is incomplete.');
     const requested = requestedProjectId(args.editorProjectId);
     const projectId = session.offline.binding().projectId;
@@ -155,8 +155,6 @@ async function callTool(
     MCP_CONTROL_TOOL_NAMES[name] !== true,
     carriesSession,
   );
-  const control = await callControlTool(session, name, args, baseUrl);
-  if (control !== undefined) return control;
   if (!session.id) throw new ExternalEditorCallError('failed', 'MCP session initialization is incomplete.');
   const binding = bindBrowserForCall(session, args.editorProjectId, allowRevisionDrift);
   delete args.editorProjectId;
@@ -230,14 +228,11 @@ function makeServer(baseUrl: string, session: McpSession): Server {
         request.params.name !== 'get_edit_session'
         && error instanceof ExternalEditorCallError
         && error.outcome === 'stale'
+        // An obsolete call can finish after target_project or revision adoption
+        // recovered the binding; its result must not poison the live session.
+        && (!session.binding || !editorBindingMatches(session.binding))
       ) {
         markMcpSessionStale(session, error.message);
-        // Close the transport after the error response is sent so the client
-        // does not keep sending requests against a permanently-stale session.
-        void delayImmediate().then(() => {
-          if (session.server) void session.server.close().catch(() => undefined);
-          else void session.transport.close().catch(() => undefined);
-        });
       }
       const result = mcpToolError(error);
       return {

@@ -68,34 +68,44 @@ export async function elevenLabsVoice(options: VoiceOptions, input: ValidVoiceRe
   return Buffer.from(await response.arrayBuffer());
 }
 
-function doubaoAudio(text: string): Buffer {
-  const parts: Buffer[] = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    const item = JSON.parse(line) as { code?: number; data?: string; message?: string };
-    if (item.code && item.code !== 0) throw new Error(item.message ?? `Doubao failed (${item.code})`);
-    if (item.data) parts.push(Buffer.from(item.data, 'base64'));
+interface DoubaoCreateResponse { code?: number; message?: string; audio?: string; url?: string }
+
+async function doubaoAudioBytes(response: Response): Promise<Buffer> {
+  const text = await response.text();
+  let data: DoubaoCreateResponse;
+  try {
+    data = JSON.parse(text) as DoubaoCreateResponse;
+  } catch {
+    throw new Error(text.slice(0, 300) || `Doubao failed (${response.status})`);
   }
-  if (!parts.length) throw new Error('Doubao returned no audio');
-  return Buffer.concat(parts);
+  if (data.code != null && data.code !== 0) throw new Error(data.message || `Doubao failed (${data.code})`);
+  if (data.audio) return Buffer.from(data.audio, 'base64');
+  if (data.url) {
+    const audio = await fetchWithProxy(data.url);
+    if (!audio.ok) throw new Error(await providerError(audio));
+    return Buffer.from(await audio.arrayBuffer());
+  }
+  throw new Error(data.message || 'Doubao returned no audio');
 }
 
 export async function doubaoVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
-  if (!options.doubaoAppId || !options.doubaoAccessKey) throw new Error('Doubao is not configured. Set DOUBAO_TTS_APP_ID and DOUBAO_TTS_ACCESS_KEY.');
-  const audioParams = { format: 'mp3', sample_rate: 24_000,
-    speech_rate: Math.round(((input.speedRatio ?? 1) - 1) * 100), loudness_rate: Math.round(((input.loudnessRatio ?? 1) - 1) * 100) };
-  const reqParams: Record<string, unknown> = { text: input.text, speaker: DOUBAO_VOICES[input.voiceId] ?? input.voiceId, audio_params: audioParams };
-  if (input.emotion) reqParams.emotion = input.emotion;
-  if (input.emotionScale != null) reqParams.emotion_scale = input.emotionScale;
-  if (input.performancePrompt) reqParams.voice_instruction = input.performancePrompt;
-  if (input.explicitDialect) reqParams.explicit_dialect = input.explicitDialect;
-  const response = await fetchWithProxy(`${options.doubaoBaseUrl.replace(/\/$/, '')}/api/v3/tts/unidirectional`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-App-Id': options.doubaoAppId,
-      'X-Api-Access-Key': options.doubaoAccessKey, 'X-Api-Resource-Id': options.doubaoResourceId },
-    body: JSON.stringify({ user: { uid: `openchatcut-${randomUUID()}` }, req_params: reqParams }),
+  if (!options.doubaoApiKey) throw new Error('Doubao is not configured. Set DOUBAO_TTS_API_KEY in .env.local or 设置面板.');
+  const root = options.doubaoBaseUrl.trim().replace(/\/+$/, '');
+  const response = await fetchWithProxy(root.endsWith('/api/v3/tts/create') ? root : `${root}/api/v3/tts/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Api-Key': options.doubaoApiKey, 'X-Api-Request-Id': randomUUID() },
+    body: JSON.stringify({
+      model: options.doubaoModel || 'seed-audio-1.0',
+      text_prompt: input.text,
+      references: [{ speaker: DOUBAO_VOICES[input.voiceId] ?? input.voiceId }],
+      audio_config: { format: 'mp3', sample_rate: 24_000,
+        speech_rate: Math.round(((input.speedRatio ?? 1) - 1) * 100),
+        loudness_rate: Math.round(((input.loudnessRatio ?? 1) - 1) * 100),
+        pitch_rate: input.pitch ?? 0 },
+    }),
   });
   if (!response.ok) throw new Error(await providerError(response));
-  return doubaoAudio(await response.text());
+  return doubaoAudioBytes(response);
 }
 
 interface MinimaxTtsResponse {

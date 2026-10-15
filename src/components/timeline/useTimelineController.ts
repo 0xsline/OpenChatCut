@@ -4,7 +4,7 @@ import {
 } from 'react';
 import { theme } from '../../theme';
 import {
-  captionTrackEntries, captionsOnTrack, defaultTrackId, selectedIdsOf,
+  captionOverlayVisible, captionsOnTrack, defaultTrackId, selectedIdsOf,
   timelineTrackIds, trackAlias, trackKind, type TimelineItem, type TrackId,
 } from '../../editor/types';
 import { slipPreview as buildSlipPreview } from '../../editor/slip';
@@ -132,12 +132,7 @@ export function useTimelineController({
   const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
   // magnetic snapping (Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
-  const textClipCount = state.items.filter((item) => item.kind === 'text' || item.kind === 'motion-graphic').length;
-  const captionsVisible = state.captionsHidden === true
-    ? false
-    : state.captionsHidden === false
-      ? true
-      : captionTrackEntries(state).some((entry) => entry.captions?.enabled) || textClipCount > 0;
+  const captionsVisible = captionOverlayVisible(state);
   const {
     captionMenu, setCaptionMenu, trackMenu, setTrackMenu, transitionMenu, setTransitionMenu,
     captionError, setCaptionError, duckMenu, setDuckMenu,

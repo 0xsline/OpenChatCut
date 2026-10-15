@@ -31,11 +31,6 @@ import {
 } from '../storage/semantic-vectors.ts';
 import { searchContent } from '../storage/fulltext-search.ts';
 import { hybridSearch } from '../storage/hybrid-search.ts';
-import {
-  cleanupLegacyJson,
-  runStorageMigration,
-  sqliteMigrationStatus,
-} from '../storage/sqlite-store.ts';
 import { AgentSessionClearBlockedError } from './project-store-agent-session.ts';
 import { scrubInternalPaths } from '../error-scrub.ts';
 import {
@@ -86,46 +81,6 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
     configureServer(server) {
       if (options.http === false) return;
       server.middlewares.use('/api/project-store', async (req, res) => {
-        // Storage migration: status is read-only (loopback reads allowed),
-        // the migration itself is a write and requires a real session.
-        if (req.method === 'GET' && req.url === '/migrate-status') {
-          if (!projectStoreReadAuthorized(req) && !projectStoreHttpAuthorized(req)) {
-            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
-            return;
-          }
-          sendProjectStoreJson(res, 200, sqliteMigrationStatus());
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/migrate-cleanup') {
-          if (!projectStoreHttpAuthorized(req)) {
-            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
-            return;
-          }
-          try {
-            const result = cleanupLegacyJson();
-            sendProjectStoreJson(res, 200, result);
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            sendProjectStoreJson(res, 400, { error: message });
-          }
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/migrate') {
-          if (!projectStoreHttpAuthorized(req)) {
-            sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
-            return;
-          }
-          try {
-            const summary = await runStorageMigration();
-            const status = sqliteMigrationStatus();
-            sendProjectStoreJson(res, 200, { summary, enabled: status.enabled, status });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            server.config.logger.error(`[project-store] migrate failed: ${message}`);
-            sendProjectStoreJson(res, 400, { error: message });
-          }
-          return;
-        }
         // Full-text search: read-only, no session needed (loopback same-origin).
         if (req.method === 'GET' && req.url?.startsWith('/search')) {
           if (!projectStoreReadAuthorized(req) && !projectStoreHttpAuthorized(req)) {

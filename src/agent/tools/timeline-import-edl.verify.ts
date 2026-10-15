@@ -94,14 +94,16 @@ FCM: NON-DROP FRAME
     { id: 'broll', name: 'Broll.mov', kind: 'video', seconds: 60 },
     { id: 'score', name: 'score.wav', kind: 'audio', seconds: 180 },
   ], { fps: 25 });
-  assert.equal(timeline.fps, 25, 'the EDL rate comes from the fps argument, not the current timeline');
+  // Read at the fps argument, placed at the 30 fps project's rate (#184).
+  assert.equal(timeline.fps, 30, 'the imported timeline runs at the project rate');
+  assert.equal((result.warnings as string[])[0], 'the 25 fps list was converted to the project frame rate (30 fps); cut points are rounded to the nearest frame');
   assert.deepEqual(items, [
     // AA on one audio file is one clip, not two.
-    { asset: 'score', track: 'Imported A1', start: 50, duration: 200, srcIn: 0 },
+    { asset: 'score', track: 'Imported A1', start: 60, duration: 240, srcIn: 0 },
     // A and A2 of the video file are carried by its video clip.
-    { asset: 'interview', track: 'Imported V1', start: 50, duration: 100, srcIn: 250 },
+    { asset: 'interview', track: 'Imported V1', start: 60, duration: 120, srcIn: 300 },
     // The dissolve's incoming clip starts at the transition; TO CLIP NAME names it.
-    { asset: 'broll', track: 'Imported V1', start: 150, duration: 100, srcIn: 500 },
+    { asset: 'broll', track: 'Imported V1', start: 180, duration: 120, srcIn: 600 },
   ]);
   assert.deepEqual(skippedOf(result), ['event 005@01:00:06:00: dissolve transition is not imported; the clips meet with a cut']);
   assert.ok((result.warnings as string[]).some((warning) => /2 audio component\(s\) of video files were merged/.test(warning)));
@@ -117,8 +119,10 @@ FCM: DROP FRAME
 002  AX  V  C  ${tc('00:10:00;00 00:10:00;10 01:00:00;04 01:00:00;14')}
 * FROM CLIP NAME: clip.mp4
 `;
-  const { result, items, timeline } = await importEdl(edl, [{ id: 'clip', name: 'clip.mp4', kind: 'video', seconds: 660 }]);
+  // A 29.97 project keeps the list's frames, so the drop-frame arithmetic shows.
+  const { result, items, timeline } = await importEdl(edl, [{ id: 'clip', name: 'clip.mp4', kind: 'video', seconds: 660 }], {}, 30000 / 1001);
   assert.equal(timeline.fps, 30000 / 1001, 'drop-frame lists are 29.97');
+  assert.deepEqual(result.warnings, [], 'nothing to convert');
   assert.equal(result.startTimecode, '01:00:00;00');
   assert.deepEqual(items, [
     // 00:00:59;28 → 00:01:00;04 is four frames: ;00 and ;01 of minute 1 do not exist.
@@ -166,10 +170,10 @@ FCM: NON-DROP FRAME
 001  AX  V  C  00:00:01:00 00:00:03:00 01:00:10:00 01:00:12:00
 * FROM CLIP NAME: take_1.mov
 `;
-  const lead = await importEdl(headOfBlack, pool, { fps: 25 });
+  const lead = await importEdl(headOfBlack, pool, { fps: 25 }, 25);
   assert.equal(lead.result.startTimecode, '01:00:00:00');
   assert.deepEqual(lead.items, [{ asset: 'take1', track: 'Imported V1', start: 250, duration: 50, srcIn: 25 }]);
-  const override = await importEdl(headOfBlack, pool, { fps: 25, startTimecode: '00:59:50:00' });
+  const override = await importEdl(headOfBlack, pool, { fps: 25, startTimecode: '00:59:50:00' }, 25);
   assert.equal(override.items[0]!.start, 500, 'startTimecode 00:59:50:00 puts 01:00:10:00 at 20 s');
   // OpenTimelineIO's Premiere sample: a 24 fps list that starts at 00:59:53:11.
   const premiere = `TITLE:   Premiere_Example.01
@@ -178,7 +182,7 @@ FCM: NON-DROP FRAME
 002  AX V     C        01:00:06:13 01:00:08:15 00:59:54:18 00:59:56:20
 * FROM CLIP NAME:  take_2.mov
 `;
-  const early = await importEdl(premiere, pool, { fps: 24 });
+  const early = await importEdl(premiere, pool, { fps: 24 }, 24);
   assert.equal(early.result.startTimecode, '00:59:53:11');
   assert.deepEqual(early.items, [
     { asset: 'take1', track: 'Imported V1', start: 0, duration: 31, srcIn: 101 },
@@ -211,7 +215,7 @@ M2   AX       000.0                00:00:20:00
 003  AX  VX  C  00:00:30:00 00:00:31:00 01:00:03:00 01:00:04:00
 * FROM CLIP NAME: take_1.mov
 `;
-  const { result, items } = await importEdl(edl, [{ id: 'take1', name: 'take_1.mov', kind: 'video', seconds: 60 }], { fps: 25 });
+  const { result, items } = await importEdl(edl, [{ id: 'take1', name: 'take_1.mov', kind: 'video', seconds: 60 }], { fps: 25 }, 25);
   assert.deepEqual(items, [{ asset: 'take1', track: 'Imported V1', start: 0, duration: 50, srcIn: 250, rate: 2 }]);
   assert.deepEqual(skippedOf(result), [
     'event 002@01:00:02:00: freeze frames are not imported',
@@ -242,7 +246,7 @@ FCM: NON-DROP FRAME
     unresolved: [{ reference: 'event 002: pickup.mov', reason: 'no matching media-pool asset' }],
   });
   assert.equal(draft.getDoc(), before, 'an unresolved list changes nothing');
-  const { result, items } = await importEdl(edl, [take, { id: 'pickup', name: 'pickup.mov', kind: 'video', seconds: 10 }], { fps: 25 });
+  const { result, items } = await importEdl(edl, [take, { id: 'pickup', name: 'pickup.mov', kind: 'video', seconds: 10 }], { fps: 25 }, 25);
   assert.deepEqual(items, [
     { asset: 'take1', track: 'Imported V1', start: 0, duration: 100, srcIn: 125 },
     { asset: 'pickup', track: 'Imported V1', start: 100, duration: 25, srcIn: 0 },

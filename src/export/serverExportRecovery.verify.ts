@@ -3,11 +3,11 @@
 // reconciliation, tombstones, ready contention, leases, and late rebinds.
 import assert from 'node:assert/strict';
 import type { TimelineState } from '../editor/types';
-import {
-  createExportRecoveryLeaseOperation,
-  type ExportRecoveryLeaseInput,
+import { executeImmediateExportRecoveryMutation } from '../../server/plugins/project-store-export-recovery';
+import type {
+  ExportRecoveryImmediateStore,
+  ExportRecoveryLeaseInput,
 } from '../../server/plugins/project-store-export-recovery';
-import type { LockedProjectStore } from '../../server/plugins/project-store';
 import type { ExportDestination } from './exportDestination';
 import {
   claimServerExportDelivery,
@@ -125,21 +125,13 @@ interface FakeProjectStoreRequest {
 }
 
 function fakeRecoveryOperation(store: Record<string, unknown>) {
-  const locked: LockedProjectStore = {
-    readEntry: async (key) => Object.hasOwn(store, key)
+  const immediate: ExportRecoveryImmediateStore = {
+    readEntry: (key) => Object.hasOwn(store, key)
       ? { found: true, value: store[key] }
       : { found: false },
-    writeEntry: async (key, value) => { store[key] = value; },
-    writeAgentRuntimeExact: async (key, value) => { store[key] = value; },
-    writeEntryExact: async (key, value) => { store[key] = value; },
-    removeEntry: async (key) => { delete store[key]; },
+    writeEntry: (key, value) => { store[key] = value; },
   };
-  let serialized = Promise.resolve();
-  return createExportRecoveryLeaseOperation(async (work) => {
-    const result = serialized.then(() => work(locked));
-    serialized = result.then(() => undefined, () => undefined);
-    return result;
-  });
+  return (input: ExportRecoveryLeaseInput) => executeImmediateExportRecoveryMutation(immediate, input);
 }
 
 function installTransport(store: Record<string, unknown>): void {
@@ -203,21 +195,13 @@ async function verifyDurableDeliveryLeaseExclusion(): Promise<void> {
   const rows = new Map<string, unknown>();
   const retained = record('lease-render', 'lease-project');
   rows.set('export-recovery:lease-render', retained);
-  const store: LockedProjectStore = {
-    readEntry: async (key) => rows.has(key)
+  const store: ExportRecoveryImmediateStore = {
+    readEntry: (key) => rows.has(key)
       ? { found: true, value: rows.get(key) }
       : { found: false },
-    writeEntry: async (key, value) => { rows.set(key, value); },
-    writeAgentRuntimeExact: async (key, value) => { rows.set(key, value); },
-    writeEntryExact: async (key, value) => { rows.set(key, value); },
-    removeEntry: async (key) => { rows.delete(key); },
+    writeEntry: (key, value) => { rows.set(key, value); },
   };
-  let serialized = Promise.resolve();
-  const mutate = createExportRecoveryLeaseOperation(async (work) => {
-    const result = serialized.then(() => work(store));
-    serialized = result.then(() => undefined, () => undefined);
-    return result;
-  });
+  const mutate = (input: ExportRecoveryLeaseInput) => executeImmediateExportRecoveryMutation(store, input);
   const request = (ownerInstanceId: string) => ({
     operation: 'export-recovery-lease' as const,
     key: 'export-recovery:lease-render',

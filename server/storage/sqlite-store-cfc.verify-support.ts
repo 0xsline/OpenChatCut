@@ -1,22 +1,16 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { RuntimeProfile } from '../runtime-profile.ts';
-import type {
-  CleanupResult,
-  SQLiteMigrationStatus,
-  StoredEntryValue,
-} from './sqlite-store.ts';
-import type { ImportReceipt, ImportSummary } from './sqlite-migration.ts';
+import type { StoredEntryValue } from './sqlite-store.ts';
+import type { ImportReceipt } from './sqlite-migration.ts';
 
 interface SqliteStore {
-  cleanupLegacyJson(): CleanupResult;
-  initializeSqliteProjectStore(): Promise<SQLiteMigrationStatus>;
+  initializeSqliteProjectStore(): Promise<void>;
   resetSqliteStoreForTests(): void;
-  runStorageMigration(): Promise<ImportSummary>;
-  sqliteMigrationStatus(): SQLiteMigrationStatus;
+  sqliteStoreReady(): boolean;
   sqliteReadEntry(key: string): Promise<StoredEntryValue>;
 }
 
@@ -55,11 +49,9 @@ export async function verifyCfcMigrationChecks({
   migration,
 }: CfcMigrationCheckOptions): Promise<void> {
   const {
-    cleanupLegacyJson,
     initializeSqliteProjectStore,
     resetSqliteStoreForTests,
-    runStorageMigration,
-    sqliteMigrationStatus,
+    sqliteStoreReady,
     sqliteReadEntry,
   } = store;
   const {
@@ -88,9 +80,8 @@ export async function verifyCfcMigrationChecks({
       'project:cfc-missing-database': sha256(Buffer.from(missingDatabaseValue, 'utf8')),
     },
   }));
-  const recoveredMissingDatabase = await runStorageMigration();
-  assert.equal(recoveredMissingDatabase.receiptWritten, true);
-  assert.equal(sqliteMigrationStatus().phase, 'complete');
+  await initializeSqliteProjectStore();
+  assert.equal(sqliteStoreReady(), true);
   assert.deepEqual(await sqliteReadEntry('project:cfc-missing-database'), {
     found: true,
     value: { title: 'recover-from-json' },
@@ -140,8 +131,8 @@ export async function verifyCfcMigrationChecks({
   cfc.prepare('INSERT INTO kv (k, v) VALUES (?, ?)')
     .run('project:cfc-sqlite-only', JSON.stringify({ inserted: true }));
   cfc.close();
-  const promoted = await initializeSqliteProjectStore();
-  assert.equal(promoted.phase, 'complete',
+  await initializeSqliteProjectStore();
+  assert.equal(sqliteStoreReady(), true,
     'a cfc candidate must promote without treating hashes as current row state');
   assert.deepEqual(await sqliteReadEntry('project:cfc-edited'), {
     found: true,
@@ -155,14 +146,17 @@ export async function verifyCfcMigrationChecks({
   }, 'a post-cfc SQLite-only insert survives promotion');
   const promotedReceipt = readImportReceipt(profile);
   assert.equal(promotedReceipt?.count, 3,
-    'promoted receipt count remains the cleanup-anchor count');
+    'promoted receipt count remains the original import count');
   assert.equal(promotedReceipt?.sources['project:cfc-edited']?.path,
     join(profile.projectStore.directory, 'project%3Acfc-edited.json'));
   assert.equal(promotedReceipt?.sources['project:cfc-sqlite-only'], undefined,
-    'SQLite-only rows never become legacy cleanup anchors');
-  const cfcCleanup = cleanupLegacyJson();
-  assert.equal(cfcCleanup.removed, 2,
-    'promotion hashes remain exact cleanup anchors for matching legacy files');
+    'SQLite-only rows never become legacy import sources');
+  assert.equal(readFileSync(
+    join(profile.projectStore.directory, 'project%3Acfc-edited.json'), 'utf8',
+  ), editedSnapshotValue, 'promotion retains legacy backups byte-for-byte');
+  assert.equal(readFileSync(
+    join(profile.projectStore.directory, 'chat%3Acfc-deleted.json'), 'utf8',
+  ), deletedSnapshotValue, 'deleted SQLite rows do not remove original backups');
 
   // A fully cleaned candidate with no remaining JSON source still promotes.
   resetSqliteStoreForTests();
@@ -175,8 +169,8 @@ export async function verifyCfcMigrationChecks({
     phase: 2,
     keys: { 'project:cfc-cleaned': sha256(Buffer.from(cleanedValue, 'utf8')) },
   }));
-  const cleanedPromotion = await initializeSqliteProjectStore();
-  assert.equal(cleanedPromotion.phase, 'complete');
+  await initializeSqliteProjectStore();
+  assert.equal(sqliteStoreReady(), true);
   assert.deepEqual(await sqliteReadEntry('project:cfc-cleaned'), {
     found: true,
     value: { title: 'cleaned-candidate' },
@@ -197,7 +191,9 @@ export async function verifyCfcMigrationChecks({
     phase: 2,
     keys: { 'project:cfc-stale': sha256(Buffer.from(migrationValue, 'utf8')) },
   }));
-  await assert.rejects(runStorageMigration(), /candidate source hash mismatch/);
+  await assert.rejects(initializeSqliteProjectStore(), /candidate source hash mismatch/);
+  assert.equal(sqliteStoreReady(), false);
+  await assert.rejects(sqliteReadEntry('project:cfc-stale'), /not initialized/);
   resetSqliteStoreForTests();
   let refused = new DatabaseSync(sqlitePath);
   const refusedRow = refused.prepare('SELECT v FROM kv WHERE k = ?')
@@ -219,7 +215,7 @@ export async function verifyCfcMigrationChecks({
     phase: 2,
     keys: { 'project:cfc-stale': sha256(Buffer.from(migrationValue, 'utf8')) },
   }));
-  await assert.rejects(runStorageMigration(), /candidate receipt from another profile/);
+  await assert.rejects(initializeSqliteProjectStore(), /candidate receipt from another profile/);
   resetSqliteStoreForTests();
   writeFileSync(importReceiptPath(profile), JSON.stringify({
     source: profile.projectStore.directory,
@@ -229,7 +225,7 @@ export async function verifyCfcMigrationChecks({
     keys: { 'project:cfc-stale': sha256(Buffer.from(migrationValue, 'utf8')) },
     unexpected: true,
   }));
-  await assert.rejects(runStorageMigration(), /malformed cfc candidate receipt/);
+  await assert.rejects(initializeSqliteProjectStore(), /malformed cfc candidate receipt/);
   resetSqliteStoreForTests();
   refused = new DatabaseSync(sqlitePath);
   const invalidCandidateRow = refused.prepare('SELECT v FROM kv WHERE k = ?')

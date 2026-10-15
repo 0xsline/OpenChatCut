@@ -12,6 +12,8 @@ export interface GenerationJobsFixture {
   expiryExportName: string;
   malformedAssetId: string;
   previousStorePath: string | undefined;
+  previousDataDir: string | undefined;
+  previousDevProfile: string | undefined;
   providerMediaName: string;
   storePath: string;
   storeRoot: string;
@@ -45,6 +47,10 @@ export async function setupGenerationJobsFixture(): Promise<GenerationJobsFixtur
   const storeRoot = await mkdtemp(join(tmpdir(), 'openchatcut-generation-jobs-'));
   const storePath = join(storeRoot, 'operations.json');
   const previousStorePath = process.env.OPENCHATCUT_GENERATION_JOB_STORE;
+  const previousDataDir = process.env.OPENCHATCUT_DATA_DIR;
+  const previousDevProfile = process.env.OPENCHATCUT_DEV_PROFILE_ID;
+  process.env.OPENCHATCUT_DATA_DIR = storeRoot;
+  delete process.env.OPENCHATCUT_DEV_PROFILE_ID;
   process.env.OPENCHATCUT_GENERATION_JOB_STORE = storePath;
   const restoredAt = Date.now() - 1_000;
   const acceptedAt = restoredAt + 100;
@@ -296,6 +302,8 @@ export async function setupGenerationJobsFixture(): Promise<GenerationJobsFixtur
     expiryExportName,
     malformedAssetId,
     previousStorePath,
+    previousDataDir,
+    previousDevProfile,
     providerMediaName,
     storePath,
     storeRoot,
@@ -305,6 +313,15 @@ export async function setupGenerationJobsFixture(): Promise<GenerationJobsFixtur
 }
 
 export async function cleanupGenerationJobsFixture(fixture: GenerationJobsFixture): Promise<void> {
+  // runtimeProfile captures environment at module load; import only after fixture isolation.
+  const { persistJobs } = await import('./generation-job-store.ts');
+  const { resetSqliteStoreForTests } = await import('../storage/sqlite-store.ts');
+  await persistJobs();
+  resetSqliteStoreForTests();
+  if (fixture.previousDataDir === undefined) delete process.env.OPENCHATCUT_DATA_DIR;
+  else process.env.OPENCHATCUT_DATA_DIR = fixture.previousDataDir;
+  if (fixture.previousDevProfile === undefined) delete process.env.OPENCHATCUT_DEV_PROFILE_ID;
+  else process.env.OPENCHATCUT_DEV_PROFILE_ID = fixture.previousDevProfile;
   if (fixture.previousStorePath === undefined) delete process.env.OPENCHATCUT_GENERATION_JOB_STORE;
   else process.env.OPENCHATCUT_GENERATION_JOB_STORE = fixture.previousStorePath;
   await rm(fixture.storeRoot, { recursive: true, force: true });

@@ -135,7 +135,9 @@ function chooseSequence(document: XmlDocument, report: ImportReport): { sequence
 interface ClipContext {
   resources: FcpxResources;
   pool: readonly MediaAsset[];
+  /** The sequence's own rate. */
   fps: Rational;
+  /** The rate every timeline and pool duration of the project is counted in. */
   projectFps: Rational;
   report: ImportReport;
   label: (seconds: Rational) => string;
@@ -219,8 +221,9 @@ function leafToClip(leaf: FcpxLeaf, ctx: ClipContext): ParsedClip | null {
     notes.push('starts before its media and was trimmed to the first media frame');
     if (cmp(start, end) >= 0) return skipLeaf('lies entirely before its media', leaf.window.start);
   }
-  const startFrame = toFrames(start, ctx.fps);
-  const durationInFrames = toFrames(end, ctx.fps) - startFrame;
+  // Sequence time lands on the project's frames, whatever rate the sequence has.
+  const startFrame = toFrames(start, ctx.projectFps);
+  const durationInFrames = toFrames(end, ctx.projectFps) - startFrame;
   if (durationInFrames <= 0) return skipLeaf('shorter than one frame', start);
   const still = isStillAsset(asset);
   const from = { element: leaf.element, name: leaf.name, at: ctx.label(start) };
@@ -233,7 +236,7 @@ function leafToClip(leaf: FcpxLeaf, ctx: ClipContext): ParsedClip | null {
     lane: leaf.lane,
     startFrame,
     durationInFrames,
-    sourceStartFrame: still ? 0 : toFrames(inPoint, ctx.fps),
+    sourceStartFrame: still ? 0 : toFrames(inPoint, ctx.projectFps),
     ...(speed !== undefined ? { playbackRate: speed } : {}),
     ...(family === 'video' && asset.kind === 'video' && leaf.srcEnable === 'video' ? { muted: true } : {}),
     ...(family === 'audio' && asset.kind === 'video' ? { audioOfVideo: true } : {}),
@@ -286,7 +289,8 @@ export function parseFcpxml(
     ok: true,
     timeline: {
       name: attr(project ?? sequence, 'name') || 'Imported FCPXML',
-      fps: toNumber(fps),
+      fps: fallback.fps,
+      sourceFps: toNumber(fps),
       width: Number(attr(format ?? sequence, 'width')) || fallback.width,
       height: Number(attr(format ?? sequence, 'height')) || fallback.height,
       clips: reconciled,

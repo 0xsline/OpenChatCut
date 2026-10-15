@@ -5,11 +5,13 @@
 import { execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { basename, join, posix, win32 } from 'node:path';
+import { sanitizeFileName } from '../file-name.ts';
 import { ffprobeBin } from '../media-binaries.ts';
 import { uploadReadDirs } from '../media-dir.ts';
 import { resolveMediaReference } from '../media-references.ts';
+import { capcutLaunch } from './capcut-command.ts';
 
 /** dev / worktree upload root; isolated profiles read only their own store but
  * dev media commonly lives here too. */
@@ -34,12 +36,17 @@ export interface JianyingExportCaption {
   text: string;
 }
 
+/** An app whose default draft store the server knows on its own platform. */
+export type JianyingDraftStoreName = 'capcut' | 'jianying';
+
 export interface JianyingExportRequest {
   draftName?: string;
   fps: number;
   items: JianyingExportClip[];
   captions?: JianyingExportCaption[];
-  /** Override for the draft store directory (CapCut store by default). */
+  /** Whose default store to write to when no draftsDir is given (CapCut's by default). */
+  store?: JianyingDraftStoreName;
+  /** Override for the draft store directory. */
   draftsDir?: string;
 }
 
@@ -51,6 +58,10 @@ export interface JianyingExportOptions {
   run?: CapcutRunner;
   /** Verification seam: a media file's duration in µs, null when unreadable. */
   probeDuration?: (file: string) => Promise<number | null>;
+  /** Verification seams: the machine whose store and file-name rules apply. */
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  home?: string;
 }
 
 export interface JianyingExportResult {
@@ -64,21 +75,47 @@ export interface JianyingExportResult {
   error?: string;
 }
 
-const DEFAULT_CAPCUT_STORE = join(
-  process.env.HOME ?? '',
-  'Movies',
-  'CapCut',
-  'User Data',
-  'Projects',
-  'com.lveditor.draft',
-);
+/**
+ * Where CapCut and JianYing keep their drafts unless moved in their settings,
+ * as capcut-cli 0.26 locates them (draftDirCandidates): under %LOCALAPPDATA% on
+ * Windows, where HOME is usually unset, and under ~/Movies on macOS (and, with
+ * no desktop app to follow, on Linux too).
+ */
+function defaultDraftStore(
+  store: JianyingDraftStoreName,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+  home: string,
+): string {
+  const app = store === 'jianying' ? 'JianyingPro' : 'CapCut';
+  if (platform === 'win32') {
+    const localAppData = env.LOCALAPPDATA || win32.join(env.USERPROFILE || home, 'AppData', 'Local');
+    return win32.join(localAppData, app, 'User Data', 'Projects', 'com.lveditor.draft');
+  }
+  return posix.join(home, 'Movies', app, 'User Data', 'Projects', 'com.lveditor.draft');
+}
+
+/** `~` or `~/…` (on Windows also `~\…`) in a store path → the account's home,
+ * from os.homedir() rather than HOME, which Windows does not set. */
+export function expandHomeDir(dir: string, platform = process.platform, home = homedir()): string {
+  const tilde = platform === 'win32' ? /^~(?=[\\/]|$)/ : /^~(?=\/|$)/;
+  return dir.replace(tilde, () => home);
+}
+
+// Device names Windows reserves, alone or before an extension (NUL.txt is NUL).
+const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\.|$)/i;
+
+/** A draft name as a Windows folder name. Node creates `Final cut.` or `CON`
+ * through \\?\ paths, but Win32 path parsing (CapCut, JianYing, Explorer)
+ * drops a trailing dot or space and maps device names, so the draft would not
+ * open. Trim after the length cut, which can end on a space. */
+function windowsFolderName(name: string): string {
+  const folder = sanitizeFileName(name, '').slice(0, 60).replace(/[. ]+$/, '');
+  return WINDOWS_RESERVED_NAME.test(folder) ? `_${folder}` : folder;
+}
 
 /** Resolve a clip src (/media/uploads/<name> or absolute path) to a local file.
  *  `options.mediaDir` injects an explicit upload root (verification seam). */
-export function expandHomeDir(dir: string): string {
-  return dir.replace(/^~(?=\/|$)/, process.env.HOME ?? '');
-}
-
 export function resolveMediaPath(
   src: string,
   options: { mediaDir?: string } = {},
@@ -104,28 +141,16 @@ export function resolveMediaPath(
   return undefined;
 }
 
-/**
- * Without a version, `npx --yes` fetches and runs whatever capcut-cli release
- * is newest on npm at export time, so an unreviewed or breaking publish would
- * execute on users' machines. Pin the release this exporter is known to work
- * with; bump it deliberately. CAPCUT_CLI still overrides it with a path to a
- * local build or another package spec.
- */
-export const CAPCUT_CLI_PACKAGE = 'capcut-cli@0.26.0';
-
-/** Command prefix for a capcut-cli call: a local binary path, or npx with a package spec. */
-export function capcutCommand(executable = process.env.CAPCUT_CLI || CAPCUT_CLI_PACKAGE): string[] {
-  return executable.includes('/') || executable.includes('\\')
-    ? [executable]
-    : ['npx', '--yes', executable];
-}
-
+/** Runs one capcut-cli command, never through a shell of ours (capcut-command.ts). */
 function runCapcut(args: string[], timeoutMs = 120_000): Promise<unknown> {
-  const prefix = capcutCommand();
   return new Promise((resolve, reject) => {
-    const child = spawn(prefix[0], [...prefix.slice(1), ...args], {
+    const launch = capcutLaunch(args);
+    const child = spawn(launch.executable, launch.args, {
       env: { ...process.env, FORCE_COLOR: '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Every call is a console process; unhidden, each would flash a window over the Windows app.
+      windowsHide: true,
+      windowsVerbatimArguments: launch.windowsVerbatimArguments,
     });
     let stdout = '';
     let stderr = '';
@@ -135,9 +160,12 @@ function runCapcut(args: string[], timeoutMs = 120_000): Promise<unknown> {
     }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', (error) => {
+    child.on('error', (error: NodeJS.ErrnoException) => {
       clearTimeout(timer);
-      reject(new Error(`capcut-cli launch failed: ${error.message}`));
+      const hint = error.code === 'ENOENT' && launch.executable === 'npx'
+        ? ' (capcut-cli runs through npx: install Node.js, or set CAPCUT_CLI)'
+        : '';
+      reject(new Error(`capcut-cli launch failed: ${error.message}${hint}`));
     });
     child.on('close', (code) => {
       clearTimeout(timer);
@@ -320,11 +348,13 @@ export async function exportJianyingDraft(
 ): Promise<JianyingExportResult> {
   const run = options.run ?? runCapcut;
   const probe = options.probeDuration ?? probeMediaMicros;
+  const { platform = process.platform, env = process.env, home = homedir() } = options;
   const request: JianyingExportRequest = {
     fps: Number(raw.fps) || 30,
     items: Array.isArray(raw.items) ? raw.items.filter((item) => item && typeof item === 'object') : [],
     captions: Array.isArray(raw.captions) ? raw.captions.filter((caption) => caption && typeof caption === 'object') : [],
     draftName: typeof raw.draftName === 'string' ? raw.draftName : undefined,
+    store: raw.store === 'jianying' ? 'jianying' : 'capcut',
     draftsDir: typeof raw.draftsDir === 'string' ? raw.draftsDir : undefined,
   };
   const warnings: string[] = [];
@@ -339,15 +369,18 @@ export async function exportJianyingDraft(
   if (missing.length > 0) {
     return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: `media files not found locally: ${missing.slice(0, 3).join(', ')}` };
   }
-  const draftName = String(request.draftName || `OpenChatCut-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`)
+  const named = String(request.draftName || `OpenChatCut-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`)
     .replace(/[\\/]/g, '')
-    .replaceAll('\0', '')
-    .slice(0, 60);
+    .replaceAll('\0', '');
+  // The name becomes a folder. Windows forbids : * ? " < > | and control
+  // characters there, so the shared file-name rule replaces them, which also
+  // keeps quotes and line breaks away from a .cmd CAPCUT_CLI's cmd.exe hop.
+  const draftName = platform === 'win32' ? windowsFolderName(named) : named.slice(0, 60);
   if (!draftName) {
     return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: 'invalid draft name' };
   }
-  const draftsDir = expandHomeDir(String(request.draftsDir || '').trim())
-    || DEFAULT_CAPCUT_STORE;
+  const draftsDir = expandHomeDir(String(request.draftsDir || '').trim(), platform, home)
+    || defaultDraftStore(request.store ?? 'capcut', platform, env, home);
   const storeFlags = ['--jianying', '--force-write', '--drafts', draftsDir];
   const created = await run(['init', draftName, ...storeFlags]) as { ok?: boolean; draft_path?: string; error?: string };
   if (!created?.ok || !created.draft_path) {

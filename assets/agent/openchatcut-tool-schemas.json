@@ -1487,13 +1487,7 @@
           },
           "emotion": {
             "type": "string",
-            "description": "Doubao or MiniMax emotion label. MiniMax accepts: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper."
-          },
-          "emotionScale": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 5,
-            "description": "Doubao only. Requires emotion."
+            "description": "MiniMax only. One of: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper."
           },
           "loudnessRatio": {
             "type": "number",
@@ -1505,27 +1499,13 @@
             "type": "number",
             "minimum": -12,
             "maximum": 12,
-            "description": "Doubao: post-process semitones. MiniMax: native voice_setting.pitch (-12–12)."
+            "description": "Doubao: native audio_config.pitch_rate (-12–12). MiniMax: native voice_setting.pitch (-12–12)."
           },
           "volume": {
             "type": "number",
             "exclusiveMinimum": 0,
             "maximum": 10,
             "description": "MiniMax only. voice_setting.vol (>0–10). Defaults to 1."
-          },
-          "performancePrompt": {
-            "type": "string",
-            "maxLength": 200,
-            "description": "Doubao only. Natural-language performance direction."
-          },
-          "explicitDialect": {
-            "type": "string",
-            "enum": [
-              "dongbei",
-              "shaanxi",
-              "sichuan"
-            ],
-            "description": "Doubao only; supported by the Vivi preset."
           },
           "sampleRate": {
             "type": "integer",
@@ -3116,6 +3096,116 @@
             "description": "Maximum edit boundaries to include in the evidence sheet; defaults to 8."
           }
         }
+      }
+    },
+    {
+      "name": "publish_to_social",
+      "description": "Publish a finished video render to social platforms (TikTok, Instagram Reels, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, Bluesky) through Upload-Post. Two steps, always: (1) call WITHOUT confirm — nothing is uploaded; it returns needsConfirm, a requestId, and the file, profile, platforms, missingPlatforms (not connected on the profile, would be skipped), title and privacy. Show that preview to the user. (2) Only after the user explicitly approves it in this conversation, call again with the SAME arguments plus confirm:true and previewId set to that requestId. If the Upload-Post account, the profile, the file or any field changed since the preview, the confirm is refused with preview_mismatch: preview again and ask again. Pinterest needs pinterestBoardId. A confirm returns phase admitted immediately and the upload continues in the background; poll track_social_publish with the requestId. Publishing is public and cannot be undone; re-sending an approved publish resumes it instead of posting twice. source is the downloadUrl from a completed track_export (/media/uploads/...). Requires the Upload-Post key and profile in Settings.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "downloadUrl of a completed video render (/media/uploads/<file>.mp4)."
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "tiktok",
+                "instagram",
+                "youtube",
+                "linkedin",
+                "facebook",
+                "x",
+                "threads",
+                "pinterest",
+                "bluesky"
+              ]
+            },
+            "minItems": 1,
+            "description": "Where to publish. TikTok, Instagram Reels and YouTube Shorts expect a vertical 9:16 render."
+          },
+          "title": {
+            "type": "string",
+            "description": "Caption / title used on every platform. YouTube allows at most 100 characters."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional longer text for YouTube, LinkedIn, Facebook and Pinterest."
+          },
+          "youtubePrivacy": {
+            "type": "string",
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ],
+            "description": "Defaults to private."
+          },
+          "tiktokPrivacy": {
+            "type": "string",
+            "enum": [
+              "PUBLIC_TO_EVERYONE",
+              "MUTUAL_FOLLOW_FRIENDS",
+              "FOLLOWER_OF_CREATOR",
+              "SELF_ONLY"
+            ],
+            "description": "Omit to keep the TikTok account default."
+          },
+          "pinterestBoardId": {
+            "type": "string",
+            "description": "Required when platforms includes pinterest: the ID of the Pinterest board to pin the video to. Ask the user for it."
+          },
+          "aiGenerated": {
+            "type": "boolean",
+            "description": "Disclose AI-generated content (TikTok, Instagram, YouTube and X labels). Ask the user when the video uses generated visuals or voice."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Omit on the first call (preview). true only after the user approved the preview in chat."
+          },
+          "previewId": {
+            "type": "string",
+            "description": "Required with confirm:true: the requestId returned by the preview the user approved."
+          }
+        },
+        "required": [
+          "source",
+          "platforms",
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "track_social_publish",
+      "description": "Check a publish started by publish_to_social. action=status returns the current state; action=wait polls until it settles or timeoutSeconds elapses, then returns the last known state with waitExpired (use one bounded wait, then report). status is uploading while the video is still being sent, then per-platform results: completed (url or postId), failed (error), retryable, or skipped (no account on the profile). status unknown means Upload-Post never confirmed the upload: it is not re-sent. Read-only.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "requestId returned by publish_to_social."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "status",
+              "wait"
+            ],
+            "description": "Defaults to status."
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 25,
+            "description": "For action=wait. Defaults to 20."
+          }
+        },
+        "required": [
+          "requestId"
+        ]
       }
     },
     {
@@ -5253,7 +5343,7 @@
     },
     {
       "name": "browse_local_media",
-      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop access is enabled by default and an explicit AGENT_IMPORT_ROOTS setting restricts it; a browser session requires that allowlist. Defaults to the home directory; pass an absolute path to browse a specific folder or drive. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5296,7 +5386,7 @@
     },
     {
       "name": "import_assets",
-      "description": "Import selected local media paths into the media pool in one batch. Desktop only. Local access is enabled by default; explicit AGENT_IMPORT_ROOTS restricts access. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.",
+      "description": "Import selected local media paths into the media pool in one batch. Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5318,7 +5408,7 @@
     },
     {
       "name": "import_asset",
-      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
+      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5334,7 +5424,7 @@
     },
     {
       "name": "import_folder",
-      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
+      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5350,7 +5440,7 @@
     },
     {
       "name": "import_timeline",
-      "description": "Import a Final Cut Pro / DaVinci Resolve FCPXML 1.x project or a CMX 3600 EDL into a new editable OpenChatCut timeline. FCPXML times are converted to the new timeline through the sequence tcStart and every enclosing clip, gap, connected clip or storyline (lanes), compound clip (ref-clip), sync-clip, multicam clip (active angle) and audition (active pick), including rate conform and retime speed; source in-points are measured from each file's own start timecode. EDL events are placed from the list's record start: the hour boundary (e.g. 01:00:00:00) when the first record-in is within a minute of it, otherwise the first record-in, or startTimecode when given. EDLs do not record their frame rate: fps defaults to the current timeline's (29.97/59.94 for drop-frame lists). Referenced files must already exist in the current media pool; matching uses asset id, original path, source path, source filename, and asset name. Unresolved or ambiguous media aborts the import without changing the project. Titles, generators, captions, transitions, effects, disabled clips, and audio of a video file that its video clip cannot carry are not imported; the result lists every skipped element with its reason and warns about approximations.",
+      "description": "Import a Final Cut Pro / DaVinci Resolve FCPXML 1.x project or a CMX 3600 EDL into a new editable OpenChatCut timeline. The new timeline runs at the project frame rate; a sequence or list at another rate is converted, rounding cut points to the nearest frame. FCPXML times are converted to the new timeline through the sequence tcStart and every enclosing clip, gap, connected clip or storyline (lanes), compound clip (ref-clip), sync-clip, multicam clip (active angle) and audition (active pick), including rate conform and retime speed; source in-points are measured from each file's own start timecode. EDL events are placed from the list's record start: the hour boundary (e.g. 01:00:00:00) when the first record-in is within a minute of it, otherwise the first record-in, or startTimecode when given. EDLs do not record their frame rate: fps defaults to the current timeline's (29.97/59.94 for drop-frame lists). Referenced files must already exist in the current media pool; matching uses asset id, original path, source path, source filename, and asset name. Unresolved or ambiguous media aborts the import without changing the project. Titles, generators, captions, transitions, effects, disabled clips, and audio of a video file that its video clip cannot carry are not imported; the result lists every skipped element with its reason and warns about approximations.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -6153,7 +6243,7 @@
     },
     {
       "name": "browse_local_media",
-      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop access is enabled by default and an explicit AGENT_IMPORT_ROOTS setting restricts it; a browser session requires that allowlist. Defaults to the home directory; pass an absolute path to browse a specific folder or drive. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
       "input_schema": {
         "type": "object",
         "properties": {

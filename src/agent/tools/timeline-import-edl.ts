@@ -245,6 +245,11 @@ function lineToClips(event: EdlEvent, index: number, ctx: EventContext): ParsedC
     duration += start;
     start = 0;
   }
+  // Record frames land on the project's frames, whatever rate the list was written at.
+  const onProject = (frames: number) => toFrames(fromFrames(frames, clock.fps), ctx.projectFps);
+  const startFrame = onProject(start);
+  const durationInFrames = onProject(start + duration) - startFrame;
+  if (durationInFrames <= 0) return skip('shorter than one frame');
   if (event.speed === undefined && sourceOut - sourceIn !== recordOut - recordIn) {
     report.warnings.push(`event ${line.number} "${name}" at ${at}: source and record durations differ; the record duration was used`);
   }
@@ -263,9 +268,9 @@ function lineToClips(event: EdlEvent, index: number, ctx: EventContext): ParsedC
   const base = {
     name,
     assetId: asset.id,
-    startFrame: start,
-    durationInFrames: duration,
-    sourceStartFrame: Math.max(0, toFrames(resolvedIn.in, clock.fps)),
+    startFrame,
+    durationInFrames,
+    sourceStartFrame: Math.max(0, toFrames(resolvedIn.in, ctx.projectFps)),
     ...(clampedRate !== 1 ? { playbackRate: clampedRate } : {}),
     from,
   };
@@ -326,7 +331,8 @@ export function parseEdl(
     ok: true,
     timeline: {
       name: scanned.title || 'Imported EDL',
-      fps: toNumber(clock.fps),
+      fps: fallback.fps,
+      sourceFps: toNumber(clock.fps),
       width: fallback.width,
       height: fallback.height,
       clips: reconciled,

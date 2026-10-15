@@ -108,4 +108,24 @@ const none = new Set<number>();
   assert.equal(Math.round(outFast[2].start), Math.round(((20 - 6) / 2) * 1000), '变速下媒体帧差除以 rate');
 }
 
-console.log('edit.check: ok (无窗口回归/恒等/左裁/右裁/中段/删词跨段/越界自愈/itemWindow kind 门/video 媒体窗投影)');
+// ── 零长词:srcEndFrame 必须严格大于 srcStartFrame ────────────────────────
+// ASR 会给出 start === end(或两个时间戳舍入到同一帧)的词。若 srcEndFrame
+// 等于 srcStartFrame,该段会以 trimBefore === trimAfter 渲染,Remotion 的
+// <Audio> 直接抛错("trimAfter prop must be greater than trimBefore prop"),
+// 整个预览合成被卸载:黑屏、无声,而传输控件仍显示"播放中"。
+{
+  const zero: TranscriptWord[] = [
+    { text: 'Music', start: 24420, end: 24440 }, // fps=30 时两端同为 f733
+  ];
+  for (const fps of [30, FPS]) {
+    const segs = keptSegments(zero, none, fps, 0);
+    assert.equal(segs.length, 1);
+    assert.ok(segs[0]!.srcEndFrame > segs[0]!.srcStartFrame, `零长词必须留出至少一帧 (fps=${fps})`);
+    assert.equal(segs[0]!.durFrames, segs[0]!.srcEndFrame - segs[0]!.srcStartFrame);
+  }
+  // 同样适用于 start === end 的极端情况
+  const exact = keptSegments([{ text: 'x', start: 500, end: 500 }], none, FPS, 0);
+  assert.ok(exact[0]!.srcEndFrame > exact[0]!.srcStartFrame, 'start === end 也必须留出一帧');
+}
+
+console.log('edit.check: ok (无窗口回归/恒等/左裁/右裁/中段/删词跨段/越界自愈/itemWindow kind 门/video 媒体窗投影/零长词)');

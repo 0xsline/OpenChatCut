@@ -7,6 +7,7 @@ import {
   serializeMessagesForPrompt,
 } from '../../src/agent/context-compaction';
 import { summarizeConversation } from '../../src/agent/context-summary';
+import { compactToolResultForModel } from '../../src/agent/tool-result-compaction';
 import type { AgentToolSchema } from '../../src/agent/tool-schema';
 import { codexToolHistoryEntry } from '../../src/agent/codex/tool-history';
 import type { AgentContextUsage } from '../../src/agent/context-compaction';
@@ -240,11 +241,16 @@ export async function executeServerClaudeCodeTurn(
           { name: event.name, args },
           { success: event.success, result: event.result },
         ));
+        // Display-only, like the browser path's tool-result: the compacted
+        // result keeps a large MCP result (frames, long reads) under the event
+        // size cap, which would otherwise fail the run.
         pushRunEvent(input.run, 'tool-result', {
           toolCallId: event.callId,
           toolName: event.name,
           argsDigest: digestToolArgs((args ?? {}) as Record<string, unknown>),
-          ...(event.success ? { result: event.result } : { error: 'Claude Code tool call failed.' }),
+          ...(event.success
+            ? { result: compactToolResultForModel(event.result) }
+            : { error: 'Claude Code tool call failed.' }),
         });
         break;
       }
