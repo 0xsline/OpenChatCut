@@ -35,11 +35,50 @@ export function whisperLanguage(language: string | undefined): string {
   return value.slice(0, 3);
 }
 
+// whisper.cpp emits BPE tokens, not words: only a token whose raw text begins
+// with whitespace opens a new word (" Привет"), and the pieces that follow
+// continue it ("тест" + "ов" + "ая" = "тестовая"); punctuation belongs to the
+// word it trails. Scripts written without spaces (Han/kana, Thai, Lao,
+// Myanmar, Khmer) carry no such whitespace, so each token opens a chunk;
+// transformers.js splits the browser ONNX path the same way for its space-less
+// language list (Chinese, Japanese, Thai, Lao, Myanmar). Korean uses spaces
+// (whisper.cpp splits 안녕하세요 into 안녕 + 하세요), so Hangul joins like
+// Russian instead of fragmenting.
+const NO_SPACE_SCRIPT_TOKEN =
+  /[\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1780-\u17FF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\u{20000}-\u{2FA1F}]/u;
+
+interface MutableChunk {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Append one whisper token to the word being built: only a token that opens a
+ * word (leading whitespace, or the first character of a script that does not
+ * use spaces) starts a new chunk; continuations and trailing punctuation
+ * extend the word before them.
+ */
+function appendWhisperToken(chunks: MutableChunk[], rawText: string, start: number, end: number): void {
+  const text = rawText.trim();
+  if (!text) return;
+  const previous = chunks[chunks.length - 1];
+  // `text[0]` tears surrogate pairs, and the CJK extension ranges are astral:
+  // test the first code point.
+  const first = String.fromCodePoint(text.codePointAt(0)!);
+  if (!previous || /^\s/.test(rawText) || NO_SPACE_SCRIPT_TOKEN.test(first)) {
+    chunks.push({ text, start, end });
+    return;
+  }
+  previous.text += text;
+  previous.end = Math.max(previous.end, end);
+}
+
 /** Project whisper.cpp token output into the desktop ASR chunk contract. */
 export function whisperTokensToChunks(
   transcription: readonly WhisperJsonSegment[] | undefined,
 ): { text: string; chunks: DesktopAsrChunk[] } {
-  const chunks: DesktopAsrChunk[] = [];
+  const chunks: MutableChunk[] = [];
   let text = '';
   for (const segment of transcription ?? []) {
     const segmentText = (segment.text ?? '').trim();
@@ -49,29 +88,23 @@ export function whisperTokensToChunks(
       const offsets = token.offsets;
       if (!tokenText || !offsets
         || typeof offsets.from !== 'number' || typeof offsets.to !== 'number') continue;
-      if (/[<>,_.!?。，、！？；：""''《》\s]+$/.test(tokenText)) continue;
       if (tokenText.startsWith('[') || tokenText.endsWith(']')) continue;
-      chunks.push({
-        text: tokenText,
-        start: Math.round(offsets.from),
-        end: Math.round(offsets.to),
-      });
+      appendWhisperToken(chunks, token.text ?? '', Math.round(offsets.from), Math.round(offsets.to));
     }
   }
   return { text, chunks };
 }
 
-/** Project whisper.cpp server verbose_json words into the chunk contract. */
+/** Project whisper.cpp server verbose_json words (BPE tokens) into the chunk contract. */
 export function whisperWordsToChunks(
   words: readonly { word?: string; start?: number; end?: number }[] | undefined,
 ): DesktopAsrChunk[] {
-  const chunks: DesktopAsrChunk[] = [];
+  const chunks: MutableChunk[] = [];
   for (const word of words ?? []) {
     const text = (word.word ?? '').trim();
     if (!text || typeof word.start !== 'number' || typeof word.end !== 'number') continue;
-    if (/[<>,_.!?。，、！？；：""''《》\s]+$/.test(text)) continue;
     if (text.startsWith('[') || text.endsWith(']')) continue;
-    chunks.push({ text, start: Math.round(word.start * 1000), end: Math.round(word.end * 1000) });
+    appendWhisperToken(chunks, word.word ?? '', Math.round(word.start * 1000), Math.round(word.end * 1000));
   }
   return chunks;
 }
