@@ -312,9 +312,23 @@ export async function runClaudeCodeTurn(
     const pendingTools = new Map<string, PendingToolUse>();
     let sawResult = false;
     let stderrTail = '';
-    const onAbort = () => { child.kill(); };
-    signal.addEventListener('abort', onAbort, { once: true });
+    // Subscribed before the read loop, not after it. The abort path below can end
+    // the loop while the child never reports 'exit' (see onAbort), and a listener
+    // attached after the loop would then wait for an event that already fired.
+    const { promise: exitPromise, resolve: resolveExit } = Promise.withResolvers<number | null>();
+    child.once('exit', (code) => resolveExit(code));
     const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
+    const onAbort = () => {
+      // Killing the child alone does not end the read below on Windows: command.ts
+      // spawns a .cmd through cmd.exe, so the CLI is a grandchild that survives
+      // child.kill() and keeps the stdout write end open, and no EOF ever arrives.
+      // Stop this side of the pipes first so the loop terminates.
+      rl.close();
+      child.stdout.destroy();
+      child.stderr.destroy();
+      child.kill();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
     child.stderr.on('data', (chunk: Buffer) => {
       stderrTail = (stderrTail + chunk.toString('utf8')).slice(-4000);
     });
@@ -333,9 +347,7 @@ export async function runClaudeCodeTurn(
         if (record_.type === 'result') sawResult = true;
         for (const event of translateClaudeCodeLine(record_, pendingTools)) emit(event);
       }
-      const { promise, resolve } = Promise.withResolvers<number | null>();
-      child.once('exit', (code) => resolve(code));
-      const exitCode = await promise;
+      const exitCode = child.exitCode ?? (await exitPromise);
       if (!sawResult) {
         if (signal.aborted) {
           // Aborted before completion — no terminal event needed, the caller already knows.
@@ -348,6 +360,10 @@ export async function runClaudeCodeTurn(
     } finally {
       signal.removeEventListener('abort', onAbort);
       rl.close();
+      // Release this side of the pipes even when the turn ended normally: a live
+      // grandchild would otherwise keep a readable handle in the event loop.
+      child.stdout.destroy();
+      child.stderr.destroy();
       if (!child.killed) child.kill();
     }
   });
