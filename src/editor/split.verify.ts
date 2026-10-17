@@ -99,4 +99,52 @@ const stateOf = (it: TimelineItem): TimelineState => ({ fps, width: 1920, height
     'NaN retime values are rejected');
 }
 
+// ── motion graphic: the pieces are windows of ONE animation, never restarts ──
+// Asking the agent to "separate this MG into several" used to regenerate every piece from scratch,
+// because splitting made the right piece replay the intro. Split pieces now keep the whole design.
+{
+  const mg = (over: Partial<TimelineItem>): TimelineItem => ({
+    id: 'mg', track: 'V4', startFrame: 4514, durationInFrames: 868, kind: 'motion-graphic',
+    name: 'AI1.5 Multimodal Motion Suite', code: 'const C = ({ item }) => null;', ...over,
+  });
+  let s = reduce(stateOf(mg({})), { type: 'split', id: 'mg', atFrame: 4674, newId: 'mg2' });
+  const [a, b] = s.items;
+  assert.equal(a!.srcInFrame ?? 0, 0, 'the first piece still starts the animation at its beginning');
+  assert.equal(b!.srcInFrame, 160, 'the second piece continues from the frame at the cut, not the intro');
+  assert.equal(a!.designDurationInFrames, 868, 'both pieces remember the whole design');
+  assert.equal(b!.designDurationInFrames, 868);
+  assert.equal(b!.code, a!.code, 'the same design, not a regenerated one');
+
+  // Split again (4 beats): offsets accumulate and the design length stays the original.
+  s = reduce(s, { type: 'split', id: 'mg2', atFrame: 4864, newId: 'mg3' });
+  s = reduce(s, { type: 'split', id: 'mg3', atFrame: 5094, newId: 'mg4' });
+  const pieces = [...s.items].sort((x, y) => x.startFrame - y.startFrame);
+  assert.deepEqual(pieces.map((p) => [p.startFrame, p.durationInFrames, p.srcInFrame ?? 0]),
+    [[4514, 160, 0], [4674, 190, 160], [4864, 230, 350], [5094, 288, 580]],
+    'four pieces tile the original animation with no gap and no replay');
+  assert.ok(pieces.every((p) => p.designDurationInFrames === 868), 'every piece plays a window of the same 868 frames');
+
+  // Trimming a piece trims its window of the animation, like video. (The timeline's left handle now moves
+  // srcInFrame for a split piece; before, the piece just started later and the animation paused.)
+  const { isWindowedMotionGraphic } = await import('./motionGraphicTime');
+  const { remainingSourceFrames } = await import('./sourceLimit');
+  const third = pieces[2]!;
+  assert.equal(isWindowedMotionGraphic(third), true, 'a split piece trims like video');
+  assert.equal(isWindowedMotionGraphic(mg({})), false, 'an unsplit MG keeps its old free trimming');
+  assert.equal(remainingSourceFrames(third, third.srcInFrame!, []), 868 - 350,
+    'its end can reach the end of the design and no further');
+  const trimmed = reduce(s, { type: 'retime', id: third.id, startFrame: 4894, durationInFrames: 200, srcInFrame: 380 });
+  const t = trimmed.items.find((it) => it.id === third.id)!;
+  assert.deepEqual([t.startFrame, t.durationInFrames, t.srcInFrame], [4894, 200, 380], 'start trim cuts 30 frames into its window');
+  const overlong = reduce(s, { type: 'retime', id: pieces[3]!.id, durationInFrames: 5000 });
+  assert.equal(overlong.items.find((it) => it.id === pieces[3]!.id)!.durationInFrames, 868 - 580,
+    'the last piece cannot be stretched past the end of the animation');
+
+  // An unsplit motion graphic is untouched: no design length, plays from frame 0 as before.
+  assert.equal(mg({}).designDurationInFrames, undefined);
+  // And a video split is unchanged by this.
+  const v = reduce(stateOf(item({})), { type: 'split', id: 'v1', atFrame: 45, newId: 'v1b' });
+  assert.equal(v.items[1]!.designDurationInFrames, undefined, 'only motion graphics carry a design length');
+}
+
 console.log('split.check: OK');

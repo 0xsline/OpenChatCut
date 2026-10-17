@@ -28,6 +28,13 @@ export function splitTimelineItem(
     ? splitClipTranscript(item, s.fps, transcriptCut)
     : null;
   const keyframeParts = item.keyframes ? splitItemKeyframes(item.keyframes, cut) : null;
+  // A motion graphic is one animation: both pieces keep playing the SAME design, each its own window
+  // of it, instead of the right piece restarting from the intro (see designDurationInFrames).
+  const motionGraphic = item.kind === 'motion-graphic';
+  const designStart = item.srcInFrame ?? 0;
+  const design = motionGraphic
+    ? { designDurationInFrames: item.designDurationInFrames ?? designStart + item.durationInFrames }
+    : {};
   const left: TimelineItem = {
     ...item,
     durationInFrames: cut,
@@ -40,13 +47,15 @@ export function splitTimelineItem(
       transcriptPlayOrder: undefined,
     } : {}),
     ...(keyframeParts ? { keyframes: keyframeParts[0] } : {}),
+    ...design,
   };
   const right: TimelineItem = {
     ...item,
     id: newId,
     startFrame: atFrame,
     durationInFrames: item.durationInFrames - cut,
-    srcInFrame: wordDriven && transcriptParts ? 0 : sourceWindow.endFrame,
+    srcInFrame: motionGraphic ? designStart + cut : wordDriven && transcriptParts ? 0 : sourceWindow.endFrame,
+    ...design,
     fadeInFrames: undefined,
     ...(transcriptParts ? {
       transcript: transcriptParts.right.transcript,
