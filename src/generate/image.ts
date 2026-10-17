@@ -1,7 +1,7 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
 
 export interface SubmitImageArgs {
-  model?: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'fal';
+  model?: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'agnes-image' | 'fal';
   /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
   falModel?: string;
   prompt: string;
