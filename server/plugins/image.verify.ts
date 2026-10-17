@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { validateImageRequest } from './image.ts';
-import { callGrokImageProvider } from './image-provider-clients.ts';
+import { agnesImagePixels, validateImageRequest } from './image.ts';
+import { callAgnesImageProvider, callGrokImageProvider } from './image-provider-clients.ts';
 
 const basic = validateImageRequest({ prompt: 'a cat' });
 assert.equal(basic.model, 'gpt-image-2');
@@ -126,4 +126,39 @@ await callGrokImageProvider('https://api.x.ai/v1', 'test-key', 'grok-imagine-ima
 });
 globalThis.fetch = originalFetch;
 assert.equal(grokRequest?.aspect_ratio, '9:16', 'Grok receives the requested aspect ratio');
+
+const agnes = validateImageRequest({
+  model: 'agnes-image', prompt: 'a poster', aspectRatio: '16:9', imageSize: '3K', count: 2,
+  referencePaths: ['/media/uploads/a.jpg'],
+});
+assert.equal(agnes.model, 'agnes-image');
+assert.equal(agnes.imageSize, '3K');
+assert.deepEqual(agnesImagePixels('3K', '16:9'), [3936, 2208]);
+assert.deepEqual(agnesImagePixels('1K', '9:16'), [736, 1312]);
+assert.throws(() => validateImageRequest({ model: 'agnes-image', prompt: 'x', imageSize: '512px' }), /imageSize must be 1K, 2K, 3K, or 4K/);
+assert.throws(() => validateImageRequest({ model: 'agnes-image', prompt: 'x', aspectRatio: '4:5' }), /does not support aspect ratio/);
+assert.throws(() => validateImageRequest({ model: 'agnes-image', prompt: 'x', count: 5 }), /at most 4 images/);
+assert.throws(() => validateImageRequest({ model: 'agnes-image', prompt: 'x', width: 1024, height: 1024 }), /custom width\/height are not supported/);
+assert.throws(
+  () => validateImageRequest({ model: 'agnes-image', prompt: 'x', referencePaths: Array.from({ length: 9 }, (_, i) => `/media/uploads/${i}.jpg`) }),
+  /too many reference images/,
+);
+
+const agnesBodies: Record<string, unknown>[] = [];
+globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  agnesBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+  return new Response(JSON.stringify({ data: [{ b64_json: 'aGVsbG8=' }] }), {
+    headers: { 'content-type': 'application/json' },
+  });
+}) as typeof fetch;
+const agnesImages = await callAgnesImageProvider('https://apihub.agnes-ai.com/v1', 'test-key', 'agnes-image-2.5-flash', {
+  prompt: 'poster', count: 2, size: '1K', ratio: '16:9', referencePaths: [],
+});
+globalThis.fetch = originalFetch;
+assert.equal(agnesImages.length, 2);
+assert.equal(agnesBodies.length, 2, 'Agnes has no n parameter, so each output is its own request');
+assert.equal(agnesBodies[0]?.n, undefined);
+assert.equal(agnesBodies[0]?.return_base64, true);
+assert.equal(agnesBodies[0]?.ratio, '16:9');
+assert.equal((agnesBodies[0]?.extra_body as { image?: unknown } | undefined)?.image, undefined);
 console.log('image.check: ok (provider-specific official parameters)');

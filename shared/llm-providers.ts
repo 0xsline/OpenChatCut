@@ -165,6 +165,13 @@ export const LLM_PROVIDER_PRESETS = [
     baseUrl: 'http://localhost:1234/v1',
     defaultModel: 'qwen2.5-coder-7b-instruct',
   },
+  {
+    id: 'agnes',
+    label: 'Agnes AI',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://apihub.agnes-ai.com/v1',
+    defaultModel: 'agnes-3.0-flash',
+  },
 ] as const satisfies readonly LlmProviderPreset[];
 
 export type LlmProvider = (typeof LLM_PROVIDER_PRESETS)[number]['id'];

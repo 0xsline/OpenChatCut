@@ -33,8 +33,11 @@ export function imageMimeType(file: string): string {
 }
 
 export async function imageProviderError(response: Response): Promise<string> {
-  const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `image provider failed (${response.status})`;
+  const body = await response.json().catch(() => null) as { error?: { message?: string }; message?: string; detail?: unknown } | null;
+  const detail = body?.detail == null ? undefined
+    : typeof body.detail === 'string' ? body.detail
+      : JSON.stringify(body.detail).slice(0, 300);
+  return body?.error?.message ?? body?.message ?? detail ?? `image provider failed (${response.status})`;
 }
 
 export async function callGeminiProvider(baseUrl: string, apiKey: string, model: string, body: {
@@ -226,4 +229,42 @@ export async function callGrokImageProvider(baseUrl: string, apiKey: string, mod
   const result = await response.json() as { data?: ProviderImage[] };
   if (!result.data?.length) throw new Error('grok-imagine returned no images');
   return result.data;
+}
+
+/** Agnes Image 2.5 Flash. Size is a 1K/2K/3K/4K tier plus ratio.
+ * Reference images go in extra_body.image (Data URI). The API has no `n`,
+ * so each output is its own request. Text-to-image uses return_base64;
+ * image-to-image asks for b64_json so the result never depends on a CDN fetch. */
+export async function callAgnesImageProvider(baseUrl: string, apiKey: string, model: string, body: {
+  prompt: string;
+  count: number;
+  size: string;
+  ratio?: string;
+  referencePaths: string[];
+}): Promise<ProviderImage[]> {
+  const endpoint = `${baseUrl.replace(/\/$/, '')}/images/generations`;
+  const image = body.referencePaths.length
+    ? await Promise.all(body.referencePaths.map(async (path) => {
+      const file = localImageAssetPath(path);
+      const bytes = await readFile(file);
+      return `data:${imageMimeType(file)};base64,${bytes.toString('base64')}`;
+    }))
+    : undefined;
+  const one = async (): Promise<ProviderImage> => {
+    const requestBody: Record<string, unknown> = { model, prompt: body.prompt, size: body.size };
+    if (body.ratio) requestBody.ratio = body.ratio;
+    if (image) requestBody.extra_body = { image, response_format: 'b64_json' };
+    else requestBody.return_base64 = true;
+    const response = await fetchWithProxy(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+    if (!response.ok) throw new Error(await imageProviderError(response));
+    const result = await response.json() as { data?: ProviderImage[] };
+    const generated = result.data?.[0];
+    if (!generated?.b64_json && !generated?.url) throw new Error('Agnes image returned no images');
+    return generated;
+  };
+  return Promise.all(Array.from({ length: body.count }, () => one()));
 }

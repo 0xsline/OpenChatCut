@@ -66,6 +66,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'WaveSpeed', arg: 'wavespeed', argKey: 'model', need: [['WAVESPEED_API_KEY']] },
     { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
     { label: 'xAI Grok', arg: 'grok-imagine', argKey: 'model', need: [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']] },
+    { label: 'Agnes Image', arg: 'agnes-image', argKey: 'model', need: [['AGNES_IMAGE_API_KEY']] },
   ],
   voice: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
@@ -87,6 +88,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Hailuo', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
     { label: 'xAI Grok', arg: 'grok-imagine-video', argKey: 'model', need: [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']] },
     { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
+    { label: 'Agnes Video', arg: 'agnes-video', argKey: 'model', need: [['AGNES_VIDEO_API_KEY']] },
   ],
   music: [
     { label: 'Mureka', arg: 'mureka', argKey: 'provider', need: [['MUREKA_API_KEY']] },
@@ -126,14 +128,35 @@ const PREFERRED_KEY: Partial<Record<CapabilityKey, string>> = {
 
 const rowTag = (r: ProviderRow): string => `${r.label}(${r.argKey}=${r.arg})`;
 
+function configuredProviders(cap: CapabilityKey): ProviderRow[] {
+  const rows = CAP_PROVIDERS[cap];
+  if (!rows || !liveKeys) return [];
+  const has = (name: string): boolean => Boolean(liveKeys?.[name]?.configured);
+  return rows.filter((row) => row.need.some((group) => group.every(has)));
+}
+
+/** The provider this turn must use. A saved default wins; otherwise the only configured vendor. */
+function routedProvider(cap: CapabilityKey): ProviderRow | undefined {
+  const on = configuredProviders(cap);
+  const prefKey = PREFERRED_KEY[cap];
+  const savedPref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
+  const pref = savedPref || (cap === 'transcription' ? 'assemblyai' : '');
+  const chosen = pref ? on.find((row) => row.arg === pref) : undefined;
+  if (chosen) return chosen;
+  return on.length === 1 ? on[0] : undefined;
+}
+
 function falModelSuffix(cap: CapabilityKey): string {
-  if ((cap !== 'image' && cap !== 'video') || !liveKeys?.FAL_KEY?.configured) return '';
+  // The Fal catalog is only relevant once Fal itself is the routed provider.
+  // Listing it beside another default (for example Agnes) makes the model treat
+  // those Fal ids as the only callable image/video models and ignore the default.
+  if ((cap !== 'image' && cap !== 'video') || routedProvider(cap)?.arg !== 'fal') return '';
   const models = FAL_MODELS.filter((model) => model.kind === cap);
   const preferred = liveModels?.[cap === 'image' ? 'FAL_IMAGE_MODEL' : 'FAL_VIDEO_MODEL'];
   const selected = models.find((model) => model.id === preferred);
-  return `\nFal ${cap} models (use model=fal and falModel=<id>): ${models.map((model) => `${model.label}=${model.id}`).join(', ')}. `
-    + (selected ? `Saved Fal default: ${selected.id}; honor it unless the user explicitly requests another model.`
-      : 'No Fal model selected: ask which model to use before submitting; do not silently default to Seedance.')
+  return `\nFal ${cap} models (only when calling model=fal; falModel=<id>): ${models.map((model) => `${model.label}=${model.id}`).join(', ')}. `
+    + (selected ? `Saved Fal model: ${selected.id}.`
+      : 'No Fal model selected: ask which Fal model to use before submitting; do not silently default to Seedance.')
     + ' Only the documented common inputs are supported; use the selected model constraints in the tool schema.';
 }
 
@@ -142,10 +165,7 @@ function falModelSuffix(cap: CapabilityKey): string {
  * several & manual (every change confirmed) → ask once via ask_followup_questions;
  * several & auto (user delegated) → agent picks and states the reason. */
 function providerSuffix(cap: CapabilityKey, mode: ApprovalMode): string {
-  const rows = CAP_PROVIDERS[cap];
-  if (!rows || !liveKeys) return '';
-  const has = (n: string): boolean => Boolean(liveKeys?.[n]?.configured);
-  const on = rows.filter((r) => r.need.some((group) => group.every(has)));
+  const on = configuredProviders(cap);
   if (on.length === 0) return '';
   const prefKey = PREFERRED_KEY[cap];
   const savedPref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
