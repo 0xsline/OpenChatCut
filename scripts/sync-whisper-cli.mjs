@@ -80,7 +80,19 @@ async function extractArchive(archive, outDir) {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const run = promisify(execFile);
-  if (archive.endsWith('.zip')) {
+  if (archive.endsWith('.zip') && process.platform === 'win32') {
+    // Windows has no `unzip`. System32's bsdtar reads zip archives; name it by
+    // path so a GNU tar earlier on PATH (Git Bash) cannot shadow it.
+    const systemTar = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe');
+    if (existsSync(systemTar)) {
+      await run(systemTar, ['-xf', archive, '-C', outDir]);
+    } else {
+      await run('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `Expand-Archive -LiteralPath '${archive.replace(/'/g, "''")}' -DestinationPath '${outDir.replace(/'/g, "''")}' -Force`,
+      ]);
+    }
+  } else if (archive.endsWith('.zip')) {
     await run('unzip', ['-q', archive, '-d', outDir]);
   } else {
     await run('tar', ['-xzf', archive, '-C', outDir]);
