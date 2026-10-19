@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { tmpdir } from 'node:os';
@@ -252,6 +252,25 @@ async function withTempMcpConfig<T>(
 }
 
 /**
+ * Terminates the spawned CLI and everything it started. On Windows the process
+ * is a .cmd shim run through cmd.exe (see command.ts), so `child.kill()` stops
+ * cmd.exe and leaves the CLI itself running as a grandchild, free to keep
+ * editing the project after the user pressed Stop. `taskkill /T` walks the tree;
+ * the plain signal is used everywhere else.
+ */
+function killTurnTree(child: ChildProcess): void {
+  if (process.platform === 'win32' && child.pid !== undefined) {
+    const { error, status } = spawnSync(
+      'taskkill',
+      ['/pid', String(child.pid), '/T', '/F'],
+      { windowsHide: true, stdio: 'ignore' },
+    );
+    if (!error && status === 0) return;
+  }
+  child.kill();
+}
+
+/**
  * Runs one `claude -p` turn as a fresh subprocess, streaming translated
  * display events. Tool execution happens inside the CLI itself via the MCP
  * server it's given — OpenChatCut never intercepts or settles tool calls.
@@ -326,7 +345,7 @@ export async function runClaudeCodeTurn(
       rl.close();
       child.stdout.destroy();
       child.stderr.destroy();
-      child.kill();
+      killTurnTree(child);
     };
     signal.addEventListener('abort', onAbort, { once: true });
     child.stderr.on('data', (chunk: Buffer) => {
