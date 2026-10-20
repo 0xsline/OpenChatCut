@@ -2,10 +2,11 @@ import { proxyDispatcher } from '../outbound-proxy.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { uploadDir } from '../media-dir.ts';
 import {
   createGenerationJob,
@@ -163,7 +164,7 @@ const validate = validateSoundRequest;
 
 async function probeDuration(file: string): Promise<number> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
+    const child = spawn(ffprobeBin(), ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
     let output = '';
     child.stdout.on('data', (data) => { output += String(data); });
     child.on('error', reject);
@@ -191,7 +192,7 @@ async function wrapRawAudio(bytes: Buffer, format: string): Promise<{ file: stri
   const output = join(dir, `${stem}.wav`);
   await writeFile(input, bytes);
   await new Promise<void>((resolvePromise, reject) => {
-    const child = spawn('ffmpeg', ['-y', '-f', raw.format, '-ar', raw.rate, '-ac', '1', '-i', input, output]);
+    const child = spawn(ffmpegBin(), ['-y', '-f', raw.format, '-ar', raw.rate, '-ac', '1', '-i', input, output]);
     let error = '';
     child.stderr.on('data', (data) => { error += String(data); });
     child.on('error', reject);
@@ -214,7 +215,7 @@ async function saveAudio(bytes: Buffer, outputFormat: string): Promise<{ path: s
     file = join(dir, `${randomUUID()}.${ext}`);
     await writeFile(file, bytes);
   }
-  const filename = file.split('/').pop()!;
+  const filename = basename(file);
   return { path: `/media/uploads/${filename}`, durationSeconds: await probeDuration(file) };
 }
 
