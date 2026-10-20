@@ -591,6 +591,26 @@ Third-party components and assets remain subject to their respective licenses.
 ---
 
 
+## Web research in the built-in agent
+
+`web_search` and basic `web_browser` page reading work without a search account
+or API key through [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+Search uses Fast mode and returns source URLs, titles and relevant excerpts.
+Page reading returns markdown excerpts, rather than full-page HTML or screenshots.
+Queries and requested URLs are sent to the selected provider. Anonymous access
+has service quotas; provider errors are returned without switching providers.
+
+An existing `FIRECRAWL_API_KEY` in Settings or the environment keeps Firecrawl as
+the default. Set `WEB_SEARCH_PROVIDER` in `.env.local` (then restart) to `parallel`
+or `firecrawl` to choose explicitly, or `disabled` to disable basic search and
+page reading. A tool call can select `provider: "parallel"` or `"firecrawl"` unless
+the server setting is `disabled`. Firecrawl remains available for search locale
+and time filters, screenshots, browser actions, structured extraction, full-page
+formats, mapping, crawling and batch scraping; those features require its key.
+
+Related search and page-reading calls reuse an opaque conversation ID. Clearing
+the chat starts a new ID; the project ID and chat text are never used as that ID.
+
 ## Contributing
 
 1. Create a branch from `main`.

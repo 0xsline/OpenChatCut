@@ -121,6 +121,7 @@ export const KEY_NAMES = [
   "E2B_API_KEY",
   "E2B_TEMPLATE",
   "FIRECRAWL_API_KEY",
+  "WEB_SEARCH_PROVIDER",
   "UPLOAD_POST_API_KEY",
   "UPLOAD_POST_PROFILE",
   "UPLOAD_POST_BASE_URL",
@@ -193,6 +194,7 @@ export type KeyName = (typeof KEY_NAMES)[number];
 // not credentials). Deliberately a separate explicit list rather than derived from
 // KEY_NAMES: adding a key to the whitelist must never accidentally make it non-secret.
 export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
+  "WEB_SEARCH_PROVIDER",
   "AGENT_IMPORT_ROOTS",
   "PROXY_URL",
   "LLM_PROVIDER",

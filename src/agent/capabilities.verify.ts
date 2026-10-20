@@ -105,3 +105,13 @@ applyLiveKeyStatus({});
 assert.ok(!capabilitiesPrompt({ ...ALL_OFF, video: true }).includes('OFox(model=ofox)'), 'unconfigured OFox stays hidden');
 
 console.log('capabilities.verify: ok');
+
+applyLiveModels({ WEB_SEARCH_PROVIDER: 'disabled' });
+assert.match(capabilitiesPrompt(ALL_OFF), /page reading are disabled by the server/);
+applyLiveModels({});
+assert.match(capabilitiesPrompt(ALL_OFF), /without a search key/);
+applyLiveModels({ WEB_SEARCH_PROVIDER: 'firecrawl' });
+assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use Firecrawl and require FIRECRAWL_API_KEY/);
+applyLiveModels({ WEB_SEARCH_PROVIDER: 'parallel' });
+assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use anonymous Parallel/);
+applyLiveModels({});

@@ -1,8 +1,12 @@
 export { WEB_TOOL_SCHEMAS, WEB_TOOL_NAMES } from './schemas/web-tools';
 import type { AgentContext } from '../context';
+import type { HarnessToolExecutionContext } from '../harness-context';
+import { webSearchSessionId } from './web-search-session';
 import type { MediaAsset } from '../../editor/types';
 
-// Firecrawl tools for the editor agent:
+// Web tools: Parallel search/page excerpts when unconfigured; saved Firecrawl keys
+// retain Firecrawl behavior. Advanced scraping remains Firecrawl-only.
+// Routes for the editor agent:
 // - web_browser       → POST /api/web-browser       (Firecrawl scrape)
 // - web_search        → POST /api/firecrawl/search  (official /v1/search)
 // - web_map           → POST /api/firecrawl/map     (official /v1/map)
@@ -27,18 +31,21 @@ function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function postApi(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function postApi(path: string, body: Record<string, unknown>, signal?: AbortSignal, timeoutMs?: number): Promise<Record<string, unknown>> {
   let res: Response;
   try {
     res = await fetch(path, {
       method: 'POST',
+      signal: timeoutMs
+        ? (signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs))
+        : signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
   } catch (e) {
     return {
       error: `request failed: ${e instanceof Error ? e.message : String(e)}`,
-      hint: 'Is the Vite dev server running with FIRECRAWL_API_KEY?',
+      hint: 'Check the local server, network connection and web provider settings.',
     };
   }
   return (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -56,7 +63,7 @@ function configError(data: Record<string, unknown>): unknown | null {
     if (data.ok === false || data.error) {
       return {
         ok: false,
-        error: data.error ?? 'Firecrawl request failed',
+        error: data.error ?? 'Web provider request failed',
         status: data.status,
         crawlId: data.crawlId,
       };
@@ -69,16 +76,17 @@ export async function execWebTool(
   name: string,
   args: Args,
   ctx: AgentContext,
+  harness?: HarnessToolExecutionContext,
 ): Promise<unknown> {
-  if (name === 'web_browser') return execScrape(args, ctx);
-  if (name === 'web_search') return execSearch(args);
+  if (name === 'web_browser') return execScrape(args, ctx, harness?.signal);
+  if (name === 'web_search') return execSearch(args, ctx, harness?.signal);
   if (name === 'web_map') return execMap(args);
   if (name === 'web_crawl') return execCrawl(args);
   if (name === 'web_batch_scrape') return execBatchScrape(args);
   return { error: `unknown tool ${name}` };
 }
 
-async function execScrape(args: Args, ctx: AgentContext): Promise<unknown> {
+async function execScrape(args: Args, ctx: AgentContext, signal?: AbortSignal): Promise<unknown> {
   const url = String(args.url ?? '').trim();
   if (!url || !isHttpUrl(url)) return { error: 'url must be a valid http(s) URI' };
 
@@ -98,7 +106,11 @@ async function execScrape(args: Args, ctx: AgentContext): Promise<unknown> {
   if (Array.isArray(args.actions)) body.actions = args.actions.slice(0, 10);
   if (typeof args.execJs === 'string' && args.execJs.trim()) body.execJs = args.execJs;
 
-  const data = await postApi('/api/web-browser', body);
+  if (typeof args.provider === 'string') body.provider = args.provider;
+  body.sessionId = await webSearchSessionId(ctx.getProjectId?.());
+  const timeoutMs = typeof args.timeout === 'number' && Number.isFinite(args.timeout)
+    ? Math.max(1, Math.min(60_000, Math.round(args.timeout))) : 45_000;
+  const data = await postApi('/api/web-browser', body, signal, timeoutMs + 5_000);
   const err = configError(data);
   if (err) return err;
   if (data.ok === false) {
@@ -109,6 +121,9 @@ async function execScrape(args: Args, ctx: AgentContext): Promise<unknown> {
     ok: true,
     url: data.url ?? url,
     metadata: data.metadata ?? null,
+    provider: data.provider,
+    excerpts: data.excerpts,
+    warnings: data.warnings,
   };
   for (const key of [
     'markdown', 'html', 'rawHtml', 'links', 'images', 'videos',
@@ -136,7 +151,7 @@ async function execScrape(args: Args, ctx: AgentContext): Promise<unknown> {
   return out;
 }
 
-async function execSearch(args: Args): Promise<unknown> {
+async function execSearch(args: Args, ctx: AgentContext, signal?: AbortSignal): Promise<unknown> {
   const query = String(args.query ?? '').trim();
   if (!query) return { error: 'query is required' };
   const body: Record<string, unknown> = {
@@ -148,7 +163,9 @@ async function execSearch(args: Args): Promise<unknown> {
   if (typeof args.lang === 'string') body.lang = args.lang;
   if (typeof args.tbs === 'string') body.tbs = args.tbs;
 
-  const data = await postApi('/api/firecrawl/search', body);
+  if (typeof args.provider === 'string') body.provider = args.provider;
+  body.sessionId = await webSearchSessionId(ctx.getProjectId?.());
+  const data = await postApi('/api/firecrawl/search', body, signal, 45_000);
   const err = configError(data);
   if (err) return err;
   if (data.ok === false) return { ok: false, error: data.error, status: data.status };
@@ -158,6 +175,8 @@ async function execSearch(args: Args): Promise<unknown> {
     count: data.count,
     results: data.results,
     creditsUsed: data.creditsUsed,
+    provider: data.provider,
+    warnings: data.warnings,
   };
 }
 

@@ -37,6 +37,8 @@ export const MAX_BODY = 2 * 1024 * 1024;
 
 export interface FirecrawlPluginOptions {
   apiKey: string;
+  /** Empty selects configured Firecrawl, otherwise anonymous Parallel. */
+  searchProvider?: string;
 }
 
 export function readJsonBody(req: IncomingMessage): Promise<unknown> {

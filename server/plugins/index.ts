@@ -354,6 +354,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       },
     }),
     firecrawlPlugin({
+      get searchProvider() { return getKey("WEB_SEARCH_PROVIDER"); },
       get apiKey() {
         return getKey("FIRECRAWL_API_KEY");
       },

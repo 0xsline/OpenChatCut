@@ -172,7 +172,7 @@ const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: str
   { key: 'stock', label: 'Stock-media search', tool: 'search_stock_media', fallback: 'use push_asset to import a known public URL directly' },
   { key: 'transcription', label: 'Transcription/talking-head editing', tool: 'transcribe_track', fallback: 'word-level deletion, filler cleanup, and automatic captions are unavailable' },
   { key: 'sandbox', label: 'Sandbox execution (ffmpeg/node/python)', tool: 'run_code', fallback: 'skip run_code steps; probe_media does not need the sandbox and stays available' },
-  { key: 'web', label: 'Web extraction', tool: 'web_browser', fallback: 'ask the user to paste the page content' },
+  { key: 'web', label: 'Advanced web extraction', tool: 'web_map/web_crawl/web_batch_scrape and Firecrawl page formats', fallback: 'use basic web_search/web_browser excerpts, or ask the user to paste the page content' },
 ];
 
 /** System-prompt section listing which key-gated tools are on/off (local editing —
@@ -196,7 +196,14 @@ export function capabilitiesPrompt(
     + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
     + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured'
     + ' (guide them to Settings → the matching capability page to add a provider).'
+    + (liveModels?.WEB_SEARCH_PROVIDER === 'disabled'
+      ? '\nBasic web_search and web_browser page reading are disabled by the server. Do not call them.'
+      : liveModels?.WEB_SEARCH_PROVIDER === 'firecrawl'
+        ? '\nBasic web_search and web_browser explicitly use Firecrawl and require FIRECRAWL_API_KEY. Do not switch providers after an error.'
+        : liveModels?.WEB_SEARCH_PROVIDER === 'parallel'
+          ? '\nBasic web_search and web_browser page excerpts explicitly use anonymous Parallel Search MCP without a search key. Advanced page formats still require Firecrawl.'
+          : '\nBasic web_search and web_browser page excerpts use Firecrawl when its key is configured, otherwise anonymous Parallel Search MCP without a search key. Advanced page formats still require Firecrawl. Respect the server WEB_SEARCH_PROVIDER setting and any disabled response.')
     + '\nProvider choice: skill files only document per-provider usage details; the actual provider is decided by THIS list'
     + ' and its routing suffix (user default → single provider → ask once in manual mode → pick freely in auto mode).'
-    + ' Never use a provider that is not in the list above.';
+    + ' Never use a provider that is not in the list above; basic web search/page providers follow the server setting described above.';
 }
