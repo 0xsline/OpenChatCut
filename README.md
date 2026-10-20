@@ -14,11 +14,12 @@
 
 <p align="center">
   Let Codex, Claude Code, and the built-in agent read, edit, and export real video projects that remain fully editable.
-  Website: <a href="https://openchatcut.com">openchatcut.com</a>
+  Website: <a href="https://openchatcut.com">openchatcut.com</a> · <a href="https://openchatcut.com/pro">OpenChatCut Pro</a>
 </p>
 
 <p align="center">
   <a href="#what-is-openchatcut">Introduction</a> ·
+  <a href="#openchatcut-pro">OpenChatCut Pro</a> ·
   <a href="#product-tour">Product Tour</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#using-openchatcut-with-codex--claude-code">Agent / MCP</a> ·
@@ -107,6 +108,19 @@ OpenChatCut is built for creators and developers who want AI to participate in t
 - 👁️ **Visual geometry**: in-browser person segmentation and face-safe zones — captions avoid the speaker automatically, reframe follows the subject, and overlay graphics land in empty space.
 - 📦 **Production-ready exports**: MP4, audio, captions, FCPXML, and complete project data.
 - 🖥️ **Local-first**: projects and media stay on your machine by default, while API keys remain server-side.
+
+## OpenChatCut Pro
+
+[OpenChatCut Pro](https://openchatcut.com/pro) is a separate desktop app from the same team. Its features and interface differ from this repository, so tutorials, ports and data folders from the open-source edition don't carry over to Pro.
+
+| | Open source (this repository) | OpenChatCut Pro |
+|---|---|---|
+| Source | Public on GitHub under the AGPL | Proprietary |
+| Good fit for | Developers and creators who want to study the code, adapt it or build it themselves | Creators who want to get straight to work with transcript editing, recording and local models |
+| Install | Installers for macOS, Windows and Linux, or run from source | Installers from openchatcut.com: signed and notarized for macOS (Apple Silicon and Intel), plus Windows x64 |
+| Getting started | Configure your own models and connect external agents over MCP | 7-day trial on first launch; license keys and support by email |
+
+Pro does not include model usage: like the open-source edition, it connects to models with your own API keys, and model and media services bill you directly. [Download Pro](https://openchatcut.com/download#pro) or read the [Pro FAQ](https://openchatcut.com/pro#faq).
 
 ## Community
 
