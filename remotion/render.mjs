@@ -40,6 +40,11 @@ function resolveRenderGlBackend() {
 }
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
 const binariesDirectory = () => process.env.CC_REMOTION_BINARIES_DIR || null;
+// The direct hardware attempt needs an ffmpeg with the platform's hardware encoders. The
+// packaged Windows app mirrors one with the static build swapped in; elsewhere it is the
+// ordinary directory. Nothing else may render from it: the static build has no libfdk_aac,
+// so Remotion's own AAC encode fails there (issue #223).
+const hardwareBinariesDirectory = () => process.env.CC_REMOTION_HARDWARE_BINARIES_DIR || binariesDirectory();
 
 /** Every server render tells the composition which decoder feeds its video
  *  frames (see video-decoder.mjs); the Player and browser export never set it. */
@@ -51,12 +56,13 @@ export function currentRenderConcurrency() {
   return resolveRenderConcurrency();
 }
 
-export function remotionFfmpegPath() {
+/** The ffmpeg the direct hardware attempt renders with, for the H.264 encoder probe. */
+export function remotionHardwareFfmpegPath() {
   return RenderInternals.getExecutablePath({
     type: 'ffmpeg',
     indent: false,
     logLevel: 'error',
-    binariesDirectory: binariesDirectory(),
+    binariesDirectory: hardwareBinariesDirectory(),
   });
 }
 
@@ -152,7 +158,7 @@ async function renderMediaOptimized(options) {
   const customOverride = profile?.hardware && hardwareAcceleration === 'disable'
     ? h264FfmpegOverride(profile.id, { vaapiDevice })
     : undefined;
-  const directBinaries = customOverride ? binariesDirectory() : null;
+  const directBinaries = customOverride ? hardwareBinariesDirectory() : null;
   const automaticBitrate = profile?.hardware && !renderOptions.videoBitrate
     ? resolveH264VideoBitrate({
       width: renderOptions.composition.width,
@@ -169,6 +175,7 @@ async function renderMediaOptimized(options) {
     ...(customOverride ? { ffmpegOverride: customOverride } : {}),
     // The packaged app cannot chmod or spawn the compositor inside app.asar, so every
     // attempt renders from the mirrored directory (CC_REMOTION_BINARIES_DIR); dev keeps null.
+    // renderDirectHardware swaps in the hardware mirror for the direct hardware attempt.
     binariesDirectory: binariesDirectory(),
     ...(automaticBitrate ? { videoBitrate: automaticBitrate } : {}),
   };

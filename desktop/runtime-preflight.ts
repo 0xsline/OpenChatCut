@@ -3,8 +3,8 @@
 // Every asset checked here is read during boot, before the first window exists:
 // the embedded server serves resources/dist, ensureWritableBundle copies
 // resources/remotion-bundle into userData, and on Windows ensureRemotionBinaries
-// mirrors the static ffmpeg.exe next to the compositor
-// (desktop/remotion-binaries.ts:94-96). If any of them is gone, boot() rejects
+// mirrors the static ffmpeg.exe into the compositor's hardware mirror
+// (desktop/remotion-binaries.ts). If any of them is gone, boot() rejects
 // and main.ts exits — a packaged double-click has no console, so the user sees
 // nothing happen at all. That is issue #140: three separate ENOENT/ERR_MODULE
 // failures, zero windows, zero dialogs.
