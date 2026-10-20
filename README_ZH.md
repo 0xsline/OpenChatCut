@@ -14,7 +14,11 @@
 
 <p align="center">
   让 Codex、Claude Code 和内置 Agent 直接读取、剪辑并导出可继续编辑的真实视频工程。
-  官网：<a href="https://openchatcut.com">openchatcut.com</a> · <a href="https://openchatcut.com/zh/pro">OpenChatCut Pro</a>
+  官网：<a href="https://openchatcut.com">openchatcut.com</a>
+</p>
+
+<p align="center">
+  <a href="https://openchatcut.com/zh/pro"><strong>OpenChatCut Pro</strong></a> · 桌面版：装好就能剪
 </p>
 
 <p align="center">

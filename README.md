@@ -14,7 +14,11 @@
 
 <p align="center">
   Let Codex, Claude Code, and the built-in agent read, edit, and export real video projects that remain fully editable.
-  Website: <a href="https://openchatcut.com">openchatcut.com</a> · <a href="https://openchatcut.com/pro">OpenChatCut Pro</a>
+  Website: <a href="https://openchatcut.com">openchatcut.com</a>
+</p>
+
+<p align="center">
+  <a href="https://openchatcut.com/pro"><strong>OpenChatCut Pro</strong></a> · Desktop edition: install it and start cutting
 </p>
 
 <p align="center">
