@@ -56,9 +56,13 @@ const outgoing: { url: string; headers: Headers; message: Record<string, unknown
 let responseMode: 'ok' | 'quota' | 'error' | 'invalid' | 'wait' = 'ok';
 let firecrawlRequests = 0;
 let observedAbort = false;
+let callerSignal: AbortSignal | undefined;
 globalThis.fetch = async (input, init) => {
   const url = String(input);
-  if (url.startsWith('/api/')) return nativeFetch(origin + url, init);
+  if (url.startsWith('/api/')) {
+    assert.equal(init?.signal, callerSignal, 'forward caller cancellation without adding deadlines to legacy Firecrawl calls');
+    return nativeFetch(origin + url, init);
+  }
   if (url.startsWith('https://api.firecrawl.dev/')) {
     firecrawlRequests += 1;
     assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer saved-firecrawl-key');
@@ -106,6 +110,7 @@ const calls = () => outgoing.filter((entry) => entry.message.method === 'tools/c
 async function invoke(name: string, args: Record<string, unknown>, ctx = a, signal?: AbortSignal) {
   const schema = WEB_TOOL_SCHEMAS.find((candidate) => candidate.name === name)!;
   const events: import('../runtime').AgentEvent[] = [];
+  callerSignal = signal;
   const execution = await executeOpenChatCutTool(schema, args, {
     ctx, signal, settings: DEFAULT_AGENT_SETTINGS, onEvent: (event) => events.push(event),
   });

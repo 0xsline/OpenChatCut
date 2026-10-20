@@ -31,14 +31,12 @@ function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function postApi(path: string, body: Record<string, unknown>, signal?: AbortSignal, timeoutMs?: number): Promise<Record<string, unknown>> {
+async function postApi(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
   let res: Response;
   try {
     res = await fetch(path, {
       method: 'POST',
-      signal: timeoutMs
-        ? (signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs))
-        : signal,
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -108,9 +106,7 @@ async function execScrape(args: Args, ctx: AgentContext, signal?: AbortSignal): 
 
   if (typeof args.provider === 'string') body.provider = args.provider;
   body.sessionId = await webSearchSessionId(ctx.getProjectId?.());
-  const timeoutMs = typeof args.timeout === 'number' && Number.isFinite(args.timeout)
-    ? Math.max(1, Math.min(60_000, Math.round(args.timeout))) : 45_000;
-  const data = await postApi('/api/web-browser', body, signal, timeoutMs + 5_000);
+  const data = await postApi('/api/web-browser', body, signal);
   const err = configError(data);
   if (err) return err;
   if (data.ok === false) {
@@ -165,7 +161,7 @@ async function execSearch(args: Args, ctx: AgentContext, signal?: AbortSignal): 
 
   if (typeof args.provider === 'string') body.provider = args.provider;
   body.sessionId = await webSearchSessionId(ctx.getProjectId?.());
-  const data = await postApi('/api/firecrawl/search', body, signal, 45_000);
+  const data = await postApi('/api/firecrawl/search', body, signal);
   const err = configError(data);
   if (err) return err;
   if (data.ok === false) return { ok: false, error: data.error, status: data.status };
