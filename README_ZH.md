@@ -19,7 +19,6 @@
 
 <p align="center">
   <a href="#openchatcut-是什么">产品介绍</a> ·
-  <a href="#openchatcut-pro">OpenChatCut Pro</a> ·
   <a href="#产品导览">产品导览</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#在-codex--claude-code-中使用">Agent / MCP</a> ·
@@ -108,19 +107,6 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 - 👁️ **视觉几何**：浏览器内人像分割与人脸安全区——字幕自动避开说话人、竖屏转换跟随主体、叠加图形自动放入空区。
 - 📦 **可交付导出**：MP4、音频、字幕、FCPXML 和工程数据。
 - 🖥️ **Local-first**：工程和素材优先保存在本机，密钥只进入服务端。
-
-## OpenChatCut Pro
-
-[OpenChatCut Pro](https://openchatcut.com/zh/pro) 是同一团队做的另一款桌面应用。它的功能和界面与本仓库不同，开源版的教程、端口和数据目录不能直接套用到 Pro。
-
-| | 开源版（本仓库） | OpenChatCut Pro |
-|---|---|---|
-| 源码 | 在 GitHub 公开，按 AGPL 许可证使用和修改 | 专有软件 |
-| 适合 | 想研究源码、自己改造或从源码构建的开发者与创作者 | 想直接上手，需要文稿剪辑、编录一体和本地模型的创作者 |
-| 安装 | macOS、Windows、Linux 安装包，或从源码运行 | 从 openchatcut.com 下载：macOS 签名公证安装包（Apple Silicon / Intel）和 Windows x64 安装包 |
-| 上手 | 自行配置模型，通过 MCP 连接外部 Agent | 首次联网自动领取 7 天试用；授权码与使用支持通过邮件获取 |
-
-Pro 不含模型用量：和开源版一样，它用你自己的 API Key 连接模型，模型和素材服务由对应服务商计费。[下载 Pro](https://openchatcut.com/zh/download#pro)，或查看 [Pro 常见问题](https://openchatcut.com/zh/pro#faq)。
 
 ## 社区
 
