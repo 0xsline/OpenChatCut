@@ -3,7 +3,6 @@ import { TLSSocket } from 'node:tls';
 import type { Plugin } from 'vite';
 import type {
   ClaudeCodeAccountSummary,
-  ClaudeCodeAgentModel,
   ClaudeCodeAgentModelsResponse,
   ClaudeCodeAgentStatus,
   ClaudeCodeTurnRequest,
@@ -15,22 +14,11 @@ import {
   MINIMUM_CLAUDE_CODE_VERSION,
   type ClaudeCodeInstallation,
 } from '../claude-code/installation.ts';
+import { FALLBACK_CLAUDE_CODE_MODELS, listClaudeCodeModels } from '../claude-code/models.ts';
 import { runClaudeCodeTurn } from '../claude-code/turn-runner.ts';
 
 const JSON_BODY_LIMIT = 4 * 1024 * 1024;
 const AUTH_STATUS_TIMEOUT_MS = 8_000;
-
-// Canonical model ids, not the CLI's short aliases ("sonnet"/"opus"/"haiku").
-// The CLI accepts both and resolves an alias to exactly these ids (a `--model
-// sonnet` turn reports `claude-sonnet-5` back in modelUsage), but the shared
-// capability catalog is keyed by canonical id: aliases miss every entry and
-// fall through to the estimator, which reports a wrong context window and
-// claims tools/images are unsupported. Canonical ids resolve from the catalog.
-const CURATED_MODELS: readonly ClaudeCodeAgentModel[] = [
-  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', isDefault: true },
-  { id: 'claude-opus-5', label: 'Claude Opus 5', isDefault: false },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', isDefault: false },
-];
 
 class HttpError extends Error {
   readonly status: number;
@@ -172,8 +160,10 @@ async function claudeCodeStatus(): Promise<ClaudeCodeAgentStatus> {
   return { installed: true, version: installation.version, account };
 }
 
-function claudeCodeModels(): ClaudeCodeAgentModelsResponse {
-  return { models: CURATED_MODELS };
+async function claudeCodeModels(): Promise<ClaudeCodeAgentModelsResponse> {
+  const installation = await inspectClaudeCodeInstallation();
+  if (!installation.path || !installation.supported) return { models: FALLBACK_CLAUDE_CODE_MODELS };
+  return listClaudeCodeModels(installation.path, installation.version);
 }
 
 function parseClaudeCodeTurnRequest(body: Record<string, unknown>): ClaudeCodeTurnRequest {
@@ -260,7 +250,7 @@ function routePath(req: IncomingMessage): string {
 async function handleClaudeCodeRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = routePath(req);
   if (path === '/status' && req.method === 'GET') return sendJson(res, 200, await claudeCodeStatus());
-  if (path === '/models' && req.method === 'GET') return sendJson(res, 200, claudeCodeModels());
+  if (path === '/models' && req.method === 'GET') return sendJson(res, 200, await claudeCodeModels());
   if (path === '/turn' && req.method === 'POST') return streamTurn(req, res, await readJson(req));
   const known = ['/status', '/models', '/turn'];
   if (known.includes(path)) throw new HttpError(405, 'method not allowed');
