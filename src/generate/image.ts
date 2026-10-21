@@ -1,9 +1,13 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
+import { dreamApiModel } from '../../shared/dreamapi-models';
 
 export interface SubmitImageArgs {
-  model?: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'fal';
+  model?: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'fal' | 'dreamapi';
   /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
   falModel?: string;
+  /** DreamAPI catalog id. The label in Settings is prefixed with DreamAPI. */
+  dreamapiModel?: string;
+  dreamapi?: Record<string, unknown>;
   prompt: string;
   name: string;
   aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3' | '4:5' | '5:4' | '21:9' | 'auto' | '4:1' | '1:4' | '8:1' | '1:8';
@@ -44,7 +48,9 @@ const newId = () => crypto.randomUUID?.() ?? `generated_${Date.now()}_${Math.ran
 export async function submitImage(args: SubmitImageArgs, state: TimelineState): Promise<MediaAsset[]> {
   const prompt = args.prompt.trim();
   const name = args.name.trim();
-  if (!prompt) throw new Error('prompt is required');
+  const dreamModel = args.model === 'dreamapi' ? dreamApiModel(args.dreamapiModel) : undefined;
+  const promptRequired = !dreamModel || dreamModel.fields.some((field) => (field.key === 'prompt' || field.key === 'text') && field.required);
+  if (promptRequired && !prompt) throw new Error('prompt is required');
   if (!name) throw new Error('name is required');
   const referencePaths = (args.referenceAssetIds ?? []).map((id) => {
     const asset = (state.assets ?? []).find((candidate) => candidate.id === id);

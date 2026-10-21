@@ -153,7 +153,8 @@ export function computeCaps(): Caps {
       has("MINIMAX_API_KEY") ||
       has("WAVESPEED_API_KEY") ||
       has("BYTEPLUS_API_KEY") ||
-      has("FAL_KEY"),
+      has("FAL_KEY") ||
+      has("DREAMAPI_API_KEY"),
     voice:
       has("DOUBAO_TTS_API_KEY") ||
       has("ELEVENLABS_API_KEY") ||
@@ -164,10 +165,11 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "openai" && has("OPENAI_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "gemini" && has("GEMINI_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "mistral" && has("LLM_MISTRAL_API_KEY")) ||
-      (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
+      (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")) ||
+      has("DREAMAPI_API_KEY"),
     video:
       has("SEEDANCE_API_KEY") || has("KLING_API_KEY") || has("MINIMAX_API_KEY") || has("BYTEPLUS_API_KEY")
-      || has("LLM_OFOX_API_KEY") || has("FAL_KEY"),
+      || has("LLM_OFOX_API_KEY") || has("FAL_KEY") || has("DREAMAPI_API_KEY"),
     music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:

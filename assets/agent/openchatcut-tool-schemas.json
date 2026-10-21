@@ -1175,9 +1175,10 @@
               "wavespeed",
               "byteplus",
               "grok-imagine",
-              "fal"
+              "fal",
+              "dreamapi"
             ],
-            "description": "gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K)."
+            "description": "gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K). dreamapi is DreamAPI; pair it with dreamapiModel."
           },
           "falModel": {
             "type": "string",
@@ -1193,6 +1194,33 @@
               "recraft-v3"
             ],
             "description": "With model=fal, select a curated Fal image model; omitted uses the saved Fal image default. nano-banana-2: Nano Banana 2 — count 1–4, resolutions 0.5K/1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; nano-banana-pro: Nano Banana Pro — count 1–4, resolutions 1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; gpt-image-2: GPT Image 2 — count 1–4, resolutions 1K, up to 16 image refs, image editing, default 1K/4:3; flux-2: FLUX.2 — count 1–4, resolutions 1K, default 1K/4:3; flux-2-pro: FLUX.2 Pro — count 1–1, resolutions 1K, up to 4 image refs, image editing, default 1K/4:3; seedream-5-pro: Seedream 5.0 Pro — count 1–1, resolutions 1K/2K, up to 10 image refs, image editing, default 2K/auto; ideogram-4: Ideogram 4 — count 1–4, resolutions 1K, default 1K/1:1; qwen-image-3: Qwen Image 3 — count 1–4, resolutions 1K, default 1K/1:1; recraft-v3: Recraft V3 — count 1–1, resolutions 1K, up to 1 image refs, image editing, default 1K/1:1. Model-specific limits are validated before submission."
+          },
+          "dreamapiModel": {
+            "type": "string",
+            "enum": [
+              "dreamimage-2",
+              "flux-text",
+              "flux-image",
+              "seedream",
+              "nano-banana-2",
+              "nano-banana-pro",
+              "gpt-image-2",
+              "gpt-image-2.5-flare-text",
+              "gpt-image-2.5-flare-image",
+              "gpt-image-2.5-sunburst-text",
+              "gpt-image-2.5-sunburst-image",
+              "colorize",
+              "enhance",
+              "outpainting",
+              "swap-face",
+              "remove-background",
+              "try-on"
+            ],
+            "description": "With model=dreamapi, select a DreamAPI image model. dreamimage-2: 必须提供输入图和提示词。; flux-text: 宽高为 16 的倍数，最大 1600。; flux-image: 限 1 张参考图。; seedream: 用 seedreamModel 选择 4.0 / 4.5 / 5.0 Lite / 5.0 Pro。; nano-banana-2: 分辨率 512/1K/2K/4K。; nano-banana-pro: 分辨率只有 1K/2K。; gpt-image-2: 参考图最多 4 张。; gpt-image-2.5-flare-text: 质量含 xhigh 与 max。; gpt-image-2.5-flare-image: 参考图 1–4 张。; gpt-image-2.5-sunburst-text: 与 Flare 文生图同一套限制。; gpt-image-2.5-sunburst-image: 参考图 1–4 张。; colorize: 一张含人脸的图片。; enhance: 一张输入图。; outpainting: 按像素向四周扩展。; swap-face: 目标图加人脸图。; remove-background: 一张输入图。; try-on: 模特图必填，上装、下装、连体衣至少一张。"
+          },
+          "dreamapi": {
+            "type": "object",
+            "description": "DreamAPI model inputs such as image, images, url, face, width, height, seedreamModel, size, text. Keys are validated against the selected dreamapiModel before any request is sent."
           },
           "prompt": {
             "type": "string",
@@ -1351,9 +1379,24 @@
               "openai",
               "gemini",
               "mistral",
-              "cartesia"
+              "cartesia",
+              "dreamapi"
             ],
-            "description": "Required opt-in provider. Use only a provider listed as configured in capabilities. Voice IDs and catalogs are never interchangeable."
+            "description": "Required opt-in provider. Use only a provider listed as configured in capabilities. Voice IDs and catalogs are never interchangeable. dreamapi is DreamAPI TTS or voice clone."
+          },
+          "dreamapiModel": {
+            "type": "string",
+            "enum": [
+              "voice-clone",
+              "tts-clone",
+              "tts-common",
+              "tts-pro"
+            ],
+            "description": "With provider=dreamapi, select tts-common, tts-pro, tts-clone, or voice-clone."
+          },
+          "dreamapi": {
+            "type": "object",
+            "description": "DreamAPI voice inputs: text, lang, audioId, cloneId, or voiceUrl."
           },
           "text": {
             "type": "string",
@@ -1940,9 +1983,10 @@
               "byteplus",
               "grok-imagine-video",
               "ofox",
-              "fal"
+              "fal",
+              "dreamapi"
             ],
-            "description": "hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet."
+            "description": "hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet. dreamapi is DreamAPI; pair it with dreamapiModel."
           },
           "falModel": {
             "type": "string",
@@ -1960,6 +2004,34 @@
               "pixverse-v6"
             ],
             "description": "With model=fal, select a curated Fal video model; omitted uses the saved Fal video default. seedance-2.5: Seedance 2.5 — audio toggle supported, resolutions 480p/720p, durations 4–30s, up to 30 image refs, up to 10 video refs, up to 10 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; seedance-2.0: Seedance 2.0 — audio toggle supported, resolutions 480p/720p/1080p/4k, durations 4–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; kling-v3-standard: Kling 3.0 Standard — audio toggle supported, resolutions 720p, durations 3–15s, first frame/last frame, default 720p/5s/16:9; kling-v3-pro: Kling 3.0 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, first frame/last frame, default 1080p/5s/16:9; kling-o3-standard: Kling O3 Standard — audio toggle supported, resolutions 720p, durations 3–15s, up to 4 image refs, reference mode, default 720p/5s/16:9; kling-o3-pro: Kling O3 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, up to 4 image refs, reference mode, default 1080p/5s/16:9; veo-3.1: Veo 3.1 — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; veo-3.1-fast: Veo 3.1 Fast — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; wan-3.0: Wan 3.0 — audio toggle supported, resolutions 480p/720p/1080p, durations 5/10s, first frame/last frame, default 1080p/5s/adaptive; minimax-h3-max: MiniMax H3 Max — no audio toggle, resolutions 480p/768p/1080p, durations 5–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, reference mode, default 768p/5s/16:9; pixverse-v6: PixVerse V6 — audio toggle supported, resolutions 360p/540p/720p/1080p, durations 1–15s, first frame, default 720p/5s/16:9. Omit duration/resolution to use model defaults."
+          },
+          "dreamapiModel": {
+            "type": "string",
+            "enum": [
+              "dreamvideo-3-text",
+              "dreamvideo-3-image",
+              "wan-2.1-text",
+              "wan-2.1-image",
+              "wan-2.1-head-tail",
+              "seedance-2.5",
+              "seedance-2.0",
+              "seedance-2.0-mini",
+              "lipsync",
+              "lipsync-2",
+              "dreamavatar-3-fast",
+              "dreamact",
+              "video-translate-2",
+              "swap-face-video",
+              "video-matting",
+              "matting-composite",
+              "watermark-remover",
+              "video-enhance"
+            ],
+            "description": "With model=dreamapi, select a DreamAPI video model. dreamvideo-3-text: 时长 3–15 秒，分辨率 480P/720P。; dreamvideo-3-image: 1 张图为图生视频，2 张图为首尾帧。; wan-2.1-text: 提示词最长 1500 字。; wan-2.1-image: 需要一张参考图。; wan-2.1-head-tail: 首帧和尾帧都必填。; seedance-2.5: 时长 4–30 秒。带参考视频时可指定 reference/edit/extend。; seedance-2.0: 时长 4–15 秒，分辨率可到 4k。; seedance-2.0-mini: 时长 4–15 秒，分辨率只有 480p/720p。; lipsync: 原视频和驱动音频。; lipsync-2: 可另传干声音频。设置里的默认视频模型建议用这个。; dreamavatar-3-fast: 人像、音频和提示词。音频请控制在 3 分钟内。; dreamact: 驱动视频最长 1 分钟。; video-translate-2: 语言只允许 en、zh、es。; swap-face-video: 原视频请控制在 5 分钟内。; video-matting: 只接受 MP4。成片和 alpha 都会返回。; matting-composite: 背景类型为 color、image 或 video。; watermark-remover: 视频最长 120 秒、最高 2K。; video-enhance: 一条原视频。"
+          },
+          "dreamapi": {
+            "type": "object",
+            "description": "DreamAPI video inputs such as prompt, image, images, srcVideo, audio, resolution, duration, sourceLanguage, and targetLanguage. Keys are validated against dreamapiModel before any request is sent."
           },
           "prompt": {
             "type": "string",

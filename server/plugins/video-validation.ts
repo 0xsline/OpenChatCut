@@ -1,11 +1,14 @@
 import { buildFalCatalogVideoRequest } from './fal-catalog-input.ts';
+import { buildDreamApiCall } from '../../shared/dreamapi-models.ts';
 export interface MultiPrompt { prompt: string; duration: number | string; index: number }
 export type VideoResolution = '360p' | '480p' | '512p' | '540p' | '720p' | '768p' | '1080p' | '480P' | '768P' | '1080P' | '4k';
 export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal' | 'dreamapi';
+  dreamapiModel?: string;
+  dreamapi?: Record<string, unknown>;
   /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
   falModel?: string;
   prompt?: string;
@@ -37,7 +40,9 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'fal' | 'dreamapi';
+  dreamapiModel?: string;
+  dreamapi?: Record<string, unknown>;
   /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
   falModel?: string;
   prompt: string;
@@ -237,6 +242,18 @@ function validateOfox(input: ValidVideoRequest): ValidVideoRequest {
 }
 
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
+  if (input.model === 'dreamapi') {
+    const call = buildDreamApiCall(input.dreamapiModel, input.dreamapi ?? {});
+    if (call.model.kind !== 'video') throw new Error(`${call.model.id} is not a DreamAPI video model`);
+    return {
+      ...input, model: 'dreamapi', dreamapiModel: call.model.id, dreamapi: input.dreamapi ?? {},
+      prompt: String(input.prompt ?? input.dreamapi?.prompt ?? ''),
+      durationSeconds: typeof input.dreamapi?.duration === 'number' ? input.dreamapi.duration : 5,
+      durationSpecified: input.dreamapi?.duration !== undefined,
+      ratio: String(input.dreamapi?.ratio ?? input.dreamapi?.aspectRatio ?? '16:9'),
+      refImagePaths: [], refVideoPaths: [], refAudioPaths: [],
+    };
+  }
   if (input.model === 'fal') {
     if (!input.falModel?.trim()) throw new Error('Choose a Fal video model in Settings or specify falModel');
     for (const key of ['mode', 'refVideoMode', 'promptOptimizer', 'fastPretreatment', 'seed', 'cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority', 'multiPrompts', 'shotType'] as const) {
@@ -247,7 +264,7 @@ export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
     return normalized;
   }
   if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox') {
-    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, ofox, or fal');
+    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, ofox, fal, or dreamapi');
   }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);

@@ -1,5 +1,6 @@
+import { dreamApiModelsByKind } from '../../../shared/dreamapi-models';
 import {
-  modelPicker,
+ modelPicker,
   modelText,
   routeSelect,
   secret,
@@ -109,8 +110,9 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
     { value: 'openai', label: 'OpenAI' },
     { value: 'gemini', label: 'Google Gemini' },
     { value: 'mistral', label: 'Mistral Voxtral' },
-    { value: 'cartesia', label: 'Cartesia' },
-  ]),
+ { value: 'cartesia', label: 'Cartesia' },
+ { value: 'dreamapi', label: 'DreamAPI' },
+ ]),
   vendors: [
     {
       key: 'voice/elevenlabs', vendor: 'elevenlabs', title: 'ElevenLabs',
@@ -185,11 +187,25 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
     },
     {
       key: 'voice/cartesia', vendor: 'cartesia', title: 'Cartesia', fields: [
-        secret('CARTESIA_API_KEY', 'API Key'),
-        modelText('CARTESIA_TTS_MODEL', '配音模型', 'sonic-3'),
-      ],
-    },
-  ],
+ secret('CARTESIA_API_KEY', 'API Key'),
+ modelText('CARTESIA_TTS_MODEL', '配音模型', 'sonic-3'),
+ ],
+ },
+ {
+ key: 'voice/dreamapi', vendor: 'dreamapi', title: 'DreamAPI',
+ note: 'DreamAPI 配音与声音克隆。密钥只保存在本机服务里。',
+ fields: [
+ secret('DREAMAPI_API_KEY', 'API Key'),
+ {
+ name: 'DREAMAPI_VOICE_MODEL', label: '默认模型', kind: 'select',
+ options: [
+ { value: '', label: '每次询问（默认）' },
+ ...dreamApiModelsByKind('voice').map(({ id, label }) => ({ value: id, label })),
+ ],
+ },
+ ],
+ },
+ ],
 };
 
 export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
@@ -241,6 +257,7 @@ export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
 
 export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   fal: [['FAL_KEY']],
+  dreamapi: [['DREAMAPI_API_KEY']],
   'gpt-image-2': [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
   'nano-banana': [['GEMINI_API_KEY']],
   'image-01': [['MINIMAX_API_KEY']],

@@ -6,6 +6,8 @@ import { saveVoiceAudio, saveVoiceSubtitle } from './voice-media.ts';
 import { doubaoVoice, elevenLabsVoice, fishAudioVoice, inworldVoice, minimaxVoice, speechifyVoice } from './voice-providers.ts';
 import type { VoiceOptions, VoiceProvider, VoiceRequest } from './voice-types.ts';
 import { validateVoiceRequest } from './voice-validation.ts';
+import { generateDreamApi } from './dreamapi-provider.ts';
+import { getKey } from '../keystore.ts';
 
 export { validateVoiceRequest };
 
@@ -43,7 +45,22 @@ export function voiceGenerationPlugin(options: VoiceOptions): Plugin {
       server.middlewares.use('/generate/voice', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
-          const input = validateVoiceRequest(await readJson(req));
+          const raw = await readJson(req);
+          if (raw.provider === 'dreamapi' && !raw.dreamapiModel) raw.dreamapiModel = getKey('DREAMAPI_VOICE_MODEL').trim() || undefined;
+          const input = validateVoiceRequest(raw);
+          if (input.provider === 'dreamapi') {
+            const generated = await generateDreamApi(input.dreamapiModel, input.dreamapi ?? {}, {});
+            if (generated.cloneId && generated.urls.length === 0) {
+              sendJson(res, 200, { cloneId: generated.cloneId });
+              return;
+            }
+            if (!generated.urls[0]) throw new Error('DreamAPI voice generation returned no audio URL');
+            const audioResponse = await fetch(generated.urls[0]);
+            if (!audioResponse.ok) throw new Error(`DreamAPI audio download failed (${audioResponse.status})`);
+            const saved = await saveVoiceAudio(Buffer.from(await audioResponse.arrayBuffer()), 'mp3', 24_000);
+            sendJson(res, 200, { ...saved, cloneId: generated.cloneId });
+            return;
+          }
           if (isAiVoiceProvider(input.provider)) {
             const audio = await generateAiVoice(options, input);
             const saved = await saveVoiceAudio(audio.bytes, audio.codec, audio.sampleRate);

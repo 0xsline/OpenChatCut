@@ -1,4 +1,5 @@
 import { FAL_MODELS } from '../../../shared/fal-models';
+import { dreamApiModelsByKind, type DreamApiKind } from '../../../shared/dreamapi-models';
 // Set the information architecture of the panel (first-level classification → second-level capability group → third-level provider page → fields) and pure display logic.
 // Three columns: Left tree = Category → Capability; Middle column = Vendor list under this capability; Right column = Configuration page of the selected vendor.
 // Agent LLM saves independent API URLs, API Keys and models for each vendor; the capability to generate classes can be additionally provided
@@ -70,6 +71,23 @@ const byteplusPage = (cap: string, modelField: SettingsField, title = 'BytePlus 
   ],
 });
 
+const DREAMAPI_NOTE = 'DreamAPI。密钥只保存在本机服务里，请到 DreamAPI 控制台自行注册充值后填写。聊天里指定的模型优先于这里的默认值。';
+const dreamApiPage = (cap: DreamApiKind): SettingsVendorPage => ({
+  key: `${cap}/dreamapi`, vendor: 'dreamapi', title: 'DreamAPI',
+  note: DREAMAPI_NOTE,
+  fields: [
+    secret('DREAMAPI_API_KEY', 'API Key'),
+    {
+      name: cap === 'image' ? 'DREAMAPI_IMAGE_MODEL' : cap === 'video' ? 'DREAMAPI_VIDEO_MODEL' : 'DREAMAPI_VOICE_MODEL',
+      label: '默认模型', kind: 'select',
+      options: [
+        { value: '', label: '每次询问（默认）' },
+        ...dreamApiModelsByKind(cap).map(({ id, label }) => ({ value: id, label })),
+      ],
+    },
+  ],
+});
+
 const falPage = (cap: 'image' | 'video'): SettingsVendorPage => ({
   key: `${cap}/fal`, vendor: 'fal', title: 'Fal.ai',
   note: '选择 Fal.ai 作为默认厂商，然后选择模型。聊天中指定的模型优先于此默认值。',
@@ -113,6 +131,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'wavespeed', label: 'WaveSpeed' },
           { value: 'byteplus', label: 'BytePlus · Seedream' },
           { value: 'grok-imagine', label: 'xAI Grok Imagine' },
+          { value: 'dreamapi', label: 'DreamAPI' },
         ]),
         vendors: [
           { key: 'image/openai', vendor: 'openai', title: 'OpenAI', fields: [
@@ -125,6 +144,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             modelText('GEMINI_IMAGE_MODEL', '生图模型', 'gemini-3.1-flash-image'),
           ] },
           falPage('image'),
+          dreamApiPage('image'),
           minimaxPage('image', modelPicker('MINIMAX_IMAGE_MODEL', '生图模型', 'image-01', ['image-01', 'image-01-live'])),
           { key: 'image/wavespeed', vendor: 'wavespeed', title: 'WaveSpeed', fields: [
             secret('WAVESPEED_API_KEY', 'API Key'),
@@ -150,9 +170,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
           { value: 'ofox', label: 'OFox · 多模型' },
+          { value: 'dreamapi', label: 'DreamAPI' },
         ]),
         vendors: [
           falPage('video'),
+          dreamApiPage('video'),
           { key: 'video/seedance', vendor: 'seedance', title: 'Seedance · 火山', fields: [
             secret('SEEDANCE_API_KEY', 'API Key'),
             text('SEEDANCE_BASE_URL', 'Base URL', '默认 https://ark.cn-beijing.volces.com/api/v3'),

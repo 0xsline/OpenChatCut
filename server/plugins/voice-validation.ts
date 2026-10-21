@@ -1,4 +1,5 @@
 import type { ValidVoiceRequest, VoiceRequest } from './voice-types.ts';
+import { buildDreamApiCall } from '../../shared/dreamapi-models.ts';
 import { MINIMAX_LANGUAGE_BOOSTS } from '../../shared/media-provider-params.ts';
 
 const EMOTIONS = new Set(['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm', 'fluent', 'whisper']);
@@ -127,6 +128,16 @@ function validateAiProvider(input: VoiceRequest, provider: 'openai' | 'gemini' |
 
 export function validateVoiceRequest(input: VoiceRequest): ValidVoiceRequest {
   const provider = input.provider;
+  if (provider === 'dreamapi') {
+    const call = buildDreamApiCall(input.dreamapiModel, input.dreamapi ?? {});
+    if (call.model.kind !== 'voice') throw new Error(`${call.model.id} is not a DreamAPI voice model`);
+    const text = String(input.dreamapi?.text ?? input.text ?? '').trim() || 'DreamAPI';
+    const voiceId = String(input.dreamapi?.audioId ?? input.dreamapi?.cloneId ?? input.voiceId ?? 'dreamapi');
+    return {
+      ...input, provider, dreamapiModel: call.model.id, dreamapi: input.dreamapi ?? {},
+      text, voiceId, outputFormat: 'mp3', sampleRate: 24_000, audioFormat: 'mp3', channel: 1,
+    };
+  }
   if (provider !== 'elevenlabs' && provider !== 'doubao' && provider !== 'minimax'
     && provider !== 'inworld' && provider !== 'fishaudio' && provider !== 'speechify' && !isAiProvider(provider)) {
     throw new Error('unsupported voice provider');

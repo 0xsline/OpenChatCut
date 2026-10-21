@@ -63,6 +63,13 @@ applyLiveModels({ DOUBAO_TTS_VOICE_ID: 'S_5wulnA7i2' });
 const doubaoDefault = capabilitiesPrompt({ ...ALL_OFF, voice: true });
 assert.ok(doubaoDefault.includes('Doubao(provider=doubao)'), 'configured Doubao is selectable');
 assert.ok(doubaoDefault.includes('Doubao default speaker ID: S_5wulnA7i2'), 'saved speaker reaches the agent');
+
+// Merging provider additions must preserve both providers' saved routing hints.
+applyLiveKeyStatus({ DOUBAO_TTS_API_KEY: { configured: true }, DREAMAPI_API_KEY: { configured: true } });
+applyLiveModels({ DOUBAO_TTS_VOICE_ID: 'S_5wulnA7i2', DREAMAPI_VOICE_MODEL: 'tts-pro' });
+const combinedVoiceProviders = capabilitiesPrompt({ ...ALL_OFF, voice: true });
+assert.ok(combinedVoiceProviders.includes('Doubao default speaker ID: S_5wulnA7i2'), 'DreamAPI does not hide the Doubao speaker');
+assert.ok(combinedVoiceProviders.includes('Saved DreamAPI default: tts-pro'), 'Doubao does not hide the DreamAPI default');
 applyLiveKeyStatus({});
 applyLiveModels({});
 
