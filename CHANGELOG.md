@@ -19,6 +19,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   升级 AI SDK 全家桶至 `ai@7.0.148`（xAI 5.x 仅保留 Responses API），并同步 React 19.3、Vite 8.3、AWS SDK、MCP SDK、E2B 等同 major 工具链。Remotion、Electron 45、TypeScript 7 与 ONNX/Transformers 运行时继续按原版本固定；`@github/copilot-sdk` 保持 1.0.11，因为 1.0.24 更改了平台运行时打包方式。新版 SDK 只在 `stop` / `tool-calls` 结束时执行工具，因此服务端 Agent 运行会把 OpenAI 兼容网关以非标准 `finish_reason` 结束的工具调用回合按 `tool-calls` 处理；SDK 仍未执行的工具调用会补一条错误结果，不再让下一轮请求失败。
 - `download_media` and `push_asset` now start every URL in a batch instead of stopping after a 75-second window, and the tool description no longer asks the model for at most three URLs per call. The window only kept batches inside the AI SDK chunk watchdog, which no longer counts tool execution.
   `download_media` 与 `push_asset` 现在会依次处理批次中的全部地址，不再在 75 秒窗口过后停止启动新地址，工具描述也不再要求每次最多传 3 个地址。这个窗口原本只是为了不超出 AI SDK 的 chunk 超时，而新版 SDK 已不再把工具执行时间计入该超时。
+- TypeScript 7.0.2 (the native compiler) now drives `tsc -b`; the two i18n AST scans use Babel's parser instead of the removed TypeScript compiler API, and Remotion moves to 4.0.537 so its bundler tolerates TypeScript 7. The WebCodecs pre-flight follows Mediabunny 1.61.6's variable/quantizer rate control.
+  构建改用 TypeScript 7.0.2 原生编译器；两个 i18n AST 扫描改用 Babel parser，Remotion 升级到 4.0.537 以兼容 TypeScript 7；WebCodecs 预检同步 Mediabunny 1.61.6 的码率控制。
 
 ## [0.2.17] - 2026-10-15
 

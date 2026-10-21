@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import { parse } from '@babel/parser';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE_ROOT = path.join(ROOT, 'src');
@@ -33,6 +33,12 @@ const ALLOWED_RAW_RENDER_LITERALS = new Set([
 ]);
 const USER_FACING_ATTRIBUTES = new Set(['alt', 'aria-label', 'placeholder', 'title']);
 
+const IGNORED_NODE_KEYS = new Set([
+  'type', 'start', 'end', 'loc', 'range', 'extra',
+  'leadingComments', 'trailingComments', 'innerComments', 'comments', 'tokens', 'errors',
+  'interpreter', 'directives',
+]);
+
 function relativeSourcePath(filePath) {
   return path.relative(ROOT, filePath).split(path.sep).join('/');
 }
@@ -44,24 +50,72 @@ function walk(dir) {
   });
 }
 
+function isNode(value) {
+  return Boolean(value) && typeof value === 'object' && typeof value.type === 'string';
+}
+
+function forEachChild(node, visit) {
+  for (const key of Object.keys(node)) {
+    if (IGNORED_NODE_KEYS.has(key)) continue;
+    const value = node[key];
+    if (Array.isArray(value)) {
+      for (const child of value) if (isNode(child)) visit(child);
+    } else if (isNode(value)) {
+      visit(value);
+    }
+  }
+}
+
+function buildParents(ast) {
+  const parents = new WeakMap();
+  const visit = (node) => {
+    forEachChild(node, (child) => {
+      parents.set(child, node);
+      visit(child);
+    });
+  };
+  visit(ast);
+  return parents;
+}
+
 function sourceFile(filePath) {
-  const scriptKind = filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  return ts.createSourceFile(
-    filePath,
-    fs.readFileSync(filePath, 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    scriptKind,
-  );
+  const code = fs.readFileSync(filePath, 'utf8');
+  const ast = parse(code, {
+    sourceType: 'module',
+    sourceFilename: filePath,
+    plugins: filePath.endsWith('.tsx') ? ['typescript', 'jsx'] : ['typescript'],
+    createParenthesizedExpressions: true,
+  });
+  return { filePath, code, ast, parents: buildParents(ast) };
+}
+
+function walkAll(node, visit) {
+  visit(node);
+  forEachChild(node, (child) => walkAll(child, visit));
+}
+
+function isStringLiteralLike(node) {
+  return node.type === 'StringLiteral'
+    || (node.type === 'TemplateLiteral' && node.expressions.length === 0);
+}
+
+function literalText(node) {
+  if (node.type === 'StringLiteral') return node.value;
+  if (node.type === 'TemplateElement') return node.value.cooked ?? node.value.raw;
+  if (node.type === 'TemplateLiteral' && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? '';
+  }
+  return null;
 }
 
 function unwrapExpression(node) {
-  if (
-    ts.isAsExpression(node)
-    || ts.isSatisfiesExpression(node)
-    || ts.isParenthesizedExpression(node)
+  while (
+    node
+    && (node.type === 'TSAsExpression'
+      || node.type === 'TSSatisfiesExpression'
+      || node.type === 'ParenthesizedExpression')
   ) {
-    return unwrapExpression(node.expression);
+    node = node.expression;
   }
   return node;
 }
@@ -69,25 +123,29 @@ function unwrapExpression(node) {
 function englishKeys() {
   const keys = new Set();
   for (const filePath of walk(EN_ROOT).filter((file) => file.endsWith('.ts'))) {
-    const sf = sourceFile(filePath);
-    const assignment = sf.statements.find((node) => ts.isExportAssignment(node));
-    if (!assignment) continue;
-    const expression = unwrapExpression(assignment.expression);
-    if (!ts.isObjectLiteralExpression(expression)) continue;
+    const { ast } = sourceFile(filePath);
+    const declaration = ast.program.body.find((node) => (
+      node.type === 'ExportDefaultDeclaration' || node.type === 'TSExportAssignment'
+    ));
+    if (!declaration) continue;
+    const expression = unwrapExpression(
+      declaration.type === 'ExportDefaultDeclaration' ? declaration.declaration : declaration.expression,
+    );
+    if (!expression || expression.type !== 'ObjectExpression') continue;
     for (const property of expression.properties) {
-      if (!ts.isPropertyAssignment(property)) continue;
-      if (ts.isStringLiteralLike(property.name)) keys.add(property.name.text);
+      if (property.type !== 'ObjectProperty' || property.computed) continue;
+      if (property.key.type === 'StringLiteral') keys.add(property.key.value);
     }
   }
   return keys;
 }
 
-function isInsideTranslation(node, sf) {
-  for (let parent = node.parent; parent && parent !== sf; parent = parent.parent) {
+function isInsideTranslation(file, node) {
+  for (let parent = file.parents.get(node); parent; parent = file.parents.get(parent)) {
     if (
-      ts.isCallExpression(parent)
-      && ts.isIdentifier(parent.expression)
-      && (parent.expression.text === 't' || parent.expression.text === 'tData')
+      parent.type === 'CallExpression'
+      && parent.callee.type === 'Identifier'
+      && (parent.callee.name === 't' || parent.callee.name === 'tData')
     ) {
       return true;
     }
@@ -95,170 +153,158 @@ function isInsideTranslation(node, sf) {
   return false;
 }
 
-function issue(sf, node, message) {
-  const relative = relativeSourcePath(sf.fileName);
-  const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-  return `${relative}:${line + 1}:${character + 1} ${message}`;
+function issue(file, node, message) {
+  const relative = relativeSourcePath(file.filePath);
+  const { line, column } = node.loc.start;
+  return `${relative}:${line}:${column + 1} ${message}`;
 }
 
-function untranslatedLiterals(node, sf) {
+function untranslatedLiterals(file, node) {
   const literals = [];
-  function visit(child) {
+  const visit = (child) => {
     const text = literalText(child);
-    if (text && CJK.test(text) && !isInsideTranslation(child, sf)) {
+    if (text && CJK.test(text) && !isInsideTranslation(file, child)) {
       literals.push(child);
     }
-    ts.forEachChild(child, visit);
-  }
+    forEachChild(child, visit);
+  };
   visit(node);
   return literals;
 }
 
-function literalText(node) {
-  if (ts.isStringLiteralLike(node)) return node.text;
-  if (
-    node.kind === ts.SyntaxKind.TemplateHead
-    || node.kind === ts.SyntaxKind.TemplateMiddle
-    || node.kind === ts.SyntaxKind.TemplateTail
-  ) {
-    return node.text;
+function directlyRenderedLiterals(file, node) {
+  const text = literalText(node);
+  if (text !== null) {
+    return CJK.test(text) && !isInsideTranslation(file, node) ? [node] : [];
   }
-  return null;
-}
-
-function directlyRenderedLiterals(node, sf) {
-  if (ts.isStringLiteralLike(node)) {
-    return CJK.test(node.text) && !isInsideTranslation(node, sf) ? [node] : [];
+  if (node.type === 'ParenthesizedExpression') {
+    return directlyRenderedLiterals(file, node.expression);
   }
-  if (ts.isParenthesizedExpression(node)) {
-    return directlyRenderedLiterals(node.expression, sf);
-  }
-  if (ts.isConditionalExpression(node)) {
+  if (node.type === 'ConditionalExpression') {
     return [
-      ...directlyRenderedLiterals(node.whenTrue, sf),
-      ...directlyRenderedLiterals(node.whenFalse, sf),
+      ...directlyRenderedLiterals(file, node.consequent),
+      ...directlyRenderedLiterals(file, node.alternate),
     ];
   }
-  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+  if (node.type === 'BinaryExpression' && node.operator === '+') {
     return [
-      ...directlyRenderedLiterals(node.left, sf),
-      ...directlyRenderedLiterals(node.right, sf),
+      ...directlyRenderedLiterals(file, node.left),
+      ...directlyRenderedLiterals(file, node.right),
     ];
   }
-  if (ts.isTemplateExpression(node)) {
-    const literals = CJK.test(node.head.text) && !isInsideTranslation(node.head, sf) ? [node.head] : [];
-    for (const span of node.templateSpans) {
-      literals.push(...directlyRenderedLiterals(span.expression, sf));
-      if (CJK.test(span.literal.text) && !isInsideTranslation(span.literal, sf)) {
-        literals.push(span.literal);
+  if (node.type === 'TemplateLiteral') {
+    const literals = [];
+    for (const quasi of node.quasis) {
+      const quasiText = literalText(quasi);
+      if (quasiText && CJK.test(quasiText) && !isInsideTranslation(file, quasi)) {
+        literals.push(quasi);
       }
+    }
+    for (const expression of node.expressions) {
+      literals.push(...directlyRenderedLiterals(file, expression));
     }
     return literals;
   }
   return [];
 }
 
-function collectInitializers(sf) {
+function collectInitializers(file) {
   const initializers = new Map();
-  function collectDeclarations(node) {
+  walkAll(file.ast, (node) => {
     if (
-      ts.isVariableDeclaration(node)
-      && ts.isIdentifier(node.name)
-      && node.initializer
+      node.type === 'VariableDeclarator'
+      && node.id.type === 'Identifier'
+      && node.init
     ) {
-      const scope = declarationScope(node);
-      const declarations = initializers.get(node.name.text) ?? [];
-      declarations.push({ declaration: node, initializer: node.initializer, scope });
-      initializers.set(node.name.text, declarations);
+      const scope = declarationScope(file, node);
+      const declarations = initializers.get(node.id.name) ?? [];
+      declarations.push({ declaration: node, initializer: node.init, scope });
+      initializers.set(node.id.name, declarations);
     }
-    ts.forEachChild(node, collectDeclarations);
-  }
-  collectDeclarations(sf);
+  });
   return initializers;
 }
 
-function declarationScope(node) {
-  for (let parent = node.parent; parent; parent = parent.parent) {
-    if (ts.isBlock(parent) || ts.isSourceFile(parent)) return parent;
+function declarationScope(file, node) {
+  for (let parent = file.parents.get(node); parent; parent = file.parents.get(parent)) {
+    if (parent.type === 'BlockStatement' || parent.type === 'Program') return parent;
   }
-  return node.getSourceFile();
+  return file.ast.program;
 }
 
 function initializerFor(identifier, initializers) {
-  const position = identifier.getStart();
-  const candidates = (initializers.get(identifier.text) ?? [])
+  const position = identifier.start;
+  const candidates = (initializers.get(identifier.name) ?? [])
     .filter(({ declaration, scope }) => (
-      declaration.getStart() < position
-      && scope.getStart() <= position
+      declaration.start < position
+      && scope.start <= position
       && position < scope.end
     ))
     .sort((a, b) => {
-      const scopeDistance = (a.scope.end - a.scope.getStart()) - (b.scope.end - b.scope.getStart());
-      return scopeDistance || b.declaration.getStart() - a.declaration.getStart();
+      const scopeDistance = (a.scope.end - a.scope.start) - (b.scope.end - b.scope.start);
+      return scopeDistance || b.declaration.start - a.declaration.start;
     });
   return candidates[0]?.initializer;
 }
 
-function auditNativeAttribute(sf, node, initializers) {
-  if (
-    !ts.isJsxAttribute(node)
-    || !USER_FACING_ATTRIBUTES.has(node.name.text)
-    || !node.initializer
-    || !/^[a-z]/.test(node.parent.parent.tagName.getText(sf))
-  ) return [];
-  const expression = ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer;
+function auditNativeAttribute(file, node, initializers) {
+  if (node.type !== 'JSXAttribute' || node.name.type !== 'JSXIdentifier') return [];
+  if (!USER_FACING_ATTRIBUTES.has(node.name.name) || !node.value) return [];
+  const opening = file.parents.get(node);
+  const tagName = opening?.type === 'JSXOpeningElement' ? opening.name : null;
+  if (!tagName || !/^[a-z]/.test(file.code.slice(tagName.start, tagName.end))) return [];
+  const expression = node.value.type === 'JSXExpressionContainer' ? node.value.expression : node.value;
   if (!expression) return [];
-  const literals = directlyRenderedLiterals(expression, sf);
-  if (ts.isIdentifier(expression)) {
+  const literals = directlyRenderedLiterals(file, expression);
+  if (expression.type === 'Identifier') {
     const initializer = initializerFor(expression, initializers);
-    if (initializer) literals.push(...untranslatedLiterals(initializer, sf));
+    if (initializer) literals.push(...untranslatedLiterals(file, initializer));
   }
   return literals.map((literal) => (
-    issue(sf, literal, `原生控件属性直接使用中文：${JSON.stringify(literal.text)}`)
+    issue(file, literal, `原生控件属性直接使用中文：${JSON.stringify(literalText(literal))}`)
   ));
 }
 
-function auditJsxExpression(sf, node, relative, initializers) {
-  if (
-    !ts.isJsxExpression(node)
-    || !node.expression
-    || (!ts.isJsxElement(node.parent) && !ts.isJsxFragment(node.parent))
-  ) return [];
-  const issues = directlyRenderedLiterals(node.expression, sf)
-    .filter((literal) => !ALLOWED_RAW_RENDER_LITERALS.has(`${relative}::${literal.text}`))
-    .map((literal) => issue(sf, literal, `JSX 表达式直接渲染中文：${JSON.stringify(literal.text)}`));
-  if (!ts.isIdentifier(node.expression)) return issues;
+function auditJsxExpression(file, node, relative, initializers) {
+  if (node.type !== 'JSXExpressionContainer' || !node.expression) return [];
+  const parent = file.parents.get(node);
+  if (parent?.type !== 'JSXElement' && parent?.type !== 'JSXFragment') return [];
+  const issues = directlyRenderedLiterals(file, node.expression)
+    .filter((literal) => !ALLOWED_RAW_RENDER_LITERALS.has(`${relative}::${literalText(literal)}`))
+    .map((literal) => issue(file, literal, `JSX 表达式直接渲染中文：${JSON.stringify(literalText(literal))}`));
+  if (node.expression.type !== 'Identifier') return issues;
   const initializer = initializerFor(node.expression, initializers);
   return [
     ...issues,
-    ...(initializer ? untranslatedLiterals(initializer, sf) : [])
-      .map((literal) => issue(sf, literal, `变量 ${node.expression.text} 直接渲染未翻译中文：${JSON.stringify(literal.text)}`)),
+    ...(initializer ? untranslatedLiterals(file, initializer) : [])
+      .map((literal) => issue(file, literal, `变量 ${node.expression.name} 直接渲染未翻译中文：${JSON.stringify(literalText(literal))}`)),
   ];
 }
 
 function auditUiFile(filePath, keys) {
-  const sf = sourceFile(filePath);
+  const file = sourceFile(filePath);
   const relative = relativeSourcePath(filePath);
-  const initializers = collectInitializers(sf);
+  const initializers = collectInitializers(file);
   const issues = [];
-  function visit(node) {
-    if (ts.isJsxText(node) && CJK.test(node.text.trim())) {
-      issues.push(issue(sf, node, `直接渲染中文：${JSON.stringify(node.text.trim())}`));
+  walkAll(file.ast, (node) => {
+    if (node.type === 'JSXText' && CJK.test(node.value.trim())) {
+      issues.push(issue(file, node, `直接渲染中文：${JSON.stringify(node.value.trim())}`));
     }
-    issues.push(...auditNativeAttribute(sf, node, initializers));
-    issues.push(...auditJsxExpression(sf, node, relative, initializers));
-    if (
-      ts.isStringLiteralLike(node)
-      && CJK.test(node.text)
-      && !isInsideTranslation(node, sf)
-      && !keys.has(node.text)
-      && !ALLOWED_DATA_LITERALS.has(`${relative}::${node.text}`)
-    ) {
-      issues.push(issue(sf, node, `未登记的中文 UI 字面量：${JSON.stringify(node.text)}`));
+    issues.push(...auditNativeAttribute(file, node, initializers));
+    issues.push(...auditJsxExpression(file, node, relative, initializers));
+    if (isStringLiteralLike(node)) {
+      const text = literalText(node);
+      if (
+        text
+        && CJK.test(text)
+        && !isInsideTranslation(file, node)
+        && !keys.has(text)
+        && !ALLOWED_DATA_LITERALS.has(`${relative}::${text}`)
+      ) {
+        issues.push(issue(file, node, `未登记的中文 UI 字面量：${JSON.stringify(text)}`));
+      }
     }
-    ts.forEachChild(node, visit);
-  }
-  visit(sf);
+  });
   return issues;
 }
 
@@ -270,23 +316,22 @@ const sourceFiles = walk(SOURCE_ROOT).filter((filePath) => {
   return !isTestFile(relative);
 });
 const translationIssues = sourceFiles.flatMap((filePath) => {
-  const sf = sourceFile(filePath);
+  const file = sourceFile(filePath);
   const issues = [];
-  function visit(node) {
+  walkAll(file.ast, (node) => {
     if (
-      ts.isCallExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === 't'
+      node.type === 'CallExpression'
+      && node.callee.type === 'Identifier'
+      && node.callee.name === 't'
       && node.arguments[0]
-      && ts.isStringLiteralLike(node.arguments[0])
-      && CJK.test(node.arguments[0].text)
-      && !keys.has(node.arguments[0].text)
+      && isStringLiteralLike(node.arguments[0])
     ) {
-      issues.push(issue(sf, node.arguments[0], `英文词典缺少：${JSON.stringify(node.arguments[0].text)}`));
+      const text = literalText(node.arguments[0]);
+      if (text && CJK.test(text) && !keys.has(text)) {
+        issues.push(issue(file, node.arguments[0], `英文词典缺少：${JSON.stringify(text)}`));
+      }
     }
-    ts.forEachChild(node, visit);
-  }
-  visit(sf);
+  });
   return issues;
 });
 const uiFiles = walk(SOURCE_ROOT).filter((filePath) => {
