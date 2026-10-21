@@ -135,7 +135,9 @@ export function validateVoiceRequest(input: VoiceRequest): ValidVoiceRequest {
   const requestedVoiceId = String(input.voiceId ?? '').trim();
   const voiceId = requestedVoiceId || (provider === 'minimax' && !input.timbreWeights?.length ? 'female-yujie' : '');
   if (!text) throw new Error('text is required');
-  if (!voiceId && !(provider === 'minimax' && input.timbreWeights?.length)) throw new Error('voiceId is required');
+  if (!voiceId && !(provider === 'minimax' && input.timbreWeights?.length) && provider !== 'doubao') {
+    throw new Error('voiceId is required');
+  }
   if (provider === 'elevenlabs') validateEleven(input);
   else if (provider === 'doubao') validateDoubao(input);
   else if (provider === 'minimax') validateMinimax(input, text);

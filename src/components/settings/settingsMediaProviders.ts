@@ -128,6 +128,8 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
         secret('DOUBAO_TTS_API_KEY', 'API Key'),
         text('DOUBAO_TTS_BASE_URL', 'Base URL', '默认 https://openspeech.bytedance.com'),
         modelText('DOUBAO_TTS_MODEL', '配音模型', 'seed-audio-1.0'),
+        modelText('DOUBAO_TTS_VOICE_ID', '音色 ID（speaker）', '由对话选择',
+          '粘贴火山控制台复制的音色 ID（如 S_5wulnA7i2）；填写后豆包配音默认用它，对话里指定其它音色仍可覆盖。'),
       ],
     },
     {

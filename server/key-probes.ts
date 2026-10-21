@@ -20,6 +20,7 @@ import {
   type LlmProvider,
 } from '../shared/llm-providers.ts';
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
+import { resolveDoubaoSpeaker } from './plugins/voice-providers.ts';
 import { xaiOauthAccessToken } from './xai-oauth-session.ts';
 import {
   classifyStatus,
@@ -282,7 +283,7 @@ export const PROBES: Record<string, ProbeDef> = {
         body: JSON.stringify({
           model: get('DOUBAO_TTS_MODEL') || 'seed-audio-1.0',
           text_prompt: '测',
-          references: [{ speaker: 'zh_female_vv_uranus_bigtts' }],
+          references: [{ speaker: resolveDoubaoSpeaker(get('DOUBAO_TTS_VOICE_ID')) || 'zh_female_vv_uranus_bigtts' }],
           audio_config: { format: 'mp3', sample_rate: 24_000 },
         }),
       });

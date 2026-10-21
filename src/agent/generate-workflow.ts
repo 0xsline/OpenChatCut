@@ -9,9 +9,10 @@ export const GENERATE_WORKFLOW = `
 - Generated images are saved to the media pool. If the user says "media pool/library only" or asks not to change the timeline, set addToTimeline=false; otherwise propose timeline placement.
 
 ## TTS voice generation
-- Use submit_voice only for explicitly requested TTS after the user confirms a configured provider and a concrete provider-specific voiceId. MiniMax timbre mixing is the only voiceId exception.
+- Use submit_voice only for explicitly requested TTS after the user confirms a configured provider and a concrete provider-specific voiceId. MiniMax timbre mixing is the only exception, plus Doubao when a default speaker ID is saved in Settings (then voiceId may be omitted).
 - Providers: doubao, elevenlabs, minimax, inworld, fishaudio, speechify, openai, gemini, mistral, and cartesia. All are opt-in; use only choices listed as configured in the capabilities prompt, and never mix voice catalogs.
 - Curated choices exist only for Doubao, ElevenLabs, and MiniMax. Bundled samples exist only where references/voices.md lists one. For every other provider, do not invent a preset or sample URL; require a concrete voiceId from the user/provider account.
+- Doubao accepts a curated alias or the exact user-supplied Volcengine speaker ID (for example S_5wulnA7i2); never shorten, translate, or "correct" a supplied ID. It is sent verbatim as references[].speaker. When Settings has a default speaker ID, use it unless the user names another voice.
 - AI SDK-backed fields: OpenAI supports modelId/speed/outputFormat/instructions; Gemini supports modelId/outputFormat/instructions; Mistral supports modelId/outputFormat; Cartesia supports modelId/speed/languageCode/outputFormat. Inworld, Fish Audio, and Speechify accept only voiceId and optional modelId.
 - MiniMax supports speed (0.5–2), pitch (-12–12), volume (0–10), and emotion natively. Doubao supports speedRatio, loudnessRatio, and native pitch_rate (-12–12) via seed-audio-1.0. ElevenLabs retains its dedicated delivery controls.
 - submit_voice creates one media-pool audio asset only. Do not claim it was placed on the timeline.

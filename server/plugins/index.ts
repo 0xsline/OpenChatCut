@@ -185,6 +185,9 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get doubaoModel() {
         return getKey("DOUBAO_TTS_MODEL") || "seed-audio-1.0";
       },
+      get doubaoVoiceId() {
+        return getKey("DOUBAO_TTS_VOICE_ID");
+      },
       get minimaxBaseUrl() {
         return getKey("MINIMAX_BASE_URL") || "https://api.minimaxi.com";
       },

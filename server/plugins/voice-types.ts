@@ -27,6 +27,8 @@ export interface VoiceOptions {
   doubaoBaseUrl: string;
   doubaoApiKey: string;
   doubaoModel: string;
+  /** Settings default for `references[].speaker`; used when a request omits voiceId. */
+  doubaoVoiceId: string;
   minimaxBaseUrl: string;
   minimaxApiKey: string;
   minimaxModel: string;

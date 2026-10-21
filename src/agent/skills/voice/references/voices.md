@@ -50,6 +50,12 @@ Base controls for curated Doubao voices: `speedRatio`, `loudnessRatio`, and
 native `pitch` (`pitch_rate` −12–12). `text_prompt` carries the plain narration
 text; the speaker comes from `references[].speaker`.
 
+A raw Volcengine speaker ID the user supplies (for example `S_5wulnA7i2`, or an
+official `zh_female_..._bigtts` ID) is a valid `voiceId` and is sent verbatim as
+`references[].speaker`; it takes priority over curated aliases. When Settings →
+配音 / TTS → 豆包 TTS has a default 音色 ID, omitting `voiceId` uses that saved
+speaker. Never shorten, translate, or alter a supplied speaker ID.
+
 ## ElevenLabs English / Multilingual Voices
 
 Use ElevenLabs for English or multilingual narration. Official accent labels

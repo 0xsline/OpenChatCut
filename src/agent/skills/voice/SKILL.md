@@ -44,9 +44,15 @@ Use `submit_voice` to create a TTS audio asset. The current MCP tool contract is
   `minimax`, `inworld`, `fishaudio`, `speechify`, `openai`, `gemini`,
   `mistral`, or `cartesia`. All providers are opt-in; use only providers shown
   as configured in the capabilities prompt.
-- `voiceId` is required, concrete, and provider-specific. The only exception is
-  deliberate MiniMax `timbreWeights` mixing, where `voiceId` must be empty. Do
-  not mix catalogs.
+- `voiceId` is required, concrete, and provider-specific. The only exceptions are
+  deliberate MiniMax `timbreWeights` mixing, where `voiceId` must be empty, and
+  Doubao when Settings → 配音 / TTS → 豆包 TTS has a default 音色 ID (the server
+  uses it when `voiceId` is omitted). Do not mix catalogs.
+- Doubao `voiceId` accepts either a curated alias from
+  [references/voices.md](references/voices.md) or the exact Volcengine speaker
+  ID the user supplies (for example `S_5wulnA7i2` or
+  `zh_female_vv_uranus_bigtts`). The server sends it verbatim as
+  `references[].speaker`; never shorten, translate, or "correct" a supplied ID.
 - The curated catalog in [references/voices.md](references/voices.md) covers
   only Doubao, ElevenLabs, and MiniMax. Other providers have no bundled preset
   or sample catalog in OpenChatCut. Require a concrete voice ID from the user or
@@ -206,6 +212,9 @@ voice candidates come from Doubao.
 
 For a curated provider:
 
+0. If the capabilities prompt names a Doubao default speaker ID, skip the
+   curated audition for Doubao and call `submit_voice` with that ID as
+   `voiceId` unless the user explicitly asks to choose another voice.
 1. Filter `references/voices.md` by target narration language / provider and
    explicit requirements such as gender, age range, tone, and use case.
 2. If no preset matches all explicit requirements, say there is no exact match

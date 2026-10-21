@@ -26,7 +26,7 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 
 | Provider | Notes |
 | --- | --- |
-| `doubao` | CN curated voices; seed-audio-1.0 via `/api/v3/tts/create`; speedRatio, loudnessRatio, native pitch_rate |
+| `doubao` | CN curated voices plus any user-supplied speaker ID; seed-audio-1.0 via `/api/v3/tts/create`; speedRatio, loudnessRatio, native pitch_rate |
 | `elevenlabs` | Curated multilingual voices; complete voice settings, continuity/dictionaries, seed, normalization, logging/latency and official output formats |
 | `minimax` | Curated system voices; voice/audio settings, language/normalization, pronunciation, timbre mix, voice modify/effects, subtitles |
 | `inworld`, `fishaudio`, `speechify` | Account/provider voice ID plus optional model ID only; no bundled OpenChatCut samples |

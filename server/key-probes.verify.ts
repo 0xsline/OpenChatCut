@@ -86,6 +86,24 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   assert.match(half.message, /尚未填写 API Key/);
 }
 
+// 6b. Doubao connection test sends the configured speaker verbatim.
+{
+  const originalFetch = globalThis.fetch;
+  let speaker = '';
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as { references?: Array<{ speaker?: string }> };
+    speaker = body.references?.[0]?.speaker ?? '';
+    return Response.json({ audio: 'AA==' });
+  };
+  try {
+    const result = await runProbe('voice/doubao', { DOUBAO_TTS_API_KEY: 'doubao-key', DOUBAO_TTS_VOICE_ID: 'S_5wulnA7i2' });
+    assert.equal(result.ok, true);
+    assert.equal(speaker, 'S_5wulnA7i2', 'probe uses the saved speaker instead of the built-in sample');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 // 7. Proxy page uses its own connectivity semantics rather than provider/API-key language.
 {
   const missing = await runProxyProbe({ PROXY_URL: '' });

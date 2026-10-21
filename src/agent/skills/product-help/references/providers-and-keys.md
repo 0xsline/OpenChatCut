@@ -27,7 +27,7 @@ If a capability is off, say so and offer alternatives (upload, library, another 
 
 TTS provider keys:
 
-- Doubao: `DOUBAO_TTS_API_KEY` (+ optional `DOUBAO_TTS_BASE_URL` / `DOUBAO_TTS_MODEL`, default `seed-audio-1.0`)
+- Doubao: `DOUBAO_TTS_API_KEY` (+ optional `DOUBAO_TTS_BASE_URL` / `DOUBAO_TTS_MODEL`, default `seed-audio-1.0`; optional `DOUBAO_TTS_VOICE_ID` default speaker, sent as `references[].speaker`)
 - ElevenLabs: `ELEVENLABS_API_KEY`
 - MiniMax: `MINIMAX_API_KEY`
 - Inworld: `INWORLD_TTS_API_KEY`

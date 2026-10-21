@@ -1362,7 +1362,7 @@
           },
           "voiceId": {
             "type": "string",
-            "description": "Concrete provider-specific voice ID confirmed by the user. Required except MiniMax timbreWeights mixing, where it must be empty. Do not invent a preset or reuse an ID from another provider."
+            "description": "Concrete provider-specific voice ID confirmed by the user. Required except MiniMax timbreWeights mixing and Doubao when a default speaker ID is saved in Settings. For Doubao, pass the exact Volcengine speaker ID verbatim (for example S_5wulnA7i2 or zh_female_vv_uranus_bigtts); it is sent unchanged as references[].speaker. Do not invent a preset or reuse an ID from another provider."
           },
           "modelId": {
             "type": "string",

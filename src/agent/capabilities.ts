@@ -137,6 +137,14 @@ function falModelSuffix(cap: CapabilityKey): string {
     + ' Only the documented common inputs are supported; use the selected model constraints in the tool schema.';
 }
 
+function doubaoSpeakerSuffix(): string {
+  if (!liveKeys?.DOUBAO_TTS_API_KEY?.configured) return '';
+  const speaker = (liveModels?.DOUBAO_TTS_VOICE_ID ?? '').trim();
+  return speaker
+    ? `\nDoubao default speaker ID: ${speaker}. For provider=doubao pass it verbatim as voiceId unless the user explicitly names another voice; no audition is needed.`
+    : '';
+}
+
 /** Routing suffix for an ON capability, mode-aware:
  * user default → use it; single vendor → use it;
  * several & manual (every change confirmed) → ask once via ask_followup_questions;
@@ -191,7 +199,7 @@ export function capabilitiesPrompt(
   }
   return `\n\n# Available capabilities (based on configured API keys; local editing is always available without keys)\n`
     + `✅ Configured: ${on.length ? on.join(', ') : '(no key-gated capabilities)'}.\n`
-    + falModelSuffix('image') + falModelSuffix('video') + '\n'
+    + falModelSuffix('image') + falModelSuffix('video') + doubaoSpeakerSuffix() + '\n'
     + `⬜ Not configured — do not promise these in a plan or call them; they return "not configured" and waste a turn:\n`
     + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
     + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured'

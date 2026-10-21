@@ -21,6 +21,12 @@ const DOUBAO_VOICES: Record<string, string> = {
   tangseng: 'zh_male_tangseng_uranus_bigtts',
 };
 
+/** Curated aliases plus raw Volcengine speaker IDs (e.g. S_5wulnA7i2). */
+export function resolveDoubaoSpeaker(voiceId: string): string {
+  const id = voiceId.trim();
+  return DOUBAO_VOICES[id] ?? id;
+}
+
 async function providerError(response: Response): Promise<string> {
   const text = await response.text();
   try {
@@ -90,6 +96,8 @@ async function doubaoAudioBytes(response: Response): Promise<Buffer> {
 
 export async function doubaoVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
   if (!options.doubaoApiKey) throw new Error('Doubao is not configured. Set DOUBAO_TTS_API_KEY in .env.local or 设置面板.');
+  const speaker = resolveDoubaoSpeaker(input.voiceId || options.doubaoVoiceId);
+  if (!speaker) throw new Error('Doubao voiceId is required: pass a speaker ID or set DOUBAO_TTS_VOICE_ID in Settings → 配音 / TTS → 豆包 TTS.');
   const root = options.doubaoBaseUrl.trim().replace(/\/+$/, '');
   const response = await fetchWithProxy(root.endsWith('/api/v3/tts/create') ? root : `${root}/api/v3/tts/create`, {
     method: 'POST',
@@ -97,7 +105,7 @@ export async function doubaoVoice(options: VoiceOptions, input: ValidVoiceReques
     body: JSON.stringify({
       model: options.doubaoModel || 'seed-audio-1.0',
       text_prompt: input.text,
-      references: [{ speaker: DOUBAO_VOICES[input.voiceId] ?? input.voiceId }],
+      references: [{ speaker }],
       audio_config: { format: 'mp3', sample_rate: 24_000,
         speech_rate: Math.round(((input.speedRatio ?? 1) - 1) * 100),
         loudness_rate: Math.round(((input.loudnessRatio ?? 1) - 1) * 100),

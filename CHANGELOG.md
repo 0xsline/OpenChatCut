@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / 未发布
 
+### Added / 新增
+
+- Doubao TTS supports specifying the Volcengine `speaker` (音色 ID): Settings → 配音 / TTS → 豆包 TTS adds a default 音色 ID, and any user-supplied speaker ID (for example `S_5wulnA7i2`) passes through verbatim as `references[].speaker`; the connection test now verifies that saved ID.
+  Doubao 配音支持指定火山 `speaker`（音色 ID）：设置 → 配音 / TTS → 豆包 TTS 新增默认音色 ID；用户提供的音色 ID（如 `S_5wulnA7i2`）会原样作为 `references[].speaker` 发送，连接测试也会校验该 ID。
+
+### Changed / 调整
+
+- Upgraded the AI SDK stack to `ai@7.0.148` with the current provider packages (xAI 5.x is Responses-only), plus React 19.3, Vite 8.3, AWS SDK, MCP SDK, E2B and the remaining same-major tooling. Remotion, Electron 45, TypeScript 7 and the ONNX/Transformers runtime stay intentionally pinned; `@github/copilot-sdk` remains at 1.0.11 because 1.0.24 changed its platform runtime packaging.
+  升级 AI SDK 全家桶至 `ai@7.0.148`（xAI 5.x 仅保留 Responses API），并同步 React 19.3、Vite 8.3、AWS SDK、MCP SDK、E2B 等同 major 工具链。Remotion、Electron 45、TypeScript 7 与 ONNX/Transformers 运行时继续按原版本固定；`@github/copilot-sdk` 保持 1.0.11，因为 1.0.24 更改了平台运行时打包方式。
+
 ## [0.2.17] - 2026-10-15
 
 ### Added / 新增
