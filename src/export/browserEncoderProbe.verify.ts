@@ -106,15 +106,16 @@ for (const codec of ['h264', 'vp8'] as const) {
 }
 Reflect.deleteProperty(globalThis, 'VideoEncoder');
 
-// The renderer never tells Mediabunny the frame rate or a codec string, so the
-// probe must not either. If @remotion/web-renderer starts passing either, the
-// probe has to follow; this trips first.
+// The encoder config is built by makeVideoSampleSourceCleanup (VideoSampleSource),
+// so that call must not carry a frame rate or codec string. addVideoTrack now
+// passes frameRate as track metadata (Remotion 4.0.537); that metadata does not
+// enter the encoder config, which the canEncodeVideo parity check above pins.
 const webRendererSource = readFileSync(fileURLToPath(import.meta.resolve('@remotion/web-renderer')), 'utf8');
 const sampleSourceCall = webRendererSource.match(/makeVideoSampleSourceCleanup\(\{[\s\S]*?\}\)/)?.[0];
 const addTrackCall = webRendererSource.match(/addVideoTrack\([\s\S]*?\}\)/)?.[0];
 assert.ok(sampleSourceCall && addTrackCall, 'web-renderer still builds its VideoSampleSource where this verify looks');
 assert.doesNotMatch(sampleSourceCall, /frameRate|framerate|fullCodecString/);
-assert.doesNotMatch(addTrackCall, /frameRate|framerate/);
+assert.match(addTrackCall, /frameRate:/, 'track metadata carries the frame rate independently of the encoder config');
 
 // ── 3. Pre-flight: refusal routes to the local renderer before any frame ─────
 const timeline60: TimelineState = {
@@ -155,7 +156,7 @@ const refused = await inspectBrowserExport(exportOptions(refusing));
 assert.equal(refused.status, 'unsupported');
 assert.equal(refused.status === 'unsupported' && refused.reason, BROWSER_ENCODER_UNSUPPORTED_REASON,
   'the user-facing reason is the neutral notice, not WebCodecs\' message');
-assert.ok(refused.issues.some((issue) => issue.includes('avc1.640028 1920x1080 6000000 bps prefer-hardware')),
+assert.ok(refused.issues.some((issue) => issue.includes('avc1.640028 1920x1080 quantizer prefer-hardware')),
   'the exact refused config stays available for diagnostics');
 assert.deepEqual(withoutUndefined(probed[0]!), {
   codec: 'avc1.640028',
@@ -163,7 +164,7 @@ assert.deepEqual(withoutUndefined(probed[0]!), {
   height: 1080,
   displayWidth: 1920,
   displayHeight: 1080,
-  bitrate: 6_000_000,
+  bitrateMode: 'quantizer',
   alpha: 'discard',
   latencyMode: 'quality',
   hardwareAcceleration: 'prefer-hardware',
@@ -225,7 +226,7 @@ try {
   const efficient = await inspectBrowserExport(exportOptions(accepting));
   assert.deepEqual(efficient, { status: 'supported', issues: [], powerEfficient: true });
   assert.equal(encodingQueries[0]?.video?.contentType, 'video/mp4; codecs="avc1.64002a"');
-  assert.equal(encodingQueries[0]?.video?.bitrate, 6_000_000, 'the bitrate the encoder is really given');
+  assert.equal(encodingQueries[0]?.video?.bitrate, 6_111_000, 'the bitrate the encoder is really given');
   assert.equal(encodingQueries[0]?.video?.framerate, 60);
 } finally {
   Reflect.deleteProperty(globalThis.navigator, 'mediaCapabilities');

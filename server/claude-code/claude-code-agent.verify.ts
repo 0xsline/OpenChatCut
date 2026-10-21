@@ -5,6 +5,13 @@ import { join } from 'node:path';
 import type { ClaudeCodeTurnStreamEvent } from '../../shared/claude-code-agent.ts';
 import { claudeCodeCommand } from './command.ts';
 import { isSupportedClaudeCodeVersion, MINIMUM_CLAUDE_CODE_VERSION } from './installation.ts';
+import {
+  clearClaudeCodeModelCache,
+  FALLBACK_CLAUDE_CODE_MODELS,
+  listClaudeCodeModels,
+  parseClaudeCodeModels,
+  requestClaudeCodeModels,
+} from './models.ts';
 import { runClaudeCodeTurn, translateClaudeCodeLine } from './turn-runner.ts';
 
 // -- version parsing / support gate -----------------------------------------
@@ -120,6 +127,71 @@ assert.deepEqual(posixCommand, { executable: '/usr/local/bin/claude', args: ['--
   );
   assert.deepEqual(failure, [{ type: 'error', message: 'ran out of turns' }, { type: 'done' }]);
 }
+
+// -- parseClaudeCodeModels: the `initialize` control_response ---------------
+// Shape recorded from Claude Code 2.1.302: a `default` entry that only points at
+// a model, aliases and pinned ids that resolve to the same model, and extras
+// (supportedEffortLevels, description) the picker does not use.
+const initResponse = (models: unknown, subtype = 'success') => ({
+  type: 'control_response',
+  response: { subtype, request_id: 'openchatcut-models', response: { models, account: {} } },
+});
+const CLI_MODELS = [
+  { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)',
+    description: 'Opus 5.5 · Best for everyday, complex tasks', supportedEffortLevels: ['low', 'high'] },
+  { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5' },
+  { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
+  { value: 'fable', resolvedModel: 'claude-fable-5-1', displayName: 'Fable 5.1' },
+  { value: 'claude-sonnet-5-5', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5 (pinned)' },
+  { value: 'claude-haiku-4-5-20251001', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
+];
+const PARSED_CLI_MODELS = [
+  { id: 'claude-opus-5-5', label: 'Opus 5.5', isDefault: true },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', isDefault: false },
+  { id: 'claude-fable-5-1', label: 'Fable 5.1', isDefault: false },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', isDefault: false },
+];
+assert.deepEqual(parseClaudeCodeModels(initResponse(CLI_MODELS)), PARSED_CLI_MODELS,
+  'ids are resolvedModel, duplicates collapse to the first label, and the default is marked once');
+assert.deepEqual(
+  parseClaudeCodeModels(initResponse([
+    { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5' },
+    { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
+    { value: 'default', resolvedModel: 'claude-sonnet-5-5', displayName: 'Default (recommended)' },
+  ]))?.map((model) => [model.id, model.isDefault]),
+  [['claude-sonnet-5-5', true], ['claude-opus-5-5', false]],
+  'the CLI default moves first: the composer falls back to the first entry, not to isDefault',
+);
+assert.deepEqual(
+  parseClaudeCodeModels(initResponse([
+    { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)',
+      description: 'Opus 5.5 · Best for everyday, complex tasks' },
+    { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku 5.5' },
+  ])),
+  [
+    { id: 'claude-opus-5-5', label: 'Opus 5.5', isDefault: true },
+    { id: 'claude-haiku-5-5', label: 'Haiku 5.5', isDefault: false },
+  ],
+  'a default no alias names still appears, labelled from its description, never "Default (recommended)"',
+);
+assert.deepEqual(
+  parseClaudeCodeModels(initResponse([
+    { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
+    { value: 'broken', displayName: 'No resolved model' },
+    'not an object',
+    { value: 'haiku', resolvedModel: 'claude-haiku-5-5' },
+  ])),
+  [
+    { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', isDefault: true },
+    { id: 'claude-haiku-5-5', label: 'claude-haiku-5-5', isDefault: false },
+  ],
+  'without a default entry the first model is the default; malformed entries are skipped',
+);
+assert.equal(parseClaudeCodeModels(initResponse(CLI_MODELS, 'error')), null, 'an error response is no answer');
+assert.equal(parseClaudeCodeModels(initResponse('nope')), null, 'models must be an array');
+assert.equal(parseClaudeCodeModels(initResponse([{ value: 'x' }])), null, 'no usable entry is no answer');
+assert.equal(parseClaudeCodeModels({ type: 'control_response' }), null);
+assert.equal(parseClaudeCodeModels(null), null);
 
 
 function sleep(ms: number): Promise<void> {
@@ -312,6 +384,79 @@ try {
   }
 } finally {
   await rm(directory, { recursive: true, force: true }).catch(() => {});
+}
+
+// -- listClaudeCodeModels: real subprocess, cache and fallback --------------
+// The child gets an allow-listed environment, so the fake reads its mode from a
+// file beside itself and counts its launches in another.
+const FAKE_MODELS_CLI = String.raw`
+import { appendFileSync, readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+const here = new URL('.', import.meta.url);
+const mode = readFileSync(new URL('mode.txt', here), 'utf8').trim();
+appendFileSync(new URL('launches.txt', here), 'x');
+const args = process.argv.slice(2);
+for (const flag of ['-p', '--verbose', '--restricted']) if (!args.includes(flag)) process.exit(81);
+if (args[args.indexOf('--input-format') + 1] !== 'stream-json') process.exit(82);
+if (args[args.indexOf('--output-format') + 1] !== 'stream-json') process.exit(83);
+if (mode === 'crash') process.exit(3);
+const lines = createInterface({ input: process.stdin });
+lines.on('close', () => process.exit(0));
+setTimeout(() => process.exit(0), 5000);
+lines.on('line', (line) => {
+  const request = JSON.parse(line);
+  if (request.type !== 'control_request' || request.request.subtype !== 'initialize') process.exit(84);
+  if (mode === 'hang') return;
+  process.stdout.write('not json\n');
+  process.stdout.write(JSON.stringify({ type: 'control_response', response: {
+    subtype: 'success', request_id: 'someone-else', response: { models: [] } } }) + '\n');
+  process.stdout.write(JSON.stringify({ type: 'control_response', response: {
+    subtype: 'success', request_id: request.request_id, response: { models: MODELS } } }) + '\n');
+});
+`;
+
+const modelsDirectory = await mkdtemp(join(tmpdir(), 'openchatcut-claude-code-models-'));
+try {
+  const script = join(modelsDirectory, 'fake-claude-models.mjs');
+  await writeFile(script, `const MODELS = ${JSON.stringify(CLI_MODELS)};\n${FAKE_MODELS_CLI}`, 'utf8');
+  let cli = script;
+  if (process.platform === 'win32') {
+    cli = join(modelsDirectory, 'fake-claude-models.cmd');
+    await writeFile(cli, `@echo off\r\nnode "${script}" %*\r\n`, 'utf8');
+  } else {
+    await writeFile(script, `#!/usr/bin/env node\nconst MODELS = ${JSON.stringify(CLI_MODELS)};\n${FAKE_MODELS_CLI}`, 'utf8');
+    await chmod(script, 0o755);
+  }
+  const setMode = (mode: string) => writeFile(join(modelsDirectory, 'mode.txt'), mode, 'utf8');
+  const launches = async () => (await readFile(join(modelsDirectory, 'launches.txt'), 'utf8').catch(() => '')).length;
+
+  await setMode('ok');
+  assert.deepEqual(await requestClaudeCodeModels(cli), PARSED_CLI_MODELS,
+    'the initialize answer is read over stdio, skipping noise and other request ids');
+
+  clearClaudeCodeModelCache();
+  const before = await launches();
+  const [first, second] = await Promise.all([listClaudeCodeModels(cli, '9.0.0'), listClaudeCodeModels(cli, '9.0.0')]);
+  assert.deepEqual(first, { models: PARSED_CLI_MODELS });
+  assert.deepEqual(second, first);
+  assert.equal(await launches() - before, 1, 'concurrent callers share one CLI process');
+  assert.deepEqual(await listClaudeCodeModels(cli, '9.0.0'), first);
+  assert.equal(await launches() - before, 1, 'a cached answer does not respawn the CLI');
+  await listClaudeCodeModels(cli, '9.0.1');
+  assert.equal(await launches() - before, 2, 'a new CLI version asks again');
+
+  await setMode('hang');
+  await assert.rejects(requestClaudeCodeModels(cli, 400), /timed out/);
+  assert.deepEqual(await listClaudeCodeModels(cli, 'hang', 400), { models: FALLBACK_CLAUDE_CODE_MODELS },
+    'a CLI that never answers falls back to the curated list, with no error that would empty the picker');
+
+  await setMode('crash');
+  await assert.rejects(requestClaudeCodeModels(cli), /exited with code 3/);
+  assert.deepEqual(await listClaudeCodeModels(cli, 'crash'), { models: FALLBACK_CLAUDE_CODE_MODELS });
+  assert.deepEqual(await listClaudeCodeModels(join(modelsDirectory, 'missing-claude'), null),
+    { models: FALLBACK_CLAUDE_CODE_MODELS }, 'a CLI that cannot spawn falls back too');
+} finally {
+  await rm(modelsDirectory, { recursive: true, force: true }).catch(() => {});
 }
 
 process.stdout.write('claude-code-agent.verify.ts: ok\n');

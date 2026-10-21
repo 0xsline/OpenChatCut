@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { APICallError } from 'ai';
+import { APICallError, streamText, type ModelMessage } from 'ai';
+import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test';
 import { ASK_MODE_TOOL_SCHEMAS } from '../../src/agent/ask-mode-tools';
 import { TOOL_SCHEMAS } from '../../src/agent/tools';
 import { buildServerRunPrompt, SERVER_RUN_AI_TIMEOUT } from './context.ts';
@@ -10,6 +11,7 @@ import { serverProviderOptions } from './model.ts';
 import { validateCreateInput } from './request.ts';
 import { resolveRunExecution } from './execution-input.ts';
 import { LLM_PROVIDER_PRESETS, normalizeLlmProvider } from '../../shared/llm-providers.ts';
+import { answerUnexecutedToolCalls } from './unexecuted-tool-calls.ts';
 import {
   collectServerText,
   executeBrowserTool,
@@ -363,6 +365,72 @@ assert.match(
 );
 
 console.log('server executor turn-disposition checks passed');
+
+// The AI SDK leaves a step's tool calls unexecuted after a `length`, `content-filter` or
+// `error` finish. Carried into the next turn unanswered, they fail that request with
+// MissingToolResultsError before it reaches the provider; each one gets an error result.
+{
+  const call = (toolCallId: string, providerExecuted = false) => ({
+    type: 'tool-call' as const,
+    toolCallId,
+    toolName: 'probe',
+    input: {},
+    ...(providerExecuted ? { providerExecuted } : {}),
+  });
+  const response: ModelMessage[] = [
+    { role: 'assistant', content: [{ type: 'text', text: 'working' }, call('ran'), call('cut'), call('hosted', true)] },
+    {
+      role: 'tool',
+      content: [{ type: 'tool-result', toolCallId: 'ran', toolName: 'probe', output: { type: 'text', value: 'ok' } }],
+    },
+  ];
+  const answered = answerUnexecutedToolCalls(response, 'length');
+  assert.deepEqual(answered, [...response, {
+    role: 'tool',
+    content: [{
+      type: 'tool-result',
+      toolCallId: 'cut',
+      toolName: 'probe',
+      output: {
+        type: 'error-text',
+        value: 'Not run: the response ended with finish reason "length" before this tool could execute.',
+      },
+    }],
+  }], 'only the unexecuted client tool call is answered; provider-executed calls are left alone');
+  assert.deepEqual(answerUnexecutedToolCalls(answered, 'tool-calls'), answered, 'answered calls are not answered twice');
+
+  const nextRequest = async (history: ModelMessage[]): Promise<string> => {
+    const model = new MockLanguageModelV4({
+      doStream: async () => ({
+        stream: convertArrayToReadableStream([
+          { type: 'stream-start', warnings: [] },
+          {
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: {
+              inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+              outputTokens: { total: 1, text: 1, reasoning: 0 },
+            },
+          },
+        ]),
+      }),
+    });
+    const result = streamText({
+      model,
+      messages: [{ role: 'user', content: 'go' }, ...history],
+      maxRetries: 0,
+      onError: () => undefined,
+    });
+    for await (const part of result.fullStream) {
+      if (part.type === 'error') return part.error instanceof Error ? part.error.name : String(part.error);
+    }
+    return 'ok';
+  };
+  assert.equal(await nextRequest(response), 'AI_MissingToolResultsError', 'the unanswered call alone breaks the next request');
+  assert.equal(await nextRequest(answered), 'ok', 'the answered history is a valid next request');
+}
+
+console.log('server executor unexecuted-tool-call checks passed');
 
 resetServerRunStoreForTest();
 const cacheCatalog = canonicalServerRunToolCatalog(false);

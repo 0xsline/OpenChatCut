@@ -177,6 +177,18 @@ console.log('remotion performance verification passed');
   assert.ok((render.match(/binariesDirectory: binariesDirectory\(\)/g) ?? []).length >= 5,
     'every composition selection, media render and still render passes the binaries directory');
   assert.doesNotMatch(render, /binariesDirectory: undefined/, 'the software retry keeps the binaries directory');
+  // The packaged Windows app mirrors two directories (desktop/remotion-binaries.ts): the stock
+  // compositor for every ordinary render, and one with the static ffmpeg swapped in for its
+  // hardware encoders. Only the direct hardware attempt, and the probe that checks its encoder,
+  // may use the second: it has no libfdk_aac, so a software render from it fails (issue #223).
+  assert.match(render, /const hardwareBinariesDirectory = \(\) => process\.env\.CC_REMOTION_HARDWARE_BINARIES_DIR \|\| binariesDirectory\(\)/,
+    'without a hardware mirror the hardware attempt uses the ordinary directory');
+  assert.match(render, /const directBinaries = customOverride \? hardwareBinariesDirectory\(\) : null/,
+    'the direct hardware attempt renders from the hardware mirror');
+  assert.match(render, /export function remotionHardwareFfmpegPath\(\) \{[^}]*binariesDirectory: hardwareBinariesDirectory\(\)/,
+    'the H.264 encoder probe checks the ffmpeg the hardware attempt runs');
+  assert.equal((render.match(/hardwareBinariesDirectory\(\)/g) ?? []).length, 2,
+    'nothing else renders from the hardware mirror');
   assert.match(render, /attempt\.ffmpegOverride\s*\?\s*renderDirectHardware/,
     'the custom ffmpeg override, not the binaries directory, marks the direct-hardware attempt');
 }

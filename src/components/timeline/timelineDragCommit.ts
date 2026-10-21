@@ -5,6 +5,7 @@ import { sourceFramesToTimelineFrames, sourceWindowForTimelineRange } from '../.
 import type { EditorCommands } from '../../editor/store';
 import { hasOperationalTranscript } from '../../transcript/types';
 import type { Drag, EditMode } from './timelineUtil';
+import { isWindowedMotionGraphic } from '../../editor/motionGraphicTime';
 
 /**
  * The right edge of the nearest same-track clip that ends at or before `baseStart`.
@@ -58,7 +59,9 @@ function commitTrimGesture(
   if (mode === 'trim-left') {
     const target = state.items.find((item) => item.id === id);
     if (!target) return;
-    const sourceTimed = target.kind === 'video' || target.kind === 'audio' || target.kind === 'sequence';
+    // A split motion-graphic piece is a window of a longer animation, so its start trims like video.
+    const sourceTimed = target.kind === 'video' || target.kind === 'audio' || target.kind === 'sequence'
+      || isWindowedMotionGraphic(target);
     const wordDriven = target.kind === 'audio' && hasOperationalTranscript(target);
     // Pictures, MG, text, solids and word-driven audio have no source
     // duration limit: their left edge can extend back to timeline zero.

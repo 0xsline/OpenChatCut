@@ -112,8 +112,7 @@ export default defineConfig(({ mode }) => {
   const falKey = env.FAL_KEY || '';
   const dreamApiKey = env.DREAMAPI_API_KEY || '';
   const elevenKey = env.ELEVENLABS_API_KEY || '';
-  const doubaoAppId = env.DOUBAO_TTS_APP_ID || '';
-  const doubaoAccessKey = env.DOUBAO_TTS_ACCESS_KEY || '';
+  const doubaoKey = env.DOUBAO_TTS_API_KEY || '';
   const murekaKey = env.MUREKA_API_KEY || '';
   // MiniMax domestic open platform — one key gates TTS / Hailuo video / music / image.
   const minimaxKey = env.MINIMAX_API_KEY || '';
@@ -136,7 +135,7 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(appPackage.version),
       __CONFIGURED_CAPS__: JSON.stringify({
         image: Boolean(imageKey || geminiKey || minimaxKey || falKey || dreamApiKey),
-        voice: Boolean((doubaoAppId && doubaoAccessKey) || elevenKey || minimaxKey || dreamApiKey),
+        voice: Boolean(doubaoKey || elevenKey || minimaxKey || dreamApiKey),
         video: Boolean(seedanceKey || klingKey || minimaxKey || falKey || dreamApiKey),
         music: Boolean(murekaKey || minimaxKey),
         sound: Boolean(elevenKey),

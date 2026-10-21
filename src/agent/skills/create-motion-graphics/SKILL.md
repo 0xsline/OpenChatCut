@@ -280,6 +280,19 @@ Read [`references/canvas-pipeline-rules.md`](references/canvas-pipeline-rules.md
 
 Use the timeline editing workflow for placement, movement, trimming, and per-instance property overrides. Dry-run large or uncertain transactions when the tool surface supports validation.
 
+## Changing an MG that is already on the timeline
+
+Edit what is there — never regenerate to restructure. The author has already approved its look.
+
+- **Separate one MG into several clips** ("don't combine them", "split it into a few"): `split_item`
+  it at the beat frames. Each piece keeps playing the SAME design from the frame where the cut falls —
+  it does not restart from the intro — so the result looks exactly as before, now as separate clips
+  the author can move, trim or delete one at a time. Do NOT recreate the pieces with
+  `create_motion_graphic_from_code`: that throws away the approved design and ships a different one.
+- **Change text, colour or timing:** edit the existing clip's props or asset (`edit_asset`) and say
+  what changed.
+- Generate a new graphic only when the author asks for a new or different design.
+
 ## Implementation Rules
 
 Read [`references/canvas-pipeline-rules.md`](references/canvas-pipeline-rules.md) before any asset-code update, when writing or modifying SVG, or when preview looks correct but export renders black or empty.

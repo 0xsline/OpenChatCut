@@ -35,12 +35,12 @@ export function browserHardwareAcceleration(width: number, height: number): Brow
     : 'prefer-hardware';
 }
 
-// Mediabunny's Quality#_toVideoBitrate, which renderMediaOnWeb applies to the
-// 'high' preset (QUALITY_HIGH, factor 2). Keep the operation order: the
-// parity verify compares the rounded result bit for bit.
+// Mediabunny 1.61.6's Quality("high") path:
+// qualityToBitrateFactor(0.75) = 0.3 * exp(2.5538 * 0.75).
+// Keep the operation order: the parity verify compares the rounded result bit for bit.
 const REFERENCE_PIXELS = 1920 * 1080;
 const REFERENCE_BITRATE = 3_000_000;
-const QUALITY_HIGH_FACTOR = 2;
+const QUALITY_HIGH = 0.75;
 const CODEC_EFFICIENCY: Record<BrowserVideoCodec, number> = { h264: 1.0, vp8: 1.2 };
 
 /** The bitrate the web renderer's encoder is configured with. */
@@ -54,21 +54,25 @@ export function browserEncoderBitrate(
   const scaleFactor = Math.pow((width * height) / REFERENCE_PIXELS, 0.95);
   const baseBitrate = REFERENCE_BITRATE * scaleFactor;
   const codecAdjustedBitrate = baseBitrate * CODEC_EFFICIENCY[codec];
-  const finalBitrate = codecAdjustedBitrate * QUALITY_HIGH_FACTOR;
+  const finalBitrate = codecAdjustedBitrate * (0.3 * Math.exp(2.5538 * QUALITY_HIGH));
   return Math.ceil(finalBitrate / 1000) * 1000;
 }
 
 /**
- * The VideoEncoderConfig that @remotion/web-renderer 4.0.509 makes Mediabunny
- * 1.50.8 check with VideoEncoder.isConfigSupported() before its first frame;
+ * The VideoEncoderConfig that @remotion/web-renderer 4.0.537 makes Mediabunny
+ * 1.61.6 check with VideoEncoder.isConfigSupported() before its first frame;
  * a rejection there is the "This specific encoder configuration (...) is not
  * supported by this browser" failure. It carries no frame rate: the renderer
  * never gives Mediabunny one, so probing with a frame rate would ask the
- * browser a stricter question than the export does.
+ * browser a stricter question than the export does. Mediabunny's QUALITY_HIGH
+ * now requests quantizer rate control (no numeric bitrate), so the probe must
+ * ask that exact question for the 'high' preset.
  */
 export function browserVideoEncoderConfig(request: BrowserEncoderRequest): VideoEncoderConfig {
   const { codec, width, height, hardwareAcceleration } = request;
   const bitrate = browserEncoderBitrate(codec, width, height, request.videoBitrate);
+  const highQuality = request.videoBitrate === 'high';
+  const quantizerMode = highQuality && codec === 'h264';
   return {
     codec: codec === 'h264'
       ? avcHighProfileCodecString(mediabunnyAvcLevelIdc(width, height, bitrate))
@@ -77,7 +81,9 @@ export function browserVideoEncoderConfig(request: BrowserEncoderRequest): Video
     height,
     displayWidth: width,
     displayHeight: height,
-    bitrate,
+    ...(quantizerMode
+      ? { bitrateMode: 'quantizer' as const }
+      : { bitrate, bitrateMode: 'variable' as const }),
     alpha: 'discard',
     latencyMode: 'quality',
     hardwareAcceleration,
@@ -91,7 +97,8 @@ function nativeVideoEncoderProbe(): VideoEncoderSupportProbe | null {
 }
 
 function describe(config: VideoEncoderConfig, verdict: string): string {
-  return `VideoEncoder ${config.codec} ${config.width}x${config.height} ${config.bitrate} bps `
+  const rate = config.bitrateMode === 'quantizer' ? 'quantizer' : `${config.bitrate} bps`;
+  return `VideoEncoder ${config.codec} ${config.width}x${config.height} ${rate} `
     + `${config.hardwareAcceleration}: ${verdict}`;
 }
 

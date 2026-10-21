@@ -11,6 +11,7 @@ import { constants, existsSync } from 'node:fs';
 import { copyFile, stat, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
+import { ffmpegBin } from '../media-binaries.ts';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 
@@ -83,7 +84,7 @@ export function voiceIsolationArtifactName(
 
 function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawnMediaProcess('ffmpeg', [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawnMediaProcess(ffmpegBin(), [...ffmpegThreadArgs(), ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

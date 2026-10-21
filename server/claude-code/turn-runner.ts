@@ -101,7 +101,8 @@ export class ClaudeCodeProcessError extends Error {
   }
 }
 
-function childEnvironment(): NodeJS.ProcessEnv {
+/** The allow-listed environment every Claude Code child gets (turns and the model query). */
+export function childEnvironment(): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   for (const name of CHILD_ENV_NAMES) {
     const value = process.env[name];

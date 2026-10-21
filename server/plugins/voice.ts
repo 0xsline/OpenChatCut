@@ -79,7 +79,7 @@ export function voiceGenerationPlugin(options: VoiceOptions): Plugin {
           else if (input.provider === 'fishaudio') bytes = await fishAudioVoice(options, input);
           else bytes = await speechifyVoice(options, input);
           const audio = audioDescriptor(input.provider, input.outputFormat, input.audioFormat, input.sampleRate);
-          const saved = await saveVoiceAudio(bytes, audio.codec, audio.sampleRate, input.provider === 'doubao' ? input.pitch ?? 0 : 0);
+          const saved = await saveVoiceAudio(bytes, audio.codec, audio.sampleRate);
           const subtitlePath = subtitleUrl ? await saveVoiceSubtitle(subtitleUrl) : undefined;
           sendJson(res, 200, { ...saved, subtitlePath });
         } catch (error) {

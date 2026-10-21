@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { minimaxVoiceBody, minimaxVoiceResult } from './voice-providers.ts';
+import { doubaoVoice, minimaxVoiceBody, minimaxVoiceResult } from './voice-providers.ts';
 import { validateVoiceRequest } from './voice.ts';
 import { generateAiVoice } from './voice-ai-sdk.ts';
 import type { VoiceOptions } from './voice-types.ts';
@@ -88,7 +88,7 @@ assert.throws(
   /unsupported ElevenLabs outputFormat/,
 );
 assert.throws(
-  () => validateVoiceRequest({ provider: 'minimax', text: 'x', voiceId: 'a', emotion: 'calm', emotionScale: 2 }),
+  () => validateVoiceRequest({ provider: 'minimax', text: 'x', voiceId: 'a', emotion: 'calm', speedRatio: 1.2 }),
   /MiniMax does not accept ElevenLabs\/Doubao-only/,
 );
 assert.throws(
@@ -101,10 +101,14 @@ const doubao = validateVoiceRequest({
   text: '你好',
   voiceId: 'vivi',
   pitch: 1,
-  emotion: 'happy',
-  emotionScale: 3,
+  speedRatio: 1.1,
+  loudnessRatio: 1.2,
 });
 assert.equal(doubao.provider, 'doubao');
+assert.throws(
+  () => validateVoiceRequest({ provider: 'doubao', text: '你好', voiceId: 'vivi', emotion: 'happy' }),
+  /Doubao \(seed-audio-1\.0\) accepts only/,
+);
 
 const inworld = validateVoiceRequest({ provider: 'inworld', text: 'Hello', voiceId: 'Dennis', modelId: 'inworld-tts-2' });
 assert.equal(inworld.provider, 'inworld');
@@ -134,7 +138,7 @@ assert.throws(
 
 const aiOptions: VoiceOptions = {
   elevenBaseUrl: '', elevenApiKey: '', elevenModel: '',
-  doubaoBaseUrl: '', doubaoAppId: '', doubaoAccessKey: '', doubaoResourceId: '',
+  doubaoBaseUrl: '', doubaoApiKey: '', doubaoModel: '', doubaoVoiceId: '',
   minimaxBaseUrl: '', minimaxApiKey: '', minimaxModel: '',
   inworldBaseUrl: '', inworldApiKey: '', inworldModel: '',
   fishAudioBaseUrl: '', fishAudioApiKey: '', fishAudioModel: '',
@@ -153,6 +157,37 @@ const aiOptions: VoiceOptions = {
     cartesiaModel: 'sonic-3',
   },
 };
+const doubaoOptions: VoiceOptions = {
+  ...aiOptions,
+  doubaoBaseUrl: 'https://openspeech.test',
+  doubaoApiKey: 'doubao-key',
+  doubaoModel: 'seed-audio-1.0',
+  doubaoVoiceId: 'S_DefaultSpeaker',
+};
+{
+  const originalDoubaoFetch = globalThis.fetch;
+  const speakers: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as { references?: Array<{ speaker?: string }> };
+    speakers.push(body.references?.[0]?.speaker ?? '');
+    return Response.json({ audio: Buffer.from('doubao').toString('base64') });
+  };
+  try {
+    const custom = validateVoiceRequest({ provider: 'doubao', text: '你好', voiceId: 'S_5wulnA7i2' });
+    assert.equal((await doubaoVoice(doubaoOptions, custom)).toString(), 'doubao');
+    const alias = validateVoiceRequest({ provider: 'doubao', text: '你好', voiceId: 'vivi' });
+    await doubaoVoice(doubaoOptions, alias);
+    const fallback = validateVoiceRequest({ provider: 'doubao', text: '你好', voiceId: '' });
+    await doubaoVoice(doubaoOptions, fallback);
+    assert.deepEqual(speakers, ['S_5wulnA7i2', 'zh_female_vv_uranus_bigtts', 'S_DefaultSpeaker'],
+      'raw speaker passes through, aliases resolve, and the Settings default fills an omitted voiceId');
+    await assert.rejects(() => doubaoVoice({ ...doubaoOptions, doubaoVoiceId: '' }, fallback),
+      /Doubao voiceId is required/);
+  } finally {
+    globalThis.fetch = originalDoubaoFetch;
+  }
+}
+
 const openAiRequest = validateVoiceRequest({
   provider: 'openai',
   text: 'Hello from OpenChatCut',

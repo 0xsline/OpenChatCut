@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import ts from 'typescript';
+import { parse } from '@babel/parser';
 import { EN } from '../en';
 import { IT } from './index';
 import { SETTINGS_CATEGORIES } from '../../../components/settings/settingsSchema';
@@ -10,6 +10,11 @@ import type { SettingsField, SettingsVendorPage } from '../../../components/sett
 const ROOT = process.cwd();
 const SETTINGS_ROOT = path.join(ROOT, 'src', 'components', 'settings');
 const CJK = /[\u3400-\u9fff]/;
+const IGNORED_NODE_KEYS = new Set([
+  'type', 'start', 'end', 'loc', 'range', 'extra',
+  'leadingComments', 'trailingComments', 'innerComments', 'comments', 'tokens', 'errors',
+  'interpreter', 'directives',
+]);
 
 function walk(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -18,26 +23,64 @@ function walk(dir: string): string[] {
   });
 }
 
-function sourceFile(filePath: string): ts.SourceFile {
-  return ts.createSourceFile(
-    filePath,
-    fs.readFileSync(filePath, 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
+type BabelNode = { type: string } & Record<string, unknown>;
+
+function isNode(value: unknown): value is BabelNode {
+  return value !== null && typeof value === 'object' && 'type' in value && typeof value.type === 'string';
+}
+
+function walkAst(node: BabelNode, visit: (node: BabelNode) => void): void {
+  visit(node);
+  for (const key of Object.keys(node)) {
+    if (IGNORED_NODE_KEYS.has(key)) continue;
+    const value = node[key];
+    if (Array.isArray(value)) {
+      for (const child of value) if (isNode(child)) walkAst(child, visit);
+    } else if (isNode(value)) {
+      walkAst(value, visit);
+    }
+  }
+}
+
+function sourceFile(filePath: string): BabelNode {
+  const ast = parse(fs.readFileSync(filePath, 'utf8'), {
+    sourceType: 'module',
+    sourceFilename: filePath,
+    plugins: filePath.endsWith('.tsx') ? ['typescript', 'jsx'] : ['typescript'],
+    createParenthesizedExpressions: true,
+  });
+  // Parser boundary: the parser's File/Program types are declared in @babel/types;
+  // this scan only needs the generic node shape.
+  return ast.program as unknown as BabelNode;
+}
+
+function literalText(node: BabelNode): string | null {
+  if (node.type === 'StringLiteral' && typeof node.value === 'string') return node.value;
+  if (node.type === 'TemplateLiteral' && Array.isArray(node.expressions) && node.expressions.length === 0) {
+    const quasis = Array.isArray(node.quasis) ? node.quasis : [];
+    const first = quasis[0];
+    if (isNode(first) && first.type === 'TemplateElement') {
+      const firstValue = first.value;
+      if (
+        firstValue !== null
+        && typeof firstValue === 'object'
+        && 'cooked' in firstValue
+        && typeof firstValue.cooked === 'string'
+      ) {
+        return firstValue.cooked;
+      }
+    }
+  }
+  return null;
 }
 
 const settingsKeys = new Set<string>();
 for (const filePath of walk(SETTINGS_ROOT).filter((file) => /\.tsx?$/.test(file) && !/\.verify\.tsx?$/.test(file))) {
-  const sf = sourceFile(filePath);
-  function visit(node: ts.Node): void {
-    if (ts.isStringLiteralLike(node) && CJK.test(node.text) && EN[node.text]) {
-      settingsKeys.add(node.text);
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(sf);
+  const ast = sourceFile(filePath);
+  walkAst(ast, (node) => {
+    const text = literalText(node);
+    if (text && CJK.test(text) && EN[text]) settingsKeys.add(text);
+  });
 }
 
 const missing = [...settingsKeys].filter((key) => !IT[key]).sort((a, b) => a.localeCompare(b));

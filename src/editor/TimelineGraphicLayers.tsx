@@ -1,8 +1,10 @@
-import { AbsoluteFill } from 'remotion';
+import { useContext, type ReactNode } from 'react';
+import { AbsoluteFill, Internals } from 'remotion';
 import { getCompiledTemplate } from '../template-host';
 import type { AspectFit, TimelineItem, Watermark } from './types';
 import { VisualClipSurface } from './TimelineMediaLayer';
 import { fontFamilyCss } from '../fonts/googleFontCatalog';
+import { motionGraphicTime } from './motionGraphicTime';
 
 export function SolidLayer({ item, canvasW, canvasH, borderRadius }: {
   item: TimelineItem;
@@ -134,6 +136,17 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
   );
 }
 
+function MotionGraphicWindow({ item, children }: { item: TimelineItem; children: ReactNode }) {
+  const parent = useContext(Internals.SequenceContext);
+  const time = parent ? motionGraphicTime(parent, item) : null;
+  if (!parent || !time) return <>{children}</>;
+  return (
+    <Internals.SequenceContext.Provider value={{ ...parent, ...time }}>
+      {children}
+    </Internals.SequenceContext.Provider>
+  );
+}
+
 export function ItemLayer({ item, canvasW, canvasH, fit, borderRadius }: {
   item: TimelineItem;
   canvasW: number;
@@ -150,7 +163,9 @@ export function ItemLayer({ item, canvasW, canvasH, fit, borderRadius }: {
       <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ width: dw, height: dh, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
-            <Template item={{ props: item.props ?? {}, width: dw, height: dh }} />
+            <MotionGraphicWindow item={item}>
+              <Template item={{ props: item.props ?? {}, width: dw, height: dh }} />
+            </MotionGraphicWindow>
           </div>
         </div>
       </VisualClipSurface>

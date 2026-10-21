@@ -71,7 +71,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   ],
   voice: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
-    { label: 'Doubao', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
+    { label: 'Doubao', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_API_KEY']] },
     { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
     { label: 'Inworld', arg: 'inworld', argKey: 'provider', need: [['INWORLD_TTS_API_KEY']] },
     { label: 'Fish Audio', arg: 'fishaudio', argKey: 'provider', need: [['FISHAUDIO_TTS_API_KEY']] },
@@ -154,6 +154,14 @@ function dreamApiSuffix(cap: CapabilityKey): string {
       : 'No DreamAPI model selected: ask which DreamAPI model to use before submitting.');
 }
 
+function doubaoSpeakerSuffix(): string {
+  if (!liveKeys?.DOUBAO_TTS_API_KEY?.configured) return '';
+  const speaker = (liveModels?.DOUBAO_TTS_VOICE_ID ?? '').trim();
+  return speaker
+    ? `\nDoubao default speaker ID: ${speaker}. For provider=doubao pass it verbatim as voiceId unless the user explicitly names another voice; no audition is needed.`
+    : '';
+}
+
 /** Routing suffix for an ON capability, mode-aware:
  * user default → use it; single vendor → use it;
  * several & manual (every change confirmed) → ask once via ask_followup_questions;
@@ -209,7 +217,7 @@ export function capabilitiesPrompt(
   return `\n\n# Available capabilities (based on configured API keys; local editing is always available without keys)\n`
     + `✅ Configured: ${on.length ? on.join(', ') : '(no key-gated capabilities)'}.\n`
     + falModelSuffix('image') + falModelSuffix('video')
-    + dreamApiSuffix('image') + dreamApiSuffix('video') + dreamApiSuffix('voice') + '\n'
+    + dreamApiSuffix('image') + dreamApiSuffix('video') + dreamApiSuffix('voice') + doubaoSpeakerSuffix() + '\n'
     + `⬜ Not configured — do not promise these in a plan or call them; they return "not configured" and waste a turn:\n`
     + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
     + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured'

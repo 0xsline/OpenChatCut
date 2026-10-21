@@ -522,5 +522,10 @@ try {
 
   process.stdout.write('occ cli verify: ok\n');
 } finally {
+  // This process holds the store's SQLite connections open (it writes fixtures
+  // and reads versions in-process); on Windows an open handle makes the
+  // recursive delete below fail with EPERM, so close them first.
+  const { resetSqliteStoreForTests } = await import('../server/storage/sqlite-store.ts');
+  resetSqliteStoreForTests();
   rmSync(HOME, { recursive: true, force: true });
 }

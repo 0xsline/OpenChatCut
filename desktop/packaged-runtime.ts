@@ -51,10 +51,12 @@ export async function preparePackagedRuntime(paths: PackagedPaths): Promise<void
   const browser = findBundledBrowser(join(paths.resourcesPath, 'chrome-headless-shell'));
   if (browser) process.env.CC_BROWSER_EXECUTABLE = browser;
   if (!process.env.CC_REMOTION_BINARIES_DIR) {
-    // A real, writable copy of the compositor: the archive cannot be chmod'ed or spawned.
-    process.env.CC_REMOTION_BINARIES_DIR = await ensureRemotionBinaries({
+    // Real, writable copies of the compositor: the archive cannot be chmod'ed or spawned.
+    const binaries = await ensureRemotionBinaries({
       userDataPath: paths.userDataPath,
       version: paths.version,
     });
+    process.env.CC_REMOTION_BINARIES_DIR = binaries.stock;
+    process.env.CC_REMOTION_HARDWARE_BINARIES_DIR = binaries.hardware;
   }
 }

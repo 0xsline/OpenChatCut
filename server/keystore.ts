@@ -156,7 +156,7 @@ export function computeCaps(): Caps {
       has("FAL_KEY") ||
       has("DREAMAPI_API_KEY"),
     voice:
-      (has("DOUBAO_TTS_APP_ID") && has("DOUBAO_TTS_ACCESS_KEY")) ||
+      has("DOUBAO_TTS_API_KEY") ||
       has("ELEVENLABS_API_KEY") ||
       has("MINIMAX_API_KEY") ||
       has("INWORLD_TTS_API_KEY") ||

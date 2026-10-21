@@ -47,7 +47,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         dreamapiModel: { type: 'string', enum: DREAMAPI_MODELS.filter((model) => model.kind === 'voice').map((model) => model.id), description: 'With provider=dreamapi, select tts-common, tts-pro, tts-clone, or voice-clone.' },
         dreamapi: { type: 'object', description: 'DreamAPI voice inputs: text, lang, audioId, cloneId, or voiceUrl.' },
         text: { type: 'string', minLength: 1, description: 'Text to synthesize.' },
-        voiceId: { type: 'string', description: 'Concrete provider-specific voice ID confirmed by the user. Required except MiniMax timbreWeights mixing, where it must be empty. Do not invent a preset or reuse an ID from another provider.' },
+        voiceId: { type: 'string', description: 'Concrete provider-specific voice ID confirmed by the user. Required except MiniMax timbreWeights mixing and Doubao when a default speaker ID is saved in Settings. For Doubao, pass the exact Volcengine speaker ID verbatim (for example S_5wulnA7i2 or zh_female_vv_uranus_bigtts); it is sent unchanged as references[].speaker. Do not invent a preset or reuse an ID from another provider.' },
         modelId: { type: 'string', description: 'ElevenLabs, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia only. Omit to use the configured model.' },
         stability: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs only. Defaults to 0.5.' },
         speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'ElevenLabs (0.7–1.2), MiniMax (0.5–2), OpenAI, or Cartesia only. Defaults to 1; provider/model support is validated server-side.' },
@@ -68,13 +68,10 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         previousRequestIds: { type: 'array', items: { type: 'string' }, description: 'ElevenLabs prior request IDs for continuity.' },
         nextRequestIds: { type: 'array', items: { type: 'string' }, description: 'ElevenLabs next request IDs for continuity.' },
         speedRatio: { type: 'number', minimum: 0.5, maximum: 2, description: 'Doubao only. Defaults to 1.' },
-        emotion: { type: 'string', description: 'Doubao or MiniMax emotion label. MiniMax accepts: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper.' }, // minimax: shared with doubao
-        emotionScale: { type: 'number', minimum: 1, maximum: 5, description: 'Doubao only. Requires emotion.' },
+        emotion: { type: 'string', description: 'MiniMax only. One of: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper.' },
         loudnessRatio: { type: 'number', minimum: 0.5, maximum: 2, description: 'Doubao only. Defaults to 1.' },
-        pitch: { type: 'number', minimum: -12, maximum: 12, description: 'Doubao: post-process semitones. MiniMax: native voice_setting.pitch (-12–12).' },
+        pitch: { type: 'number', minimum: -12, maximum: 12, description: 'Doubao: native audio_config.pitch_rate (-12–12). MiniMax: native voice_setting.pitch (-12–12).' },
         volume: { type: 'number', exclusiveMinimum: 0, maximum: 10, description: 'MiniMax only. voice_setting.vol (>0–10). Defaults to 1.' },
-        performancePrompt: { type: 'string', maxLength: 200, description: 'Doubao only. Natural-language performance direction.' },
-        explicitDialect: { type: 'string', enum: ['dongbei', 'shaanxi', 'sichuan'], description: 'Doubao only; supported by the Vivi preset.' },
         // ponytail: Numeric enum will be rejected by Gemini native API (Schema.enum only accepts TYPE_STRING) - write in
         // description, the provider API side will still verify illegal values.
         sampleRate: { type: 'integer', description: 'MiniMax audio_setting.sample_rate. One of 8000/16000/22050/24000/32000/44100.' },

@@ -15,6 +15,7 @@ import {
   h264HardwareSupportsDimensions,
   SOFTWARE_H264_PROFILE,
 } from './performance.mjs';
+import { compensateAacEncoderDelay, remotionFfRunner, rendersRemotionAacTrack } from './aac-encoder-delay.mjs';
 import { renderDirectHardware } from './direct-hardware.mjs';
 import { assertMaterializedRenderSnapshot, normalizeH264Profile } from './render-contract.mjs';
 import { resolveRenderTimeout } from './render-timeout.mjs';
@@ -39,6 +40,11 @@ function resolveRenderGlBackend() {
 }
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
 const binariesDirectory = () => process.env.CC_REMOTION_BINARIES_DIR || null;
+// The direct hardware attempt needs an ffmpeg with the platform's hardware encoders. The
+// packaged Windows app mirrors one with the static build swapped in; elsewhere it is the
+// ordinary directory. Nothing else may render from it: the static build has no libfdk_aac,
+// so Remotion's own AAC encode fails there (issue #223).
+const hardwareBinariesDirectory = () => process.env.CC_REMOTION_HARDWARE_BINARIES_DIR || binariesDirectory();
 
 /** Every server render tells the composition which decoder feeds its video
  *  frames (see video-decoder.mjs); the Player and browser export never set it. */
@@ -50,12 +56,13 @@ export function currentRenderConcurrency() {
   return resolveRenderConcurrency();
 }
 
-export function remotionFfmpegPath() {
+/** The ffmpeg the direct hardware attempt renders with, for the H.264 encoder probe. */
+export function remotionHardwareFfmpegPath() {
   return RenderInternals.getExecutablePath({
     type: 'ffmpeg',
     indent: false,
     logLevel: 'error',
-    binariesDirectory: binariesDirectory(),
+    binariesDirectory: hardwareBinariesDirectory(),
   });
 }
 
@@ -101,13 +108,25 @@ export async function withAbortableCompositionSelection({
   }
 }
 
+/** renderMedia, then restore the AAC encoder delay its ADTS audio track dropped (see aac-encoder-delay.mjs). */
+async function renderMediaWithAlignedAudio(options, abortSignal) {
+  const result = await renderMedia(options);
+  if (rendersRemotionAacTrack(options)) {
+    await compensateAacEncoderDelay({
+      file: options.outputLocation,
+      run: remotionFfRunner({ binariesDirectory: options.binariesDirectory ?? binariesDirectory(), signal: abortSignal }),
+    });
+  }
+  return result;
+}
+
 function directHardwareRenderer(directBinaries, abortSignal) {
-  if (!directBinaries) return renderMedia;
+  if (!directBinaries) return (attempt) => renderMediaWithAlignedAudio(attempt, abortSignal);
   // The custom ffmpeg override marks the hardware attempt; the software retry drops it
   // but keeps binariesDirectory, which every attempt needs once the app ships as an asar.
   return (attempt) => attempt.ffmpegOverride
     ? renderDirectHardware({ render: renderMedia, options: attempt, binariesDirectory: directBinaries, signal: abortSignal })
-    : renderMedia(attempt);
+    : renderMediaWithAlignedAudio(attempt, abortSignal);
 }
 
 /** Render with the selected probed engine, then make a truthful software retry. */
@@ -139,7 +158,7 @@ async function renderMediaOptimized(options) {
   const customOverride = profile?.hardware && hardwareAcceleration === 'disable'
     ? h264FfmpegOverride(profile.id, { vaapiDevice })
     : undefined;
-  const directBinaries = customOverride ? binariesDirectory() : null;
+  const directBinaries = customOverride ? hardwareBinariesDirectory() : null;
   const automaticBitrate = profile?.hardware && !renderOptions.videoBitrate
     ? resolveH264VideoBitrate({
       width: renderOptions.composition.width,
@@ -156,6 +175,7 @@ async function renderMediaOptimized(options) {
     ...(customOverride ? { ffmpegOverride: customOverride } : {}),
     // The packaged app cannot chmod or spawn the compositor inside app.asar, so every
     // attempt renders from the mirrored directory (CC_REMOTION_BINARIES_DIR); dev keeps null.
+    // renderDirectHardware swaps in the hardware mirror for the direct hardware attempt.
     binariesDirectory: binariesDirectory(),
     ...(automaticBitrate ? { videoBitrate: automaticBitrate } : {}),
   };

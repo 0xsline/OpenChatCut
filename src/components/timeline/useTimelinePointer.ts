@@ -23,6 +23,7 @@ import {
 } from '../../captions/captionGroupMove';
 import { emitSelectionRef, resolveTimelinePick, type TimelinePickDrag } from '../../agent/selection-refs';
 import { hasOperationalTranscript } from '../../transcript/types';
+import { isWindowedMotionGraphic } from '../../editor/motionGraphicTime';
 import { SNAP_PX, type Drag, type DragMode, type EditMode } from './timelineUtil';
 import { commitTimelineDragGesture, predecessorRightEdge } from './timelineDragCommit';
 export { commitTimelineDragGesture } from './timelineDragCommit';
@@ -197,7 +198,7 @@ export function useTimelinePointer(deps: PointerDeps) {
     const it = state.items.find((x) => x.id === id);
     if (!it) return -baseStart;
     let floor = -baseStart;
-    if (it.kind === 'video' || it.kind === 'audio' || it.kind === 'sequence') {
+    if (it.kind === 'video' || it.kind === 'audio' || it.kind === 'sequence' || isWindowedMotionGraphic(it)) {
       const wordDriven = it.kind === 'audio' && hasOperationalTranscript(it);
       const sourceBacktrack = wordDriven
         ? (it.srcInFrame ?? 0)

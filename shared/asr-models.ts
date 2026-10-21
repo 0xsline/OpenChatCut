@@ -65,7 +65,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: '818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Tiny', sizeLabel: '约 176MB', language: '中文 / English / Italiano / Русский', note: '最快最省，适合低配置设备；识别精度一般。',
+    label: 'Whisper Tiny', sizeLabel: '约 176MB', language: '中文 / English / Italiano / Русский / Português', note: '最快最省，适合低配置设备；识别精度一般。',
   },
   {
     id: 'base', modelId: 'onnx-community/whisper-base_timestamped', revision: '608c49e61301901684bc36cac8f74b95ff6b5a8e',
@@ -87,7 +87,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Base', sizeLabel: '约 351MB', language: '中文 / English / Italiano / Русский', note: '轻量均衡，日常口播可用；timestamped 转写更快。',
+    label: 'Whisper Base', sizeLabel: '约 351MB', language: '中文 / English / Italiano / Русский / Português', note: '轻量均衡，日常口播可用；timestamped 转写更快。',
   },
   {
     id: 'small', modelId: 'Xenova/whisper-small', revision: '2d67713f236afa48a18992566e7647f6ca848e13',
@@ -109,7 +109,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: 'ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Small', sizeLabel: '约 1.2GB', language: '中文 / English / Italiano / Русский', note: '推荐：多语言识别均衡，词级时间戳稳定。',
+    label: 'Whisper Small', sizeLabel: '约 1.2GB', language: '中文 / English / Italiano / Русский / Português', note: '推荐：多语言识别均衡，词级时间戳稳定。',
   },
   {
     id: 'medium', modelId: 'Xenova/whisper-medium', revision: '8c5b90880ab9f79487ab33613413431bf661d595',
@@ -127,7 +127,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: '19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Medium', sizeLabel: '约 1.2GB', language: '中文 / English / Italiano / Русский', note: '精度最高但体积大；浏览器端 wasm 内存吃紧，桌面端本地推理体验最佳。',
+    label: 'Whisper Medium', sizeLabel: '约 1.2GB', language: '中文 / English / Italiano / Русский / Português', note: '精度最高但体积大；浏览器端 wasm 内存吃紧，桌面端本地推理体验最佳。',
   },
   {
     // Issue #127: the catalog capped out at medium. large-v3-turbo is the
@@ -153,7 +153,7 @@ export const ASR_MODELS: readonly AsrModelEntry[] = [
       sha256: '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2',
       revision: '5359861c739e955e79d9a303bcbc70fb988958b1',
     },
-    label: 'Whisper Large v3 Turbo', sizeLabel: '约 1.5GB', language: '中文 / English / Italiano / Русский',
+    label: 'Whisper Large v3 Turbo', sizeLabel: '约 1.5GB', language: '中文 / English / Italiano / Русский / Português',
     note: '多语言精度最强；浏览器端较慢，桌面端本地推理体验最佳。',
   },
 ];

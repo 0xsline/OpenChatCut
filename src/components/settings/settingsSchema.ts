@@ -371,8 +371,7 @@ export function modelValue(status: KeyStatusResponse | null, name: string): stri
   return status?.models?.[name] ?? '';
 }
 
-/** provider page "Configured": All secrets in the page are configured (doubao = double keys);
- * Pages without secret (local disk) to see if any field has been set.*/
+/** provider page "Configured": Every secret field on the page is configured; */
 export function vendorConfigured(
   status: KeyStatusResponse | null,
   page: SettingsVendorPage,

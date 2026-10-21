@@ -6,13 +6,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { isolateVerifyHome } from '../../shared/verify-home.ts';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-migrate-http-verify-'));
-  const previousHome = process.env.HOME;
+  const restoreHome = isolateVerifyHome(root);
   const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
   delete process.env.OPENCHATCUT_SQLITE_STORE;
-  process.env.HOME = root;
 
   let app: http.Server | undefined;
   try {
@@ -139,8 +139,7 @@ async function main(): Promise<void> {
     if (app) await new Promise<void>((resolve, reject) => app!.close((error) => error ? reject(error) : resolve()));
     if (previousSwitch === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;
     else process.env.OPENCHATCUT_SQLITE_STORE = previousSwitch;
-    if (previousHome === undefined) delete process.env.HOME;
-    else process.env.HOME = previousHome;
+    restoreHome();
     rmSync(root, { recursive: true, force: true });
   }
 }

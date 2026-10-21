@@ -86,7 +86,7 @@ export const CORE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'split_item',
-    description: 'Split a clip into two at the given absolute frame.',
+    description: 'Split a clip into two at the given absolute frame. A motion graphic splits into two windows of the SAME animation — the second piece continues from the frame at the cut instead of restarting — so to separate one MG into several clips, split it at the beat frames; never regenerate the pieces.',
     input_schema: { type: 'object', properties: { itemId: { type: 'string', minLength: 1 }, atFrame: { type: 'number' } }, required: ['itemId', 'atFrame'] },
   },
   {

@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { uploadDir } from '../media-dir.ts';
 import { fetchGeneratedResult } from './result-download.ts';
 
@@ -15,7 +16,7 @@ function rawFormat(codec: string): string | undefined {
 
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('ffmpeg', args);
+    const child = spawn(ffmpegBin(), args);
     let error = '';
     child.stderr.on('data', (data) => { error += String(data); });
     child.on('error', reject);
@@ -48,7 +49,7 @@ async function pitchShift(file: string, semitones: number, sampleRate: number): 
 
 function probeDuration(file: string): Promise<number> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
+    const child = spawn(ffprobeBin(), ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
     let output = '';
     child.stdout.on('data', (data) => { output += String(data); });
     child.on('error', reject);
@@ -79,7 +80,7 @@ export async function saveVoiceAudio(bytes: Buffer, codec: string, sampleRate: n
     await writeFile(file, bytes);
   }
   await pitchShift(file, pitch, sampleRate);
-  return { path: `/media/uploads/${file.split('/').pop()!}`, durationSeconds: await probeDuration(file) };
+  return { path: `/media/uploads/${basename(file)}`, durationSeconds: await probeDuration(file) };
 }
 
 export async function saveVoiceSubtitle(url: string): Promise<string> {

@@ -8,6 +8,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / 未发布
 
+### Added / 新增
+
+- Doubao TTS supports specifying the Volcengine `speaker` (音色 ID): Settings → 配音 / TTS → 豆包 TTS adds a default 音色 ID, and any user-supplied speaker ID (for example `S_5wulnA7i2`) passes through verbatim as `references[].speaker`; the connection test now verifies that saved ID.
+  Doubao 配音支持指定火山 `speaker`（音色 ID）：设置 → 配音 / TTS → 豆包 TTS 新增默认音色 ID；用户提供的音色 ID（如 `S_5wulnA7i2`）会原样作为 `references[].speaker` 发送，连接测试也会校验该 ID。
+
+### Changed / 调整
+
+- Upgraded the AI SDK stack to `ai@7.0.148` with the current provider packages (xAI 5.x is Responses-only), plus React 19.3, Vite 8.3, AWS SDK, MCP SDK, E2B and the remaining same-major tooling. Remotion, Electron 45, TypeScript 7 and the ONNX/Transformers runtime stay intentionally pinned; `@github/copilot-sdk` remains at 1.0.11 because 1.0.24 changed its platform runtime packaging. The new SDK runs tools only for steps that finish with `stop` or `tool-calls`, so server-side Agent runs treat a tool-calling turn that an OpenAI-compatible gateway ends with a non-standard `finish_reason` as `tool-calls`, and answer any tool call the SDK still leaves unexecuted with an error result instead of failing the next request.
+  升级 AI SDK 全家桶至 `ai@7.0.148`（xAI 5.x 仅保留 Responses API），并同步 React 19.3、Vite 8.3、AWS SDK、MCP SDK、E2B 等同 major 工具链。Remotion、Electron 45、TypeScript 7 与 ONNX/Transformers 运行时继续按原版本固定；`@github/copilot-sdk` 保持 1.0.11，因为 1.0.24 更改了平台运行时打包方式。新版 SDK 只在 `stop` / `tool-calls` 结束时执行工具，因此服务端 Agent 运行会把 OpenAI 兼容网关以非标准 `finish_reason` 结束的工具调用回合按 `tool-calls` 处理；SDK 仍未执行的工具调用会补一条错误结果，不再让下一轮请求失败。
+- `download_media` and `push_asset` now start every URL in a batch instead of stopping after a 75-second window, and the tool description no longer asks the model for at most three URLs per call. The window only kept batches inside the AI SDK chunk watchdog, which no longer counts tool execution.
+  `download_media` 与 `push_asset` 现在会依次处理批次中的全部地址，不再在 75 秒窗口过后停止启动新地址，工具描述也不再要求每次最多传 3 个地址。这个窗口原本只是为了不超出 AI SDK 的 chunk 超时，而新版 SDK 已不再把工具执行时间计入该超时。
+- TypeScript 7.0.2 (the native compiler) now drives `tsc -b`; the two i18n AST scans use Babel's parser instead of the removed TypeScript compiler API, and Remotion moves to 4.0.537 so its bundler tolerates TypeScript 7. The WebCodecs pre-flight follows Mediabunny 1.61.6's variable/quantizer rate control.
+  构建改用 TypeScript 7.0.2 原生编译器；两个 i18n AST 扫描改用 Babel parser，Remotion 升级到 4.0.537 以兼容 TypeScript 7；WebCodecs 预检同步 Mediabunny 1.61.6 的码率控制。
+
+## [0.2.17] - 2026-10-15
+
+### Added / 新增
+
+- The built-in Agent can browse and import local media in a browser-hosted editor once `AGENT_IMPORT_ROOTS` lists the directories to expose, reaching the same probe/hash/dedupe chain the desktop app uses; the desktop app keeps its default access (#185).
+  浏览器端的内置 Agent 在 `AGENT_IMPORT_ROOTS` 列出允许目录后，也可以浏览和导入本地素材，复用桌面端相同的探测、哈希与去重流程；桌面端保持原有的默认访问行为（#185）。
+
+### Changed / 调整
+
+- Doubao 配音改走火山新版音频生成接口 `POST /api/v3/tts/create`，`X-Api-Key` 单头鉴权，Base URL 填完整接口地址也能正常请求；配置项改为 `DOUBAO_TTS_API_KEY` + `DOUBAO_TTS_MODEL`（默认 `seed-audio-1.0`），旧的 App ID / Access Key / 音色资源 ID 不再使用，需用新版控制台的 API Key 重填。支持 `speedRatio` / `loudnessRatio` / 原生 `pitch`，`emotion` / `emotionScale` / `performancePrompt` / 方言不再支持。
+  Doubao TTS now uses the new Volcengine audio-generation endpoint `POST /api/v3/tts/create` with single-header `X-Api-Key` auth, and accepts a full endpoint URL as Base URL. Config is now `DOUBAO_TTS_API_KEY` + `DOUBAO_TTS_MODEL` (default `seed-audio-1.0`); the old App ID / Access Key / resource ID are removed, refill with a new-console API key. Supports `speedRatio` / `loudnessRatio` / native `pitch`; `emotion` / `emotionScale` / `performancePrompt` / dialect are no longer supported.
+
+### Fixed / 修复
+
+- Move left/right to boundary (`Ctrl + E` / `Ctrl + R`) now fires on Windows and Linux; every shortcut catalog row is asserted to match its advertised chord on both platforms (#202, #203).
+  「左贴边 / 右贴边」（`Ctrl + E` / `Ctrl + R`）在 Windows 与 Linux 上恢复可用；新增断言要求快捷键目录里每一行在两种平台都能被自己的写法命中（#202、#203）。
+- Desktop whisper.cpp transcripts group BPE tokens into words: multi-token words (Russian, German compounds, …) no longer split with inner spaces, punctuation stays attached to its word, and scripts without spaces (Chinese, Japanese, Thai) still split per chunk (#206, #207).
+  桌面端 whisper.cpp 转写按 BPE 规则把 token 还原成词：俄语、德语复合词等多 token 词不再被拆开并插入空格，标点跟随其所属单词；中日泰等无空格文字仍按块切分（#206、#207）。
+- Windows verification gates pass on a stock checkout, and verification suites no longer read or write the developer's real profile (`USERPROFILE`) (#208, #209, #210, #211).
+  Windows 上验证门禁在全新检出即可通过；验证套件不再读写开发者真实用户目录（`USERPROFILE`）（#208、#209、#210、#211）。
+- Preview: the CC button and the rendered picture share one caption-visibility decision, hallucinated ASR words no longer silence an audio clip, and transcript windows starting past the end of the media are rejected (#213).
+  预览：字幕开关与画面共用同一可见性判定，幻觉出的 ASR 词不再把音频片段静音，转写窗口越过素材末尾时会被拒绝（#213）。
+- Internal: `server/key-probes.ts` split back under the 500-line gate (MiniMax/Doubao HTTP-200 business-code checks moved into `server/key-probe-result.ts`), unbreaking `npm test` on `main`.
+  内部：`server/key-probes.ts` 拆回 500 行门禁以内（MiniMax/Doubao 的「HTTP 200 业务码」后检移入 `server/key-probe-result.ts`），修复 `main` 上 `npm test` 的红灯。
+
 ## [0.2.16] - 2026-10-07
 
 ### Upgrade note / 升级提示

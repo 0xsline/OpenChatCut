@@ -9,7 +9,8 @@ import type { Plugin } from 'vite';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { access } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { skillDirFor, skillFilesRoot } from '../skills-files.ts';
 
 const execFileAsync = promisify(execFile);
@@ -20,6 +21,23 @@ const ALLOWED_BINARIES = new Set([
   'bash', 'sh', 'node', 'npm', 'npx', 'python3', 'python', 'uv', 'uvx',
   'ffmpeg', 'ffprobe', 'mkdir', 'cp', 'chmod',
 ]);
+
+// ffmpeg and ffprobe run as the bundled builds the rest of the app uses (an
+// OPENCHATCUT_FFMPEG / OPENCHATCUT_FFPROBE override still wins inside the resolvers).
+// Packaged installs rarely have them on PATH: a macOS app opened from Finder or the
+// Dock inherits only /usr/bin:/bin:/usr/sbin:/sbin.
+const BUNDLED_BINARIES = new Map<string, () => string>([['ffmpeg', ffmpegBin], ['ffprobe', ffprobeBin]]);
+
+/**
+ * PATH for skill processes: the bundled ffmpeg/ffprobe directories first, so a script
+ * that calls them by name gets the same builds as a direct command. The user's entries
+ * follow in their own order. A bare-name fallback has no directory and adds nothing,
+ * which keeps a relative entry off the PATH.
+ */
+export function skillProcessPath(basePath = process.env.PATH ?? ''): string {
+  const bundled = [ffmpegBin(), ffprobeBin()].filter((bin) => isAbsolute(bin)).map((bin) => dirname(bin));
+  return [...new Set([...bundled, ...basePath.split(delimiter).filter(Boolean)])].join(delimiter);
+}
 
 // Interpreters may only run a script FILE that lives inside the skill
 // directory. Inline program text (`bash -c`, `node -e/--eval`, `python -c/-m`)
@@ -124,11 +142,11 @@ async function runInSkillDir(slug: string, body: ExecRequest): Promise<unknown> 
   if (guardError) return { error: guardError };
   const timeout = Math.min(Math.max(body.timeout ?? 60_000, 1_000), MAX_TIMEOUT_MS);
   try {
-    const result = await execFileAsync(binary, args, {
+    const result = await execFileAsync(BUNDLED_BINARIES.get(binary)?.() ?? binary, args, {
       cwd: dir,
       timeout,
       maxBuffer: MAX_OUTPUT_BYTES,
-      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
+      env: { PATH: skillProcessPath(), HOME: process.env.HOME ?? '' },
     });
     return {
       ok: true,

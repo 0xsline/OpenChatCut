@@ -65,6 +65,19 @@ Use this skill to plan where motion graphics should appear, what type each one s
 - New-role MGs can borrow style, but should not inherit irrelevant template text, charts, labels, or layout.
 - After generation, inspect the visual output. If old template text or wrong structure appears, fix the asset instead of trusting props.
 
+## Changing an MG that is already on the timeline
+
+Edit what is there — never regenerate to restructure. The author has already approved its look.
+
+- **Separate one MG into several clips** ("don't combine them", "split it into a few"): `split_item`
+  it at the beat frames. Each piece keeps playing the SAME design from the frame where the cut falls —
+  it does not restart from the intro — so the result looks exactly as before, now as separate clips
+  the author can move, trim or delete one at a time. Do NOT recreate the pieces with
+  `create_motion_graphic_from_code`: that throws away the approved design and ships a different one.
+- **Change text, colour or timing:** edit the existing clip's props or asset (`edit_asset`) and say
+  what changed.
+- Generate a new graphic only when the author asks for a new or different design.
+
 ## Quality Checks
 
 - Every MG has a reason tied to a speech beat.

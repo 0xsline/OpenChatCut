@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isolateVerifyHome } from '../shared/verify-home.ts';
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-proxy-verify-'));
-  const previousHome = process.env.HOME;
-  process.env.HOME = root;
+  const restoreHome = isolateVerifyHome(root);
   const previousEnv: Record<string, string | undefined> = {};
   for (const name of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) {
     previousEnv[name] = process.env[name];
@@ -53,8 +53,7 @@ async function main(): Promise<void> {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
     }
-    if (previousHome === undefined) delete process.env.HOME;
-    else process.env.HOME = previousHome;
+    restoreHome();
     rmSync(root, { recursive: true, force: true });
   }
 }

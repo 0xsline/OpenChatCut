@@ -28,6 +28,7 @@ const COMMON_TRANSCRIPTION_FIELDS: readonly SettingsField[] = [
       { value: 'fr', label: '法语（fr）' },
       { value: 'de', label: '德语（de）' },
       { value: 'ru', label: '俄语（ru）' },
+      { value: 'pt', label: '葡萄牙语（pt）' },
     ],
   },
   {
@@ -126,10 +127,11 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
     },
     {
       key: 'voice/doubao', vendor: 'doubao', title: '豆包 TTS · 火山', fields: [
-        secret('DOUBAO_TTS_APP_ID', 'App ID'),
-        secret('DOUBAO_TTS_ACCESS_KEY', 'Access Key'),
+        secret('DOUBAO_TTS_API_KEY', 'API Key'),
         text('DOUBAO_TTS_BASE_URL', 'Base URL', '默认 https://openspeech.bytedance.com'),
-        modelText('DOUBAO_TTS_RESOURCE_ID', '音色资源 ID', 'seed-tts-2.0'),
+        modelText('DOUBAO_TTS_MODEL', '配音模型', 'seed-audio-1.0'),
+        modelText('DOUBAO_TTS_VOICE_ID', '音色 ID（speaker）', '由对话选择',
+          '粘贴火山控制台复制的音色 ID（如 S_5wulnA7i2）；填写后豆包配音默认用它，对话里指定其它音色仍可覆盖。'),
       ],
     },
     {
@@ -263,7 +265,7 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   'grok-imagine-video': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
   ofox: [['LLM_OFOX_API_KEY']],
   elevenlabs: [['ELEVENLABS_API_KEY']],
-  doubao: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
+  doubao: [['DOUBAO_TTS_API_KEY']],
   minimax: [['MINIMAX_API_KEY']],
   openai: [['OPENAI_API_KEY']],
   gemini: [['GEMINI_API_KEY']],

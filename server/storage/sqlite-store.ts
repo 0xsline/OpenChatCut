@@ -84,13 +84,28 @@ function requireDatabase(): DatabaseSync {
   return database;
 }
 
-/** Close the connection and reset process state (verifier/profile isolation). */
+/**
+ * Connections the store owns besides its main one. fulltext-search.ts and
+ * semantic-vectors.ts each hold a second long-lived DatabaseSync on the same
+ * file, and Windows refuses to delete a file while a handle is open: a verifier
+ * that closed only the main connection still failed its temp-library cleanup
+ * with EPERM after the assertions had passed. Those modules register their own
+ * closer at import time (importing them from here would be a cycle).
+ */
+const connectionClosers = new Set<() => void>();
+
+export function registerSqliteStoreConnectionCloser(closer: () => void): void {
+  connectionClosers.add(closer);
+}
+
+/** Close every connection and reset process state (verifier/profile isolation). */
 export function resetSqliteStoreForTests(): void {
   database?.close();
   database = null;
   databaseHadKvTableAtOpen = false;
   initialization = undefined;
   ready = false;
+  for (const close of connectionClosers) close();
 }
 
 const encode = (value: unknown): string => JSON.stringify(value);
