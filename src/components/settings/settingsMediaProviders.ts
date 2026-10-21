@@ -245,6 +245,8 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   'nano-banana': [['GEMINI_API_KEY']],
   'image-01': [['MINIMAX_API_KEY']],
   'grok-imagine': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
+  'agnes-image': [['AGNES_IMAGE_API_KEY']],
+  'agnes-video': [['AGNES_VIDEO_API_KEY']],
   'grok-imagine-video': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
   ofox: [['LLM_OFOX_API_KEY']],
   elevenlabs: [['ELEVENLABS_API_KEY']],

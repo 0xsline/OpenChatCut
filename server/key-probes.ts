@@ -261,6 +261,13 @@ export const PROBES: Record<string, ProbeDef> = {
   'image/minimax': minimaxProbe,
   'image/byteplus': byteplusProbe,
   'image/xai': xaiMediaProbe,
+  'image/agnes': {
+    needs: [['AGNES_IMAGE_API_KEY']],
+    run: (get) => fetchWithProxy(`${base(get, 'AGNES_IMAGE_BASE_URL', 'https://apihub.agnes-ai.com/v1')}/models`, {
+      signal: t(), headers: bearer(get('AGNES_IMAGE_API_KEY')),
+    }),
+    models: parseModelCatalog,
+  },
   'image/wavespeed': {
     needs: [['WAVESPEED_API_KEY']],
     run: (get) => fetch(`${base(get, 'WAVESPEED_BASE_URL', 'https://api.wavespeed.ai')}/api/v3/balance`, {
@@ -327,6 +334,13 @@ export const PROBES: Record<string, ProbeDef> = {
   'video/hailuo': minimaxProbe,
   'video/byteplus': byteplusProbe,
   'video/xai': xaiMediaProbe,
+  'video/agnes': {
+    needs: [['AGNES_VIDEO_API_KEY']],
+    run: (get) => fetchWithProxy(`${base(get, 'AGNES_VIDEO_BASE_URL', 'https://apihub.agnes-ai.com/v1')}/models`, {
+      signal: t(), headers: bearer(get('AGNES_VIDEO_API_KEY')),
+    }),
+    models: parseModelCatalog,
+  },
   'video/ofox': {
     needs: [['LLM_OFOX_API_KEY']],
     run: (get) => fetch(`${base(get, 'LLM_OFOX_BASE_URL', 'https://api.ofox.ai/v1')}/models`, {

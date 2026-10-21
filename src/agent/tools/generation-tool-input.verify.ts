@@ -255,4 +255,22 @@ assert.equal(falVideo.falModel, 'seedance-2.5');
 assert.deepEqual(falVideo.refImages, ['asset-1']);
 assert.equal(falVideo.durationSeconds, undefined, 'preserve model defaults');
 assert.throws(() => buildSubmitVideoArgs({ model: 'fal', mode: 'pro' }), /mode/);
+
+const agnesImage = buildSubmitImageArgs({
+  model: 'agnes-image', prompt: 'poster', name: 'poster', quality: 'high', imageSize: '2K', referenceAssetIds: ['img-1'],
+});
+assert.equal(agnesImage.model, 'agnes-image');
+assert.equal(agnesImage.quality, undefined, 'Agnes must not receive GPT quality');
+assert.equal(agnesImage.imageSize, '2K');
+assert.deepEqual(agnesImage.referenceAssetIds, ['img-1']);
+const agnesVideoInput = buildSubmitVideoArgs({
+  model: 'agnes-video', prompt: 'walk', durationSeconds: 6, ratio: '9:16', seed: 3,
+  refImages: ['img-1'], refAudios: ['aud-1'], refVideos: ['vid-1'], generateAudio: true,
+});
+assert.equal(agnesVideoInput.model, 'agnes-video');
+assert.equal(agnesVideoInput.seed, 3);
+assert.deepEqual(agnesVideoInput.refImages, ['img-1']);
+assert.deepEqual(agnesVideoInput.refAudios, ['aud-1']);
+assert.equal(agnesVideoInput.refVideos, undefined, 'Agnes video drops unsupported video references');
+assert.equal(agnesVideoInput.generateAudio, undefined, 'Agnes video drops Seedance audio controls');
 console.log('generation-tool-input.verify: ok');

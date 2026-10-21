@@ -39,7 +39,12 @@ assert.ok(!falRouted.includes('Seedance(model=seedance2)'), 'Fal does not impers
 assert.ok(falRouted.includes('No Fal model selected'), 'unset Fal default asks for a model');
 applyLiveModels({ FAL_IMAGE_MODEL: 'nano-banana-2' });
 const falDefault = capabilitiesPrompt({ ...ALL_OFF, image: true });
-assert.ok(falDefault.includes('Saved Fal default: nano-banana-2'), 'selected Fal model reaches the assistant');
+assert.ok(falDefault.includes('Saved Fal model: nano-banana-2'), 'selected Fal model reaches the assistant');
+applyLiveKeyStatus({ FAL_KEY: { configured: true }, AGNES_IMAGE_API_KEY: { configured: true } });
+applyLiveModels({ PREFERRED_IMAGE_VENDOR: 'agnes-image', FAL_IMAGE_MODEL: 'nano-banana-2' });
+const agnesNotFal = capabilitiesPrompt({ ...ALL_OFF, image: true });
+assert.ok(agnesNotFal.includes('user default: Agnes Image(model=agnes-image)'), 'Agnes stays the image default beside a Fal key');
+assert.ok(!agnesNotFal.includes('nano-banana-2'), 'Fal catalog is hidden when another vendor is the default');
 applyLiveModels({});
 
 // one minimax key lights all its vendor rows
@@ -112,5 +117,13 @@ assert.ok(ofox.includes('Video generation(submit_video · user default: OFox(mod
 assert.ok(ofox.includes('Image generation(submit_image · available: gpt-image(model=gpt-image-2) — use it directly)'));
 applyLiveKeyStatus({});
 assert.ok(!capabilitiesPrompt({ ...ALL_OFF, video: true }).includes('OFox(model=ofox)'), 'unconfigured OFox stays hidden');
+
+applyLiveKeyStatus({ AGNES_IMAGE_API_KEY: { configured: true }, AGNES_VIDEO_API_KEY: { configured: true } });
+applyLiveModels({ PREFERRED_IMAGE_VENDOR: 'agnes-image', PREFERRED_VIDEO_VENDOR: 'agnes-video' });
+const agnes = capabilitiesPrompt({ ...ALL_OFF, image: true, video: true });
+assert.ok(agnes.includes('user default: Agnes Image(model=agnes-image) — use it without asking again'));
+assert.ok(agnes.includes('user default: Agnes Video(model=agnes-video) — use it without asking again'));
+applyLiveKeyStatus({});
+applyLiveModels({});
 
 console.log('capabilities.verify: ok');

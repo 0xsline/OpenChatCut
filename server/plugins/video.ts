@@ -55,6 +55,9 @@ interface VideoOptions {
   ofoxBaseUrl: string;
   ofoxApiKey: string;
   ofoxVideoModel: string;
+  agnesBaseUrl: string;
+  agnesApiKey: string;
+  agnesVideoModel: string;
 }
 
 async function readJson(req: IncomingMessage): Promise<VideoRequest> {
@@ -78,11 +81,20 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
 async function providerError(response: Response): Promise<string> {
   const text = await response.text();
   try {
-    const data = JSON.parse(text) as { message?: string; error?: { message?: string }; code?: number };
-    return data.error?.message ?? data.message ?? `video provider failed (${data.code ?? response.status})`;
+    const data = JSON.parse(text) as { message?: string; detail?: unknown; error?: { message?: string }; code?: number };
+    const detail = data.detail == null ? undefined
+      : typeof data.detail === 'string' ? data.detail
+        : JSON.stringify(data.detail).slice(0, 300);
+    return data.error?.message ?? data.message ?? detail ?? `video provider failed (${data.code ?? response.status})`;
   } catch {
     return text.slice(0, 300) || `video provider failed (${response.status})`;
   }
+}
+
+/** Agnes retrieves tasks at the host root, not under /v1/videos/{id}. */
+export function agnesVideoRetrieveUrl(baseUrl: string, videoId: string, model: string): string {
+  const params = new URLSearchParams({ video_id: videoId, model_name: model });
+  return `${new URL(baseUrl).origin}/agnesapi?${params.toString()}`;
 }
 
 async function requestJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
@@ -328,6 +340,63 @@ async function generateHailuo(
   throw new Error('hailuo generation timed out');
 }
 
+async function generateAgnesVideo(
+  input: ValidVideoRequest,
+  options: VideoOptions,
+  registerProviderTask: RegisterGenerationProviderTask,
+  existingTaskId?: string,
+): Promise<string> {
+  if (!options.agnesApiKey) throw new Error('Agnes is not configured. Set AGNES_VIDEO_API_KEY in .env.local or 设置面板.');
+  const baseUrl = options.agnesBaseUrl.replace(/\/$/, '');
+  const headers = { Authorization: `Bearer ${options.agnesApiKey}`, 'Content-Type': 'application/json' };
+  const model = options.agnesVideoModel;
+  let taskId = existingTaskId;
+  if (!taskId) {
+    const body: Record<string, unknown> = {
+      model,
+      prompt: input.prompt,
+      seconds: String(input.durationSeconds),
+      size: '720P',
+      aspect_ratio: input.ratio,
+      n: 1,
+    };
+    if (input.seed !== undefined) body.seed = input.seed;
+    if (input.firstFramePath || input.lastFramePath) {
+      body.mode = 'keyframe';
+      if (input.firstFramePath) body.first_frame = await mediaDataUrl(input.firstFramePath);
+      if (input.lastFramePath) body.last_frame = await mediaDataUrl(input.lastFramePath);
+    } else if (input.refImagePaths.length || input.refAudioPaths.length) {
+      body.mode = 'reference';
+      if (input.refImagePaths.length) {
+        body.images = await Promise.all(input.refImagePaths.map((p) => mediaDataUrl(p)));
+      }
+      if (input.refAudioPaths.length) {
+        body.audios = await Promise.all(input.refAudioPaths.map((p) => mediaDataUrl(p)));
+      }
+    } else {
+      body.mode = 'text';
+    }
+    const current = await requestJson(`${baseUrl}/videos`, { method: 'POST', headers, body: JSON.stringify(body) });
+    taskId = String(current.video_id ?? '');
+    if (!taskId) throw new Error('agnes-video did not return a video_id');
+    await registerProviderTask('agnes-video', taskId);
+  }
+  if (!taskId) throw new Error('agnes-video provider task id is unavailable');
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    const current = await requestJson(agnesVideoRetrieveUrl(baseUrl, taskId, model), { headers });
+    const status = String(current.status ?? '');
+    if (status === 'completed') {
+      const url = String(current.url ?? '');
+      if (!url) throw new Error('agnes-video completed without a video URL');
+      return url;
+    }
+    if (VIDEO_FAILURES.has(status)) throw new Error(String(current.error ?? `agnes-video generation ${status}`));
+    await wait(2_000);
+  }
+  throw new Error('agnes-video generation timed out');
+}
+
 async function runVideoOperation(
   operationId: string,
   name: string,
@@ -358,14 +427,16 @@ async function runVideoOperation(
         ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
         : input.model === 'ofox'
           ? await generateOfoxVideo(input, options, registerProviderTask, providerTaskId)
-          : input.model === 'kling'
-            ? await generateKling(input, options, registerProviderTask, providerTaskId)
-            : await generateHailuo(input, options, registerProviderTask, providerTaskId);
+          : input.model === 'agnes-video'
+            ? await generateAgnesVideo(input, options, registerProviderTask, providerTaskId)
+            : input.model === 'kling'
+              ? await generateKling(input, options, registerProviderTask, providerTaskId)
+              : await generateHailuo(input, options, registerProviderTask, providerTaskId);
       urls = requireGenerationResultUrls([url], expectedResultCount);
     }
   }
   urls = requireGenerationResultUrls(urls, expectedResultCount);
-  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' ? fetchWithProxy : undefined;
+  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' || input.model === 'agnes-video' ? fetchWithProxy : undefined;
   const download = () => saveVideoResults(
     operationId,
     name,
@@ -377,7 +448,7 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'fal'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'agnes-video', 'fal'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,
