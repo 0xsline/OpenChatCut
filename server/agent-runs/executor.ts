@@ -58,6 +58,7 @@ import {
   turnDisposition,
 } from './acceptance-loop';
 import { createServerTools, type ActivationState } from './browser-tool';
+import { answerUnexecutedToolCalls } from './unexecuted-tool-calls';
 export { executeBrowserTool, type ActivationState } from './browser-tool';
 export { turnDisposition, type TurnDisposition } from './acceptance-loop';
 export {
@@ -190,10 +191,11 @@ async function runServerTurnOnce(
     timeout: SERVER_RUN_AI_TIMEOUT,
   });
   const text = await collectServerText(input.run, result.fullStream);
-  const [toolCalls, responseMessages, totalUsage] = await Promise.all([
+  const [toolCalls, responseMessages, totalUsage, finishReason] = await Promise.all([
     result.toolCalls,
     result.responseMessages,
     result.usage,
+    result.finishReason,
   ]);
   recordServerContextUsage(
     input.run,
@@ -206,12 +208,12 @@ async function runServerTurnOnce(
   );
   return {
     messages: continued
-      ? [...prepared.messages, ...responseMessages]
+      ? [...prepared.messages, ...answerUnexecutedToolCalls(responseMessages, finishReason)]
       : prepared.messages,
     text,
     followupText: input.activation.followupText,
     continued,
-    hitMaxTokens: (await result.finishReason) === 'length',
+    hitMaxTokens: finishReason === 'length',
   };
 }
 

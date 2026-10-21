@@ -15,8 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed / 调整
 
-- Upgraded the AI SDK stack to `ai@7.0.148` with the current provider packages (xAI 5.x is Responses-only), plus React 19.3, Vite 8.3, AWS SDK, MCP SDK, E2B and the remaining same-major tooling. Remotion, Electron 45, TypeScript 7 and the ONNX/Transformers runtime stay intentionally pinned; `@github/copilot-sdk` remains at 1.0.11 because 1.0.24 changed its platform runtime packaging.
-  升级 AI SDK 全家桶至 `ai@7.0.148`（xAI 5.x 仅保留 Responses API），并同步 React 19.3、Vite 8.3、AWS SDK、MCP SDK、E2B 等同 major 工具链。Remotion、Electron 45、TypeScript 7 与 ONNX/Transformers 运行时继续按原版本固定；`@github/copilot-sdk` 保持 1.0.11，因为 1.0.24 更改了平台运行时打包方式。
+- Upgraded the AI SDK stack to `ai@7.0.148` with the current provider packages (xAI 5.x is Responses-only), plus React 19.3, Vite 8.3, AWS SDK, MCP SDK, E2B and the remaining same-major tooling. Remotion, Electron 45, TypeScript 7 and the ONNX/Transformers runtime stay intentionally pinned; `@github/copilot-sdk` remains at 1.0.11 because 1.0.24 changed its platform runtime packaging. The new SDK runs tools only for steps that finish with `stop` or `tool-calls`, so server-side Agent runs treat a tool-calling turn that an OpenAI-compatible gateway ends with a non-standard `finish_reason` as `tool-calls`, and answer any tool call the SDK still leaves unexecuted with an error result instead of failing the next request.
+  升级 AI SDK 全家桶至 `ai@7.0.148`（xAI 5.x 仅保留 Responses API），并同步 React 19.3、Vite 8.3、AWS SDK、MCP SDK、E2B 等同 major 工具链。Remotion、Electron 45、TypeScript 7 与 ONNX/Transformers 运行时继续按原版本固定；`@github/copilot-sdk` 保持 1.0.11，因为 1.0.24 更改了平台运行时打包方式。新版 SDK 只在 `stop` / `tool-calls` 结束时执行工具，因此服务端 Agent 运行会把 OpenAI 兼容网关以非标准 `finish_reason` 结束的工具调用回合按 `tool-calls` 处理；SDK 仍未执行的工具调用会补一条错误结果，不再让下一轮请求失败。
 
 ## [0.2.17] - 2026-10-15
 
