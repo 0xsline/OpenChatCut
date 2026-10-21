@@ -3,7 +3,7 @@ import { makeDraft } from '../../editor/store';
 import type { TimelineState } from '../../editor/types';
 import { docFromTimeline } from '../../persist/projectStore';
 import type { AgentContext } from '../context';
-import { BATCH_START_WINDOW_MS, execStockTool, serialBatch } from './stock-tools';
+import { execStockTool, serialBatch } from './stock-tools';
 
 const state: TimelineState = {
   fps: 30,
@@ -115,25 +115,25 @@ try {
   else Reflect.deleteProperty(globalThis, 'window');
 }
 
-// The batch window: the first URL always runs, and once the window has passed no further
-// URL starts — it is reported as its own failed row so the model can call again.
+// Batches have no time window: every URL runs, one at a time and in order, and a failed
+// row does not stop the URLs after it.
 {
-  let clock = 0;
   const seen: string[] = [];
-  const rows = await serialBatch(['a', 'b', 'c'], async (url) => {
+  let active = 0;
+  let peak = 0;
+  const rows = await serialBatch(['a', 'b', 'c', 'd'], async (url) => {
+    active += 1;
+    peak = Math.max(peak, active);
     seen.push(url);
-    clock += BATCH_START_WINDOW_MS / 2 + 1;
-    return { success: true, assetId: url, name: url, type: 'video', src: url, local: true };
-  }, () => clock);
-  assert.deepEqual(seen, ['a', 'b'], 'the third URL must not start after the window has passed');
-  assert.equal(rows.length, 3, 'every URL gets a row');
-  assert.equal(rows[2]?.success, false);
-  assert.match((rows[2] as { error: string }).error, /75s/);
-  assert.equal((rows[2] as { url?: string }).url, 'c');
-
-  const single = await serialBatch(['x'], async (url) => ({ success: false, error: 'upstream', url }), () => 10 ** 9);
-  assert.equal(single.length, 1);
-  assert.equal((single[0] as { error: string }).error, 'upstream', 'the first URL runs regardless of the clock');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+    return url === 'b'
+      ? { success: false, error: 'upstream', url }
+      : { success: true, assetId: url, name: url, type: 'video', src: url, local: true };
+  });
+  assert.deepEqual(seen, ['a', 'b', 'c', 'd'], 'every URL starts, in order');
+  assert.equal(peak, 1, 'URLs run one at a time');
+  assert.deepEqual(rows.map((row) => row.success), [true, false, true, true], 'every URL gets its own row');
 }
 
 console.log('stock source identity verify: ok');

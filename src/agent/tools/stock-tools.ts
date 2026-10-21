@@ -125,28 +125,17 @@ function batchEnvelope(results: BatchRow[]) {
 }
 
 /**
- * Serial batches share one wall-clock window for starting URLs. The run's stream watchdog
- * (SERVER_RUN_AI_TIMEOUT.chunkMs, 120s) keeps counting while a tool executes, so a batch
- * that outlives it kills the whole run with "Chunk timeout exceeded" instead of returning
- * per-URL results. An unreachable URL costs up to ~40s (connect + response-header bounds
- * behind a proxy), so no new URL starts once the window has passed; the ones left over are
- * reported as rows, not silently dropped.
+ * Batches run their URLs one at a time and every URL gets a row. There is no batch time
+ * window: tool execution only counts against the run's step and tool timeouts (the AI SDK
+ * stops its chunk watchdog once the model response ends), and each URL is bounded on its
+ * own by the connect and response-header limits of /api/import-url.
  */
-export const BATCH_START_WINDOW_MS = 75_000;
-const BATCH_WINDOW_ERROR = '本批次已超过 75s 时间窗口，该地址未开始下载；请再次调用，每次最多传 3 个地址';
-
 export async function serialBatch(
   urls: readonly string[],
   task: (url: string) => Promise<BatchRow>,
-  now: () => number = Date.now,
 ): Promise<BatchRow[]> {
-  const startedAt = now();
   const results: BatchRow[] = [];
-  for (const url of urls) {
-    results.push(results.length && now() - startedAt >= BATCH_START_WINDOW_MS
-      ? { success: false, error: BATCH_WINDOW_ERROR, url }
-      : await task(url));
-  }
+  for (const url of urls) results.push(await task(url));
   return results;
 }
 
