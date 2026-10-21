@@ -19,7 +19,7 @@ Notes:
   together if the `server/` directory ever moves.
 - `desktop/update-packaging.verify.ts` guards the electron-builder config
   location and the `--config` script flags; CI runs it through `npm test`.
-- `.oxlintrc.json` carries both `public/mediapipe/**` and `../public/mediapipe/**` ignore patterns: oxlint may resolve ignorePatterns against the cwd or the config directory, and the dual pattern matches either way.
+- Generated media assets under `public/mediapipe/**` and `public/models/**` are skipped with `--ignore-pattern` flags in the `lint` script. Oxlint 1.89 resolves `ignorePatterns` from the config file's directory and rejects `..`, so the patterns stay on the command line where they resolve from the repository root.
 
 ## Repository root (deliberately kept here)
 

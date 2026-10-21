@@ -8,7 +8,10 @@ import { unpackedPath } from '../media-binaries';
 
 const VERSION_TIMEOUT_MS = 10_000;
 const VERSION_OUTPUT_LIMIT = 16 * 1024;
-/** Floor for the SDK surface the spike relies on (defineTool handlers, assistant.usage). */
+/** Floor for the SDK surface the spike relies on (defineTool handlers, assistant.usage).
+ * The npm package stays pinned to 1.0.11: 1.0.24 moved the bundled runtime to
+ * `@github/copilot-sdk-<platform>` (no resolvable main, no `--version`), so the
+ * bundled resolver and version probe below need a separate migration. */
 export const MINIMUM_COPILOT_VERSION = '1.0.0';
 
 export interface CopilotInstallation {

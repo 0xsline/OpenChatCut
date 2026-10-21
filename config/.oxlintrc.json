@@ -13,10 +13,5 @@
         "allowConstantExport": true
       }
     ]
-  },
-  "ignorePatterns": [
-    "public/mediapipe/**",
-    "public/models/**",
-    "../public/mediapipe/**"
-  ]
+  }
 }
