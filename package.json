@@ -12,7 +12,7 @@
   },
   "desktopName": "openchatcut.desktop",
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24.22.1 <25"
   },
   "scripts": {
     "verify:agent-local-media": "tsx desktop/agent-local-media.verify.ts && tsx desktop/agent-path-import.verify.ts && tsx desktop/agent-path-import.e2e.verify.ts && tsx src/agent/tools/agent-path-import-tools.verify.ts",
