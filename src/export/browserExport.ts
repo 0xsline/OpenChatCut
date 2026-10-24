@@ -23,6 +23,7 @@ import { DEFAULT_RENDER_TIMEOUT_MS } from '../../remotion/render-timeout.mjs';
  */
 export const BROWSER_ENCODER_UNSUPPORTED_REASON = '浏览器编码器不支持此导出规格';
 export const BROWSER_RENDER_INCOMPLETE_REASON = '浏览器快导未能完成';
+export const WINDOWS_MULTISTREAM_WEBCODECS_BLOCKER = 'Windows 上多个重叠视频的 WebCodecs 解码可能停滞，请使用本机渲染器';
 // Mediabunny's messages when WebCodecs refuses the encoder the render asked for.
 const ENCODER_REFUSED = /encoder configuration .* is not supported|VideoEncoder is not supported|cannot be encoded by this browser/i;
 
@@ -93,10 +94,61 @@ export function browserFallbackReason(error: unknown): string {
  * Non-raster sources (svg/gif) and frame-rate retiming are handled separately by
  * `staticBrowserBlocker`.
  */
-export function browserTimelineBlocker(state: TimelineState, project?: ProjectDoc, timelineId?: string): string | null {
-  void state;
-  void project;
-  void timelineId;
+function hasOverlappingVideoSources(
+  state: { id?: string; items: TimelineState['items'] },
+  project?: ProjectDoc,
+): boolean {
+  const nestedTimelines = new Map(project?.timelines.map((timeline) => [timeline.id, timeline]) ?? []);
+  const intervals: Array<{ start: number; end: number }> = [];
+
+  const visit = (
+    timeline: { id?: string; items: TimelineState['items'] },
+    offset: number,
+    limit: number,
+    path: ReadonlySet<string>,
+  ) => {
+    for (const item of timeline.items) {
+      const start = offset + item.startFrame;
+      const end = Math.min(limit, start + item.durationInFrames);
+      if (end <= start) continue;
+      if (item.kind === 'video' && item.src) {
+        intervals.push({ start, end });
+      } else if (item.kind === 'sequence' && item.timelineId) {
+        const nested = nestedTimelines.get(item.timelineId);
+        if (nested && !path.has(nested.id)) {
+          visit(nested, start, end, new Set([...path, nested.id]));
+        }
+      }
+    }
+  };
+
+  visit(state, 0, Number.POSITIVE_INFINITY, state.id ? new Set([state.id]) : new Set<string>());
+  const events = intervals.flatMap(({ start, end }) => [
+    { frame: start, delta: 1 },
+    { frame: end, delta: -1 },
+  ]).sort((left, right) => left.frame - right.frame || left.delta - right.delta);
+  let active = 0;
+  for (const event of events) {
+    active += event.delta;
+    if (active > 1) return true;
+  }
+  return false;
+}
+
+function currentBrowserPlatform(): string {
+  return typeof window === 'undefined' ? '' : `${window.navigator.platform} ${window.navigator.userAgent}`;
+}
+
+export function browserTimelineBlocker(
+  state: TimelineState,
+  project?: ProjectDoc,
+  timelineId?: string,
+  platform = currentBrowserPlatform(),
+): string | null {
+  if (/windows|win(?:32|64)/i.test(platform)
+    && hasOverlappingVideoSources({ ...state, id: timelineId }, project)) {
+    return WINDOWS_MULTISTREAM_WEBCODECS_BLOCKER;
+  }
   return null;
 }
 
