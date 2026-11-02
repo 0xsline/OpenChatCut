@@ -83,6 +83,76 @@ const BYTEPLUS_MODELS = {
     reasoningEfforts: [],
   },
 };
+// Runcrate has no models.dev provider. Hand-vendored from Runcrate's
+// GET /v1/models (context_length, input_modalities, supported_features);
+// model ids are the ones users configure in LLM_RUNCRATE_MODEL. The API
+// allows longer outputs; 65536 keeps the input budget large and matches the
+// unknown-model output default.
+const RUNCRATE_MODELS = {
+  'deepseek-ai/DeepSeek-V4.1-Flash': {
+    contextWindowTokens: 1048576,
+    maxInputTokens: null,
+    maxOutputTokens: 65536,
+    input: ['text', 'image'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'zai-org/GLM-5.3': {
+    contextWindowTokens: 1048576,
+    maxInputTokens: null,
+    maxOutputTokens: 65536,
+    input: ['text'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'zai-org/GLM-5.3-Flash': {
+    contextWindowTokens: 1048576,
+    maxInputTokens: null,
+    maxOutputTokens: 65536,
+    input: ['text', 'image'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'moonshotai/Kimi-K3': {
+    contextWindowTokens: 1048576,
+    maxInputTokens: null,
+    maxOutputTokens: 65536,
+    input: ['text', 'image'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'Qwen/Qwen3.5-397B-A17B': {
+    contextWindowTokens: 262144,
+    maxInputTokens: null,
+    maxOutputTokens: 65536,
+    input: ['text', 'image'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo': {
+    contextWindowTokens: 262144,
+    maxInputTokens: null,
+    maxOutputTokens: 65536,
+    input: ['text'],
+    supportsTools: true,
+    reasoning: false,
+    reasoningEfforts: [],
+  },
+  'openai/gpt-oss-120b': {
+    contextWindowTokens: 131072,
+    maxInputTokens: null,
+    maxOutputTokens: 65536,
+    input: ['text'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+};
 const OUTPUT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../assets/model-capabilities/models-dev.json',
@@ -139,7 +209,7 @@ for (const [localId, upstreamId] of Object.entries(PROVIDERS)) {
 const catalog = {
   version: 1,
   source: SOURCE_URL,
-  providers: { ...providers, byteplus: BYTEPLUS_MODELS },
+  providers: { ...providers, byteplus: BYTEPLUS_MODELS, runcrate: RUNCRATE_MODELS },
 };
 await mkdir(dirname(OUTPUT_PATH), { recursive: true });
 await writeFile(OUTPUT_PATH, `${JSON.stringify(catalog, null, 2)}\n`, 'utf8');

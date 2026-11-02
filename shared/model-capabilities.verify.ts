@@ -60,4 +60,13 @@ assert.equal(resolveModelCapabilities(identity('cheaperinference', 'unknown-cust
 assert.equal(resolveModelCapabilities(cheaperDefault, [{ ...cheaperDefault, supportsTools: false }]).supportsTools.value,
   false, 'gateway-specific user overrides still win');
 
+// Runcrate's hand-vendored catalog gives its default model editing tools.
+const runcrateDefault = resolveModelCapabilities(identity('runcrate', 'deepseek-ai/DeepSeek-V4.1-Flash'));
+assert.equal(runcrateDefault.supportsTools.value, true);
+assert.equal(runcrateDefault.supportsTools.source, 'catalog');
+assert.equal(runcrateDefault.contextWindowTokens.value, 1_048_576);
+assert.ok(listVisionModels('runcrate').includes('moonshotai/Kimi-K3'));
+assert.equal(resolveModelCapabilities(identity('runcrate', 'unknown-custom-model')).supportsTools.value, false,
+  'unknown Runcrate models keep the conservative fallback');
+
 console.log('model-capabilities.verify: snapshot prefix matching passed');

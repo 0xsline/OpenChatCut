@@ -152,6 +152,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'gpt-5.4-mini',
   },
   {
+    id: 'runcrate',
+    label: 'Runcrate',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.runcrate.ai/v1',
+    defaultModel: 'deepseek-ai/DeepSeek-V4.1-Flash',
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     protocol: 'openai-compatible',

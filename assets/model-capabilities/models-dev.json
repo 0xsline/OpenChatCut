@@ -10855,6 +10855,89 @@
           "max"
         ]
       }
+    },
+    "runcrate": {
+      "deepseek-ai/DeepSeek-V4.1-Flash": {
+        "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
+        "maxOutputTokens": 65536,
+        "input": [
+          "text",
+          "image"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "zai-org/GLM-5.3": {
+        "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
+        "maxOutputTokens": 65536,
+        "input": [
+          "text"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "zai-org/GLM-5.3-Flash": {
+        "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
+        "maxOutputTokens": 65536,
+        "input": [
+          "text",
+          "image"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "moonshotai/Kimi-K3": {
+        "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
+        "maxOutputTokens": 65536,
+        "input": [
+          "text",
+          "image"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "Qwen/Qwen3.5-397B-A17B": {
+        "contextWindowTokens": 262144,
+        "maxInputTokens": null,
+        "maxOutputTokens": 65536,
+        "input": [
+          "text",
+          "image"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo": {
+        "contextWindowTokens": 262144,
+        "maxInputTokens": null,
+        "maxOutputTokens": 65536,
+        "input": [
+          "text"
+        ],
+        "supportsTools": true,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "openai/gpt-oss-120b": {
+        "contextWindowTokens": 131072,
+        "maxInputTokens": null,
+        "maxOutputTokens": 65536,
+        "input": [
+          "text"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      }
     }
   }
 }
