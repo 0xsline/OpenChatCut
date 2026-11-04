@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { DATA_DIR_ENV, DEV_PROFILE_ID_ENV, defaultRootDir, resolveRuntimeProfile } from './runtime-profile.ts';
+import { DATA_DIR_ENV, DEV_PROFILE_ID_ENV, SETTINGS_FILE_ENV, defaultRootDir, resolveRuntimeProfile } from './runtime-profile.ts';
 import { dataDirPointerPath } from './data-dir.ts';
 import { projectStoreAuthDir } from './project-store-http-auth.ts';
 
@@ -112,6 +112,33 @@ try {
   assert.equal(envDataDir.mediaDir, join(chosen, 'media', 'uploads'));
   // The keystore stays with the checkout in default mode: it is not project data.
   assert.equal(envDataDir.keystorePath, resolve(cwd, '.env.local'));
+
+  // A container keeps settings in its data volume instead of the image's checkout.
+  const settingsFile = join(chosen, 'settings.env');
+  assert.equal(
+    resolveRuntimeProfile({ [SETTINGS_FILE_ENV]: ` ${settingsFile} ` }, { homeDir: dataDirHome, cwd }).keystorePath,
+    settingsFile,
+  );
+  assert.equal(
+    resolveRuntimeProfile({ [SETTINGS_FILE_ENV]: '~/settings.env' }, { homeDir: dataDirHome, cwd }).keystorePath,
+    join(dataDirHome, 'settings.env'),
+  );
+  assert.equal(
+    resolveRuntimeProfile({ [SETTINGS_FILE_ENV]: '  ' }, { homeDir: dataDirHome, cwd }).keystorePath,
+    resolve(cwd, '.env.local'),
+  );
+  assert.throws(
+    () => resolveRuntimeProfile({ [SETTINGS_FILE_ENV]: 'settings.env' }, { homeDir: dataDirHome, cwd }),
+    /must be an absolute path/,
+  );
+  // Isolated dev profiles keep their own settings file regardless.
+  assert.equal(
+    resolveRuntimeProfile(
+      { [DEV_PROFILE_ID_ENV]: profileAId, [SETTINGS_FILE_ENV]: settingsFile },
+      { homeDir: dataDirHome, cwd },
+    ).keystorePath,
+    join(dataDirHome, '.openchatcut', 'dev-profiles', profileAId, 'settings.env'),
+  );
 
   // `~/` expands, whitespace is trimmed, and a blank value is the same as no value.
   assert.equal(

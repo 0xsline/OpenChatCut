@@ -1,0 +1,35 @@
+# Keep the build context small and free of local state and secrets.
+.git
+node_modules
+dist
+desktop-dist
+cli-dist
+release
+coverage
+.cache
+.tmp
+.vite
+*.tsbuildinfo
+*.log
+
+# Secrets and local settings never enter the image; use the settings UI or env_file.
+.env
+.env.*
+!.env.example
+
+# Runtime media and assets that the image provisions itself
+public/media/uploads/*
+!public/media/uploads/.gitkeep
+public/media/asr-models
+public/mediapipe
+public/whisper-cli
+
+# Private/editor workspace files
+.claude
+.codex
+.agents
+.idea
+.vscode
+.DS_Store
+docs
+marketing

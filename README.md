@@ -289,6 +289,45 @@ credentials, settings, and local authorization state under its own profile in
 `~/.openchatcut/dev-profiles/`. Use `npm run dev:shared` only when you intentionally need
 the legacy shared development store.
 
+### Run with Docker
+
+Requires Docker with Compose v2.24 or newer (Docker Desktop on macOS/Windows, or Docker Engine on Linux). The image builds the source checkout on Node.js 24 and runs the same web editor as `npm run dev`.
+
+```bash
+git clone https://github.com/0xsline/OpenChatCut.git
+cd OpenChatCut
+docker compose up -d --build
+```
+
+Then open `http://localhost:5199` on the same machine. The first build downloads dependencies and runtime assets (MediaPipe models, whisper.cpp, and Remotion's headless Chromium), so it takes a few minutes; later builds reuse the cached layers.
+
+Everyday commands:
+
+```bash
+docker compose logs -f          # follow the server log
+docker compose down             # stop; your data stays in the volume
+docker compose up -d --build    # rebuild and restart after `git pull`
+```
+
+**API keys and settings.** Add keys in **Settings** inside the editor; they are saved in the data volume and survive restarts and rebuilds. Alternatively, `cp .env.example .env.local` and fill in the keys you use; Compose passes `.env.local` to the container when it exists (values saved in Settings take precedence). Do not set host paths such as `MEDIA_DIR` or `OPENCHATCUT_DATA_DIR` there: inside the container they point nowhere.
+
+**Data.** Projects, versions, imported media, generation jobs, saved settings, the MCP token, and custom skills live in the `openchatcut-data` volume, mounted at `/home/node/.openchatcut`. `docker compose down` keeps it; `docker compose down -v` deletes it. Back it up with:
+
+```bash
+docker run --rm -v openchatcut_openchatcut-data:/data -v "$PWD":/backup busybox tar czf /backup/openchatcut-data.tgz -C /data .
+```
+
+**Port and network access.** The container publishes the editor on `127.0.0.1:5199` only. Editor endpoints trust requests that reach them as local requests, and the editor also needs a browser [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts), so open it from the machine running Docker. For another host port, start it with `OPENCHATCUT_HOST_PORT=8080 docker compose up -d` and open `http://localhost:8080`. Do not change the mapping to `0.0.0.0` or a LAN address.
+
+**Agent local media import.** In the browser editor, the Agent's local-path tools need an allowlist. To give the Agent a host folder, uncomment the `./media-import:/import:ro` volume and `AGENT_IMPORT_ROOTS: /import` in [`docker-compose.yml`](docker-compose.yml), then run `docker compose up -d`. Uploading through the editor works without this.
+
+**External agents (Claude Code / Codex via MCP).** The MCP endpoint is the same `http://localhost:5199/api/external-mcp/mcp`. To get a stable token, set `OPENCHATCUT_MCP_TOKEN` in `docker-compose.yml` or `.env.local`; otherwise the generated token is kept in the data volume. Built-in Agent backends that drive a locally installed CLI (OpenAI · Codex, Claude Code, GitHub Copilot) are not installed in the image; use API-key providers in the container, or the desktop app or a source checkout for those backends.
+
+**Notes.**
+
+- The container renders and encodes on the CPU (no VideoToolbox/NVENC); tune `OPENCHATCUT_RENDER_CONCURRENCY` if exports compete with other work.
+- In mainland China, build with an npm mirror: `docker compose build --build-arg NPM_REGISTRY=https://registry.npmmirror.com/`.
+
 ### Built-in Agent authentication
 
 - **API keys:** open **Settings → Agent model**, choose a provider, and save its API key and model. Keys remain server-side.
