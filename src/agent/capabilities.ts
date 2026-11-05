@@ -86,6 +86,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Kling', arg: 'kling', argKey: 'model', need: [['KLING_API_KEY']] },
     { label: 'Hailuo', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
     { label: 'xAI Grok', arg: 'grok-imagine-video', argKey: 'model', need: [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']] },
+    { label: 'Gemini Omni', arg: 'gemini-omni', argKey: 'model', need: [['GEMINI_API_KEY']] },
     { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
   ],
   music: [

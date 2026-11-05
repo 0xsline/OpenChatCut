@@ -149,6 +149,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'hailuo', label: 'MiniMax 海螺' },
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
+          { value: 'gemini-omni', label: 'Google · Gemini Omni' },
           { value: 'ofox', label: 'OFox · 多模型' },
         ]),
         vendors: [
@@ -172,6 +173,14 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             fields: [
               modelText('XAI_VIDEO_MODEL', '视频模型', 'grok-imagine-video-1.5',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
+            ] },
+          { key: 'video/gemini-omni', vendor: 'gemini', title: 'Google · Gemini Omni Flash',
+            note: '使用 GEMINI_API_KEY（与 Nano Banana 生图相同）。文生视频 / 图生视频 / 首尾帧；比例仅 16:9 与 9:16；分辨率 360p / 720p / 1080p / 4k。时长通过提示词提示（API 无独立 duration 字段）。默认模型 gemini-omni-1.1-flash。',
+            fields: [
+              secret('GEMINI_API_KEY', 'API Key'),
+              text('GEMINI_BASE_URL', 'Base URL', '默认 https://generativelanguage.googleapis.com'),
+              modelText('GEMINI_OMNI_VIDEO_MODEL', '视频模型', 'gemini-omni-1.1-flash',
+                'Google AI Studio / Gemini API 的 Omni 视频模型 ID。'),
             ] },
           { key: 'video/ofox', vendor: 'ofox', title: 'OFox · 多模型网关',
             note: '使用 LLM_OFOX_API_KEY（在 Agent 供应商里配置 OFox）生成视频。一个 Key 覆盖 Seedance、Wan 等视频模型；支持文生视频、首帧/首尾帧图生视频与图片参考（最多 9 张）；时长/分辨率按模型由 API 校验，2–30 秒。',

@@ -10,8 +10,9 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 | `kling` | Kling Omni | T2V / I2V / first+last; images ≤7 (≤4 with video); **1× refVideo** `feature`\|`base`; multi-shot customize/intelligence; 3–15s; std/pro |
 | `hailuo` | MiniMax | T2V / I2V / first+last; **6\|10s**; 512P (Hailuo-02), 720p→768P, 1080P→6s; optimizer controls; **S2V-01** subject |
 | `grok-imagine-video` | xAI Grok Imagine | T2V only; **1–15s**; 480p/720p/1080p; audio track included; no refs/frames/edit |
+| `gemini-omni` | Google Gemini Omni Flash | T2V / I2V / first+last / ≤4 refImages; **16:9\|9:16**; 360p–4k; duration prompt-hinted (1–40); uses `GEMINI_API_KEY` |
 
-**Not wired:** Kling element library / voice bind; provider callback URLs; arbitrary third-party generation endpoints.
+**Not wired:** Kling element library / voice bind; Omni multi-turn edit/extend; provider callback URLs; arbitrary third-party generation endpoints.
 
 ## Image · `submit_image`
 

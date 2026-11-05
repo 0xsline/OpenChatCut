@@ -397,4 +397,21 @@ assert.throws(
   /multi-shot and editing options are not supported by ofox/,
 );
 
-console.log('video.check: ok (seedance 480p + kling base/feature + hailuo)');
+const omni = validateVideoRequest({
+  model: 'gemini-omni', prompt: 'neon city flythrough', durationSeconds: 8, ratio: '9:16', resolution: '1080p',
+});
+assert.equal(omni.model, 'gemini-omni');
+assert.equal(omni.ratio, '9:16');
+assert.throws(
+  () => validateVideoRequest({ model: 'gemini-omni', prompt: 'x', ratio: '21:9' }),
+  /16:9 or 9:16/,
+);
+assert.throws(
+  () => validateVideoRequest({
+    model: 'gemini-omni', prompt: 'x',
+    firstFramePath: '/media/uploads/a.jpg', refImagePaths: ['/media/uploads/b.jpg'],
+  }),
+  /cannot be combined with refImages/,
+);
+
+console.log('video.check: ok (seedance 480p + kling base/feature + hailuo + gemini-omni)');

@@ -20,6 +20,7 @@ import {
   providerMediaUrl,
   ServerReferencePreflightError,
 } from './video-media.ts';
+import { generateGeminiOmniVideo } from './gemini-omni-video-provider.ts';
 import { generateGrokVideo } from './grok-video-provider.ts';
 import { hailuoRequestBody } from './minimax-video.ts';
 import { generateOfoxVideo } from './ofox-video-provider.ts';
@@ -55,6 +56,9 @@ interface VideoOptions {
   ofoxBaseUrl: string;
   ofoxApiKey: string;
   ofoxVideoModel: string;
+  geminiBaseUrl: string;
+  geminiApiKey: string;
+  geminiOmniVideoModel: string;
 }
 
 async function readJson(req: IncomingMessage): Promise<VideoRequest> {
@@ -354,18 +358,22 @@ async function runVideoOperation(
         expectedResultCount,
       );
     } else {
-      const url = input.model === 'grok-imagine-video'
-        ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
-        : input.model === 'ofox'
-          ? await generateOfoxVideo(input, options, registerProviderTask, providerTaskId)
-          : input.model === 'kling'
-            ? await generateKling(input, options, registerProviderTask, providerTaskId)
-            : await generateHailuo(input, options, registerProviderTask, providerTaskId);
+      const url = input.model === 'gemini-omni'
+        ? await generateGeminiOmniVideo(input, options, registerProviderTask, providerTaskId)
+        : input.model === 'grok-imagine-video'
+          ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
+          : input.model === 'ofox'
+            ? await generateOfoxVideo(input, options, registerProviderTask, providerTaskId)
+            : input.model === 'kling'
+              ? await generateKling(input, options, registerProviderTask, providerTaskId)
+              : await generateHailuo(input, options, registerProviderTask, providerTaskId);
       urls = requireGenerationResultUrls([url], expectedResultCount);
     }
   }
   urls = requireGenerationResultUrls(urls, expectedResultCount);
-  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' ? fetchWithProxy : undefined;
+  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' || input.model === 'gemini-omni'
+    ? fetchWithProxy
+    : undefined;
   const download = () => saveVideoResults(
     operationId,
     name,
@@ -377,7 +385,7 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'fal'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'fal', 'gemini-omni'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,
