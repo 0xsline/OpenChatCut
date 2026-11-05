@@ -1,7 +1,6 @@
-// The four locale dictionaries are ~560 kB of source. Importing them statically
-// put all four in the entry chunk, so every user downloaded and parsed three
-// languages they cannot read before the first frame. Each locale is fetched on
-// demand instead.
+// Locale dictionaries are large source. Importing them statically put every
+// language in the entry chunk, so users downloaded and parsed languages they
+// cannot read before the first frame. Each locale is fetched on demand instead.
 //
 // t()/tData() stay SYNCHRONOUS: they read whatever is loaded and fall back to
 // the Chinese original, which is also the dictionary key — the same "never go
@@ -50,6 +49,15 @@ async function fetchDicts(locale: Locale): Promise<LocaleDicts> {
       import('./dict/ru'), import('./dict/en/templates-data'),
     ]);
     return { ui: ru.RU, uiFallback: EMPTY, data: enData.default, dataFallback: EMPTY };
+  }
+  if (locale === 'th') {
+    // Thai falls back to English for any still-untranslated UI/data keys,
+    // matching the Italian contributor path.
+    const [th, thData, en, enData] = await Promise.all([
+      import('./dict/th'), import('./dict/th/templates-data'),
+      import('./dict/en'), import('./dict/en/templates-data'),
+    ]);
+    return { ui: th.TH, uiFallback: en.EN, data: thData.default, dataFallback: enData.default };
   }
   const [it, itData, en, enData] = await Promise.all([
     import('./dict/it'), import('./dict/it/templates-data'),

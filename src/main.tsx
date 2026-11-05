@@ -10,7 +10,7 @@ import { ensureLocaleDict, getLocale, prefetchLocaleDicts } from './i18n/locale'
 
 // Kick the active locale's dictionary off FIRST so its fetch overlaps the setup
 // below; the render waits on it so no frame renders untranslated copy. Only
-// this one language is fetched — the other three cost nothing until switched.
+// this one language is fetched — the other locales cost nothing until switched.
 const localeReady = ensureLocaleDict(getLocale());
 
 // Inject skin variables and apply persistent skin before rendering to avoid flashing the default color in the first frame.

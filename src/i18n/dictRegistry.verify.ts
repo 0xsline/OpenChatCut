@@ -1,8 +1,8 @@
 // Locale dictionaries moved from static imports to a per-locale lazy fetch, so
 // t()/tData() now read a table that may not be loaded yet. This pins the lookup
 // semantics that were previously inlined in locale.ts, per language:
-//   t:     zh → key · en → EN · it → IT then EN · ru → RU only (no EN fallback)
-//   tData: zh → ZH_DATA · en → EN_DATA · it → IT_DATA then EN_DATA · ru → EN_DATA
+//   t:     zh → key · en → EN · it → IT then EN · th → TH then EN · ru → RU only (no EN fallback)
+//   tData: zh → ZH_DATA · en → EN_DATA · it → IT_DATA then EN_DATA · th → TH_DATA then EN_DATA · ru → EN_DATA
 // and the "never go blank" contract while a dictionary is still in flight.
 // npx tsx src/i18n/dictRegistry.verify.ts
 import assert from 'node:assert/strict';
@@ -21,9 +21,11 @@ const { localeDicts } = await import('./dictRegistry.ts');
 const { EN } = await import('./dict/en');
 const { IT } = await import('./dict/it');
 const { RU } = await import('./dict/ru');
+const { TH } = await import('./dict/th');
 const { ZH_DATA } = await import('./dict/zh');
 const EN_DATA = (await import('./dict/en/templates-data')).default;
 const IT_DATA = (await import('./dict/it/templates-data')).default;
+const TH_DATA = (await import('./dict/th/templates-data')).default;
 
 /** A key the reference dictionary translates and the compared one does not. */
 function onlyIn(has: Record<string, string>, lacks: Record<string, string>): string {
@@ -68,6 +70,26 @@ function onlyIn(has: Record<string, string>, lacks: Record<string, string>): str
   // name lands, tData() must already resolve it rather than show Chinese.
   assert.equal(localeDicts('it').dataFallback, EN_DATA,
     'it is wired to fall back to EN_DATA for data names');
+}
+
+// ── th: translated keys win, untranslated ones fall back to English ──────────
+{
+  setLocale('th');
+  await ensureLocaleDict('th');
+  const thai = Object.keys(TH)[0]!;
+  assert.equal(t(thai), TH[thai], 'th prefers the Thai dictionary');
+  // Prefer a key EN has that TH somehow lacks; if TH is complete, wire-check fallback.
+  const englishOnly = Object.keys(EN).find((k) => !(k in TH));
+  if (englishOnly) {
+    assert.equal(t(englishOnly), EN[englishOnly], 'th falls back to English, not to Chinese');
+  } else {
+    assert.equal(localeDicts('th').uiFallback, EN,
+      'th is wired to fall back to EN for UI copy');
+  }
+  const thaiData = Object.keys(TH_DATA)[0]!;
+  assert.equal(tData(thaiData), TH_DATA[thaiData], 'th prefers TH_DATA');
+  assert.equal(localeDicts('th').dataFallback, EN_DATA,
+    'th is wired to fall back to EN_DATA for data names');
 }
 
 // ── ru: no English fallback for UI copy, but EN_DATA for data names ──────────

@@ -14,7 +14,7 @@ let reads = 0;
 let deletes = 0;
 const createdLocales: string[] = [];
 const controls = {
-  async createSession(locale: 'zh' | 'en' | 'it' | 'ru' = 'zh') {
+  async createSession(locale: 'zh' | 'en' | 'it' | 'ru' | 'th' = 'zh') {
     creates += 1;
     createdLocales.push(locale);
     return snapshot;
