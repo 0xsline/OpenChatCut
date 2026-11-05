@@ -4,7 +4,9 @@ import { access, copyFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
+import { hwDecodeArgs, type H264Encoder } from '../media-acceleration.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
+import { encodeTranscodedVideo } from '../media-normalization.ts';
 import { DEFAULT_UPLOAD_MAX_BYTES } from '../r2.ts';
 import { seedKeystore } from '../keystore.ts';
 import { maxUploadBytes } from './upload-routes.ts';
@@ -88,6 +90,38 @@ const existingTargetKey = await resolveNormalizeTargetKey('/alias/Clip.mp4', 'da
 assert.equal(existingTargetKey, '/actual/caf\u00e9.mp4');
 assert.equal(existingTargetRealpathCalls, 1, 'an existing target uses its own realpath without resolving its parent');
 
+
+// A failed hardware attempt retries libx264 with software decode: reusing
+// `-hwaccel qsv` makes the retry fail on the same QSV device error.
+{
+  const attempts: string[][] = [];
+  const fallbackOutputPath = join(tmpdir(), 'openchatcut-hwdecode-fallback-unwritten.mp4');
+  const qsvDecodeFailure = 'Error creating a MFX session: -9. '
+    + 'No device available for decoder: device type qsv needed for codec h264_qsv.';
+  await encodeTranscodedVideo(
+    ffmpegBin(),
+    { inputPath: 'vfr-source.mp4', hasAudio: true },
+    ['-c:a', 'copy'],
+    [fallbackOutputPath],
+    { targetW: 720, targetH: 1280, targetBitrate: 4_000_000, targetFps: 30, convertToCfr: true },
+    fallbackOutputPath,
+    {
+      preferred: 'h264_qsv',
+      resolveDecodeArgs: async (encoder: H264Encoder) => hwDecodeArgs(encoder),
+      runFfmpeg: async (args) => {
+        attempts.push(args);
+        if (args.includes('qsv')) throw new Error(`ffmpeg exit 1: ${qsvDecodeFailure}`);
+      },
+    },
+  );
+  const valueAfter = (args: string[], flag: string) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
+  assert.deepEqual(attempts.map((args) => valueAfter(args, '-c:v')), ['h264_qsv', 'libx264']);
+  assert.deepEqual(
+    attempts.map((args) => valueAfter(args, '-hwaccel')),
+    ['qsv', undefined],
+    'the libx264 retry must decode in software instead of reusing the failed QSV decoder',
+  );
+}
 
 for (const [name, binary] of [['ffmpeg', ffmpegBin()], ['ffprobe', ffprobeBin()]]) {
   const result = spawnSync(binary, ['-version'], { encoding: 'utf8' });

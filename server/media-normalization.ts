@@ -9,6 +9,7 @@ import {
   probeEncoderQualityMode,
   resolveH264Encoder,
   resolveHwDecodeArgs,
+  type H264Encoder,
 } from './media-acceleration.ts';
 import { ffmpegBin, ffprobeBin } from './media-binaries.ts';
 import {
@@ -344,28 +345,57 @@ interface TranscodeVideoOptions {
   readonly convertToCfr: boolean;
 }
 
-async function encodeTranscodedVideo(
+/** Input-side arguments shared by every normalization attempt. */
+function normalizeInputArgs(
+  decodeArgs: readonly string[],
+  inputPath: string,
+  hasAudio: boolean,
+): string[] {
+  return [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    ...decodeArgs,
+    '-i', inputPath, '-map', '0:v:0',
+    ...(hasAudio ? ['-map', '0:a:0?'] : ['-an']),
+  ];
+}
+
+export interface TranscodeVideoRuntime {
+  readonly preferred: H264Encoder;
+  readonly resolveDecodeArgs?: (encoder: H264Encoder) => Promise<string[]>;
+  readonly runFfmpeg?: (args: string[]) => Promise<unknown>;
+}
+
+export async function encodeTranscodedVideo(
   ffmpeg: string,
-  commonArgs: string[],
+  input: { readonly inputPath: string; readonly hasAudio: boolean },
   audioArgs: string[],
   outputArgs: string[],
   options: TranscodeVideoOptions,
   outputPath: string,
+  runtime: TranscodeVideoRuntime,
   signal?: AbortSignal,
 ): Promise<void> {
+  const {
+    preferred,
+    resolveDecodeArgs = (encoder) => resolveHwDecodeArgs(ffmpeg, encoder),
+    runFfmpeg = (args) => run(ffmpeg, args, FFMPEG_TIMEOUT_MS, signal),
+  } = runtime;
   const filters = [`scale=${options.targetW}:${options.targetH}:flags=lanczos`];
   if (options.convertToCfr) {
     const fps = String(Math.round(options.targetFps * 1000) / 1000);
     filters.push(`fps=fps=${fps}:start_time=0:round=near`);
   }
-  const preferred = await resolveH264Encoder(ffmpeg);
-  throwIfNormalizationAborted(signal);
   const proxyQuality = await probeEncoderQualityMode(ffmpeg, preferred);
   throwIfNormalizationAborted(signal);
   let lastError: unknown;
   for (const encoder of h264EncoderAttempts(preferred)) {
+    // Decode setup follows each attempt's encoder: the libx264 retry must not
+    // keep a hardware decoder (e.g. `-hwaccel qsv`) that may be what failed.
+    const decodeArgs = await resolveDecodeArgs(encoder);
+    throwIfNormalizationAborted(signal);
     const args = [
-      ...commonArgs, '-vf', filters.join(','),
+      ...normalizeInputArgs(decodeArgs, input.inputPath, input.hasAudio),
+      '-vf', filters.join(','),
       ...h264EncodingArgs({
         encoder,
         targetBitrate: options.targetBitrate,
@@ -379,7 +409,7 @@ async function encodeTranscodedVideo(
       ...audioArgs, ...outputArgs,
     ];
     try {
-      await run(ffmpeg, args, FFMPEG_TIMEOUT_MS, signal);
+      await runFfmpeg(args);
       return;
     } catch (error) {
       throwIfNormalizationAborted(signal);
@@ -410,28 +440,27 @@ export async function encodeNormalized(
   // "CreateInputBuffer failed" once the 64x64 probe bug is fixed.
   const preferred = await resolveH264Encoder(ffmpeg);
   throwIfNormalizationAborted(signal);
-  const commonArgs = [
-    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-    ...(await resolveHwDecodeArgs(ffmpeg, preferred)),
-    '-i', inputPath, '-map', '0:v:0',
-    ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),
-  ];
-  throwIfNormalizationAborted(signal);
   const audioArgs = !meta.hasAudio ? [] : streamPlan.transcodeAudio
     ? ['-c:a', 'aac', '-b:a', VIDEO_AUDIO_BITRATE]
     : ['-c:a', 'copy'];
   const outputArgs = ['-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', outputPath];
   if (!streamPlan.transcodeVideo) {
-    await run(ffmpeg, [...commonArgs, '-c:v', 'copy', ...audioArgs, ...outputArgs], FFMPEG_TIMEOUT_MS, signal);
+    const decodeArgs = await resolveHwDecodeArgs(ffmpeg, preferred);
+    throwIfNormalizationAborted(signal);
+    await run(ffmpeg, [
+      ...normalizeInputArgs(decodeArgs, inputPath, meta.hasAudio),
+      '-c:v', 'copy', ...audioArgs, ...outputArgs,
+    ], FFMPEG_TIMEOUT_MS, signal);
     return;
   }
   await encodeTranscodedVideo(
     ffmpeg,
-    commonArgs,
+    { inputPath, hasAudio: meta.hasAudio },
     audioArgs,
     outputArgs,
     { targetW, targetH, targetBitrate, targetFps, convertToCfr },
     outputPath,
+    { preferred },
     signal,
   );
 }
