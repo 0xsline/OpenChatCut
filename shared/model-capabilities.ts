@@ -89,7 +89,7 @@ const catalogProviders = modelsDevCatalog.providers as unknown as Partial<
 
 /** Subscription and gateway models reuse their known upstream catalog entries. */
 function catalogProviderId(provider: LlmProvider, modelId?: string): LlmProvider {
-  if (provider === 'cheaperinference' && modelId) {
+  if ((provider === 'cheaperinference' || provider === 'opper') && modelId) {
     const providers = [copilotProviderForModel(modelId), ...Object.keys(catalogProviders) as LlmProvider[]];
     // Exact ids win over snapshot prefixes, including non-Copilot model families.
     return providers.find((id) => catalogProviders[id]?.[modelId])
@@ -249,7 +249,7 @@ export function listVisionModels(
   provider: LlmProvider,
   configuredModel?: string,
 ): readonly string[] {
-  if (provider === 'cheaperinference') {
+  if (provider === 'cheaperinference' || provider === 'opper') {
     return configuredModel && resolveModelCapabilities({ backend: 'api', provider, modelId: configuredModel }).supportsImages.value
       ? [configuredModel] : [];
   }

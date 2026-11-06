@@ -60,4 +60,17 @@ assert.equal(resolveModelCapabilities(identity('cheaperinference', 'unknown-cust
 assert.equal(resolveModelCapabilities(cheaperDefault, [{ ...cheaperDefault, supportsTools: false }]).supportsTools.value,
   false, 'gateway-specific user overrides still win');
 
+// Opper pool names are the upstream model ids, so they reuse the same catalog entries.
+const opperDefault = identity('opper', 'claude-sonnet-4-6');
+assert.deepEqual(
+  resolveModelCapabilities(opperDefault),
+  resolveModelCapabilities(identity('anthropic', 'claude-sonnet-4-6')),
+  'Opper inherits its known upstream model capabilities',
+);
+assert.equal(resolveModelCapabilities(opperDefault).supportsTools.value, true);
+assert.deepEqual(resolveModelCapabilities(identity('opper', 'gpt-5.4-mini')),
+  resolveModelCapabilities(identity('openai', 'gpt-5.4-mini')), 'gpt-5.4-mini keeps its known upstream capabilities');
+assert.equal(resolveModelCapabilities(identity('opper', 'unknown-custom-model')).supportsTools.value, false,
+  'unknown Opper models keep the conservative fallback');
+
 console.log('model-capabilities.verify: snapshot prefix matching passed');

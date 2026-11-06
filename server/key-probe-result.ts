@@ -35,6 +35,18 @@ export function parseTextModelCatalog(bodyText: string): string[] {
   }
 }
 
+/** Opper also lists embedding models (opper.type "embedding"); chat keeps the rest. */
+export function parseOpperChatModelCatalog(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as { data?: Array<{ opper?: { type?: unknown } } | null> };
+    if (!Array.isArray(body.data)) return parseModelCatalog(bodyText);
+    const data = body.data.filter((row) => row != null && row.opper?.type !== 'embedding');
+    return parseModelCatalog(JSON.stringify({ data }));
+  } catch {
+    return [];
+  }
+}
+
 export function sanitizeProbeText(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 140);
 }
