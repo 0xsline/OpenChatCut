@@ -30,10 +30,10 @@ export function LocaleToggle() {
       data-tip={t('切换界面语言')}
       aria-label={t('切换界面语言')}
       onClick={() => setLocale(next)}
-      style={{ minWidth: 30, height: 22, background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 4, cursor: 'pointer', padding: '0 5px', fontSize: 11, fontWeight: 600, letterSpacing: 0.3, color: theme.textDim, display: 'grid', placeItems: 'center' }}
+      style={{ minWidth: locale === 'th' ? 36 : 30, height: 22, background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 4, cursor: 'pointer', padding: '0 5px', fontSize: 11, fontWeight: 600, letterSpacing: 0.3, color: theme.textDim, display: 'grid', placeItems: 'center' }}
       onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; e.currentTarget.style.background = theme.panelAlt; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
-      {locale === 'zh' ? '中' : locale === 'ko' ? '한' : locale.toUpperCase()}
+      {locale === 'zh' ? '中' : locale === 'ko' ? '한' : locale === 'th' ? 'ไทย' : locale.toUpperCase()}
     </button>
   );
 }

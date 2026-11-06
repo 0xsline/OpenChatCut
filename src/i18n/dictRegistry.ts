@@ -58,6 +58,15 @@ async function fetchDicts(locale: Locale): Promise<LocaleDicts> {
     ]);
     return { ui: ko.KO, uiFallback: en.EN, data: koData.default, dataFallback: enData.default };
   }
+  if (locale === 'th') {
+    // Thai falls back to English for any still-untranslated UI/data keys,
+    // matching the Italian contributor path.
+    const [th, thData, en, enData] = await Promise.all([
+      import('./dict/th'), import('./dict/th/templates-data'),
+      import('./dict/en'), import('./dict/en/templates-data'),
+    ]);
+    return { ui: th.TH, uiFallback: en.EN, data: thData.default, dataFallback: enData.default };
+  }
   const [it, itData, en, enData] = await Promise.all([
     import('./dict/it'), import('./dict/it/templates-data'),
     import('./dict/en'), import('./dict/en/templates-data'),

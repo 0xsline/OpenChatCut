@@ -30,6 +30,7 @@ const ALLOWED_DATA_LITERALS = new Set([
 ]);
 const ALLOWED_RAW_RENDER_LITERALS = new Set([
   'src/components/TopBar.tsx::中',
+  'src/components/TopBar.tsx::ไทย',
 ]);
 const USER_FACING_ATTRIBUTES = new Set(['alt', 'aria-label', 'placeholder', 'title']);
 

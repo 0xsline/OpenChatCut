@@ -4,15 +4,15 @@
 // Rules: Use useT() (subscription switching) in React components; pure helper modules can directly import { t }
 //  — As long as the component that renders its output calls useT(), it will be recalculated when switching languages.
 // LLM interface (systemPrompt/tool ​​description/skill content) and persistent dynamic history tags do not enter i18n.
-// Default language: the saved choice wins; otherwise the system language (zh/it/ru/ko), and English for everything else.
+// Default language: the saved choice wins; otherwise the system language (zh/it/ru/ko/th), and English for everything else.
 import { useSyncExternalStore } from 'react';
 import { ensureLocaleDict, localeDictReady, localeDicts } from './dictRegistry';
 
 export { ensureLocaleDict } from './dictRegistry';
 
-export type Locale = 'zh' | 'en' | 'it' | 'ru' | 'ko';
+export type Locale = 'zh' | 'en' | 'it' | 'ru' | 'ko' | 'th';
 
-export const ALL_LOCALES: readonly Locale[] = ['zh', 'en', 'it', 'ru', 'ko'];
+export const ALL_LOCALES: readonly Locale[] = ['zh', 'en', 'it', 'ru', 'ko', 'th'];
 
 const STORAGE_KEY = 'cc.locale';
 const DOCUMENT_LANG: Record<Locale, string> = {
@@ -21,6 +21,7 @@ const DOCUMENT_LANG: Record<Locale, string> = {
   it: 'it',
   ru: 'ru',
   ko: 'ko',
+  th: 'th',
 };
 
 function systemLocale(): Locale {
@@ -30,6 +31,7 @@ function systemLocale(): Locale {
     if (tag.startsWith('it')) return 'it';
     if (tag.startsWith('ru')) return 'ru';
     if (tag.startsWith('ko')) return 'ko';
+    if (tag.startsWith('th')) return 'th';
     return 'en';
   } catch {
     return 'en';
@@ -39,7 +41,7 @@ function systemLocale(): Locale {
 function readInitial(): Locale {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'zh' || stored === 'en' || stored === 'it' || stored === 'ru' || stored === 'ko') return stored;
+    if (stored === 'zh' || stored === 'en' || stored === 'it' || stored === 'ru' || stored === 'ko' || stored === 'th') return stored;
   } catch {
     // Private mode / storage disabled → system language below.
   }
@@ -60,11 +62,12 @@ export function subscribeLocale(onChange: () => void): () => void {
   return () => { subscribers.delete(onChange); };
 }
 
-export function localeLanguageName(locale: Locale): 'Chinese' | 'English' | 'Italian' | 'Russian' | 'Korean' {
+export function localeLanguageName(locale: Locale): 'Chinese' | 'English' | 'Italian' | 'Russian' | 'Korean' | 'Thai' {
   if (locale === 'zh') return 'Chinese';
   if (locale === 'it') return 'Italian';
   if (locale === 'ru') return 'Russian';
   if (locale === 'ko') return 'Korean';
+  if (locale === 'th') return 'Thai';
   return 'English';
 }
 
