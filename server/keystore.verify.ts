@@ -169,6 +169,7 @@ const MODEL_ROUTING_NAMES = [
   'AGENT_IMPORT_ROOTS', // Agent local-path import whitelist (comma-separated absolute dirs)
   'OPENCHATCUT_SKILLS_DIR', // User skill files directory (''=~/.openchatcut/skills)
   'PROXY_URL', // Outbound network proxy (''=use HTTPS_PROXY/HTTP_PROXY env)
+  'WEB_SEARCH_PROVIDER', // Basic web research routing ('' | parallel | firecrawl | disabled)
 ] as const;
 for (const name of MODEL_ROUTING_NAMES) {
   assert.ok((KEY_NAMES as readonly string[]).includes(name), `${name} is whitelisted (settable via POST /api/keys)`);
@@ -191,8 +192,9 @@ assert.deepStrictEqual(
 );
 
 // seed one SECRET + one non-secret on top of the state above (seeds accumulate in-process)
-seedKeystore({ ...isolatedSeed, LLM_API_KEY: 'sec-x', MINIMAX_TTS_MODEL: 'speech-2.8-hd' } as Record<string, string>);
+seedKeystore({ ...isolatedSeed, LLM_API_KEY: 'sec-x', MINIMAX_TTS_MODEL: 'speech-2.8-hd', WEB_SEARCH_PROVIDER: 'disabled' } as Record<string, string>);
 const st2 = keyStatus();
+assert.equal(st2.models['WEB_SEARCH_PROVIDER'], 'disabled', 'web routing/disable choice is echoed as non-secret config');
 assert.equal(st2.models['MINIMAX_TTS_MODEL'], 'speech-2.8-hd', 'non-secret model value echoed in models');
 assert.equal(st2.models['KLING_VIDEO_MODEL'], '', 'unset non-secret name echoes empty string');
 assert.ok(!('LLM_API_KEY' in st2.models), 'SECRET key has no field in models at all');

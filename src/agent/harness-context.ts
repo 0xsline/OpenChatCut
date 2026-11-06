@@ -5,6 +5,7 @@ const MAX_LOAD_SKILL_RESULT_CHARS = 64_000;
 
 /** Ephemeral request context for low-level tools; never persisted in ProjectDoc. */
 export interface HarnessToolExecutionContext {
+  readonly signal?: AbortSignal;
   readonly loadSkillResultBudgetChars?: number;
 }
 
