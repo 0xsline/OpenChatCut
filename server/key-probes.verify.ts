@@ -198,6 +198,28 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   }
 }
 
+// 7d. Runcrate uses the generic OpenAI-compatible probe: Bearer key on /models.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), auth: new Headers(init?.headers).get('authorization') });
+    return Response.json({
+      data: [{ id: 'zai-org/GLM-5.3' }, { id: 'deepseek-ai/DeepSeek-V4.1-Flash' }],
+    });
+  };
+  try {
+    const ok = await runProbe('llm/runcrate', { LLM_RUNCRATE_API_KEY: 'rc-test' });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.models, ['deepseek-ai/DeepSeek-V4.1-Flash', 'zai-org/GLM-5.3']);
+    assert.deepEqual(calls, [
+      { url: 'https://api.runcrate.ai/v1/models', auth: 'Bearer rc-test' },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 
 // 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
 // Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.

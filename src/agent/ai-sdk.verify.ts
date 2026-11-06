@@ -51,6 +51,7 @@ assert.equal(normalizeLlmProvider('OFox'), 'ofox');
 assert.equal(normalizeLlmProvider('OrcaRouter'), 'orcarouter');
 assert.equal(normalizeLlmProvider('Requesty'), 'requesty');
 assert.equal(normalizeLlmProvider('CheaperInference'), 'cheaperinference');
+assert.equal(normalizeLlmProvider('Runcrate'), 'runcrate');
 assert.equal(normalizeLlmProvider('unexpected'), 'anthropic');
 assert.equal(defaultModelForProvider('anthropic'), 'claude-fable-5');
 assert.equal(defaultModelForProvider('openai'), 'gpt-5');
@@ -62,6 +63,7 @@ assert.equal(defaultModelForProvider('ofox'), 'deepseek/deepseek-v3.2');
 assert.equal(defaultModelForProvider('orcarouter'), 'orcarouter/auto');
 assert.equal(defaultModelForProvider('requesty'), 'claude-sonnet-5');
 assert.equal(defaultModelForProvider('cheaperinference'), 'gpt-5.4-mini');
+assert.equal(defaultModelForProvider('runcrate'), 'deepseek-ai/DeepSeek-V4.1-Flash');
 assert.equal(providerApiPath('anthropic'), '/messages');
 assert.equal(providerApiPath('openai'), '/responses');
 assert.equal(providerApiPath('openai', 'chat'), '/chat/completions');
@@ -73,6 +75,7 @@ assert.equal(providerApiPath('ofox'), '/chat/completions');
 assert.equal(providerApiPath('orcarouter'), '/chat/completions');
 assert.equal(providerApiPath('requesty'), '/chat/completions');
 assert.equal(providerApiPath('cheaperinference'), '/chat/completions');
+assert.equal(providerApiPath('runcrate'), '/chat/completions');
 
 const strippedVisualMessages = withoutModelImages([{
   role: 'user',
@@ -101,6 +104,7 @@ assert.equal((await getLanguageModel('ofox', 'deepseek/deepseek-v3.2')).provider
 assert.equal((await getLanguageModel('orcarouter', 'orcarouter/auto')).provider, 'orcarouter.chat');
 assert.equal((await getLanguageModel('requesty', 'openai/gpt-4o-mini')).provider, 'requesty.chat');
 assert.equal((await getLanguageModel('cheaperinference', 'gpt-5.4-mini')).provider, 'cheaperinference.chat');
+assert.equal((await getLanguageModel('runcrate', 'deepseek-ai/DeepSeek-V4.1-Flash')).provider, 'runcrate.chat');
 assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
 assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
 assert.deepEqual(getLanguageModelProviderOptions('minimax'), {
