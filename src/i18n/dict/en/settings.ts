@@ -176,6 +176,9 @@ export default {
   '本地转写、节拍与音乐分析、画面语义搜索。模型按需安装，数据不出本机。':
     'Local transcription, beat/music analysis, and visual semantic search. Models are installed on demand and data stays on this machine.',
   '默认 https://api.fish.audio': 'Default https://api.fish.audio',
+  'Agnes Image 2.5 Flash，文生图与图生图。尺寸档位 1K/2K/3K/4K，支持多种宽高比。': 'Agnes Image 2.5 Flash: text-to-image and image-to-image. Size tiers 1K/2K/3K/4K, with many aspect ratios.',
+  'Agnes Video 2.5 Flash，文生视频、首尾帧控制与图片/音频参考。固定 720P，时长 4–12 秒。': 'Agnes Video 2.5 Flash: text-to-video, first/last-frame control and image/audio references. Fixed 720p, 4–12 seconds.',
+  '默认 https://apihub.agnes-ai.com/v1': 'Default https://apihub.agnes-ai.com/v1',
   '默认 https://api.inworld.ai': 'Default https://api.inworld.ai',
   '默认 https://api.sws.speechify.com': 'Default https://api.sws.speechify.com',
   '默认 https://api.wavespeed.ai': 'Default https://api.wavespeed.ai',

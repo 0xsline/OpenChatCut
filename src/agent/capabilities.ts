@@ -135,22 +135,11 @@ function configuredProviders(cap: CapabilityKey): ProviderRow[] {
   return rows.filter((row) => row.need.some((group) => group.every(has)));
 }
 
-/** The provider this turn must use. A saved default wins; otherwise the only configured vendor. */
-function routedProvider(cap: CapabilityKey): ProviderRow | undefined {
-  const on = configuredProviders(cap);
-  const prefKey = PREFERRED_KEY[cap];
-  const savedPref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
-  const pref = savedPref || (cap === 'transcription' ? 'assemblyai' : '');
-  const chosen = pref ? on.find((row) => row.arg === pref) : undefined;
-  if (chosen) return chosen;
-  return on.length === 1 ? on[0] : undefined;
-}
-
 function falModelSuffix(cap: CapabilityKey): string {
-  // The Fal catalog is only relevant once Fal itself is the routed provider.
-  // Listing it beside another default (for example Agnes) makes the model treat
-  // those Fal ids as the only callable image/video models and ignore the default.
-  if ((cap !== 'image' && cap !== 'video') || routedProvider(cap)?.arg !== 'fal') return '';
+  // Listed whenever Fal is configured, so a user with several image/video vendors
+  // and no saved default can still reach a Fal model. The ids are scoped to
+  // model=fal so they do not read as the only callable models beside a default.
+  if ((cap !== 'image' && cap !== 'video') || !liveKeys?.FAL_KEY?.configured) return '';
   const models = FAL_MODELS.filter((model) => model.kind === cap);
   const preferred = liveModels?.[cap === 'image' ? 'FAL_IMAGE_MODEL' : 'FAL_VIDEO_MODEL'];
   const selected = models.find((model) => model.id === preferred);

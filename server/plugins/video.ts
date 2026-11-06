@@ -23,6 +23,8 @@ import {
 import { generateGrokVideo } from './grok-video-provider.ts';
 import { hailuoRequestBody } from './minimax-video.ts';
 import { generateOfoxVideo } from './ofox-video-provider.ts';
+import { generateAgnesVideo } from './agnes-video-provider.ts';
+export { agnesVideoRetrieveUrl } from './agnes-video-provider.ts';
 import { saveVideoResults } from './video-result-save.ts';
 import {
   seedanceApiResolution, validateVideoRequest, validateSavedVideoRequest, videoSeconds,
@@ -89,12 +91,6 @@ async function providerError(response: Response): Promise<string> {
   } catch {
     return text.slice(0, 300) || `video provider failed (${response.status})`;
   }
-}
-
-/** Agnes retrieves tasks at the host root, not under /v1/videos/{id}. */
-export function agnesVideoRetrieveUrl(baseUrl: string, videoId: string, model: string): string {
-  const params = new URLSearchParams({ video_id: videoId, model_name: model });
-  return `${new URL(baseUrl).origin}/agnesapi?${params.toString()}`;
 }
 
 async function requestJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
@@ -338,63 +334,6 @@ async function generateHailuo(
     if (status === 'Fail') throw new Error('hailuo generation failed');
   }
   throw new Error('hailuo generation timed out');
-}
-
-async function generateAgnesVideo(
-  input: ValidVideoRequest,
-  options: VideoOptions,
-  registerProviderTask: RegisterGenerationProviderTask,
-  existingTaskId?: string,
-): Promise<string> {
-  if (!options.agnesApiKey) throw new Error('Agnes is not configured. Set AGNES_VIDEO_API_KEY in .env.local or 设置面板.');
-  const baseUrl = options.agnesBaseUrl.replace(/\/$/, '');
-  const headers = { Authorization: `Bearer ${options.agnesApiKey}`, 'Content-Type': 'application/json' };
-  const model = options.agnesVideoModel;
-  let taskId = existingTaskId;
-  if (!taskId) {
-    const body: Record<string, unknown> = {
-      model,
-      prompt: input.prompt,
-      seconds: String(input.durationSeconds),
-      size: '720P',
-      aspect_ratio: input.ratio,
-      n: 1,
-    };
-    if (input.seed !== undefined) body.seed = input.seed;
-    if (input.firstFramePath || input.lastFramePath) {
-      body.mode = 'keyframe';
-      if (input.firstFramePath) body.first_frame = await mediaDataUrl(input.firstFramePath);
-      if (input.lastFramePath) body.last_frame = await mediaDataUrl(input.lastFramePath);
-    } else if (input.refImagePaths.length || input.refAudioPaths.length) {
-      body.mode = 'reference';
-      if (input.refImagePaths.length) {
-        body.images = await Promise.all(input.refImagePaths.map((p) => mediaDataUrl(p)));
-      }
-      if (input.refAudioPaths.length) {
-        body.audios = await Promise.all(input.refAudioPaths.map((p) => mediaDataUrl(p)));
-      }
-    } else {
-      body.mode = 'text';
-    }
-    const current = await requestJson(`${baseUrl}/videos`, { method: 'POST', headers, body: JSON.stringify(body) });
-    taskId = String(current.video_id ?? '');
-    if (!taskId) throw new Error('agnes-video did not return a video_id');
-    await registerProviderTask('agnes-video', taskId);
-  }
-  if (!taskId) throw new Error('agnes-video provider task id is unavailable');
-  const deadline = Date.now() + 10 * 60_000;
-  while (Date.now() < deadline) {
-    const current = await requestJson(agnesVideoRetrieveUrl(baseUrl, taskId, model), { headers });
-    const status = String(current.status ?? '');
-    if (status === 'completed') {
-      const url = String(current.url ?? '');
-      if (!url) throw new Error('agnes-video completed without a video URL');
-      return url;
-    }
-    if (VIDEO_FAILURES.has(status)) throw new Error(String(current.error ?? `agnes-video generation ${status}`));
-    await wait(2_000);
-  }
-  throw new Error('agnes-video generation timed out');
 }
 
 async function runVideoOperation(

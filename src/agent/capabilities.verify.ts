@@ -44,7 +44,12 @@ applyLiveKeyStatus({ FAL_KEY: { configured: true }, AGNES_IMAGE_API_KEY: { confi
 applyLiveModels({ PREFERRED_IMAGE_VENDOR: 'agnes-image', FAL_IMAGE_MODEL: 'nano-banana-2' });
 const agnesNotFal = capabilitiesPrompt({ ...ALL_OFF, image: true });
 assert.ok(agnesNotFal.includes('user default: Agnes Image(model=agnes-image)'), 'Agnes stays the image default beside a Fal key');
-assert.ok(!agnesNotFal.includes('nano-banana-2'), 'Fal catalog is hidden when another vendor is the default');
+assert.ok(agnesNotFal.includes('Fal image models (only when calling model=fal'),
+  'the Fal catalog stays reachable beside another default, scoped to model=fal');
+applyLiveKeyStatus({ FAL_KEY: { configured: true }, AGNES_IMAGE_API_KEY: { configured: true }, IMAGE_API_KEY: { configured: true } });
+applyLiveModels({});
+assert.ok(capabilitiesPrompt({ ...ALL_OFF, image: true }).includes('Fal image models'),
+  'several image vendors and no saved default still list the Fal models');
 applyLiveModels({});
 
 // one minimax key lights all its vendor rows
