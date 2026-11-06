@@ -135,6 +135,19 @@ try {
     /invalid profileId/,
   );
 
+  // Windows editors save CRLF; every line of a hand-edited settings.env must still parse.
+  const crlf = await loadOrCreateDevProfile({ ...(await fixturePaths('crlf')), randomId: () => UUID_A });
+  await writeFile(
+    crlf.keystorePath,
+    'OPENCHATCUT_H264_ENCODER=libx264\r\nOPENAI_API_KEY=crlf-secret\r\n',
+    { mode: 0o600 },
+  );
+  const crlfEnvironment = await profileChildEnvironment(crlf, {}, async () => {
+    throw new Error('the headless-shell lookup is not under test here');
+  });
+  assert.equal(crlfEnvironment.OPENCHATCUT_H264_ENCODER, 'libx264');
+  assert.equal(crlfEnvironment.OPENAI_API_KEY, 'crlf-secret');
+
   const movedPaths = await fixturePaths('moved');
   await loadOrCreateDevProfile({ ...movedPaths, randomId: () => UUID_A });
   await assert.rejects(

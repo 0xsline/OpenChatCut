@@ -1,5 +1,6 @@
 // Electron embedded production server: a 127.0.0.1 HTTP server provides the same full stack as dev —
-// ① seedKeystore(.env.local, cwd semantics are consistent with dev; the packaged version is main first chdir userData)
+// ① seedDesktopEnv(.env.local, cwd semantics are consistent with dev; the packaged version is main first chdir userData):
+//    keys go to the keystore, the documented process-env settings to process.env (desktop/env-seed.ts)
 // ② /llm is mounted by the shared server plugin, /assemblyai injects the key here
 // ③ Zero modification and mounting of server plugin (the measured dependency is only middlewares.use + config.logger)
 // ④ /media/uploads Direct reading of assets at runtime + dist/ static cover (desktop/static-files.ts)
@@ -9,10 +10,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { resolve } from 'node:path';
 import type { ViteDevServer } from 'vite';
 import { serverPlugins } from '../server/plugins/index.ts';
-import { getKey, seedKeystore } from '../server/keystore.ts';
+import { getKey } from '../server/keystore.ts';
 import { trustedEditorRequest } from '../server/editor-auth.ts';
 import { proxyMiddleware, type ProxyRoute } from '../server/proxy.ts';
-import { parseEnvText } from './env-file.ts';
+import { seedDesktopEnv } from './env-seed.ts';
 import { createMiniConnect, type MiniConnect } from './mini-connect.ts';
 import { listenWithAffinity } from './embedded-port.ts';
 import { runtimeProfile } from '../server/runtime-profile.ts';
@@ -27,7 +28,7 @@ export interface EmbeddedServer {
 
 async function seedFromEnvLocal(): Promise<void> {
   const text = await readFile(resolve(process.cwd(), '.env.local'), 'utf8').catch(() => '');
-  seedKeystore(parseEnvText(text));
+  seedDesktopEnv(text);
 }
 
 function assemblyHeaders(): Record<string, string> {

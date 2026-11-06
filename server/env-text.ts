@@ -58,10 +58,12 @@ export function decodePersistedEnvValue(value: string): string {
   }
 }
 
-/** Parse the same dotenv subset emitted above for the Electron startup path. */
+/** Parse the same dotenv subset emitted above for the Electron startup path.
+ *  Lines may end in CRLF: Windows editors save a hand-written file that way, and
+ *  `.` never matches `\r`, so splitting on `\n` alone silently dropped every line. */
 export function parseEnvText(text: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const line of text.split('\n')) {
+  for (const line of text.split(/\r?\n/)) {
     const match = /^\s*([A-Z][A-Z0-9_]*)\s*=(.*)$/.exec(line);
     if (!match) continue;
     let value = match[2].trim();

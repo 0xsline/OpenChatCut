@@ -155,7 +155,8 @@ export async function loadOrCreateDevProfile(options) {
 
 export function parseProfileEnv(text) {
   const parsed = {};
-  for (const line of text.split('\n')) {
+  // CRLF from a Windows editor: `.` never matches `\r`, so `\n` alone drops every line.
+  for (const line of text.split(/\r?\n/)) {
     const match = /^\s*([A-Z][A-Z0-9_]*)\s*=(.*)$/.exec(line);
     if (!match) continue;
     let value = match[2].trim();
