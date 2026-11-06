@@ -13,6 +13,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { uploadDir } from '../media-dir.ts';
 import { fetchGeneratedResult } from './result-download.ts';
 import {
+  callAgnesImageProvider,
   callByteplusImageProvider,
   callGeminiProvider,
   callGrokImageProvider,
@@ -55,6 +56,9 @@ interface ImagePluginOptions {
   xaiBaseUrl: string;
   xaiApiKey: string;
   xaiImageModel: string;
+  agnesBaseUrl: string;
+  agnesApiKey: string;
+  agnesImageModel: string;
 }
 
 interface ImageRequest {
@@ -80,7 +84,7 @@ interface ImageRequest {
 }
 
 export interface ValidImageRequest {
-  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'fal';
+  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'agnes-image' | 'fal';
   falModel?: string;
   falInput?: FalCatalogInput;
   prompt: string;
@@ -109,6 +113,7 @@ function customDimensions(input: ImageRequest, model: ValidImageRequest['model']
   if (input.aspectRatio != null) throw new Error('custom width/height cannot be combined with aspectRatio');
   if (model === 'nano-banana') throw new Error('custom width/height are not supported by nano-banana');
   if (model === 'grok-imagine') throw new Error('custom width/height are not supported by grok-imagine');
+  if (model === 'agnes-image') throw new Error('custom width/height are not supported by agnes-image; use imageSize and aspectRatio');
   if (!Number.isInteger(width) || !Number.isInteger(height)) throw new Error('width and height must be integers');
   const [minimum, maximum, divisor] = model === 'image-01' ? [512, 2048, 8] : [512, 3840, 16];
   if (width < minimum || width > maximum || height < minimum || height > maximum) {
@@ -164,7 +169,7 @@ export function validateImageRequest(input: ImageRequest): ValidImageRequest {
       referencePaths: input.referencePaths ?? [], aspectRatio: input.aspectRatio ?? '16:9',
       imageSize: input.imageSize ?? '1K', quality: 'high', outputFormat: 'png' };
   }
-  if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01' && model !== 'wavespeed' && model !== 'byteplus' && model !== 'grok-imagine') {
+  if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01' && model !== 'wavespeed' && model !== 'byteplus' && model !== 'grok-imagine' && model !== 'agnes-image') {
     throw new Error(`unsupported model ${model}`);
   }
   const prompt = String(input.prompt ?? '').trim();
@@ -176,10 +181,12 @@ export function validateImageRequest(input: ImageRequest): ValidImageRequest {
   const count = input.count ?? 1;
   if (!Number.isInteger(count) || count < 1 || count > 10) throw new Error('count must be an integer between 1 and 10');
   if (aspectRatio && !ASPECTS.has(aspectRatio)) throw new Error(`unsupported aspect ratio ${aspectRatio}`);
-  if (!SIZES.has(imageSize)) throw new Error(`unsupported image size ${imageSize}`);
+  if (model === 'agnes-image') {
+    if (!['1K', '2K', '3K', '4K'].includes(imageSize)) throw new Error('agnes-image imageSize must be 1K, 2K, 3K, or 4K');
+  } else if (!SIZES.has(imageSize)) throw new Error(`unsupported image size ${imageSize}`);
   if (!QUALITIES.has(quality)) throw new Error(`unsupported quality ${quality}`);
   const referencePaths = input.referencePaths ?? [];
-  const referenceLimit = model === 'nano-banana' ? 14 : model === 'gpt-image-2' ? 16 : model === 'image-01' ? 1 : 0;
+  const referenceLimit = model === 'nano-banana' ? 14 : model === 'gpt-image-2' ? 16 : model === 'image-01' ? 1 : model === 'agnes-image' ? 8 : 0;
   // wavespeed and byteplus (Seedream) are text-to-image only in this integration; no reference-image support yet.
   if (referencePaths.length > referenceLimit) {
     throw new Error(`too many reference images for ${model}`);
@@ -204,6 +211,11 @@ export function validateImageRequest(input: ImageRequest): ValidImageRequest {
       throw new Error(`grok-imagine does not support aspect ratio ${aspectRatio}`);
     }
     if (prompt.length > 8000) throw new Error('grok-imagine prompt must be at most 8000 characters');
+  } else if (model === 'agnes-image') {
+    if (count > 4) throw new Error('agnes-image supports at most 4 images per call');
+    if (aspectRatio && !['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'].includes(aspectRatio)) {
+      throw new Error(`agnes-image does not support aspect ratio ${aspectRatio}`);
+    }
   }
   return {
     model,
@@ -241,6 +253,18 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
+}
+
+const AGNES_IMAGE_PIXELS: Record<string, Record<string, [number, number]>> = {
+  '1K': { '1:1': [1024, 1024], '3:4': [864, 1152], '4:3': [1152, 864], '16:9': [1312, 736], '9:16': [736, 1312], '2:3': [832, 1248], '3:2': [1248, 832], '21:9': [1568, 672] },
+  '2K': { '1:1': [2048, 2048], '3:4': [1728, 2304], '4:3': [2304, 1728], '16:9': [2624, 1472], '9:16': [1472, 2624], '2:3': [1664, 2496], '3:2': [2496, 1664], '21:9': [3136, 1344] },
+  '3K': { '1:1': [3072, 3072], '3:4': [2592, 3456], '4:3': [3456, 2592], '16:9': [3936, 2208], '9:16': [2208, 3936], '2:3': [2496, 3744], '3:2': [3744, 2496], '21:9': [4704, 2016] },
+  '4K': { '1:1': [4096, 4096], '3:4': [3456, 4608], '4:3': [4608, 3456], '16:9': [5248, 2944], '9:16': [2944, 5248], '2:3': [3328, 4992], '3:2': [4992, 3328], '21:9': [6272, 2688] },
+};
+
+/** Official Agnes Image tier output size. Used as the saved asset dimensions. */
+export function agnesImagePixels(imageSize: string, aspectRatio = '1:1'): [number, number] {
+  return AGNES_IMAGE_PIXELS[imageSize]?.[aspectRatio] ?? AGNES_IMAGE_PIXELS['1K']['1:1'];
 }
 
 function dimensions(aspectRatio: string, imageSize: string): [number, number] {
@@ -393,7 +417,9 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
           } = input;
           const [width, height] = input.width != null && input.height != null
             ? [input.width, input.height]
-            : model === 'fal' ? [0, 0] : dimensions(aspectRatio!, imageSize);
+            : model === 'fal' ? [0, 0]
+              : model === 'agnes-image' ? agnesImagePixels(imageSize, aspectRatio ?? '1:1')
+                : dimensions(aspectRatio!, imageSize);
           let images: ProviderImage[];
           if (model === 'fal') {
             images = await generateFalCatalogImage(input.falInput!);
@@ -424,6 +450,11 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
           } else if (model === 'grok-imagine') {
             images = await callGrokImageProvider(options.xaiBaseUrl, options.xaiApiKey, options.xaiImageModel, {
               prompt, count, aspectRatio, imageSize,
+            });
+          } else if (model === 'agnes-image') {
+            if (!options.agnesApiKey) throw new Error('Agnes is not configured. Set AGNES_IMAGE_API_KEY in .env.local or 设置面板.');
+            images = await callAgnesImageProvider(options.agnesBaseUrl, options.agnesApiKey, options.agnesImageModel, {
+              prompt, count, size: imageSize, ratio: aspectRatio, referencePaths,
             });
           } else {
             if (!options.apiKey) throw new Error('Image generation is not configured. Set IMAGE_API_KEY or OPENAI_API_KEY in .env.local.');

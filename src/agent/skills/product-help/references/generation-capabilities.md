@@ -10,6 +10,7 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 | `kling` | Kling Omni | T2V / I2V / first+last; images ≤7 (≤4 with video); **1× refVideo** `feature`\|`base`; multi-shot customize/intelligence; 3–15s; std/pro |
 | `hailuo` | MiniMax | T2V / I2V / first+last; **6\|10s**; 512P (Hailuo-02), 720p→768P, 1080P→6s; optimizer controls; **S2V-01** subject |
 | `grok-imagine-video` | xAI Grok Imagine | T2V only; **1–15s**; 480p/720p/1080p; audio track included; no refs/frames/edit |
+| `agnes-video` | Agnes Video 2.5 Flash | T2V / first and/or last frame / up to 5 images + 3 audios; **4–12s**; 720p only; no reference videos |
 
 **Not wired:** Kling element library / voice bind; provider callback URLs; arbitrary third-party generation endpoints.
 
@@ -21,6 +22,7 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 | `nano-banana` | Gemini; best multi-ref (≤14) |
 | `image-01` | MiniMax; one subject ref via R2; custom dimensions, count ≤9, prompt ≤1500, seed, optimizer default false |
 | `grok-imagine` | xAI Grok Imagine; text-to-image; ≤4 outputs; aspect set 1:1/16:9/9:16/4:3/3:4/3:2/2:3; 1k/2k |
+| `agnes-image` | Agnes Image; text or up to 8 refs; ≤4 outputs; 1K/2K/3K/4K; ratios 1:1/3:4/4:3/16:9/9:16/2:3/3:2/21:9 |
 
 ## Voice · `submit_voice`
 

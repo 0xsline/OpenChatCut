@@ -1,7 +1,7 @@
 ---
 name: image-gen
 description: |
-  AI image generation via Fal.ai, gpt-image-2, nano-banana, MiniMax image-01, and xAI Grok Imagine. Use when the user wants to generate or create an image / picture / still.
+  AI image generation via Fal.ai, gpt-image-2, nano-banana, MiniMax image-01, xAI Grok Imagine, and Agnes Image. Use when the user wants to generate or create an image / picture / still.
 user-invocable: true
 ---
 
@@ -18,9 +18,10 @@ Generate AI images via `submit_image` (configured provider keys only). Prefer on
 | `nano-banana` | [references/nano-banana.md](references/nano-banana.md) | Strongest reference-image fidelity | 14 |
 | `image-01` | [references/image-01.md](references/image-01.md) | MiniMax stills / live style; one subject reference via R2 | 1 |
 | `grok-imagine` | [references/grok-imagine.md](references/grok-imagine.md) | xAI Grok Imagine; text-to-image, ≤4 outputs, 1K/2K | 0 |
+| `agnes-image` | [references/agnes-image.md](references/agnes-image.md) | Agnes Image; text or up to 8 refs, 1K–4K, ≤4 outputs | 8 |
 
 - If Fal.ai is selected or requested, use `model: "fal"` and the requested `falModel` or saved Fal default from capabilities. Ask if none is selected. Native-provider defaults and controls below do not apply to Fal.
-- Default: `gpt-image-2` when that key is on.
+- Use the model named in the capabilities prompt. `gpt-image-2` only when that vendor is the configured default. If capabilities name Agnes Image, call `model: "agnes-image"` — do not fall back to gpt-image-2.
 - Reference-heavy → `nano-banana`.
 - User named MiniMax / only MiniMax image key on → `image-01`.
 - Respect capabilities: do not call a model whose vendor is not configured.

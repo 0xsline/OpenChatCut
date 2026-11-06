@@ -38,7 +38,9 @@ export function buildSubmitImageArgs(args: GenerateArgs): SubmitImageArgs {
   if (model === 'image-01') {
     return { ...shared, width, height, seed: num(args.seed), promptOptimizer: bool(args.promptOptimizer) };
   }
-  if (model === 'nano-banana') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'] };
+  if (model === 'nano-banana' || model === 'agnes-image') {
+    return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'] };
+  }
   if (model === 'wavespeed' || model === 'byteplus') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'], width, height };
   const outputFormat = args.outputFormat as SubmitImageArgs['outputFormat'];
   return {
@@ -223,6 +225,10 @@ const hailuoVideo = (args: GenerateArgs): SubmitVideoArgs => ({
 });
 // xAI Grok Imagine Video: text-to-video only — the base fields are the whole surface.
 const grokVideo = (args: GenerateArgs): SubmitVideoArgs => videoBase(args, 'grok-imagine-video');
+const agnesVideo = (args: GenerateArgs): SubmitVideoArgs => ({
+  ...videoBase(args, 'agnes-video'), ratio: str(args.ratio),
+  refImages: list(args.refImages), refAudios: list(args.refAudios), seed: num(args.seed),
+});
 
 const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
   for (const key of ['mode', 'refVideoMode', 'promptOptimizer', 'fastPretreatment', 'seed', 'cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority', 'multiPrompts', 'shotType']) {
@@ -235,10 +241,10 @@ const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
   });
 };
 
-const VIDEO_STRATEGIES = { fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo } as const;
+const VIDEO_STRATEGIES = { fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo, 'agnes-video': agnesVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
   const model = args.model === undefined ? 'seedance2' : args.model;
-  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'fal') {
+  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'agnes-video' && model !== 'fal') {
     throw new Error('Unsupported video model; select an available provider before submitting or rerunning.');
   }
   return VIDEO_STRATEGIES[model](args);

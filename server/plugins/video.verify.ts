@@ -9,6 +9,7 @@ import {
   hailuoRequestBody, isMinimaxSubjectModel, validateMinimaxVideoMode,
 } from './minimax-video.ts';
 import {
+  agnesVideoRetrieveUrl,
   expectedVideoResultCount,
   hailuoApiResolution, klingPrompt, seedanceApiResolution, seedanceRequestBody,
   validateVideoRequest,
@@ -396,5 +397,23 @@ assert.throws(
   () => validateVideoRequest({ model: 'ofox', prompt: 'x', shotType: 'customize', multiPrompts: [{ prompt: 'a', duration: 2, index: 1 }, { prompt: 'b', duration: 2, index: 2 }] }),
   /multi-shot and editing options are not supported by ofox/,
 );
+
+const agnesVideo = validateVideoRequest({
+  model: 'agnes-video', prompt: 'a cat walks', durationSeconds: 5, ratio: '9:16', resolution: '720p', seed: 7,
+});
+assert.equal(agnesVideo.model, 'agnes-video');
+assert.equal(agnesVideo.seed, 7);
+assert.equal(
+  agnesVideoRetrieveUrl('https://apihub.agnes-ai.com/v1', 'video_abc', 'agnes-video-2.5-flash'),
+  'https://apihub.agnes-ai.com/agnesapi?video_id=video_abc&model_name=agnes-video-2.5-flash',
+);
+assert.throws(() => validateVideoRequest({ model: 'agnes-video', prompt: 'x', durationSeconds: 3 }), /between 4 and 12/);
+assert.throws(() => validateVideoRequest({ model: 'agnes-video', prompt: 'x', resolution: '1080p' }), /only supports 720p/);
+assert.throws(
+  () => validateVideoRequest({ model: 'agnes-video', prompt: 'x', firstFramePath: '/media/uploads/a.jpg', refImagePaths: ['/media/uploads/b.jpg'] }),
+  /cannot be combined/,
+);
+assert.throws(() => validateVideoRequest({ model: 'agnes-video', prompt: 'x', generateAudio: true }), /not supported by agnes-video/);
+assert.equal(validateVideoRequest({ model: 'agnes-video', prompt: 'x', lastFramePath: '/media/uploads/b.jpg' }).lastFramePath, '/media/uploads/b.jpg');
 
 console.log('video.check: ok (seedance 480p + kling base/feature + hailuo)');

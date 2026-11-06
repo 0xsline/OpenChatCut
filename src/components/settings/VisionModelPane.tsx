@@ -50,6 +50,7 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   runcrate: 'Runcrate',
   ollama: 'Ollama',
   lmstudio: 'LM Studio',
+  agnes: 'Agnes AI',
 };
 
 export function VisionModelPane(): React.JSX.Element {

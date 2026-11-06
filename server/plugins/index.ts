@@ -163,6 +163,15 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get xaiImageModel() {
         return getKey("XAI_IMAGE_MODEL") || "grok-imagine-image-2.0";
       },
+      get agnesBaseUrl() {
+        return getKey("AGNES_IMAGE_BASE_URL") || "https://apihub.agnes-ai.com/v1";
+      },
+      get agnesApiKey() {
+        return getKey("AGNES_IMAGE_API_KEY");
+      },
+      get agnesImageModel() {
+        return getKey("AGNES_IMAGE_MODEL") || "agnes-image-2.5-flash";
+      },
     }),
     voiceGenerationPlugin({
       get elevenBaseUrl() {
@@ -332,6 +341,15 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       },
       get ofoxVideoModel() {
         return getKey("OFOX_VIDEO_MODEL") || "bytedance/seedance-2.0-fast";
+      },
+      get agnesBaseUrl() {
+        return getKey("AGNES_VIDEO_BASE_URL") || "https://apihub.agnes-ai.com/v1";
+      },
+      get agnesApiKey() {
+        return getKey("AGNES_VIDEO_API_KEY");
+      },
+      get agnesVideoModel() {
+        return getKey("AGNES_VIDEO_MODEL") || "agnes-video-2.5-flash";
       },
       get byteplusModel() {
         return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";

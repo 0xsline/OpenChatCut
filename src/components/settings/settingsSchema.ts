@@ -113,6 +113,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'wavespeed', label: 'WaveSpeed' },
           { value: 'byteplus', label: 'BytePlus · Seedream' },
           { value: 'grok-imagine', label: 'xAI Grok Imagine' },
+          { value: 'agnes-image', label: 'Agnes Image' },
         ]),
         vendors: [
           { key: 'image/openai', vendor: 'openai', title: 'OpenAI', fields: [
@@ -139,6 +140,13 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
               modelText('XAI_IMAGE_MODEL', '生图模型', 'grok-imagine-image-2.0',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
             ] },
+          { key: 'image/agnes', vendor: 'agnes', title: 'Agnes AI',
+            note: 'Agnes Image 2.5 Flash，文生图与图生图。尺寸档位 1K/2K/3K/4K，支持多种宽高比。',
+            fields: [
+              secret('AGNES_IMAGE_API_KEY', 'API Key'),
+              text('AGNES_IMAGE_BASE_URL', 'Base URL', '默认 https://apihub.agnes-ai.com/v1'),
+              modelText('AGNES_IMAGE_MODEL', '生图模型', 'agnes-image-2.5-flash'),
+            ] },
         ] },
       VOICE_SETTINGS_GROUP,
       { key: 'video', title: '生视频', hint: 'submit_video · 文 / 图生视频，任一厂商即可。',
@@ -150,6 +158,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
           { value: 'ofox', label: 'OFox · 多模型' },
+          { value: 'agnes-video', label: 'Agnes Video' },
         ]),
         vendors: [
           falPage('video'),
@@ -178,6 +187,13 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             fields: [
               modelText('OFOX_VIDEO_MODEL', '视频模型', 'bytedance/seedance-2.0-fast',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
+            ] },
+          { key: 'video/agnes', vendor: 'agnes', title: 'Agnes AI',
+            note: 'Agnes Video 2.5 Flash，文生视频、首尾帧控制与图片/音频参考。固定 720P，时长 4–12 秒。',
+            fields: [
+              secret('AGNES_VIDEO_API_KEY', 'API Key'),
+              text('AGNES_VIDEO_BASE_URL', 'Base URL', '默认 https://apihub.agnes-ai.com/v1'),
+              modelText('AGNES_VIDEO_MODEL', '视频模型', 'agnes-video-2.5-flash'),
             ] },
         ] },
       { key: 'music', title: '生音乐', hint: 'submit_music · 文字 / 成片生成配乐，任一厂商即可。',
