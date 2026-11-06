@@ -109,6 +109,17 @@ assert.equal(ofoxVideo.ratio, '9:16');
 assert.deepEqual(ofoxVideo.refImages, ['asset-a']);
 assert.equal(ofoxVideo.generateAudio, false);
 assert.equal(ofoxVideo.seed, 7);
+
+const geminiOmniVideo = buildSubmitVideoArgs({
+  model: 'gemini-omni', prompt: 'marble track', durationSeconds: 8, ratio: '9:16',
+  firstFrame: 'asset-still', refImages: ['asset-ref'],
+});
+assert.equal(geminiOmniVideo.model, 'gemini-omni');
+assert.equal(geminiOmniVideo.ratio, '9:16');
+assert.equal(geminiOmniVideo.firstFrame, 'asset-still');
+assert.deepEqual(geminiOmniVideo.refImages, ['asset-ref']);
+assert.equal(geminiOmniVideo.mode, undefined, 'gemini-omni must not receive Kling mode');
+
 assert.equal(buildSubmitVideoArgs({ prompt: 'legacy default' }).model, 'seedance2');
 
 const minimaxMusic = buildSubmitMusicArgs({

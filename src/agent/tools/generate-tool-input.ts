@@ -230,6 +230,10 @@ const agnesVideo = (args: GenerateArgs): SubmitVideoArgs => ({
   refImages: list(args.refImages), refAudios: list(args.refAudios), seed: num(args.seed),
 });
 
+const geminiOmniVideo = (args: GenerateArgs): SubmitVideoArgs => ({
+  ...videoBase(args, 'gemini-omni'), ratio: str(args.ratio), refImages: list(args.refImages),
+});
+
 const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
   for (const key of ['mode', 'refVideoMode', 'promptOptimizer', 'fastPretreatment', 'seed', 'cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority', 'multiPrompts', 'shotType']) {
     if (args[key] !== undefined) throw new Error(`${key} is not supported by the Fal video integration`);
@@ -241,10 +245,14 @@ const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
   });
 };
 
-const VIDEO_STRATEGIES = { fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo, 'agnes-video': agnesVideo } as const;
+const VIDEO_STRATEGIES = {
+  fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo,
+  byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo,
+  'agnes-video': agnesVideo, 'gemini-omni': geminiOmniVideo,
+} as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
   const model = args.model === undefined ? 'seedance2' : args.model;
-  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'agnes-video' && model !== 'fal') {
+  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'agnes-video' && model !== 'fal' && model !== 'gemini-omni') {
     throw new Error('Unsupported video model; select an available provider before submitting or rerunning.');
   }
   return VIDEO_STRATEGIES[model](args);

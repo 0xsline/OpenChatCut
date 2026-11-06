@@ -263,6 +263,7 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   seedance2: [['SEEDANCE_API_KEY']],
   kling: [['KLING_API_KEY']],
   hailuo: [['MINIMAX_API_KEY']],
+  'gemini-omni': [['GEMINI_API_KEY']],
   mureka: [['MUREKA_API_KEY']],
   atlas: [['ATLASCLOUD_API_KEY']],
   sonilo: [['SONILO_API_KEY']],

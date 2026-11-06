@@ -19,6 +19,7 @@ Use these primary sources when a provider changes. The server boundary must keep
 - MiniMax image-to-video: https://platform.minimax.io/docs/api-reference/video-generation-i2v
 - MiniMax first/last-frame video: https://platform.minimax.io/docs/api-reference/video-generation-fl2v
 - MiniMax subject-reference video: https://platform.minimax.io/docs/api-reference/video-generation-s2v
+- Google Gemini Omni Flash video: https://ai.google.dev/gemini-api/docs/omni
 
 ## Music, speech, and sound
 

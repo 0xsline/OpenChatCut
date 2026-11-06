@@ -11,8 +11,9 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 | `hailuo` | MiniMax | T2V / I2V / first+last; **6\|10s**; 512P (Hailuo-02), 720p→768P, 1080P→6s; optimizer controls; **S2V-01** subject |
 | `grok-imagine-video` | xAI Grok Imagine | T2V only; **1–15s**; 480p/720p/1080p; audio track included; no refs/frames/edit |
 | `agnes-video` | Agnes Video 2.5 Flash | T2V / first and/or last frame / up to 5 images + 3 audios; **4–12s**; 720p only; no reference videos |
+| `gemini-omni` | Google Gemini Omni Flash | T2V / I2V / first+last / up to 6 refImages; **16:9\|9:16**; 360p–4k; **3–15s** (first+last 3–10s; default 10s); uses `GEMINI_API_KEY` |
 
-**Not wired:** Kling element library / voice bind; provider callback URLs; arbitrary third-party generation endpoints.
+**Not wired:** Kling element library / voice bind; Omni multi-turn edit/extend; provider callback URLs; arbitrary third-party generation endpoints.
 
 ## Image · `submit_image`
 

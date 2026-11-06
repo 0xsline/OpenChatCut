@@ -351,6 +351,18 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get agnesVideoModel() {
         return getKey("AGNES_VIDEO_MODEL") || "agnes-video-2.5-flash";
       },
+      get geminiBaseUrl() {
+        return (
+          getKey("GEMINI_BASE_URL") ||
+          "https://generativelanguage.googleapis.com"
+        );
+      },
+      get geminiApiKey() {
+        return getKey("GEMINI_API_KEY");
+      },
+      get geminiOmniVideoModel() {
+        return getKey("GEMINI_OMNI_VIDEO_MODEL") || "gemini-omni-1.2-flash";
+      },
       get byteplusModel() {
         return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";
       },

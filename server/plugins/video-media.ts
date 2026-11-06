@@ -283,6 +283,12 @@ async function streamResponseToFile(response: Response, file: string, emptyMessa
 }
 
 export async function saveVideo(url: string, fetchImpl?: NonNullable<Parameters<typeof fetchGeneratedResult>[2]>['fetchImpl']): Promise<{ path: string; durationSeconds: number; width?: number; height?: number }> {
+  // Providers that already wrote into the upload dir (e.g. Gemini Omni inline
+  // base64) return a local media path — probe in place instead of re-downloading.
+  if (url.startsWith('/media/uploads/')) {
+    const { file } = localMedia(url);
+    return { path: url.split(/[?#]/, 1)[0]!, ...await probeVideo(file) };
+  }
   const response = await fetchGeneratedResult(url, 'video', { fetchImpl });
   const dir = uploadDir();
   await mkdir(dir, { recursive: true });
