@@ -7,6 +7,7 @@ import {
   browserTimelineBlocker,
   exportVideoWithFallback,
   renderTimelineInBrowser,
+  WINDOWS_MULTISTREAM_WEBCODECS_BLOCKER,
   type BrowserExportAttempt,
 } from './browserExport';
 import type { ExportDestination } from './exportDestination';
@@ -143,6 +144,29 @@ assert.equal(browserTimelineBlocker({
     trackId: 'V1',
   }],
 }), null, 'GLSL transition must not block the browser fast-export path');
+
+const overlappingVideos: TimelineState = {
+  ...state,
+  items: [
+    { ...state.items[0]!, id: 'video_1', kind: 'video', src: '/a.mp4', startFrame: 0, durationInFrames: 90 },
+    { ...state.items[0]!, id: 'video_2', kind: 'video', src: '/b.mp4', startFrame: 30, durationInFrames: 90 },
+  ],
+};
+assert.equal(
+  browserTimelineBlocker(overlappingVideos, undefined, undefined, 'Win32'),
+  WINDOWS_MULTISTREAM_WEBCODECS_BLOCKER,
+  'Windows must keep overlapping video sources off the WebCodecs browser route',
+);
+assert.equal(
+  browserTimelineBlocker({ ...overlappingVideos, items: overlappingVideos.items.map((item) => ({ ...item, startFrame: item.id === 'video_1' ? 0 : 90 })) }, undefined, undefined, 'Win32'),
+  null,
+  'sequential video clips do not exhaust the simultaneous WebCodecs decoder pool',
+);
+assert.equal(
+  browserTimelineBlocker(overlappingVideos, undefined, undefined, 'Linux x86_64'),
+  null,
+  'the Windows D3D11 decoder guard must not change other platforms',
+);
 
 const capabilityCalls: Array<Record<string, unknown>> = [];
 const renderCalls: Array<Record<string, unknown>> = [];
