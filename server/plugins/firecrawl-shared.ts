@@ -37,7 +37,7 @@ export const MAX_BODY = 2 * 1024 * 1024;
 
 export interface FirecrawlPluginOptions {
   apiKey: string;
-  /** Empty selects configured Firecrawl, otherwise anonymous Parallel. */
+  /** Empty or "firecrawl" selects Firecrawl; "parallel" opts into anonymous Parallel; "disabled" turns basic search off. */
   searchProvider?: string;
 }
 

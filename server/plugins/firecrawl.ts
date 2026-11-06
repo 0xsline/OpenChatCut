@@ -24,13 +24,22 @@ export function firecrawlPlugin(options: FirecrawlPluginOptions): Plugin {
     configureServer(server) {
       const log = (m: string) => server.config.logger.info(m);
       const key = options.apiKey;
+      // Parallel is opt-in: only the user's WEB_SEARCH_PROVIDER=parallel enables it,
+      // so neither an unconfigured install nor a tool call sends queries there.
       const providerFor = (body: Record<string, unknown>): string => {
-        if (options.searchProvider === 'disabled') throw new Error('Web search and page reading are disabled.');
-        const provider = body.provider ?? options.searchProvider;
-        if (provider && provider !== 'parallel' && provider !== 'firecrawl') {
+        const setting = options.searchProvider;
+        if (setting === 'disabled') throw new Error('Web search and page reading are disabled.');
+        if (setting && setting !== 'parallel' && setting !== 'firecrawl') {
           throw new Error('WEB_SEARCH_PROVIDER must be parallel, firecrawl or disabled.');
         }
-        return String(provider || (options.apiKey ? 'firecrawl' : 'parallel'));
+        const requested = body.provider;
+        if (requested !== undefined && requested !== 'parallel' && requested !== 'firecrawl') {
+          throw new Error('provider must be parallel or firecrawl.');
+        }
+        if (requested === 'parallel' && setting !== 'parallel') {
+          throw new Error('Parallel is not enabled. The user can set WEB_SEARCH_PROVIDER=parallel to use it.');
+        }
+        return String(requested || setting || 'firecrawl');
       };
       const parallel = async (
         res: import('node:http').ServerResponse,

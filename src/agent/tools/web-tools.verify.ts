@@ -118,6 +118,12 @@ async function invoke(name: string, args: Record<string, unknown>, ctx = a, sign
   return execution;
 }
 try {
+  // Parallel is opt-in: with no setting and no Firecrawl key nothing leaves this machine.
+  assert.equal((await invoke('web_search', { query: 'not enabled' })).success, false);
+  assert.equal((await invoke('web_browser', { url: 'https://example.com/source' })).success, false);
+  assert.equal((await invoke('web_search', { query: 'not enabled', provider: 'parallel' })).success, false);
+  assert.equal(outgoing.length, 0, 'an unconfigured install sends nothing to Parallel');
+  provider = 'parallel';
   const first = await invoke('web_search', { query: 'video script research', limit: 1 });
   assert.equal(first.success, true);
   assert.match(JSON.stringify(first.result), /Source title.*useful source excerpt/);
@@ -155,15 +161,19 @@ try {
   assert.notEqual(calls().at(-1)!.arguments.session_id, firstId, 'real chat clear rotates identity');
   const afterResetId = calls().at(-1)!.arguments.session_id;
   const callsBeforeSettings = calls().length;
+  provider = '';
   apiKey = 'saved-firecrawl-key';
   assert.equal((await invoke('web_search', { query: 'configured search' })).success, true);
   assert.equal(firecrawlRequests, 1);
-  assert.equal(calls().length, callsBeforeSettings, 'saved Firecrawl key preserves provider choice');
-  await invoke('web_search', { query: 'explicit parallel', provider: 'parallel' });
-  assert.equal(calls().at(-1)!.arguments.session_id, afterResetId);
+  assert.equal(calls().length, callsBeforeSettings, 'without the setting a saved Firecrawl key is the provider');
+  assert.equal((await invoke('web_search', { query: 'explicit parallel', provider: 'parallel' })).success, false);
+  assert.equal(calls().length, callsBeforeSettings, 'a tool call cannot enable Parallel on its own');
   provider = 'parallel';
   await invoke('web_search', { query: 'saved Parallel overrides key' });
   assert.equal(calls().at(-1)!.arguments.objective, 'saved Parallel overrides key');
+  assert.equal(calls().at(-1)!.arguments.session_id, afterResetId);
+  await invoke('web_search', { query: 'explicit parallel', provider: 'parallel' });
+  assert.equal(calls().at(-1)!.arguments.objective, 'explicit parallel');
   provider = '';
   apiKey = '';
   assert.equal((await invoke('web_search', { query: 'explicit missing Firecrawl', provider: 'firecrawl' })).success, false);
@@ -174,7 +184,7 @@ try {
   assert.equal((await invoke('web_search', { query: 'disabled', provider: 'parallel' })).success, false);
   provider = 'invalid-provider';
   assert.equal((await invoke('web_search', { query: 'invalid setting' })).success, false);
-  provider = '';
+  provider = 'parallel';
   const beforeRejected = outgoing.length;
   assert.equal((await invoke('web_browser', { url: 'file:///etc/passwd' })).success, false);
   assert.equal((await invoke('web_browser', { url: 'https://example.com', formats: ['screenshot'] })).success, false);

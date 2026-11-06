@@ -582,18 +582,17 @@ OpenChatCut 采用 [GNU Affero General Public License v3.0 或更高版本](LICE
 
 ## 内置 Agent 的网页检索
 
-`web_search` 和基础 `web_browser` 阅读可通过
-[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
-直接使用，无需搜索服务账号或 API Key。搜索使用 Fast 模式，返回来源 URL、标题和相关摘录；
+`web_search` 和基础 `web_browser` 阅读默认使用 Firecrawl，需要 `FIRECRAWL_API_KEY`。
+如需改用无需账号和 API Key 的
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)，
+在 `.env.local` 中设置 `WEB_SEARCH_PROVIDER=parallel` 并重启。Parallel 搜索返回来源 URL、标题和相关摘录；
 网页阅读返回 Markdown 摘录，不提供完整 HTML 或截图。查询和目标 URL 会发送给选定的服务商。
 匿名服务有配额限制，服务商报错时不会自动切换到其他服务商。
 
-已在设置或环境中配置的 `FIRECRAWL_API_KEY` 会保留 Firecrawl 默认行为。
-可在 `.env.local` 中设置 `WEB_SEARCH_PROVIDER` 为 `parallel`、`firecrawl` 或 `disabled`
-（修改后重启）；`disabled` 会关闭基础搜索与网页阅读。
-工具调用也可通过 `provider: "parallel"` 或 `"firecrawl"` 显式选择，但不能绕过 `disabled`。
+`WEB_SEARCH_PROVIDER` 留空或设为 `firecrawl` 时使用 Firecrawl，设为 `disabled` 会关闭基础搜索与网页阅读。
+工具调用可以显式选择 `provider: "firecrawl"`；只有启用 Parallel 后才能选择 `"parallel"`。
 搜索地区/语言/时间过滤、截图、浏览器动作、结构化提取、完整页面格式、站点映射、爬取和批量抓取
-仍需 Firecrawl Key。相关搜索与网页阅读共用不透明的会话 ID；清空聊天后生成新 ID，
+始终需要 Firecrawl Key。相关搜索与网页阅读共用不透明的会话 ID；清空聊天后生成新 ID，
 不会使用工程 ID 或聊天文本作为会话 ID。
 
 ## 贡献

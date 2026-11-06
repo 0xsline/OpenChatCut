@@ -118,7 +118,8 @@ console.log('capabilities.verify: ok');
 applyLiveModels({ WEB_SEARCH_PROVIDER: 'disabled' });
 assert.match(capabilitiesPrompt(ALL_OFF), /page reading are disabled by the server/);
 applyLiveModels({});
-assert.match(capabilitiesPrompt(ALL_OFF), /without a search key/);
+assert.match(capabilitiesPrompt(ALL_OFF), /use Firecrawl and require FIRECRAWL_API_KEY\. Anonymous Parallel Search MCP is used only when the user sets WEB_SEARCH_PROVIDER=parallel/,
+  'Parallel stays opt-in when the setting is empty');
 applyLiveModels({ WEB_SEARCH_PROVIDER: 'firecrawl' });
 assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use Firecrawl and require FIRECRAWL_API_KEY/);
 applyLiveModels({ WEB_SEARCH_PROVIDER: 'parallel' });

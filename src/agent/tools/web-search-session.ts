@@ -21,8 +21,9 @@ export async function webSearchSessionId(projectId: string | undefined): Promise
     try { localStorage.setItem(key, id); } catch { /* Private browsing / storage full. */ }
     return id;
   };
-  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-  const result = locks ? locks.request(key, create) : create();
+  // No cross-tab lock: two tabs racing on a first search may each mint an ID,
+  // which only costs the provider one shared conversation.
+  const result = create();
   pending.set(key, result);
   result.catch(() => { pending.delete(key); });
   return result;
