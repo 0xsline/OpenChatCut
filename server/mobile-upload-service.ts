@@ -51,7 +51,7 @@ interface MobileUploadSession extends MobileUploadSessionSnapshot {
   activeUploads: Set<Promise<void>>;
 }
 
-export type MobilePageLocale = 'zh' | 'en' | 'it' | 'ru';
+export type MobilePageLocale = 'zh' | 'en' | 'it' | 'ru' | 'ko';
 
 interface MobileUploadServiceOptions {
   bindHost?: string;
@@ -171,6 +171,12 @@ function mobilePage(locale: MobilePageLocale): string {
       hint: '选择手机里的视频、图片或音频。电脑和手机需连接同一局域网。',
       choose: '选择素材', multiple: '支持多选，页面保持打开直到全部完成',
       waiting: '等待上传', sent: '已发送', failed: '上传失败', interrupted: '网络中断',
+    },
+    ko: {
+      pageTitle: '휴대폰에서 업로드', title: 'OpenChatCut으로 미디어 보내기',
+      hint: '휴대폰에서 동영상, 이미지 또는 오디오를 선택하세요. 두 기기를 같은 로컬 네트워크에 연결해 두세요.',
+      choose: '미디어 선택', multiple: '여러 파일을 선택할 수 있습니다. 모든 업로드가 끝날 때까지 이 페이지를 열어 두세요.',
+      waiting: '업로드 대기 중', sent: '전송됨', failed: '업로드 실패', interrupted: '네트워크 연결 끊김',
     },
   }[copyLocale];
   const scriptCopy = JSON.stringify({ waiting: copy.waiting, sent: copy.sent, failed: copy.failed, interrupted: copy.interrupted });

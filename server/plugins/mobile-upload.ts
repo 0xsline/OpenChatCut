@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { editorCredentialAuthorized, trustedEditorRequest } from '../editor-auth.ts';
-import { MobileUploadService } from '../mobile-upload-service.ts';
+import { MobileUploadService, type MobilePageLocale } from '../mobile-upload-service.ts';
 import { putUploadFile } from '../r2.ts';
 import { maxUploadBytes } from './upload.ts';
 
@@ -14,8 +14,8 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 
 type MobileUploadControls = Pick<MobileUploadService, 'createSession' | 'getSession' | 'closeSession'>;
 
-function mobilePageLocale(value: string | null): 'zh' | 'en' | 'it' | 'ru' {
-  return value === 'en' || value === 'it' || value === 'ru' ? value : 'zh';
+function mobilePageLocale(value: string | null): MobilePageLocale {
+  return value === 'en' || value === 'it' || value === 'ru' || value === 'ko' ? value : 'zh';
 }
 
 function mobileUploadControlAuthorized(req: IncomingMessage, res: ServerResponse): boolean {

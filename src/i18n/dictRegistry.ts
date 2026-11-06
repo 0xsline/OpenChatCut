@@ -1,5 +1,5 @@
-// The four locale dictionaries are ~560 kB of source. Importing them statically
-// put all four in the entry chunk, so every user downloaded and parsed three
+// The locale dictionaries are ~560 kB+ of source. Importing them statically
+// put all of them in the entry chunk, so every user downloaded and parsed
 // languages they cannot read before the first frame. Each locale is fetched on
 // demand instead.
 //
@@ -12,7 +12,7 @@ import type { Locale } from './locale';
 export interface LocaleDicts {
   /** UI copy for the active locale. */
   readonly ui: Record<string, string>;
-  /** UI copy consulted when `ui` has no entry (Italian falls back to English). */
+  /** UI copy consulted when `ui` has no entry (Italian and Korean fall back to English). */
   readonly uiFallback: Record<string, string>;
   /** Display names for **data** (template/sound/music names). */
   readonly data: Record<string, string>;
@@ -50,6 +50,13 @@ async function fetchDicts(locale: Locale): Promise<LocaleDicts> {
       import('./dict/ru'), import('./dict/en/templates-data'),
     ]);
     return { ui: ru.RU, uiFallback: EMPTY, data: enData.default, dataFallback: EMPTY };
+  }
+  if (locale === 'ko') {
+    const [ko, koData, en, enData] = await Promise.all([
+      import('./dict/ko'), import('./dict/ko/templates-data'),
+      import('./dict/en'), import('./dict/en/templates-data'),
+    ]);
+    return { ui: ko.KO, uiFallback: en.EN, data: koData.default, dataFallback: enData.default };
   }
   const [it, itData, en, enData] = await Promise.all([
     import('./dict/it'), import('./dict/it/templates-data'),

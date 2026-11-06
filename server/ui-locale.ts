@@ -7,9 +7,9 @@
 // here instead of guessing. Unset means the app's original Chinese.
 import { getKey } from './keystore.ts';
 
-export type UiLocale = 'zh' | 'en' | 'it' | 'ru';
+export type UiLocale = 'zh' | 'en' | 'it' | 'ru' | 'ko';
 
-const LOCALES: ReadonlySet<string> = new Set(['zh', 'en', 'it', 'ru']);
+const LOCALES: ReadonlySet<string> = new Set(['zh', 'en', 'it', 'ru', 'ko']);
 
 export function parseUiLocale(value: unknown): UiLocale | null {
   const tag = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -20,10 +20,11 @@ export function uiLocale(): UiLocale {
   return parseUiLocale(getKey('UI_LOCALE')) ?? 'zh';
 }
 
-/** Pick the variant for the current interface language; Italian falls back to English when not provided. */
-export function localized<T>(variants: { zh: T; en: T; ru?: T; it?: T }, locale: UiLocale = uiLocale()): T {
+/** Pick the variant for the current interface language; Italian, Russian and Korean fall back to English when not provided. */
+export function localized<T>(variants: { zh: T; en: T; ru?: T; it?: T; ko?: T }, locale: UiLocale = uiLocale()): T {
   if (locale === 'zh') return variants.zh;
   if (locale === 'ru') return variants.ru ?? variants.en;
   if (locale === 'it') return variants.it ?? variants.en;
+  if (locale === 'ko') return variants.ko ?? variants.en;
   return variants.en;
 }

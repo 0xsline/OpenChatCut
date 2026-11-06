@@ -21,5 +21,8 @@ assert.equal(documentElement.lang, 'it', 'the persisted locale must set the init
 setLocale('zh');
 assert.equal(persistedLocale, 'zh');
 assert.equal(documentElement.lang, 'zh-CN');
+setLocale('ko');
+assert.equal(persistedLocale, 'ko');
+assert.equal(documentElement.lang, 'ko');
 
 console.log('locale.verify: persisted and changed locales update the document language');

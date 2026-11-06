@@ -1,8 +1,8 @@
 // Locale dictionaries moved from static imports to a per-locale lazy fetch, so
 // t()/tData() now read a table that may not be loaded yet. This pins the lookup
 // semantics that were previously inlined in locale.ts, per language:
-//   t:     zh → key · en → EN · it → IT then EN · ru → RU only (no EN fallback)
-//   tData: zh → ZH_DATA · en → EN_DATA · it → IT_DATA then EN_DATA · ru → EN_DATA
+//   t:     zh → key · en → EN · it → IT then EN · ru → RU only (no EN fallback) · ko → KO then EN
+//   tData: zh → ZH_DATA · en → EN_DATA · it → IT_DATA then EN_DATA · ru → EN_DATA · ko → KO_DATA then EN_DATA
 // and the "never go blank" contract while a dictionary is still in flight.
 // npx tsx src/i18n/dictRegistry.verify.ts
 import assert from 'node:assert/strict';
@@ -21,9 +21,11 @@ const { localeDicts } = await import('./dictRegistry.ts');
 const { EN } = await import('./dict/en');
 const { IT } = await import('./dict/it');
 const { RU } = await import('./dict/ru');
+const { KO } = await import('./dict/ko');
 const { ZH_DATA } = await import('./dict/zh');
 const EN_DATA = (await import('./dict/en/templates-data')).default;
 const IT_DATA = (await import('./dict/it/templates-data')).default;
+const KO_DATA = (await import('./dict/ko/templates-data')).default;
 
 /** A key the reference dictionary translates and the compared one does not. */
 function onlyIn(has: Record<string, string>, lacks: Record<string, string>): string {
@@ -81,6 +83,22 @@ function onlyIn(has: Record<string, string>, lacks: Record<string, string>): str
     'an untranslated key stays Chinese in ru — it must NOT fall back to English');
   const dataKey = Object.keys(EN_DATA)[0]!;
   assert.equal(tData(dataKey), EN_DATA[dataKey], 'ru data names still read EN_DATA');
+}
+
+// ── ko: Korean first, English for anything not translated yet ───────────────
+{
+  setLocale('ko');
+  await ensureLocaleDict('ko');
+  const korean = Object.keys(KO)[0]!;
+  assert.equal(t(korean), KO[korean], 'ko reads the Korean dictionary');
+  const builtIn = Object.keys(ZH_DATA)[0]!;
+  assert.equal(tData(builtIn), KO_DATA[builtIn], 'ko translates English-key data names');
+  const selfMade = Object.keys(EN_DATA)[0]!;
+  assert.equal(tData(selfMade), KO_DATA[selfMade], 'ko translates Chinese-key data names');
+  // KO currently covers every EN key (ko/coverage.verify.ts), so pin the wiring:
+  // a key added to EN before Korean catches up must show English, not Chinese.
+  assert.equal(localeDicts('ko').uiFallback, EN, 'ko is wired to fall back to EN for UI copy');
+  assert.equal(localeDicts('ko').dataFallback, EN_DATA, 'ko is wired to fall back to EN_DATA for data names');
 }
 
 // ── zh: the key language needs no UI table, only data names ─────────────────

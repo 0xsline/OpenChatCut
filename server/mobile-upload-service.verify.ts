@@ -82,6 +82,10 @@ try {
   assert.match(await (await fetch(italianSession.urls[0]!)).text(), /Send media to OpenChatCut/);
   const russianSession = await service.createSession('ru');
   assert.match(await (await fetch(russianSession.urls[0]!)).text(), /Отправить медиафайлы в OpenChatCut/);
+  const koreanSession = await service.createSession('ko');
+  const koreanPage = await (await fetch(koreanSession.urls[0]!)).text();
+  assert.match(koreanPage, /<html lang="ko">/);
+  assert.match(koreanPage, /OpenChatCut으로 미디어 보내기/);
 
   const tooLarge = await fetch(`${session.urls[0]}/upload?name=large.mp4`, {
     method: 'POST',
@@ -99,6 +103,7 @@ try {
   assert.equal(service.getSession(englishSession.id), null);
   assert.equal(service.getSession(italianSession.id), null);
   assert.equal(service.getSession(russianSession.id), null);
+  assert.equal(service.getSession(koreanSession.id), null);
 } finally {
   await service.stop();
   await rm(tempDir, { recursive: true, force: true });

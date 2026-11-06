@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import type { MobileUploadSessionSnapshot } from '../mobile-upload-service';
+import type { MobilePageLocale, MobileUploadSessionSnapshot } from '../mobile-upload-service';
 import { handleMobileUploadControl } from './mobile-upload';
 
 const snapshot: MobileUploadSessionSnapshot = {
@@ -14,7 +14,7 @@ let reads = 0;
 let deletes = 0;
 const createdLocales: string[] = [];
 const controls = {
-  async createSession(locale: 'zh' | 'en' | 'it' | 'ru' = 'zh') {
+  async createSession(locale: MobilePageLocale = 'zh') {
     creates += 1;
     createdLocales.push(locale);
     return snapshot;
@@ -107,7 +107,11 @@ try {
     method: 'POST', headers: { origin },
   });
   assert.equal(italian.status, 201);
-  assert.deepEqual(createdLocales, ['en', 'ru', 'it']);
+  const korean = await fetch(`${origin}/sessions?locale=ko`, {
+    method: 'POST', headers: { origin },
+  });
+  assert.equal(korean.status, 201);
+  assert.deepEqual(createdLocales, ['en', 'ru', 'it', 'ko']);
 } finally {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
