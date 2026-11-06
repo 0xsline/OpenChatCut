@@ -11,6 +11,7 @@ export interface OmniVideoRequestBody {
     type: 'video';
     aspect_ratio?: '16:9' | '9:16';
     resolution?: string;
+    duration?: string;
     delivery?: 'inline' | 'uri';
   };
   generation_config?: { video_config?: { task?: string } };
@@ -25,12 +26,9 @@ export interface OmniVideoPayload {
   mime_type?: string;
 }
 
-/** Fold an optional duration hint into the prompt — Omni has no durationSeconds field. */
-export function omniPromptWithDuration(prompt: string, durationSeconds: number, durationSpecified: boolean): string {
-  const trimmed = prompt.trim();
-  if (!durationSpecified) return trimmed;
-  if (/\b\d+\s*(s|sec|secs|second|seconds)\b/i.test(trimmed)) return trimmed;
-  return `${trimmed}\n\nTarget length: about ${durationSeconds} seconds.`;
+/** `response_format.duration` ("3s"–"15s"). Omitted when the caller left it to the API default (10s). */
+export function omniDuration(durationSeconds: number, durationSpecified: boolean): string | undefined {
+  return durationSpecified ? `${Math.round(durationSeconds)}s` : undefined;
 }
 
 export function omniAspectRatio(ratio: string): '16:9' | '9:16' {
@@ -51,6 +49,11 @@ export function omniTask(input: {
   if (input.refImagePaths.length) return 'reference_to_video';
   if (input.firstFramePath) return 'image_to_video';
   return undefined;
+}
+
+/** Files API id of a URI-delivery result: "files/abc" or ".../v1beta/files/abc:download?alt=media". */
+export function omniFileId(uri: string): string | undefined {
+  return /(?:^|\/v1(?:alpha|beta)?\/)files\/([A-Za-z0-9_-]+)/.exec(uri)?.[1];
 }
 
 /** Pull video bytes/URI from the Interactions convenience field or steps[].content. */
@@ -92,9 +95,10 @@ export function buildOmniVideoRequestBodySync(
   },
   imageParts: OmniInputPart[],
 ): OmniVideoRequestBody {
-  const prompt = omniPromptWithDuration(input.prompt, input.durationSeconds, input.durationSpecified);
+  const prompt = input.prompt.trim();
   const parts: OmniInputPart[] = [{ type: 'text', text: prompt }, ...imageParts];
   const task = omniTask(input);
+  const duration = omniDuration(input.durationSeconds, input.durationSpecified);
   const body: OmniVideoRequestBody = {
     model,
     input: parts.length === 1 ? prompt : parts,
@@ -102,6 +106,7 @@ export function buildOmniVideoRequestBodySync(
       type: 'video',
       aspect_ratio: omniAspectRatio(input.ratio),
       resolution: omniResolution(input.resolution),
+      ...(duration ? { duration } : {}),
       delivery: 'uri',
     },
     background: false,

@@ -184,11 +184,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
             ] },
           { key: 'video/gemini-omni', vendor: 'gemini', title: 'Google · Gemini Omni Flash',
-            note: '使用 GEMINI_API_KEY（与 Nano Banana 生图相同）。文生视频 / 图生视频 / 首尾帧；比例仅 16:9 与 9:16；分辨率 360p / 720p / 1080p / 4k。时长通过提示词提示（API 无独立 duration 字段）。默认模型 gemini-omni-1.1-flash。',
+            note: '使用 GEMINI_API_KEY（与 Nano Banana 生图相同）。文生视频 / 图生视频 / 首尾帧 / 最多 6 张参考图；比例仅 16:9 与 9:16；分辨率 360p / 720p / 1080p / 4k；时长 3–15 秒（首尾帧 3–10 秒，不填默认 10 秒）。默认模型 gemini-omni-1.2-flash。',
             fields: [
               secret('GEMINI_API_KEY', 'API Key'),
               text('GEMINI_BASE_URL', 'Base URL', '默认 https://generativelanguage.googleapis.com'),
-              modelText('GEMINI_OMNI_VIDEO_MODEL', '视频模型', 'gemini-omni-1.1-flash',
+              modelText('GEMINI_OMNI_VIDEO_MODEL', '视频模型', 'gemini-omni-1.2-flash',
                 'Google AI Studio / Gemini API 的 Omni 视频模型 ID。'),
             ] },
           { key: 'video/ofox', vendor: 'ofox', title: 'OFox · 多模型网关',

@@ -22,7 +22,7 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 | `kling` | [references/kling.md](references/kling.md) | Technical camera/performance; Omni multi-shot; images ≤7 (≤4 with one feature `refVideos`); std/pro; 3–15s. |
 | `hailuo` | [references/hailuo.md](references/hailuo.md) | MiniMax 海螺. T2V / I2V / first+last; **6s or 10s**; 512P (Hailuo-02), 720p→768P, 1080P (6s); no multi-ref / multi-shot. |
 | `grok-imagine-video` | [references/grok-imagine-video.md](references/grok-imagine-video.md) | xAI Grok Imagine. Text-to-video only; 1–15s; 480p/720p/1080p; audio track included. |
-| `gemini-omni` | [references/gemini-omni.md](references/gemini-omni.md) | Google Gemini Omni Flash (`GEMINI_API_KEY`). T2V / I2V / first+last / ≤4 refImages; 16:9\|9:16; 360p–4k; duration prompt-hinted. |
+| `gemini-omni` | [references/gemini-omni.md](references/gemini-omni.md) | Google Gemini Omni Flash (`GEMINI_API_KEY`). T2V / I2V / first+last / ≤6 refImages; 16:9\|9:16; 360p–4k; 3–15 s (first+last 3–10). |
 | `ofox` | [references/ofox.md](references/ofox.md) | OFox multi-model gateway (Seedance/Wan and more behind one key). Text/image-to-video, first+last frame, up to 9 image refs; 2–30s with per-model API limits; 480p/720p/1080p per model. |
 | `agnes-video` | [references/agnes-video.md](references/agnes-video.md) | Agnes Video 2.5 Flash. Text, first and/or last frame, or up to 5 images plus 3 audios. 4–12s, 720p only. Frames and references cannot be combined. |
 

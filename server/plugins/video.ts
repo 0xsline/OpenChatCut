@@ -20,7 +20,7 @@ import {
   providerMediaUrl,
   ServerReferencePreflightError,
 } from './video-media.ts';
-import { generateGeminiOmniVideo } from './gemini-omni-video-provider.ts';
+import { generateGeminiOmniVideo, geminiOmniResultFetch } from './gemini-omni-video-provider.ts';
 import { generateGrokVideo } from './grok-video-provider.ts';
 import { hailuoRequestBody } from './minimax-video.ts';
 import { generateOfoxVideo } from './ofox-video-provider.ts';
@@ -381,10 +381,11 @@ async function runVideoOperation(
     }
   }
   urls = requireGenerationResultUrls(urls, expectedResultCount);
-  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' || input.model === 'agnes-video'
-    || input.model === 'gemini-omni'
-    ? fetchWithProxy
-    : undefined;
+  const resultFetch = input.model === 'gemini-omni'
+    ? geminiOmniResultFetch(options)
+    : input.model === 'grok-imagine-video' || input.model === 'ofox' || input.model === 'agnes-video'
+      ? fetchWithProxy
+      : undefined;
   const download = () => saveVideoResults(
     operationId,
     name,

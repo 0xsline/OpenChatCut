@@ -199,14 +199,17 @@ function validateGrok(input: ValidVideoRequest): ValidVideoRequest {
   return input;
 }
 
-/** Google Gemini Omni Flash: T2V / I2V / first+last / image refs. Ratios 16:9|9:16;
- * resolutions 360p|720p|1080p|4k. Duration is prompt-hinted (API has no duration field). */
+/** Google Gemini Omni Flash: T2V / I2V / first+last / up to 6 image refs. Ratios 16:9|9:16;
+ * resolutions 360p|720p|1080p|4k. Duration 3–15 s (3–10 s with first+last frames); unset → API default 10 s. */
 function validateGeminiOmni(input: ValidVideoRequest): ValidVideoRequest {
   if (!input.prompt || input.prompt.length > 4000) {
     throw new Error('gemini-omni prompt is required and must be at most 4000 characters');
   }
-  if (input.durationSeconds < 1 || input.durationSeconds > 40) {
-    throw new Error('gemini-omni durationSeconds must be between 1 and 40 (hinted in the prompt; API has no duration field)');
+  if (input.durationSeconds < 3 || input.durationSeconds > 15) {
+    throw new Error('gemini-omni durationSeconds must be between 3 and 15');
+  }
+  if (input.firstFramePath && input.lastFramePath && input.durationSeconds > 10) {
+    throw new Error('gemini-omni first+last frame interpolation supports durationSeconds 3 to 10');
   }
   if (!['16:9', '9:16'].includes(input.ratio)) {
     throw new Error(`gemini-omni does not support ratio ${input.ratio}; use 16:9 or 9:16`);
@@ -218,7 +221,7 @@ function validateGeminiOmni(input: ValidVideoRequest): ValidVideoRequest {
   if ((input.firstFramePath || input.lastFramePath) && input.refImagePaths.length) {
     throw new Error('gemini-omni frame anchors (firstFrame/lastFrame) cannot be combined with refImages');
   }
-  if (input.refImagePaths.length > 4) throw new Error('gemini-omni accepts at most 4 refImages');
+  if (input.refImagePaths.length > 6) throw new Error('gemini-omni accepts at most 6 refImages');
   if (input.refVideoPaths.length || input.refAudioPaths.length) {
     throw new Error('gemini-omni refVideos/refAudios are not wired in this integration yet; use firstFrame/lastFrame or refImages');
   }

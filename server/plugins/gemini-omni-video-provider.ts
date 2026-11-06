@@ -1,5 +1,7 @@
-// Gemini Omni Flash (`gemini-omni-1.1-flash`) via the Interactions API.
+// Gemini Omni Flash (default `gemini-omni-1.2-flash`) via the Interactions API.
 // Same auth/header style as Nano Banana image generation (GEMINI_API_KEY).
+// Results use URI delivery: a Files API file that is polled until ACTIVE and
+// downloaded with the key (https://ai.google.dev/gemini-api/docs/omni).
 import { readFile, writeFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { extname, join } from 'node:path';
@@ -12,6 +14,7 @@ import type { ValidVideoRequest } from './video-validation.ts';
 import {
   buildOmniVideoRequestBodySync,
   extractOmniVideo,
+  omniFileId,
   type OmniInputPart,
   type OmniVideoRequestBody,
 } from './gemini-omni-video-helpers.ts';
@@ -19,7 +22,8 @@ import {
 export {
   extractOmniVideo,
   omniAspectRatio,
-  omniPromptWithDuration,
+  omniDuration,
+  omniFileId,
   omniResolution,
   omniTask,
 } from './gemini-omni-video-helpers.ts';
@@ -27,6 +31,12 @@ export {
 type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
 const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> =>
   fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const DEFAULT_OMNI_MODEL = 'gemini-omni-1.2-flash';
+const FILE_POLL_MS = 5_000;
+const FILE_WAIT_MS = 10 * 60_000;
+const FILE_TASK_PREFIX = 'file:';
 
 export interface GeminiOmniVideoOptions {
   geminiBaseUrl: string;
@@ -126,9 +136,36 @@ export async function saveOmniVideoBytes(data: string): Promise<string> {
   }
 }
 
+/** Poll a Files API result until Google finishes processing it; returns its download URL. */
+async function activeFileDownloadUrl(baseUrl: string, apiKey: string, fileId: string): Promise<string> {
+  const deadline = Date.now() + FILE_WAIT_MS;
+  while (Date.now() < deadline) {
+    const response = await fetchWithProxy(`${baseUrl}/v1beta/files/${fileId}`, {
+      headers: { 'x-goog-api-key': apiKey },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!response.ok) throw new Error(await providerError(response));
+    const file = await response.json() as { state?: string; error?: { message?: string } };
+    if (file.state === 'ACTIVE') return `${baseUrl}/v1beta/files/${fileId}:download?alt=media`;
+    if (file.state === 'FAILED') throw new Error(file.error?.message ?? 'gemini-omni video processing failed');
+    await wait(FILE_POLL_MS);
+  }
+  throw new Error('gemini-omni video processing timed out');
+}
+
+function inlineTaskId(result: Record<string, unknown>, model: string, input: ValidVideoRequest): string {
+  if (typeof result.id === 'string' && result.id) return result.id;
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify({ model, prompt: input.prompt, ratio: input.ratio }))
+    .digest('hex')
+    .slice(0, 24);
+  return `inline:${fingerprint}`;
+}
+
 /**
- * Run one Omni generation. Returns either an HTTPS URI (for saveVideo download)
- * or an already-local `/media/uploads/…` path when the API returned inline base64.
+ * Run one Omni generation. Returns the Files API download URL (fetched with
+ * geminiOmniResultFetch), another HTTPS URI, or an already-local
+ * `/media/uploads/…` path when the API returned inline base64.
  */
 export async function generateGeminiOmniVideo(
   input: ValidVideoRequest,
@@ -140,12 +177,15 @@ export async function generateGeminiOmniVideo(
     throw new Error('Gemini Omni is not configured. Set GEMINI_API_KEY in .env.local or Settings.');
   }
   const baseUrl = options.geminiBaseUrl.replace(/\/$/, '');
-  const model = options.geminiOmniVideoModel.trim() || 'gemini-omni-1.1-flash';
+  const model = options.geminiOmniVideoModel.trim() || DEFAULT_OMNI_MODEL;
 
-  // Resume of a completed sync call is not supported (store=false). If a task id
-  // is present without a stored result URL, fail clearly instead of re-billing.
+  // The interaction itself is synchronous (store=false), so only the file
+  // processing step can resume; anything earlier would bill a new generation.
   if (existingTaskId) {
-    throw new Error('gemini-omni jobs cannot resume after interruption; submit a new generation');
+    if (!existingTaskId.startsWith(FILE_TASK_PREFIX)) {
+      throw new Error('gemini-omni jobs cannot resume after interruption; submit a new generation');
+    }
+    return activeFileDownloadUrl(baseUrl, options.geminiApiKey, existingTaskId.slice(FILE_TASK_PREFIX.length));
   }
 
   const body = await buildOmniVideoRequestBody(input, model);
@@ -160,21 +200,35 @@ export async function generateGeminiOmniVideo(
   });
   if (!response.ok) throw new Error(await providerError(response));
   const result = await response.json() as Record<string, unknown>;
-  const interactionId = typeof result.id === 'string' ? result.id : '';
-  if (interactionId) {
-    await registerProviderTask('gemini-omni', interactionId);
-  } else {
-    const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ model, prompt: input.prompt, ratio: input.ratio }))
-      .digest('hex')
-      .slice(0, 24);
-    await registerProviderTask('gemini-omni', `inline:${fingerprint}`);
-  }
-
   const video = extractOmniVideo(result);
+  const fileId = video.uri ? omniFileId(video.uri) : undefined;
+  await registerProviderTask('gemini-omni', fileId ? `${FILE_TASK_PREFIX}${fileId}` : inlineTaskId(result, model, input));
+
+  if (fileId) return activeFileDownloadUrl(baseUrl, options.geminiApiKey, fileId);
   if (video.uri) return video.uri;
   if (video.data) return saveOmniVideoBytes(video.data);
   throw new Error('gemini-omni returned no video');
+}
+
+/**
+ * Result download for Omni: the Files API download needs the API key, which is
+ * sent only to the configured Gemini origin. Redirects (to Google storage) are
+ * followed by hand so the key never leaves that origin.
+ */
+export function geminiOmniResultFetch(options: Pick<GeminiOmniVideoOptions, 'geminiBaseUrl' | 'geminiApiKey'>) {
+  const keyOrigin = new URL(options.geminiBaseUrl).origin;
+  return async (input: string | URL, init: { signal: AbortSignal }): Promise<Response> => {
+    let url = new URL(String(input));
+    for (let hop = 0; hop < 5; hop += 1) {
+      const headers: Record<string, string> = url.origin === keyOrigin ? { 'x-goog-api-key': options.geminiApiKey } : {};
+      const response = await fetchWithProxy(url, { headers, redirect: 'manual', signal: init.signal });
+      const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+      if (!location) return response;
+      await response.body?.cancel().catch(() => undefined);
+      url = new URL(location, url);
+    }
+    throw new Error('gemini-omni video download redirected too many times');
+  };
 }
 
 /** True when saveVideoResults can treat the value as an already-persisted upload. */
