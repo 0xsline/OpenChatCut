@@ -152,8 +152,20 @@ export async function targetMcpProject(
     return browser;
   }
   if (session.offline) {
-    await validateOfflineBinding(session);
-    return session.offline.binding();
+    try {
+      await validateOfflineBinding(session);
+      return session.offline.binding();
+    } catch (error) {
+      if (!(error instanceof ExternalEditorCallError) || error.outcome !== 'stale') throw error;
+      // A stale offline runtime (lease expired, or a browser took the project) used to
+      // wedge the whole MCP transport: every later call repeated "Start a new MCP
+      // session". The stale draft never wrote anything, so drop the runtime and rebind
+      // below (browser when an editor owns the project, otherwise a fresh offline claim).
+      const stale = session.offline;
+      session.offline = null;
+      session.staleReason = null;
+      await stale.dispose().catch(() => undefined);
+    }
   }
   const browser = editorBinding(projectId);
   if (browser && editorBindingMatches(browser)) {
