@@ -32,8 +32,20 @@ let liveCaps: Record<CapabilityKey, boolean> | null = null;
 export function applyLiveCaps(caps: Partial<Record<CapabilityKey, boolean>>): void {
   liveCaps = { ...ALL_OFF, ...caps };
 }
+
+// The free on-device Whisper engine needs no key, so the server-side key
+// computation cannot see it: a downloaded ASR tier (GET /api/asr-models) is the
+// only proof it can run. Reported separately because a later applyLiveCaps from
+// Settings must not forget a model that is already on disk, and it never
+// downgrades a configured cloud provider.
+let localTranscriptionReady = false;
+export function applyLocalTranscriptionReady(ready: boolean): void {
+  localTranscriptionReady = ready;
+}
+
 export function currentCaps(): Record<CapabilityKey, boolean> {
-  return liveCaps ?? CONFIGURED_CAPS;
+  const caps = liveCaps ?? CONFIGURED_CAPS;
+  return localTranscriptionReady && !caps.transcription ? { ...caps, transcription: true } : caps;
 }
 
 // Per-KEY live status (GET /api/keys → keys, booleans only) — refines the manifest to
@@ -188,7 +200,7 @@ const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: str
   { key: 'music', label: 'Music generation', tool: 'submit_music', fallback: 'use list_audio/add_audio from the library, or ask the user to upload audio' },
   { key: 'sound', label: 'Sound generation', tool: 'submit_sound', fallback: 'use list_audio/add_audio from the sound-effects library' },
   { key: 'stock', label: 'Stock-media search', tool: 'search_stock_media', fallback: 'use push_asset to import a known public URL directly' },
-  { key: 'transcription', label: 'Transcription/talking-head editing', tool: 'transcribe_track', fallback: 'word-level deletion, filler cleanup, and automatic captions are unavailable' },
+  { key: 'transcription', label: 'Transcription/talking-head editing', tool: 'transcribe_track', fallback: 'word-level deletion, filler cleanup, and automatic captions stay unavailable until the free local Whisper model is downloaded in Settings → Local models → Local transcription (no key needed), or a cloud transcription provider is configured' },
   { key: 'sandbox', label: 'Sandbox execution (ffmpeg/node/python)', tool: 'run_code', fallback: 'skip run_code steps; probe_media does not need the sandbox and stays available' },
   { key: 'web', label: 'Advanced web extraction', tool: 'web_map/web_crawl/web_batch_scrape and Firecrawl page formats', fallback: 'use basic web_search/web_browser excerpts, or ask the user to paste the page content' },
 ];

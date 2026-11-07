@@ -1,7 +1,7 @@
 import { startUiLocaleSync } from '../i18n/localeSync';
 import { t } from '../i18n/locale';
 import { useCallback, useEffect, useState } from 'react';
-import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../agent/capabilities';
+import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels, applyLocalTranscriptionReady } from '../agent/capabilities';
 import { fetchCodexModels, fetchCodexStatus } from '../agent/codex/client';
 import { fetchCopilotModels, fetchCopilotStatus } from '../agent/copilot/client';
 import { fetchClaudeCodeModels, fetchClaudeCodeStatus } from '../agent/claude-code/client';
@@ -49,6 +49,21 @@ export function navigateTo(hash: string): void {
   window.location.hash = hash;
 }
 
+/**
+ * Free local Whisper is invisible to the key store: a downloaded tier is what
+ * makes transcription available without a provider or API key. Deliberate lazy
+ * boundary — the ASR catalog client must not join the startup bundle.
+ */
+async function probeLocalTranscription(): Promise<boolean> {
+  try {
+    const { anyLocalAsrReady, fetchLocalAsrCatalog } = await import('../transcript/local-asr-readiness');
+    const catalog = await fetchLocalAsrCatalog();
+    return catalog !== null && anyLocalAsrReady(catalog);
+  } catch {
+    return false;
+  }
+}
+
 async function syncCopilotBackend(
   isActive: () => boolean,
   savedModel?: string,
@@ -91,12 +106,13 @@ async function syncClaudeCodeBackend(isActive: () => boolean, savedModel?: strin
 }
 
 export async function syncAgentBackends(isActive: () => boolean): Promise<void> {
-  const [keyResult, codexResult] = await Promise.allSettled([
+  const [keyResult, codexResult, localAsrResult] = await Promise.allSettled([
     fetch('/api/keys').then(async (response): Promise<LiveAgentStatus> => {
       if (!response.ok) throw new Error('Agent key status is unavailable.');
       return response.json() as Promise<LiveAgentStatus>;
     }),
     fetchCodexStatus(),
+    probeLocalTranscription(),
   ]);
   if (!isActive()) return;
   let savedCodexModel: string | undefined;
@@ -106,6 +122,8 @@ export async function syncAgentBackends(isActive: () => boolean): Promise<void> 
     const { caps, keys, models } = keyResult.value;
     if (caps) applyLiveCaps(caps);
     if (keys) applyLiveKeyStatus(keys);
+    // Set after applyLiveCaps so a startup snapshot cannot overwrite it.
+    applyLocalTranscriptionReady(localAsrResult.status === 'fulfilled' && localAsrResult.value === true);
     if (models) {
       applyLiveModels(models);
       applyAgentModelStatus(keys ?? {}, models);
