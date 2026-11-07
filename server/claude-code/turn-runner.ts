@@ -30,6 +30,44 @@ const CHILD_ENV_NAMES = [
   'NO_COLOR', 'FORCE_COLOR',
 ] as const;
 
+/**
+ * Everything the CLI reads for auth and configuration is forwarded by prefix
+ * rather than by name. A name list is always one CLI release behind: it silently
+ * drops whatever auth settings that release added, and a CLI without them does
+ * not fail to start — it reports `Not logged in · Please run /login`, which is
+ * indistinguishable from a real sign-out in the UI.
+ *
+ * Verified on a machine signed in through Anthropic Foundry: `claude auth
+ * status --json` in an environment with only CHILD_ENV_NAMES above reports
+ * loggedIn:false, and adding CLAUDE_CODE_USE_FOUNDRY + ANTHROPIC_FOUNDRY_RESOURCE
+ * (both dropped by that list) reports third_party/foundry again. The same list
+ * also dropped ANTHROPIC_DEFAULT_OPUS_MODEL, so the model override was ignored
+ * even when auth worked.
+ *
+ * Covered: CLAUDE_CODE_USE_FOUNDRY / _BEDROCK / _VERTEX, ANTHROPIC_FOUNDRY_RESOURCE,
+ * ANTHROPIC_FOUNDRY_API_KEY, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
+ * ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL, and
+ * CLAUDE_CONFIG_DIR. Forwarding them is the same trust decision as forwarding
+ * ANTHROPIC_API_KEY explicitly: this CLI is the process that consumes them.
+ */
+const CHILD_ENV_PREFIXES = ['CLAUDE_', 'ANTHROPIC_'] as const;
+
+/**
+ * Bedrock and Vertex keep their credentials outside the prefixes above. Claude
+ * Code documents both as supported third-party providers, so their credential
+ * chain has to reach the child too — otherwise those users hit the same
+ * "Not logged in" with no environment mistake of their own.
+ */
+const CHILD_ENV_PROVIDER_NAMES = [
+  'AWS_PROFILE', 'AWS_REGION', 'AWS_DEFAULT_REGION',
+  'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN',
+  'AWS_BEARER_TOKEN_BEDROCK',
+  'AWS_CONFIG_FILE', 'AWS_SHARED_CREDENTIALS_FILE',
+  'AWS_ROLE_ARN', 'AWS_WEB_IDENTITY_TOKEN_FILE',
+  'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI', 'AWS_CONTAINER_CREDENTIALS_FULL_URI',
+  'GOOGLE_APPLICATION_CREDENTIALS', 'CLOUD_ML_REGION', 'CLOUD_ML_PROJECT_ID',
+] as const;
+
 // Deliberately NOT plain "openchatcut": Claude Code caches MCP auth failures by
 // SERVER NAME, not by URL, in ~/.claude/mcp-needs-auth-cache.json. Users commonly
 // register their own "openchatcut" server (the repo ships one in .mcp.json, and
@@ -105,6 +143,18 @@ export class ClaudeCodeProcessError extends Error {
 export function childEnvironment(): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   for (const name of CHILD_ENV_NAMES) {
+    const value = process.env[name];
+    if (value !== undefined) environment[name] = value;
+  }
+  // Prefix match rather than a name list: the CLI adds auth settings between
+  // releases, and a name list silently drops them (see CHILD_ENV_PREFIXES).
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (CHILD_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))) {
+      environment[name] = value;
+    }
+  }
+  for (const name of CHILD_ENV_PROVIDER_NAMES) {
     const value = process.env[name];
     if (value !== undefined) environment[name] = value;
   }
