@@ -13,6 +13,39 @@ export function nativeGgmlFileName(modelId: string): string | undefined {
   return ASR_MODELS.find((model) => model.modelId === modelId)?.ggmlFile?.fileName;
 }
 
+/**
+ * whisper.cpp VAD flags for whisper-cli, or [] when the model is missing (a
+ * build without the shipped file) or an earlier run proved the binary predates
+ * the flags. Silero VAD drops non-speech spans before decoding, so a tone, a
+ * bell or room noise yields no segments instead of hallucinated "(Bell)" /
+ * "Beeeeee…" caption text.
+ */
+export function whisperVadArgs(
+  modelPath: string | undefined,
+  modelExists: boolean,
+  unsupported: boolean,
+): string[] {
+  if (unsupported || !modelPath || !modelExists) return [];
+  return ['--vad', '-vm', modelPath];
+}
+
+/**
+ * The same gating for whisper-server, which also needs `-nlp`.
+ *
+ * whisper-server v1.9.2 segfaults when VAD removes every segment: verbose_json
+ * then indexes its language-probability vector with the failed autodetect id
+ * (-2) at server.cpp:1069-1071. `-nlp` excludes that block, and the native-ASR
+ * worker reads only `segments`/`words`.
+ */
+export function whisperServerVadArgs(
+  modelPath: string | undefined,
+  modelExists: boolean,
+  unsupported: boolean,
+): string[] {
+  const vad = whisperVadArgs(modelPath, modelExists, unsupported);
+  return vad.length === 0 ? [] : [...vad, '-nlp'];
+}
+
 export interface WhisperWordToken {
   readonly text?: string;
   readonly offsets?: { from: number; to: number };

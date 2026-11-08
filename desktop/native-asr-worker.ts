@@ -27,7 +27,9 @@ import { extractPcm } from './native-asr-pcm.ts';
 import {
   nativeGgmlFileName,
   whisperLanguage,
+  whisperServerVadArgs,
   whisperTokensToChunks,
+  whisperVadArgs,
   whisperWordsToChunks,
   writeWav,
   type WhisperJson,
@@ -42,6 +44,8 @@ interface NativeWorkerData {
   readonly ffmpegPath: string;
   readonly whisperCliPath: string;
   readonly platform: NodeJS.Platform;
+  /** GGML Silero VAD for whisper.cpp; absent when the app ships without it. */
+  readonly vadModelPath?: string;
 }
 
 const SERVER_READY_TIMEOUT_MS = 20_000;
@@ -58,6 +62,8 @@ if (!port) throw new Error('native ASR process requires a parent port');
 let runtime: NativeWorkerData | null = null;
 let loaded: LoadedEngine | null = null;
 let whisperServer: { child: ChildProcess; port: number; ggmlPath: string } | null = null;
+/** Set once a whisper-cli build rejects `--vad`; later runs skip it instead of failing. */
+let vadUnsupported = false;
 const lifecycle = new NativeAsrWorkerLifecycle();
 
 function initialize(value: unknown): void {
@@ -69,12 +75,37 @@ function initialize(value: unknown): void {
     || typeof config.platform !== 'string') {
     throw new Error('invalid native ASR configuration');
   }
+  if (config.vadModelPath !== undefined && typeof config.vadModelPath !== 'string') {
+    throw new Error('invalid native ASR configuration');
+  }
   runtime = config as NativeWorkerData;
 }
 
 function requireRuntime(): NativeWorkerData {
   if (!runtime) throw new Error('native ASR process is not initialized');
   return runtime;
+}
+
+/**
+ * whisper.cpp VAD arguments, or [] when the worker has no model file or an
+ * earlier run proved the binary too old to parse them. Silero VAD removes
+ * non-speech spans before decoding, so a tone, a bell or room noise yields no
+ * segments instead of a hallucinated "(Bell)" / "Beeeeee…" caption cue.
+ */
+function vadArgs(): string[] {
+  const vadModelPath = requireRuntime().vadModelPath;
+  return whisperVadArgs(vadModelPath, vadModelInstalled(), vadUnsupported);
+}
+
+/** whisper-server needs the same gating plus `-nlp` (see whisperServerVadArgs). */
+function serverVadArgs(): string[] {
+  const vadModelPath = requireRuntime().vadModelPath;
+  return whisperServerVadArgs(vadModelPath, vadModelInstalled(), vadUnsupported);
+}
+
+function vadModelInstalled(): boolean {
+  const vadModelPath = requireRuntime().vadModelPath;
+  return vadModelPath !== undefined && vadModelPath.length > 0 && existsSync(vadModelPath);
 }
 
 function parseNativeTranscriptionRequest(value: unknown): DesktopAsrRequest {
@@ -93,6 +124,7 @@ function runWhisperCli(
   language: string,
   useGpu: boolean,
   signal?: AbortSignal,
+  vad: readonly string[] = [],
 ): Promise<{ jsonPath: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const args = [
@@ -105,6 +137,7 @@ function runWhisperCli(
       '-ojf',
       '-nt',
       '-of', wavPath,
+      ...vad,
     ];
     if (!useGpu) args.push('-ng');
     const child: ChildProcess = spawn(requireRuntime().whisperCliPath, args, {
@@ -150,6 +183,29 @@ function runWhisperCli(
   });
 }
 
+/**
+ * VAD-aware CLI run. A whisper-cli build that rejects `--vad` (a hand-supplied
+ * OPENCHATCUT_WHISPER_CLI older than the VAD support) must not disable local
+ * transcription: remember the rejection and transcribe without VAD instead.
+ */
+async function runWhisperCliDetectingSpeech(
+  ggmlPath: string,
+  wavPath: string,
+  language: string,
+  useGpu: boolean,
+  signal?: AbortSignal,
+): Promise<{ jsonPath: string; stderr: string }> {
+  const vad = vadArgs();
+  try {
+    return await runWhisperCli(ggmlPath, wavPath, language, useGpu, signal, vad);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (vad.length === 0 || !/unknown argument/i.test(message)) throw error;
+    vadUnsupported = true;
+    return await runWhisperCli(ggmlPath, wavPath, language, useGpu, signal, []);
+  }
+}
+
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
@@ -187,6 +243,7 @@ async function ensureWhisperServer(ggmlPath: string): Promise<{ child: ChildProc
     '--host', '127.0.0.1',
     '--port', String(serverPort),
     '-t', '8',
+    ...serverVadArgs(),
   ], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   child.stderr?.resume();
   const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
@@ -263,13 +320,13 @@ async function transcribeWithEngine(
       let json: WhisperJson;
       let backend: DesktopAsrBackend = engine.backend;
       try {
-        const { jsonPath } = await runWhisperCli(
+        const { jsonPath } = await runWhisperCliDetectingSpeech(
           engine.ggmlPath, wavPath, whisperLanguage(request.language), true, signal,
         );
         json = JSON.parse(await readFile(jsonPath, 'utf8')) as WhisperJson;
       } catch (gpuError) {
         if (engine.backend === 'native-cpu') throw gpuError;
-        const { jsonPath } = await runWhisperCli(
+        const { jsonPath } = await runWhisperCliDetectingSpeech(
           engine.ggmlPath, wavPath, whisperLanguage(request.language), false, signal,
         );
         json = JSON.parse(await readFile(jsonPath, 'utf8')) as WhisperJson;

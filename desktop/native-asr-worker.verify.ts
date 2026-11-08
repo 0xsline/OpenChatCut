@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {
   nativeGgmlFileName,
+  whisperServerVadArgs,
   whisperTokensToChunks,
+  whisperVadArgs,
   whisperWordsToChunks,
 } from './native-asr-utils';
 
@@ -24,6 +26,25 @@ assert.deepEqual(
   'desktop-native GGML resolution covers every supported tier',
 );
 assert.equal(nativeGgmlFileName('unknown/model'), undefined, 'unknown models stay unsupported');
+
+// Silero VAD gates the whisper.cpp engines. A missing model file, or a binary
+// that rejected the flags, must degrade to the previous behaviour instead of
+// failing transcription; the server also needs -nlp or it crashes on silence.
+const VAD_MODEL = '/app/public/models/silero-vad/ggml-silero-v6.2.0.bin';
+assert.deepEqual(
+  whisperVadArgs(VAD_MODEL, true, false),
+  ['--vad', '-vm', VAD_MODEL],
+  'an installed VAD model gates whisper-cli',
+);
+assert.deepEqual(whisperVadArgs(VAD_MODEL, false, false), [], 'a missing VAD file must not break transcription');
+assert.deepEqual(whisperVadArgs(undefined, true, false), [], 'no configured VAD path means no flags');
+assert.deepEqual(whisperVadArgs(VAD_MODEL, true, true), [], 'a binary that rejected --vad is never given it again');
+assert.deepEqual(
+  whisperServerVadArgs(VAD_MODEL, true, false),
+  ['--vad', '-vm', VAD_MODEL, '-nlp'],
+  'the server additionally excludes language probabilities (v1.9.2 segfaults on an all-silent VAD result)',
+);
+assert.deepEqual(whisperServerVadArgs(VAD_MODEL, false, false), [], 'without the model the server keeps its previous arguments');
 
 // Language mapping and token->chunk projection are pure; the real whisper-cli
 // invocation is exercised by the desktop smoke (native-asr-service).

@@ -12,6 +12,10 @@ const WASM_PATH = '/models/silero-vad/';
 const VAD_SAMPLE_RATE = 16_000;
 const WINDOW_SIZE = 512; // 32ms @16kHz — Silero VAD's native window
 const MERGE_GAP_WINDOWS = 2;
+/** Silero's own default (and whisper.cpp's `-vt` default). */
+export const VAD_SPEECH_THRESHOLD = 0.5;
+/** Yield to the event loop every this many windows so a long clip cannot freeze the UI. */
+const YIELD_EVERY_WINDOWS = 250;
 
 let sessionPromise: Promise<ort.InferenceSession> | null = null;
 let installed = false;
@@ -102,6 +106,15 @@ export function vadSpansFromProbabilities(
   return { spans, confidence };
 }
 
+/** Silero's recurrent state, fresh per run (2 layers × 1 batch × 128 hidden). */
+function initialVadState(): ort.Tensor {
+  return new ort.Tensor('float32', new Float32Array(2 * 128), [2, 1, 128]);
+}
+
+function vadSampleRateTensor(): ort.Tensor {
+  return new ort.Tensor('int64', BigInt64Array.from([BigInt(VAD_SAMPLE_RATE)]), []);
+}
+
 async function runSileroVad(
   samples: Float32Array,
   sampleRate: number,
@@ -113,10 +126,8 @@ async function runSileroVad(
   const windowCount = Math.floor(mono.length / WINDOW_SIZE);
   if (windowCount === 0) return { speechSpans: [], confidence: 0 };
   const probabilities = new Float32Array(windowCount);
-  let state: ort.Tensor = new ort.Tensor('float32', new Float32Array(2 * 128), [2, 1, 128]);
-  const sampleRateTensor = new ort.Tensor(
-    'int64', BigInt64Array.from([BigInt(VAD_SAMPLE_RATE)]), [],
-  );
+  let state = initialVadState();
+  const sampleRateTensor = vadSampleRateTensor();
   for (let window = 0; window < windowCount; window += 1) {
     if (signal?.aborted) throw new Error('VAD cancelled');
     const offset = window * WINDOW_SIZE;
@@ -130,6 +141,40 @@ async function runSileroVad(
   }
   const { spans, confidence } = vadSpansFromProbabilities(probabilities, threshold);
   return { speechSpans: spans, confidence };
+}
+
+/**
+ * Whether the clip holds any speech at all — the gate that keeps a whisper
+ * engine from transcribing a tone, a bell or room noise. On non-speech audio
+ * whisper does not return nothing; it invents fluent captions (measured: a
+ * single 445-character "!!!!…" chunk for a 5 s sine tone). Stops at the first
+ * window above `threshold`, so an ordinary speech clip pays a few model runs;
+ * yields periodically so a long clip cannot block the UI. Throws when the model
+ * cannot run — callers decide whether that means "unknown" or "refuse".
+ */
+export async function hasSpeechInClip(
+  samples: Float32Array,
+  sampleRate: number,
+  threshold = VAD_SPEECH_THRESHOLD,
+): Promise<boolean> {
+  const session = await loadSession();
+  const mono = resampleMonoTo16k(samples, sampleRate);
+  const windowCount = Math.floor(mono.length / WINDOW_SIZE);
+  let state = initialVadState();
+  const sampleRateTensor = vadSampleRateTensor();
+  for (let window = 0; window < windowCount; window += 1) {
+    if (window > 0 && window % YIELD_EVERY_WINDOWS === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const offset = window * WINDOW_SIZE;
+    const input = new ort.Tensor(
+      'float32', mono.slice(offset, offset + WINDOW_SIZE), [1, WINDOW_SIZE],
+    );
+    const output = await session.run({ input, state, sr: sampleRateTensor });
+    state = output.stateN;
+    if ((output.output.data as Float32Array)[0] >= threshold) return true;
+  }
+  return false;
 }
 
 /** Idempotent registration; model loads on the first actual VAD run. */

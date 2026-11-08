@@ -10,6 +10,7 @@ import {
   type AssemblyAiCheckpointWriter, type AssemblyAiResumeCheckpoint, type TranscribeOptions,
 } from './assemblyai';
 import { downsampleMono, hasTranscribableSignal } from './client-asr-extract';
+import { stripDegenerateSegments } from './asr-output';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
 import { ASR_MODELS } from '../../shared/asr-models';
 import { t } from '../i18n/locale';
@@ -237,17 +238,38 @@ async function decodeSourceToSamples(path: string): Promise<Float32Array> {
 }
 
 function toTranscriptResult(result: AsrResult): TranscriptResult {
-  const words = result.chunks.map((chunk) => ({
+  // A whisper engine invents captions on non-speech audio; degenerate output
+  // (one character, or a short run, repeated) is never speech and must not
+  // become a cue. Everything else is projected unchanged.
+  const kept = stripDegenerateSegments(result.chunks, result.text);
+  const words = kept.segments.map((chunk) => ({
     text: chunk.text,
     start: chunk.start,
     end: Math.max(chunk.start + 1, chunk.end),
     speaker: null,
   }));
-  const text = result.text || words.map((word) => word.text).join('');
+  const text = kept.dropped ? kept.text : (result.text || words.map((word) => word.text).join(''));
   const utterances = words.length
     ? [{ speaker: 'A', text, start: words[0]!.start, end: words[words.length - 1]!.end, words }]
     : [];
   return { text, words, utterances };
+}
+
+/**
+ * Whether the decoded clip contains speech, per the bundled Silero VAD. `null`
+ * when the model cannot run (no page — the wasm session needs the browser —
+ * unavailable backend, blocked wasm): unknown evidence must not block
+ * transcription; the degenerate-output filter in `toTranscriptResult` is then
+ * the only guard.
+ */
+async function clipHasSpeech(samples: Float32Array): Promise<boolean | null> {
+  if (typeof document === 'undefined') return null;
+  try {
+    const { hasSpeechInClip } = await import('../audio/silero-vad');
+    return await hasSpeechInClip(samples, TARGET_SR);
+  } catch {
+    return null;
+  }
 }
 
 function reportModelProgress(
@@ -327,6 +349,15 @@ export async function localTranscribePathResumable(
   const source = await runTranscriptionStage(t('音轨准备'), () => transcriptionSourceForPath(path, opts, true));
   const samples = await runTranscriptionStage(t('音频解码'), () => decodeSourceToSamples(source));
   if (!hasTranscribableSignal(samples, TARGET_SR)) {
+    await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
+    return toTranscriptResult({ text: '', chunks: [] });
+  }
+  // Energy alone cannot tell a tone, a bell or music from speech, and whisper
+  // responds to those with fluent captions instead of nothing: measured on a
+  // 5 s 440 Hz tone, the browser engine returned one 445-character "!!!!…"
+  // chunk. Silero VAD (bundled) is the speech evidence — with no speech window
+  // the clip has nothing to transcribe, so skip inference and produce no cue.
+  if (await clipHasSpeech(samples) === false) {
     await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
     return toTranscriptResult({ text: '', chunks: [] });
   }
