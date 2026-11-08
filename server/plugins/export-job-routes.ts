@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rename, stat, unlink } from 'node:fs/promises';
+import { readFile, rename, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ViteDevServer } from 'vite';
@@ -8,32 +8,25 @@ import { uploadDir } from '../media-dir.ts';
 import {
   createExportFailure,
   exportFailureFrom,
-  ExportFailureError,
   isExportFailure,
 } from '../../src/export/exportFailure.ts';
 import type { ExportPlan, ExportRequest } from './export-plan.ts';
 import { acceptExportSubmission, type AcceptedExportSubmission } from './export-submission.ts';
 import {
-  acquireExportPermit,
-  assertNonEmptyExportBytes,
   cancelActiveExportJob,
-  exportJobFilename,
   exportOutputSize,
-  forgetExportJobController,
   promoteExportResult,
   retimeFps,
-  trackExportJobController,
   withExportPermit,
 } from './export-runtime.ts';
+import { startExportJob } from './export-job-submission.ts';
 import {
-  createGenerationJob,
   deleteGenerationJob,
   getGenerationJobSnapshot,
 } from './generation-jobs.ts';
 import {
   bindRequestAbort,
   contentDisposition,
-  exportOperationId,
   readJsonBody,
   sendError,
   sendExportFailure,
@@ -44,7 +37,6 @@ import {
   cleanupExportOutputs,
   exportCapabilities,
   h264RenderOptions,
-  renderExportPlan,
   renderTimeline,
 } from './export-rendering.ts';
 
@@ -104,115 +96,26 @@ export function registerExportJobRoute(server: ViteDevServer): void {
     const requestAbort = bindRequestAbort(req, res);
     const controller = requestAbort.controller;
 
-    let acceptedSubmission: AcceptedExportSubmission | undefined;
-    let queued = false;
     try {
       const body = (await readJsonBody(req)) as ExportRequest | null;
       controller.signal.throwIfAborted();
-      acceptedSubmission = await acceptExportSubmission(body, { signal: controller.signal });
-      const { plan } = acceptedSubmission;
-      const operationId = exportOperationId(body);
-      const cleanupRenderMedia = acceptedSubmission.cleanup;
-      const uuid = randomUUID();
-      const outDir = uploadDir();
-      const filename = exportJobFilename(uuid, plan.media.ext);
-      const filepath = join(outDir, filename);
-      const publicPath = `/media/uploads/${filename}`;
-      controller.signal.throwIfAborted();
-      const jobParams: Record<string, unknown> = {
-        kind: 'export',
-        format: plan.format,
-        codec: plan.media.codec,
-        name: plan.filename,
-        frameRange: plan.frameRange ?? null,
-        totalFrames: plan.totalFrames,
-      };
-      const { jobId } = await createGenerationJob(
-        jobParams,
-        async (_jobId, update) => {
-          try {
-            const encoding = await renderExportPlan(plan, filepath, update, controller.signal);
-            const { size } = await stat(filepath);
-            assertNonEmptyExportBytes(size);
-            controller.signal.throwIfAborted();
-            const sourceFps = plan.state.fps;
-            const outputSize = plan.format === 'video' ? exportOutputSize(plan.state, plan.scale) : undefined;
-            return {
-              assetId: uuid,
-              kind: plan.format,
-              name: plan.filename,
-              path: publicPath,
-              durationSeconds: plan.durationSeconds,
-              sizeBytes: size,
-              codec: plan.media.codec,
-              ...encoding,
-              ...(outputSize ? { ...outputSize, fps: plan.retimeFps ?? sourceFps } : {}),
-              sourceStartSeconds: (plan.frameRange?.[0] ?? 0) / sourceFps,
-            };
-          } catch (error) {
-            const existing = exportFailureFrom(error);
-            const failure = existing ?? createExportFailure({
-              stage: 'encode',
-              code: 'export_output_unreadable',
-              retryable: true,
-              cleanupStatus: await cleanupExportOutputs([filepath]),
-              targetPath: filepath,
-              message: error instanceof Error ? error.message : String(error),
-            });
-            jobParams.exportFailure = failure;
-            // Without this the only record of a server render failure is the
-            // HTTP response. When the client then falls back to the browser and
-            // that fails too, the browser's error is what surfaces and the
-            // server's real cause is lost — which made an unexportable project
-            // look like a browser codec problem. A cancel is the user's doing,
-            // not a failure, so it stays out of the error log.
-            if (failure.stage !== 'cancel' && !controller.signal.aborted) {
-              server.config.logger.error(
-                `[export] render failed (${failure.stage}/${failure.code}): ${failure.message}`,
-              );
-            }
-            throw new ExportFailureError(failure);
-          } finally {
-            await cleanupRenderMedia();
-          }
+      const jobId = await startExportJob(body, {
+        controller,
+        onRenderFailure: (failure) => {
+          server.config.logger.error(
+            `[export] render failed (${failure.stage}/${failure.code}): ${failure.message}`,
+          );
         },
-        {
-          ...(operationId ? { operationId } : {}),
-          acquire: async () => {
-            try {
-              return await acquireExportPermit(controller.signal);
-            } catch (error) {
-              await cleanupRenderMedia();
-              const failure = createExportFailure({
-                stage: controller.signal.aborted ? 'cancel' : 'queue',
-                code: controller.signal.aborted ? 'export_cancelled' : 'export_queue_failed',
-                retryable: !controller.signal.aborted,
-                cleanupStatus: 'not-required',
-                targetPath: filepath,
-                message: error instanceof Error ? error.message : String(error),
-              });
-              jobParams.exportFailure = failure;
-              throw new ExportFailureError(failure);
-            }
-          },
-          cleanupPolicy: 'server-export',
-          onSettled: (jobId) => {
-            forgetExportJobController(jobId);
-            void cleanupRenderMedia().catch((error) => {
-              server.config.logger.warn(
-                `[export] failed to clean materialized media: ${error instanceof Error ? error.message : String(error)}`,
-              );
-            });
-          },
+        onMediaCleanupError: (error) => {
+          server.config.logger.warn(
+            `[export] failed to clean materialized media: ${error instanceof Error ? error.message : String(error)}`,
+          );
         },
-      );
-      queued = true;
-      trackExportJobController(jobId, controller);
+      });
       controller.signal.throwIfAborted();
       requestAbort.dispose();
       sendJson(res, 200, { renderId: jobId });
     } catch (error) {
-      if (acceptedSubmission && !queued) await acceptedSubmission.cleanup().catch(() => undefined);
       if (controller.signal.aborted) return;
       if (sendSequenceGraphFailure(res, error)) return;
       const failure = exportFailureFrom(error);

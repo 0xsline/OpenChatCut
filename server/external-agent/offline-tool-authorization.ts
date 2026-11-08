@@ -16,6 +16,9 @@ const OFFLINE_PERSISTENT_LOCAL_TOOLS: Record<string, true> = {
   import_asset: true,
   import_assets: true,
   import_folder: true,
+  // The renderer publishes its output through the managed uploads directory and
+  // returns that path; it cannot choose an arbitrary destination.
+  export_video: true,
 };
 
 export function assertOfflineToolAllowed(

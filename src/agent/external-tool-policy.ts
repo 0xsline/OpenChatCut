@@ -86,6 +86,13 @@ const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
   export_jianying_draft: true,
 };
 
+/** Server-executed tools that run outside the editor tab. Unlike the draft
+ * tools above, they do not touch project state: export_video drives the same
+ * server render pipeline POST /export/job uses and writes a managed media file. */
+const SERVER_DIRECT_EXPORT_TOOL_NAMES: Record<string, true> = {
+  export_video: true,
+};
+
 const SERVER_DIRECT_BROWSER_ACTIONS: Record<string, true> = {
   preset_apply: true,
   preset_delete: true,
@@ -123,7 +130,8 @@ function isOwnedDesignStyleMutation(
  * until its runtime dependencies and side effects are reviewed. */
 export function isExternalServerDirectTool(name: string): boolean {
   return SERVER_DIRECT_READ_TOOL_NAMES[name] === true
-    || SERVER_DIRECT_EDIT_TOOL_NAMES[name] === true;
+    || SERVER_DIRECT_EDIT_TOOL_NAMES[name] === true
+    || SERVER_DIRECT_EXPORT_TOOL_NAMES[name] === true;
 }
 
 /** Some otherwise data-only tools multiplex browser-backed actions. */
