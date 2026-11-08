@@ -41,6 +41,21 @@ for (const option of transcriptionLanguageOptions(localAsrPage.fields)) {
   }
 }
 
+// Clearing the setting (the "默认（…）" option) falls back to the app locale at
+// runtime — see preferredTranscriptionLanguage — so that option must say so
+// instead of naming zh, and must be translated where there is no EN fallback.
+for (const page of [...TRANSCRIPTION_SETTINGS_GROUP.vendors, localAsrPage]) {
+  const field = page.fields.find((candidate) => candidate.name === 'TRANSCRIPTION_LANGUAGE');
+  assert.equal(
+    field?.defaultLabel,
+    '跟随界面语言',
+    `${page.key} must describe the runtime default as the UI language`,
+  );
+  for (const [locale, dict] of [['en', EN], ['it', IT], ['ru', RU]] as const) {
+    assert.ok(dict['跟随界面语言'], `${locale} dictionary must translate the locale-following default`);
+  }
+}
+
 for (const model of ASR_MODELS) {
   assert.match(model.language, /Italian|Italiano|it/i, `${model.id} should be advertised as Italian-capable`);
   assert.match(model.language, /Russian|Русский|ru/i, `${model.id} should be advertised as Russian-capable`);

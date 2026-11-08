@@ -12,13 +12,12 @@ import {
 import { downsampleMono, hasTranscribableSignal } from './client-asr-extract';
 import { ASR_INFERENCE_CONTRACT } from '../../shared/asr-inference-contract';
 import { ASR_MODELS } from '../../shared/asr-models';
-import { t } from '../i18n/locale';
+import { getLocale, t } from '../i18n/locale';
 import { tryDesktopNativeAsr, warmUpDesktopNativeAsr } from './desktop-native-asr';
 import { desktopNativeInferenceEnabled } from './desktop-inference-preference';
-import {
-  asrEngineReady, assertBrowserAsrReady, fetchLocalAsrCatalog, fetchLocalAsrModelStatus,
-  type LocalAsrModelStatus,
-} from './local-asr-readiness';
+import { asrEngineReady, assertBrowserAsrReady, fetchLocalAsrCatalog } from './local-asr-readiness';
+import { assertAnyLocalAsrInstalled } from './local-asr-tier';
+import type { LocalAsrModelStatus } from './local-asr-readiness';
 
 const TARGET_SR = ASR_INFERENCE_CONTRACT.sampleRate;
 /** WebGPU load can hang on software renderers (headless/SwiftShader); force-fail
@@ -270,6 +269,16 @@ async function runTranscriptionStage<T>(stage: string, operation: () => Promise<
 }
 
 /**
+ * The language the engines transcribe in: the caller's explicit choice, else
+ * the app locale. It used to be a hard-coded `zh`, which made English audio
+ * "auto-detect" as Chinese unless the user changed a setting first.
+ */
+function asrLanguage(languageCode: string | undefined): string {
+  const explicit = languageCode?.trim();
+  return explicit && explicit.length > 0 ? explicit : getLocale();
+}
+
+/**
  * Run the desktop whisper.cpp engine unless the catalog says its GGML companion
  * is missing. Returns the result, or why the engine could not produce one.
  */
@@ -288,7 +297,7 @@ async function tryNativeEngine(
   const native = await tryDesktopNativeAsr({
     sourcePath: await transcriptionSourceForPath(path, opts),
     config,
-    language: opts.languageCode ?? 'zh',
+    language: asrLanguage(opts.languageCode),
     onProgress: (progress, file) => reportModelProgress(onWait, progress, file),
     onFallback: (reason) => {
       failure = reason;
@@ -312,11 +321,17 @@ export async function localTranscribePathResumable(
   onWait?.();
 
   const profile = await detectDeviceProfile();
-  const config = chooseAsrConfig(profile);
+  // Read the catalog first: `auto` resolves against what is installed, so a
+  // user who downloaded only `small` runs `small` instead of being sent to the
+  // un-downloaded default tier. One request serves both the resolution and the
+  // per-engine readiness check below.
+  const catalog = await fetchLocalAsrCatalog();
+  assertAnyLocalAsrInstalled(catalog ?? undefined);
+  const config = chooseAsrConfig(profile, catalog ?? undefined);
   // Each engine needs only its own files (#168), so readiness is checked per
   // engine right before it runs: the companion for whisper.cpp, then the ONNX
   // export for the browser fallback.
-  const status = await fetchLocalAsrModelStatus(config.modelId);
+  const status = catalog?.find((model) => model.modelId === config.modelId) ?? null;
   const nativeEnabled = desktopNativeInferenceEnabled();
   const native = nativeEnabled ? await tryNativeEngine(path, opts, config, status, onWait) : {};
   if (native.result) {
@@ -334,7 +349,7 @@ export async function localTranscribePathResumable(
   client.attachProgress((progress, file) => reportModelProgress(onWait, progress, file));
   await runTranscriptionStage(t('模型加载'), () => client.ensureLoaded(config));
   await onCheckpoint({ ...checkpoint, providerStatus: 'processing' });
-  const result = await runTranscriptionStage(t('模型推理'), () => client.transcribe(samples, opts.languageCode ?? 'zh'));
+  const result = await runTranscriptionStage(t('模型推理'), () => client.transcribe(samples, asrLanguage(opts.languageCode)));
   await onCheckpoint({ ...checkpoint, providerStatus: 'completed' });
   return toTranscriptResult(result);
 }
@@ -362,8 +377,8 @@ export function __resetLocalAsrClient(): void {
 export async function warmUpLocalAsr(catalog?: readonly LocalAsrModelStatus[]): Promise<void> {
   try {
     const profile = await detectDeviceProfile();
-    const config = chooseAsrConfig(profile);
     const models = catalog ?? await fetchLocalAsrCatalog() ?? [];
+    const config = chooseAsrConfig(profile, models);
     const status = models.find((model) => model.modelId === config.modelId);
     if (!status) return;
     if (asrEngineReady(status, 'native') && await warmUpDesktopNativeAsr(config)) return;

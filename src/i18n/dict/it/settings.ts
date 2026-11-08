@@ -301,6 +301,7 @@ const overrides: Record<string, string> = {
 
   '本地模型按需安装，索引、转写和分析都在本机完成。': 'I modelli locali si installano su richiesta; indicizzazione, trascrizione e analisi restano su questo PC.',
   '转写语言': 'Lingua trascrizione',
+  '跟随界面语言': 'Segui la lingua dell’interfaccia',
   '说话人分离': 'Separazione parlanti',
   '本地模型（whisper）': 'Modello locale (Whisper)',
   '转写在本机完成：免费、离线、素材不出本机。模型需先下载，下载与删除在 本地模型 → 本地转写 页（点下方按钮前往）。自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。': 'La trascrizione avviene su questo PC: gratuita, offline, con media che non lasciano la macchina. I modelli vanno prima scaricati: si scaricano ed eliminano nella pagina Modelli locali → Trascrizione locale (usa il pulsante qui sotto). Se WebGPU non è disponibile torna alla CPU. La trascrizione locale non include la separazione parlanti.',

@@ -14,6 +14,7 @@ import {
 } from './assemblyai';
 import { localTranscribePathResumable } from './local-asr';
 import { genericCloudTranscribePath } from './generic-cloud-asr';
+import { getLocale } from '../i18n/locale';
 
 export const TRANSCRIPTION_PROVIDER_KEY = 'cc.transcriptionProvider';
 export const TRANSCRIPTION_LANGUAGE_KEY = 'cc.transcriptionLanguage';
@@ -69,7 +70,10 @@ export function preferredTranscriptionLanguage(): string {
   } catch {
     // SSR / private browsing: fall through to the default.
   }
-  return 'zh';
+  // No explicit setting: follow the app locale instead of assuming Chinese.
+  // English-locale users used to get their English audio misled into "zh" until
+  // they found the 转写语言 setting.
+  return getLocale();
 }
 
 export function preferredTranscriptionDiarization(): boolean {
