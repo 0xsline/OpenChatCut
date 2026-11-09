@@ -6,6 +6,7 @@
 
 import type { Plugin } from 'vite';
 import { parallelWebRequest } from './parallel-search.ts';
+import { keenableWebRequest } from './keenable-search.ts';
 import type { FirecrawlPluginOptions } from './firecrawl-shared.ts';
 import { notConfigured, readJsonBody, sendJson } from './firecrawl-shared.ts';
 import {
@@ -24,20 +25,24 @@ export function firecrawlPlugin(options: FirecrawlPluginOptions): Plugin {
     configureServer(server) {
       const log = (m: string) => server.config.logger.info(m);
       const key = options.apiKey;
-      // Parallel is opt-in: only the user's WEB_SEARCH_PROVIDER=parallel enables it,
-      // so neither an unconfigured install nor a tool call sends queries there.
+      // Parallel and Keenable are opt-in: only the user's WEB_SEARCH_PROVIDER
+      // setting enables them, so neither an unconfigured install nor a tool
+      // call sends queries there.
       const providerFor = (body: Record<string, unknown>): string => {
         const setting = options.searchProvider;
         if (setting === 'disabled') throw new Error('Web search and page reading are disabled.');
-        if (setting && setting !== 'parallel' && setting !== 'firecrawl') {
-          throw new Error('WEB_SEARCH_PROVIDER must be parallel, firecrawl or disabled.');
+        if (setting && setting !== 'parallel' && setting !== 'keenable' && setting !== 'firecrawl') {
+          throw new Error('WEB_SEARCH_PROVIDER must be parallel, keenable, firecrawl or disabled.');
         }
         const requested = body.provider;
-        if (requested !== undefined && requested !== 'parallel' && requested !== 'firecrawl') {
-          throw new Error('provider must be parallel or firecrawl.');
+        if (requested !== undefined && requested !== 'parallel' && requested !== 'keenable' && requested !== 'firecrawl') {
+          throw new Error('provider must be parallel, keenable or firecrawl.');
         }
         if (requested === 'parallel' && setting !== 'parallel') {
           throw new Error('Parallel is not enabled. The user can set WEB_SEARCH_PROVIDER=parallel to use it.');
+        }
+        if (requested === 'keenable' && setting !== 'keenable') {
+          throw new Error('Keenable is not enabled. The user can set WEB_SEARCH_PROVIDER=keenable to use it.');
         }
         return String(requested || setting || 'firecrawl');
       };
@@ -58,6 +63,23 @@ export function firecrawlPlugin(options: FirecrawlPluginOptions): Plugin {
           res.off('close', cancel);
         }
       };
+      const keenable = async (
+        res: import('node:http').ServerResponse,
+        operation: 'search' | 'fetch',
+        body: Record<string, unknown>,
+      ) => {
+        const abort = new AbortController();
+        const cancel = () => { if (!res.writableEnded) abort.abort(); };
+        res.on('close', cancel);
+        const timeoutMs = operation === 'fetch' && typeof body.timeout === 'number' && Number.isFinite(body.timeout)
+          ? Math.max(1, Math.min(60_000, Math.round(body.timeout))) : 45_000;
+        const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(timeoutMs)]);
+        try {
+          sendJson(res, 200, await keenableWebRequest(operation, body, signal, options.keenableApiKey));
+        } finally {
+          res.off('close', cancel);
+        }
+      };
 
       server.middlewares.use('/api/web-browser', async (req, res) => {
         if (req.method !== 'POST') {
@@ -66,7 +88,9 @@ export function firecrawlPlugin(options: FirecrawlPluginOptions): Plugin {
         }
         try {
           const body = (await readJsonBody(req)) as Record<string, unknown>;
-          if (providerFor(body) === 'parallel') return await parallel(res, 'fetch', body);
+          const provider = providerFor(body);
+          if (provider === 'parallel') return await parallel(res, 'fetch', body);
+          if (provider === 'keenable') return await keenable(res, 'fetch', body);
           if (notConfigured(res, options.apiKey)) return;
           await handleScrape(options.apiKey, body, res, log);
         } catch (error) {
@@ -83,7 +107,9 @@ export function firecrawlPlugin(options: FirecrawlPluginOptions): Plugin {
         }
         try {
           const body = (await readJsonBody(req)) as Record<string, unknown>;
-          if (providerFor(body) === 'parallel') return await parallel(res, 'search', body);
+          const provider = providerFor(body);
+          if (provider === 'parallel') return await parallel(res, 'search', body);
+          if (provider === 'keenable') return await keenable(res, 'search', body);
           if (notConfigured(res, options.apiKey)) return;
           await handleSearch(options.apiKey, body, res);
         } catch (error) {

@@ -594,18 +594,23 @@ Third-party components and assets remain subject to their respective licenses.
 ## Web research in the built-in agent
 
 `web_search` and basic `web_browser` page reading use Firecrawl, which needs a
-`FIRECRAWL_API_KEY`. To use [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
-instead, which needs no account or API key, set `WEB_SEARCH_PROVIDER=parallel` in
-`.env.local` and restart. Parallel search returns source URLs, titles and relevant
-excerpts; its page reading returns markdown excerpts rather than full-page HTML or
-screenshots. Queries and requested URLs are sent to the selected provider. Anonymous
-access has service quotas; provider errors are returned without switching providers.
+`FIRECRAWL_API_KEY`. To use a provider that needs no account or API key, set
+`WEB_SEARCH_PROVIDER` in `.env.local` and restart: `parallel` for
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp), or
+`keenable` for [Keenable](https://docs.keenable.ai). Keenable search returns
+source URLs, titles and markdown snippets, and its page reading returns the page
+as markdown. Parallel search returns URLs, titles and relevant excerpts, and its
+page reading returns markdown excerpts. Queries and requested URLs are sent to the
+selected provider. Anonymous access has per-IP quotas; provider errors are returned
+without switching providers. An optional `KEENABLE_API_KEY` only lifts Keenable's
+anonymous rate limits; Keenable works without it.
 
 Leaving `WEB_SEARCH_PROVIDER` empty or setting `firecrawl` keeps Firecrawl, and
 `disabled` turns basic search and page reading off. A tool call can pick
-`provider: "firecrawl"`, and `"parallel"` only once Parallel is enabled. Search
-locale and time filters, screenshots, browser actions, structured extraction,
-full-page formats, mapping, crawling and batch scraping always need Firecrawl and its key.
+`provider: "firecrawl"`, and `"parallel"`/`"keenable"` only once that provider is
+enabled. Search locale and time filters, screenshots, browser actions, structured
+extraction, full-page formats, mapping, crawling and batch scraping always need
+Firecrawl and its key.
 
 Related search and page-reading calls reuse an opaque conversation ID. Clearing
 the chat starts a new ID; the project ID and chat text are never used as that ID.

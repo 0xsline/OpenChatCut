@@ -37,8 +37,10 @@ export const MAX_BODY = 2 * 1024 * 1024;
 
 export interface FirecrawlPluginOptions {
   apiKey: string;
-  /** Empty or "firecrawl" selects Firecrawl; "parallel" opts into anonymous Parallel; "disabled" turns basic search off. */
+  /** Empty or "firecrawl" selects Firecrawl; "parallel"/"keenable" opt into the anonymous providers; "disabled" turns basic search off. */
   searchProvider?: string;
+  /** Optional Keenable key: only lifts the anonymous rate limits; absent = Keenable's keyless public endpoints. */
+  keenableApiKey?: string;
 }
 
 export function readJsonBody(req: IncomingMessage): Promise<unknown> {

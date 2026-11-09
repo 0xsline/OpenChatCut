@@ -53,6 +53,7 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
   setItem: (key: string, value: string) => { memory.set(key, value); },
 } });
 const outgoing: { url: string; headers: Headers; message: Record<string, unknown> }[] = [];
+const keenableCalls: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
 let responseMode: 'ok' | 'quota' | 'error' | 'invalid' | 'wait' = 'ok';
 let firecrawlRequests = 0;
 let observedAbort = false;
@@ -67,6 +68,26 @@ globalThis.fetch = async (input, init) => {
     firecrawlRequests += 1;
     assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer saved-firecrawl-key');
     return Response.json({ data: [{ url: 'https://example.com/firecrawl', title: 'Configured Firecrawl', markdown: 'Saved provider content' }] });
+  }
+  if (url.startsWith('https://api.keenable.ai/')) {
+    // Real Keenable response shapes: search returns ranked snippet results;
+    // fetch returns the page as markdown with a title.
+    const headers = new Headers(init?.headers);
+    const body = init?.method === 'POST' ? JSON.parse(String(init.body ?? '{}')) as Record<string, unknown> : {};
+    keenableCalls.push({ url, headers, body });
+    if (url.includes('/v1/search')) {
+      return Response.json({
+        query: body.query, mode: 'pro',
+        results: [{
+          title: 'Keenable source', url: 'https://example.com/keenable', description: '',
+          snippet: 'A Keenable markdown excerpt.', published_at: '2026-10-30T00:00:00Z',
+        }],
+      });
+    }
+    return Response.json({
+      url: 'https://example.com/keenable', title: 'Keenable page',
+      content: '# Keenable page\n\nMarkdown body from Keenable.',
+    });
   }
   assert.equal(url, 'https://search.parallel.ai/mcp');
   const headers = new Headers(init?.headers);
@@ -184,6 +205,36 @@ try {
   assert.equal((await invoke('web_search', { query: 'disabled', provider: 'parallel' })).success, false);
   provider = 'invalid-provider';
   assert.equal((await invoke('web_search', { query: 'invalid setting' })).success, false);
+  // Keenable opt-in: keyless search and a plain markdown page read go to the public
+  // endpoints with the app-identifier header and no credentials.
+  provider = 'keenable';
+  const keenableSearch = await invoke('web_search', { query: 'keenable keyless research', limit: 2 });
+  assert.equal(keenableSearch.success, true);
+  assert.match(JSON.stringify(keenableSearch.result), /Keenable source.*Keenable markdown excerpt/);
+  assert.equal((keenableSearch.result as { provider: string }).provider, 'keenable');
+  const keenableSearchCall = keenableCalls.at(-1)!;
+  assert.equal(keenableSearchCall.url, 'https://api.keenable.ai/v1/search/public');
+  assert.equal(keenableSearchCall.headers.get('X-Keenable-Title'), 'OpenChatCut');
+  assert.equal(keenableSearchCall.headers.get('X-API-Key'), null, 'keyless Keenable sends no credential');
+  assert.match(keenableSearchCall.headers.get('X-Keenable-Session-Id') ?? '', /^[a-f0-9-]{36}$/);
+  assert.deepEqual(keenableSearchCall.body, { query: 'keenable keyless research', max_results: 2 });
+  const keenablePage = await invoke('web_browser', { url: 'https://example.com/keenable' });
+  assert.equal(keenablePage.success, true);
+  assert.match(JSON.stringify(keenablePage.result), /Markdown body from Keenable/);
+  assert.equal((keenablePage.result as { provider: string }).provider, 'keenable');
+  const keenableFetchCall = keenableCalls.at(-1)!;
+  assert.equal(keenableFetchCall.url,
+    'https://api.keenable.ai/v1/fetch/public?url=https%3A%2F%2Fexample.com%2Fkeenable');
+  assert.equal(keenableFetchCall.headers.get('X-API-Key'), null);
+  // Keenable cannot serve Firecrawl-only options: nothing leaves for it.
+  const beforeKeenable = keenableCalls.length;
+  assert.equal((await invoke('web_browser', { url: 'https://example.com/keenable', formats: ['screenshot'] })).success, false);
+  assert.equal((await invoke('web_search', { query: 'keenable filtered', country: 'US' })).success, false);
+  assert.equal(keenableCalls.length, beforeKeenable, 'unsupported options never reach Keenable');
+  // A tool call cannot enable Keenable on its own.
+  provider = '';
+  assert.equal((await invoke('web_search', { query: 'keenable unselected', provider: 'keenable' })).success, false);
+  assert.equal(keenableCalls.length, beforeKeenable, 'a tool call cannot enable Keenable on its own');
   provider = 'parallel';
   const beforeRejected = outgoing.length;
   assert.equal((await invoke('web_browser', { url: 'file:///etc/passwd' })).success, false);

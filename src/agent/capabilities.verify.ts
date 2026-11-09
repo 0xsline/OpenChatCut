@@ -136,10 +136,12 @@ console.log('capabilities.verify: ok');
 applyLiveModels({ WEB_SEARCH_PROVIDER: 'disabled' });
 assert.match(capabilitiesPrompt(ALL_OFF), /page reading are disabled by the server/);
 applyLiveModels({});
-assert.match(capabilitiesPrompt(ALL_OFF), /use Firecrawl and require FIRECRAWL_API_KEY\. Anonymous Parallel Search MCP is used only when the user sets WEB_SEARCH_PROVIDER=parallel/,
-  'Parallel stays opt-in when the setting is empty');
+assert.match(capabilitiesPrompt(ALL_OFF), /use Firecrawl and require FIRECRAWL_API_KEY\. The anonymous Parallel Search MCP and keyless Keenable are used only when the user sets WEB_SEARCH_PROVIDER=parallel or keenable/,
+  'keyless providers stay opt-in when the setting is empty');
 applyLiveModels({ WEB_SEARCH_PROVIDER: 'firecrawl' });
 assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use Firecrawl and require FIRECRAWL_API_KEY/);
 applyLiveModels({ WEB_SEARCH_PROVIDER: 'parallel' });
 assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use anonymous Parallel/);
+applyLiveModels({ WEB_SEARCH_PROVIDER: 'keenable' });
+assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use Keenable without a search key/);
 applyLiveModels({});

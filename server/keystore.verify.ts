@@ -14,6 +14,16 @@ import { parseEnvText } from '../desktop/env-file.ts';
 
 const isolatedSeed = Object.fromEntries(KEY_NAMES.map((name) => [name, '']));
 
+// ── Keenable: secret key whitelisted but never echoed; optional key only lifts rate limits ──
+assert.ok((KEY_NAMES as readonly string[]).includes('KEENABLE_API_KEY'), 'KEENABLE_API_KEY is whitelisted (settable via POST /api/keys)');
+assert.ok(!NON_SECRET_NAMES.has('KEENABLE_API_KEY'), 'KEENABLE_API_KEY stays SECRET (never reaches the browser)');
+seedKeystore({ ...isolatedSeed, KEENABLE_API_KEY: 'keen-secret-x' } as Record<string, string>);
+const keenableStatus = keyStatus();
+assert.equal(keenableStatus.keys.KEENABLE_API_KEY.configured, true, 'Keenable key reported as configured');
+assert.ok(!JSON.stringify(keenableStatus).includes('keen-secret-x'), 'Keenable secret appears NOWHERE in the serialized status');
+seedKeystore({ ...isolatedSeed, WEB_SEARCH_PROVIDER: 'keenable' } as Record<string, string>);
+assert.equal(keyStatus().models.WEB_SEARCH_PROVIDER, 'keenable', 'keenable routing choice is echoed as non-secret config');
+
 // ── Legacy unit group migration: only migrate if the current provider has no proprietary configuration; if there is any proprietary value, skip it altogether ──
 {
   const mk = (entries: Record<string, string>) => {

@@ -291,8 +291,19 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
                 '默认模板不带 ffmpeg；转码 / 抽帧类任务需自建含 ffmpeg 的模板并填其 ID。'),
             ] },
         ] },
-      { key: 'web', title: '网页抓取', hint: 'web_browser · 抓取网页内容供 Agent 参考。',
+      { key: 'web', title: '网页抓取', hint: 'web_browser · web_search · 网页检索与抓取（Keenable 免 Key）。',
+        route: routeSelect('WEB_SEARCH_PROVIDER', [
+          { value: 'parallel', label: 'Parallel' },
+          { value: 'keenable', label: 'Keenable' },
+          { value: 'firecrawl', label: 'Firecrawl' },
+        ], 'Firecrawl（默认）'),
         vendors: [
+          { key: 'web/keenable', vendor: 'keenable', title: 'Keenable',
+            note: '免账号、免 API Key 的网页检索与阅读：web_search 返回标题、URL 和摘要，web_browser 返回页面 Markdown。'
+              + '在「搜索 / 网页阅读」中选择 Keenable 后，无需填 Key 即可用；匿名接口按 IP 限流（每秒 10 次、每小时 1000 次）。'
+              + '可选填 Keenable API Key 仅用于提升限流，不填也能用。截图、页面动作、结构化提取、'
+              + '其它格式与站点映射/爬取/批量抓取始终走 Firecrawl。',
+            fields: [secret('KEENABLE_API_KEY', 'API Key（可选，仅提升限流）')] },
           { key: 'web/firecrawl', vendor: 'firecrawl', title: 'Firecrawl',
             fields: [secret('FIRECRAWL_API_KEY', 'API Key')] },
         ] },
