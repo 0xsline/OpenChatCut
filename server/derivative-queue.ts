@@ -8,7 +8,10 @@ export interface DerivativeLease<T> {
   release: () => void;
 }
 
-type JobState = 'queued' | 'running' | 'done';
+// 'cancelled' is the gap between "the last consumer left" and "the killed child
+// process actually exited": the job is no longer joinable, but the queue slot is
+// still held and its promise is still going to reject with AbortError.
+type JobState = 'queued' | 'running' | 'cancelled' | 'done';
 
 interface Job<T> {
   key: string;
@@ -77,8 +80,14 @@ export class DerivativeQueue {
 
   private release(job: Job<unknown>): void {
     job.consumers = Math.max(0, job.consumers - 1);
-    if (job.consumers || job.state === 'done') return;
+    if (job.consumers || job.state === 'done' || job.state === 'cancelled') return;
     if (job.state === 'running') {
+      // Unregister before aborting. A page reload / remount that retries the same
+      // cache key arrives while ffmpeg is still dying; if the job stayed in the
+      // map, that live request would attach to this promise and be handed its
+      // AbortError (a 500 on a cold load) instead of a fresh build.
+      job.state = 'cancelled';
+      if (this.jobs.get(job.key) === job) this.jobs.delete(job.key);
       job.controller.abort();
       return;
     }
