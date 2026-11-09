@@ -162,7 +162,38 @@
   },
   "overrides": {
     "onnxruntime-web": "1.29.0",
-    "adm-zip": "0.6.0",
-    "sharp": "0.35.0"
+    "adm-zip": "0.6.1",
+    "sharp": "0.35.0",
+    "body-parser": "2.4.0",
+    "qs": "6.17.1",
+    "hono": "4.13.17",
+    "@hono/node-server": "2.1.6",
+    "ip-address": "10.7.6",
+    "fast-uri": "3.1.9",
+    "postcss-selector-parser": "7.2.0",
+    "e2b": "2.63.0",
+    "@ai-sdk/provider-utils": {
+      "undici": "7.30.2"
+    },
+    "@electron/get": {
+      "undici": "7.30.2"
+    },
+    "@electron/rebuild": {
+      "node-gyp": {
+        "undici": "6.29.1"
+      }
+    },
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.21"
+    },
+    "minimatch@5.1.9": {
+      "brace-expansion": "2.1.7"
+    },
+    "minimatch@9.0.9": {
+      "brace-expansion": "2.1.7"
+    },
+    "minimatch@10.2.5": {
+      "brace-expansion": "5.0.12"
+    }
   }
 }
