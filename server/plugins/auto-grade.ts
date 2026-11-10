@@ -54,7 +54,7 @@ function readJson(req: IncomingMessage): Promise<unknown> {
 
 function runCapture(command: string, args: string[], timeoutMs = PROCESS_TIMEOUT_MS): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';
     let stderr = '';
     let settled = false;

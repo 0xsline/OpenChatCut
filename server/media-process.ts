@@ -26,6 +26,13 @@ export function ffmpegThreadArgs(cores: number = availableParallelism()): string
   return ['-threads', String(ffmpegThreadCount(cores))];
 }
 
+/** Merge spawn options with windowsHide: the packaged desktop app is a GUI
+ * process with no console, so every unhidden ffmpeg/ffprobe child would pop
+ * its own console window. */
+export function withWindowsHide(options: SpawnOptions = {}): SpawnOptions {
+  return { ...options, windowsHide: true };
+}
+
 /**
  * Spawn a media tool (ffmpeg/ffprobe) at below-normal OS priority so import,
  * normalization, preview derivatives and export never compete with the user's
@@ -56,7 +63,7 @@ export function spawnMediaProcess(
   args: string[],
   options: SpawnOptions = {},
 ): ChildProcess {
-  const child = spawn(command, args, options);
+  const child = spawn(command, args, withWindowsHide(options));
   if (child.pid !== undefined) {
     try {
       setPriority(child.pid, constants.priority.PRIORITY_BELOW_NORMAL);

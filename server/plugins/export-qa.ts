@@ -77,7 +77,7 @@ function uploadNameFromSrc(src: string): string | null {
 
 function runProcess(command: string, args: string[], timeoutMs = PROCESS_TIMEOUT_MS): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
