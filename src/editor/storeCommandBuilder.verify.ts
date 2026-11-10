@@ -42,4 +42,20 @@ for (const overwrite of [false, true]) {
     assert.deepEqual(historyReduce(history, { type: 'undo' }).present, initial);
   }
 }
+// A text clip's layout box must default to the active canvas, not a hardcoded
+// 16:9 box: on a 9:16 canvas the hardcoded box cover-scales 1.78x and clips
+// long lines, or contain-scales to 56% and shrinks the authored font size.
+{
+  const vertical = project('video');
+  vertical.timelines[0].width = 1080;
+  vertical.timelines[0].height = 1920;
+  let history = { past: [] as ProjectDoc[], present: vertical, future: [] as ProjectDoc[] };
+  const commands = buildCommands((action) => { history = historyReduce(history, action); }, () => history.present);
+  commands.addTextClip({ text: 'title', startFrame: 0, durationInFrames: 90 });
+  const item = history.present.timelines[0].items[0];
+  assert.equal(item.kind, 'text');
+  assert.equal(item.width, 1080, 'text box width defaults to the canvas width');
+  assert.equal(item.height, 1920, 'text box height defaults to the canvas height');
+}
+
 console.log('storeCommandBuilder.verify: overwrite and normal placement retain tracks, order, assets, and single-step undo');
