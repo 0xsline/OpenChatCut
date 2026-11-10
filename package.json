@@ -115,12 +115,12 @@
     "@huggingface/transformers": "^4.2.0",
     "@mediapipe/tasks-vision": "^1.1.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "@remotion/bundler": "4.0.537",
-    "@remotion/google-fonts": "4.0.537",
-    "@remotion/media": "4.0.537",
-    "@remotion/player": "4.0.537",
-    "@remotion/renderer": "4.0.537",
-    "@remotion/web-renderer": "4.0.537",
+    "@remotion/bundler": "4.0.542",
+    "@remotion/google-fonts": "4.0.542",
+    "@remotion/media": "4.0.542",
+    "@remotion/player": "4.0.542",
+    "@remotion/renderer": "4.0.542",
+    "@remotion/web-renderer": "4.0.542",
     "@smithy/node-http-handler": "^4.12.1",
     "@xmldom/xmldom": "0.9.12",
     "ai": "^7.0.148",
@@ -140,7 +140,7 @@
     "react-dom": "^19.3.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "remotion": "4.0.537",
+    "remotion": "4.0.542",
     "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
@@ -162,7 +162,39 @@
   },
   "overrides": {
     "onnxruntime-web": "1.29.0",
-    "adm-zip": "0.6.0",
-    "sharp": "0.35.0"
+    "adm-zip": "0.6.1",
+    "sharp": "^0.35.5",
+    "proxy-addr": "2.0.8",
+    "body-parser": "2.4.0",
+    "qs": "6.17.1",
+    "hono": "4.13.17",
+    "@hono/node-server": "2.1.6",
+    "ip-address": "10.7.6",
+    "fast-uri": "3.1.9",
+    "postcss-selector-parser": "7.2.0",
+    "e2b": "2.63.0",
+    "@ai-sdk/provider-utils": {
+      "undici": "7.30.2"
+    },
+    "@electron/get": {
+      "undici": "7.30.2"
+    },
+    "@electron/rebuild": {
+      "node-gyp": {
+        "undici": "6.29.1"
+      }
+    },
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.21"
+    },
+    "minimatch@5.1.9": {
+      "brace-expansion": "2.1.7"
+    },
+    "minimatch@9.0.9": {
+      "brace-expansion": "2.1.7"
+    },
+    "minimatch@10.2.5": {
+      "brace-expansion": "5.0.12"
+    }
   }
 }
