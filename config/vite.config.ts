@@ -151,6 +151,10 @@ export default defineConfig(({ mode }) => {
     publicDir: 'public',
     plugins: [serveOrtWasmLoader(), react(), productAssetsPlugin(), excludeUserMediaFromBuild(), ...serverPlugins()],
     server: {
+      // Windows: Node/undici (Claude Code's MCP client) cannot connect to IPv6
+      // loopback ::1 (EACCES). Vite's default host 'localhost' resolves to ::1
+      // here, so bind explicitly to IPv4 to keep the MCP client working.
+      host: '127.0.0.1',
       port: 5199,
       strictPort: true,
       // Pre-transform the editor entry graph at startup so the first tab
