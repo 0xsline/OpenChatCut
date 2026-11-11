@@ -26,6 +26,8 @@ const {
 const EXPECTED_PAGES = [
   ...LLM_PROVIDER_PRESETS.map((preset) => `llm/${preset.id}`),
   'image/openai', 'image/gemini', 'image/minimax', 'image/wavespeed', 'image/byteplus', 'image/xai', 'image/agnes',
+  'image/fal', 'video/fal', 'video/gemini-omni', 'transcription/local',
+  'sound/elevenlabs', 'sound/sonilo',
   'voice/elevenlabs', 'voice/openai', 'voice/gemini', 'voice/mistral', 'voice/cartesia',
   'voice/doubao', 'voice/minimax', 'voice/inworld', 'voice/fishaudio', 'voice/speechify',
   'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus', 'video/xai', 'video/ofox', 'video/agnes',

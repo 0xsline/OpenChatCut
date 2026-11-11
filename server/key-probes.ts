@@ -33,6 +33,7 @@ import {
   type ProbeResult,
 } from './key-probe-result.ts';
 import { PROBE_TIMEOUT_MS, runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
+import { falProbe, localAsrProbe } from './key-probe-media.ts';
 export { classifyStatus, networkMessage, parseModelCatalog, type ProbeResult } from './key-probe-result.ts';
 export { doubaoPostCheck, minimaxPostCheck } from './key-probe-result.ts';
 export { runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
@@ -72,7 +73,7 @@ const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Respo
 
 type Get = (name: KeyName) => string;
 
-interface ProbeDef {
+export interface ProbeDef {
   /** Starting test threshold: OR of AND-groups (every name in one inner list must be present) */
   readonly needs: readonly (readonly KeyName[])[];
   readonly run: (get: Get) => Promise<Response>;
@@ -242,6 +243,15 @@ const cheaperInferenceProbe: ProbeDef = {
   models: parseTextModelCatalog,
 };
 
+// Read-only account endpoint; a fake key → 401. The same key also serves
+// /generate/sound (video-to-SFX), so one probe covers both capability pages.
+const soniloProbe: ProbeDef = {
+  needs: [['SONILO_API_KEY']],
+  run: (get) => fetch(`${base(get, 'SONILO_BASE_URL', 'https://api.sonilo.com')}/v1/account/services`, {
+    signal: t(), headers: bearer(get('SONILO_API_KEY')),
+  }),
+};
+
 
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
@@ -268,6 +278,8 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
     models: parseModelCatalog,
   },
+  // Fal has no read-only auth endpoint; Gemini Omni reuses the cheap model list.
+  'image/fal': falProbe, 'video/fal': falProbe, 'video/gemini-omni': geminiMediaProbe, 'transcription/local': localAsrProbe,
   'image/wavespeed': {
     needs: [['WAVESPEED_API_KEY']],
     run: (get) => fetch(`${base(get, 'WAVESPEED_BASE_URL', 'https://api.wavespeed.ai')}/api/v3/balance`, {
@@ -356,14 +368,7 @@ export const PROBES: Record<string, ProbeDef> = {
   },
   'music/minimax': minimaxProbe,
   'music/atlas': atlasMusicProbe,
-  // Read-only account endpoint; fake key → 401. The same key also serves
-  // /generate/sound (video-to-SFX), so one probe covers both capabilities.
-  'music/sonilo': {
-    needs: [['SONILO_API_KEY']],
-    run: (get) => fetch(`${base(get, 'SONILO_BASE_URL', 'https://api.sonilo.com')}/v1/account/services`, {
-      signal: t(), headers: bearer(get('SONILO_API_KEY')),
-    }),
-  },
+  'music/sonilo': soniloProbe, 'sound/sonilo': soniloProbe, 'sound/elevenlabs': elevenLabsProbe,
   // /v1/search has been opened to anonymous users (the measured number is 200 without key), and the key; collections cannot be detected
   // It is the account binding endpoint, and the fake key is stable 401.
   'stock/pexels': {

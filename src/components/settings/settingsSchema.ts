@@ -234,6 +234,24 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
               text('SONILO_BASE_URL', 'Base URL', '默认 https://api.sonilo.com'),
             ] },
         ] },
+      { key: 'sound', title: '音效 / SFX',
+        hint: 'submit_sound · 文字生成音效，或按成片生成音效，任一厂商即可。',
+        vendors: [
+          { key: 'sound/elevenlabs', vendor: 'elevenlabs', title: 'ElevenLabs',
+            note: '与「配音 / TTS」共用 ELEVENLABS_API_KEY；eleven_text_to_sound_v2 支持 loop 循环与 0.5–30 秒时长。',
+            fields: [
+              secret('ELEVENLABS_API_KEY', 'API Key'),
+              text('ELEVENLABS_BASE_URL', 'Base URL', '默认 https://api.elevenlabs.io'),
+              modelPicker('ELEVENLABS_SOUND_MODEL', '音效模型', 'eleven_text_to_sound_v2',
+                ['eleven_text_to_sound_v2']),
+            ] },
+          { key: 'sound/sonilo', vendor: 'sonilo', title: 'Sonilo',
+            note: '按成片生成音效：把渲染好的视频交给 Sonilo，免版税、可商用（以条款为准）；同一个 Key 也用于按成片生成配乐。',
+            fields: [
+              secret('SONILO_API_KEY', 'API Key'),
+              text('SONILO_BASE_URL', 'Base URL', '默认 https://api.sonilo.com'),
+            ] },
+        ] },
     ],
   },
   {
@@ -305,6 +323,8 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             fields: [
               secret('UPLOAD_POST_API_KEY', 'API Key'),
               text('UPLOAD_POST_PROFILE', 'Profile', undefined, '在 Upload-Post 控制台创建、已连接社交账号的 Profile 名称。'),
+              text('UPLOAD_POST_BASE_URL', 'Base URL', '默认 https://api.upload-post.com',
+                '自建 / 代理部署时填写自己的 Upload-Post 地址。'),
             ] },
         ] },
     ],
