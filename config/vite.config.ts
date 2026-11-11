@@ -143,7 +143,9 @@ export default defineConfig(({ mode }) => {
         stock: Boolean(pexelsKey || pixabayKey || unsplashKey || freesoundKey),
         transcription: Boolean(aaiKey),
         sandbox: Boolean(e2bKey),
-        web: Boolean(firecrawlKey),
+        // Mirrors computeCaps(): Parallel is keyless, "disabled" switches web off.
+        web: getKey('WEB_SEARCH_PROVIDER') !== 'disabled'
+          && (Boolean(firecrawlKey) || getKey('WEB_SEARCH_PROVIDER') === 'parallel'),
       }),
     },
     // public/ = user runtime only (media/uploads). Product static files live in assets/

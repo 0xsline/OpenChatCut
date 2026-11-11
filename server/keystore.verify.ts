@@ -113,6 +113,14 @@ assert.equal(keyStatus().caps.video, false, 'unconfigured OFox leaves existing v
 seedKeystore({ ...isolatedSeed, LLM_OFOX_API_KEY: 'ofox-test-key' });
 assert.equal(keyStatus().caps.video, true, 'OFox alone enables video generation');
 assert.equal(keyStatus().caps.image, false, 'OFox does not enable unimplemented image generation');
+// Basic web research: Parallel is keyless, so the capability must not key off Firecrawl alone.
+seedKeystore({ ...isolatedSeed, WEB_SEARCH_PROVIDER: 'parallel' });
+assert.equal(keyStatus().caps.web, true, 'keyless Parallel makes web tools available with no key');
+seedKeystore({ ...isolatedSeed, WEB_SEARCH_PROVIDER: 'firecrawl' });
+assert.equal(keyStatus().caps.web, false, 'explicit Firecrawl without a key stays unconfigured');
+seedKeystore({ ...isolatedSeed, FIRECRAWL_API_KEY: 'fc-test-key', WEB_SEARCH_PROVIDER: 'disabled' });
+assert.equal(keyStatus().caps.web, false, 'disabling the web provider turns it off even with a Firecrawl key');
+assert.ok(!JSON.stringify(keyStatus()).includes('fc-test-key'), 'web capability status leaks no key value');
 seedKeystore({ ...isolatedSeed, FAL_KEY: 'fal-secret', FAL_IMAGE_MODEL: 'nano-banana-2', FAL_VIDEO_MODEL: 'seedance-2.5' } as Record<string, string>);
 const falStatus = keyStatus();
 assert.equal(falStatus.models.FAL_IMAGE_MODEL, 'nano-banana-2');
