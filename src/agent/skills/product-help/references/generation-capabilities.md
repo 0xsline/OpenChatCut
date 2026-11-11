@@ -34,7 +34,7 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 | `minimax` | Curated system voices; voice/audio settings, language/normalization, pronunciation, timbre mix, voice modify/effects, subtitles |
 | `inworld`, `fishaudio`, `speechify` | Account/provider voice ID plus optional model ID only; no bundled OpenChatCut samples |
 | `openai` | AI SDK speech; configured model defaults to `gpt-4o-mini-tts`; model/speed/output/instructions |
-| `gemini` | AI SDK speech; configured model defaults to `gemini-2.5-flash-preview-tts`; model/output/instructions |
+| `gemini` | AI SDK speech; configured model defaults to `gemini-3.8-flash-tts`; model/output/instructions |
 | `mistral` | AI SDK speech; configured model defaults to `voxtral-mini-tts-2603`; model/output |
 | `cartesia` | AI SDK speech; configured model defaults to `sonic-3`; model/speed/language/output |
 
