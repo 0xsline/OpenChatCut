@@ -143,3 +143,19 @@ assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use Firecrawl and require 
 applyLiveModels({ WEB_SEARCH_PROVIDER: 'parallel' });
 assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use anonymous Parallel/);
 applyLiveModels({});
+
+// ── stock routing names the tool's real argument and explains Firecrawl's fallback ──
+applyLiveKeyStatus({ PEXELS_API_KEY: { configured: true } });
+const stock = capabilitiesPrompt({ ...ALL_OFF, stock: true });
+assert.ok(stock.includes('Pexels(platforms=pexels) — use it directly'),
+  'stock routing names platforms=, the argument search_stock_media accepts');
+assert.ok(!stock.includes('Pexels(provider=pexels)'),
+  'no stock routing tag names a provider arg the tool does not accept');
+
+applyLiveKeyStatus({ FIRECRAWL_API_KEY: { configured: true } });
+const firecrawlStock = capabilitiesPrompt({ ...ALL_OFF, stock: true });
+assert.ok(firecrawlStock.includes('only FIRECRAWL_API_KEY is configured'),
+  'a Firecrawl-only stock setup explains its fallback role instead of listing no provider');
+assert.ok(firecrawlStock.includes('do not pass platforms=firecrawl'),
+  'Firecrawl is not advertised as a platforms value');
+applyLiveKeyStatus({});

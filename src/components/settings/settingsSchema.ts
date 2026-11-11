@@ -294,6 +294,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       { key: 'web', title: '网页抓取', hint: 'web_browser · 抓取网页内容供 Agent 参考。',
         vendors: [
           { key: 'web/firecrawl', vendor: 'firecrawl', title: 'Firecrawl',
+            note: '同一个 Key 也给「在线图库」兜底：官方图库没搜到的图片由 Firecrawl 补上，未配置 Pixabay 时也会补视频。它不是图库的 provider / platforms 值，搜图时不用填写。',
             fields: [secret('FIRECRAWL_API_KEY', 'API Key')] },
         ] },
       { key: 'publish', title: '发布到社交平台', hint: 'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。',

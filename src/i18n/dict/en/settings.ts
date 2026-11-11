@@ -36,6 +36,8 @@ export default {
   '增强工具': 'Power Tools',
   '沙箱执行': 'Sandbox Execution',
   '网页抓取': 'Web Scraping',
+  '同一个 Key 也给「在线图库」兜底：官方图库没搜到的图片由 Firecrawl 补上，未配置 Pixabay 时也会补视频。它不是图库的 provider / platforms 值，搜图时不用填写。':
+    'The same key also backs Stock Media: Firecrawl fills image searches the official stock platforms did not return, and supplies video when Pixabay is not configured. It is not a stock provider/platforms value, so leave it out of stock searches.',
   '发布到社交平台': 'Social Publishing',
   'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。': 'publish_to_social · Publish finished exports to TikTok, Instagram, YouTube and more.',
   '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。':

@@ -56,7 +56,7 @@ export function applyLiveModels(models: Record<string, string>): void {
 // Which vendors light up a capability: `arg` is the EXACT tool-arg value that selects
 // the vendor (and what PREFERRED_*_VENDOR stores); `need` = OR of AND-groups of key
 // names (mirrors keystore computeCaps). An empty AND-group marks a keyless local provider.
-interface ProviderRow { label: string; arg: string; argKey: 'model' | 'provider'; need: string[][] }
+interface ProviderRow { label: string; arg: string; argKey: 'model' | 'provider' | 'platforms'; need: string[][] }
 const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   image: [
     { label: 'Fal.ai', arg: 'fal', argKey: 'model', need: [['FAL_KEY']] },
@@ -102,10 +102,12 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Sonilo', arg: 'sonilo', argKey: 'provider', need: [['SONILO_API_KEY']] },
   ],
   stock: [
-    { label: 'Pexels', arg: 'pexels', argKey: 'provider', need: [['PEXELS_API_KEY']] },
-    { label: 'Pixabay', arg: 'pixabay', argKey: 'provider', need: [['PIXABAY_API_KEY']] },
-    { label: 'Unsplash', arg: 'unsplash', argKey: 'provider', need: [['UNSPLASH_ACCESS_KEY']] },
-    { label: 'Freesound', arg: 'freesound', argKey: 'provider', need: [['FREESOUND_API_KEY']] },
+    // search_stock_media takes `platforms` (comma-separated), not `provider`; a
+    // routing tag naming the wrong argument was silently ignored by the tool.
+    { label: 'Pexels', arg: 'pexels', argKey: 'platforms', need: [['PEXELS_API_KEY']] },
+    { label: 'Pixabay', arg: 'pixabay', argKey: 'platforms', need: [['PIXABAY_API_KEY']] },
+    { label: 'Unsplash', arg: 'unsplash', argKey: 'platforms', need: [['UNSPLASH_ACCESS_KEY']] },
+    { label: 'Freesound', arg: 'freesound', argKey: 'platforms', need: [['FREESOUND_API_KEY']] },
   ],
   transcription: [
     { label: 'AssemblyAI', arg: 'assemblyai', argKey: 'provider', need: [['ASSEMBLYAI_API_KEY']] },
@@ -156,6 +158,20 @@ function doubaoSpeakerSuffix(): string {
   return speaker
     ? `\nDoubao default speaker ID: ${speaker}. For provider=doubao pass it verbatim as voiceId unless the user explicitly names another voice; no audition is needed.`
     : '';
+}
+
+/**
+ * Firecrawl also fills visual stock searches: stock.ts asks it for images when
+ * the official image platforms return nothing, and for pixabay video when that
+ * platform is unconfigured. It is not a `platforms` value, so a key-only setup
+ * has no row in the stock list above and would otherwise look like "search is
+ * on but no source is configured".
+ */
+function stockFirecrawlSuffix(): string {
+  if (!liveKeys?.FIRECRAWL_API_KEY?.configured) return '';
+  if (configuredProviders('stock').length > 0) return '';
+  return '\nStock search: only FIRECRAWL_API_KEY is configured. Call search_stock_media without platforms —'
+    + ' Firecrawl fills eligible image searches and the pixabay video fallback; do not pass platforms=firecrawl.';
 }
 
 /** Routing suffix for an ON capability, mode-aware:
@@ -209,7 +225,7 @@ export function capabilitiesPrompt(
   }
   return `\n\n# Available capabilities (based on configured API keys; local editing is always available without keys)\n`
     + `✅ Configured: ${on.length ? on.join(', ') : '(no key-gated capabilities)'}.\n`
-    + falModelSuffix('image') + falModelSuffix('video') + doubaoSpeakerSuffix() + '\n'
+    + falModelSuffix('image') + falModelSuffix('video') + doubaoSpeakerSuffix() + stockFirecrawlSuffix() + '\n'
     + `⬜ Not configured — do not promise these in a plan or call them; they return "not configured" and waste a turn:\n`
     + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
     + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured'
