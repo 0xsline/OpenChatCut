@@ -15,6 +15,8 @@ import { FalModelNote } from './FalModelNote';
 import { shouldRenderModelPicker } from './codexReasoning';
 import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
+import { filterSelectableModels } from '../../../shared/model-retirements';
+import { ModelInput, RetirementHint, TextInput } from './ModelInput';
 import { CopilotVendorPane } from './CopilotVendorPane';
 import { ModelCapabilityEditor } from './ModelCapabilityEditor';
 import { XaiOauthVendorPane } from './XaiOauthVendorPane';
@@ -308,6 +310,9 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
       : field.name === 'CLAUDE_CODE_MODEL'
         ? ctx.claudeCode.models.map((model) => model.id)
         : field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
+  // Pickers offer only models that still work; a saved value survives filtering
+  // and is warned about below instead of being silently dropped.
+  const models = filterSelectableModels(discovered, { keep: shown });
   const options = field.name === 'CODEX_REASONING_EFFORT'
     ? codexReasoningOptions(ctx, (effort) => effort
       ? t('模型默认（{name}）', { name: effort })
@@ -331,8 +336,8 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
       </span>
       {field.kind === 'toggle'
         ? <ToggleSwitch field={field} shown={shown} onStage={onStage} />
-        : shouldRenderModelPicker(field, discovered.length)
-          ? <ModelInput field={field} shown={shown} models={discovered} reveal={reveal}
+        : shouldRenderModelPicker(field, models.length)
+          ? <ModelInput field={field} shown={shown} models={models} reveal={reveal}
               loading={(field.name === 'CODEX_MODEL' && ctx.codex.modelBusy)
                 || (field.name === 'COPILOT_MODEL' && ctx.copilot.modelBusy)
                 || (field.name === 'CLAUDE_CODE_MODEL' && ctx.claudeCode.modelBusy)}
@@ -344,42 +349,8 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
             : <TextInput field={field} shown={shown} reveal={reveal} configured={configured}
                 stagedClear={stagedClear} onStage={onStage} />}
       {field.note && <span style={{ fontSize: 10.5, color: theme.textDim }}>{t(field.note)}</span>}
+      {isModelField(field) && <RetirementHint model={shown} />}
     </label>
-  );
-}
-
-function ModelInput({ field, shown, models, reveal, loading, configured, stagedClear, onStage }: {
-  field: SettingsField;
-  shown: string;
-  models: readonly string[];
-  reveal: boolean;
-  loading?: boolean;
-  configured: boolean;
-  stagedClear: boolean;
-  onStage: (field: SettingsField, raw: string) => void;
-}) {
-  const t = useT();
-  return (
-    <div style={{ display: 'flex', alignItems: 'stretch', gap: 7 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <TextInput field={field} shown={shown} reveal={reveal} configured={configured}
-          stagedClear={stagedClear} onStage={onStage} />
-      </div>
-      <select
-        value=""
-        aria-label={t('选择模型')}
-        title={t('选择模型')}
-        disabled={models.length === 0}
-        aria-busy={loading === true}
-        onChange={(event) => {
-          if (event.target.value) onStage(field, event.target.value);
-        }}
-        style={{ ...select, width: 118, flex: '0 0 118px' }}
-      >
-        <option value="">{loading ? t('读取中…') : t('选择模型')}</option>
-        {[...new Set(models)].map((model) => <option key={model} value={model}>{model}</option>)}
-      </select>
-    </div>
   );
 }
 
@@ -413,33 +384,6 @@ function ToggleSwitch({ field, shown, onStage }: {
       </span>
       {on ? t('已启用') : t('已停用')}
     </button>
-  );
-}
-
-interface TextInputProps {
-  field: SettingsField; shown: string; reveal: boolean; configured: boolean; stagedClear: boolean;
-  onStage: (field: SettingsField, raw: string) => void;
-}
-
-function TextInput({ field, shown, reveal, configured, stagedClear, onStage }: TextInputProps) {
-  const listId = field.kind === 'text' && field.options ? `cc-dl-${field.name}` : undefined;
-  const displayValue = stagedClear ? shown : shown || field.defaultValue || '';
-  return (
-    <>
-      <input
-        type={field.kind === 'secret' && !reveal ? 'password' : 'text'}
-        autoComplete="off" spellCheck={false} list={listId}
-        value={displayValue}
-        onChange={(e) => onStage(field, e.target.value)}
-        placeholder={fieldPlaceholder(field, configured, stagedClear)}
-        style={stagedClear ? { ...input, border: `0.5px solid ${WARN}` } : input}
-      />
-      {listId && (
-        <datalist id={listId}>
-          {field.options?.map((o) => <option key={o.value} value={o.value} />)}
-        </datalist>
-      )}
-    </>
   );
 }
 
