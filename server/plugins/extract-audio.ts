@@ -65,6 +65,14 @@ function probeHasAudio(inputPath: string): Promise<boolean> {
   // Probe failures are not evidence that the source is silent. Keep the
   // existing extraction path as the fallback so a missing/broken ffprobe or a
   // slow network-mounted file cannot silently skip a valid transcription.
+  // A rejected OPENCHATCUT_FFPROBE / FFPROBE_PATH override (issue #262) is one
+  // more probe failure, not silence.
+  let command: string;
+  try {
+    command = ffprobeBin();
+  } catch {
+    return Promise.resolve(true);
+  }
   return new Promise((resolve) => {
     let settled = false;
     let stdout = '';
@@ -74,7 +82,7 @@ function probeHasAudio(inputPath: string): Promise<boolean> {
       clearTimeout(timer);
       resolve(hasAudio);
     };
-    const probe = spawnMediaProcess(ffprobeBin(), [
+    const probe = spawnMediaProcess(command, [
       '-v', 'error', '-select_streams', 'a',
       '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', inputPath,
     ], { stdio: ['ignore', 'pipe', 'ignore'] });

@@ -17,15 +17,16 @@ try {
   assert.equal(unpackedPath(plain), plain, 'dev paths are untouched');
   const lookalike = join(root, 'my-app.asar-notes', 'ffmpeg');
   assert.equal(unpackedPath(lookalike), lookalike, `only a full ${sep}app.asar${sep} segment counts`);
+  // The resolved dev binaries are real files that can be spawned (a file override wins).
+  assert.ok(!ffmpegBin().includes(`${sep}app.asar${sep}`));
+  assert.ok(!ffprobeBin().includes(`${sep}app.asar${sep}`));
+  const probeOverride = join(root, 'custom-ffprobe');
+  writeFileSync(probeOverride, 'binary');
+  process.env.OPENCHATCUT_FFPROBE = probeOverride;
+  assert.equal(ffprobeBin(), probeOverride);
+  delete process.env.OPENCHATCUT_FFPROBE;
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
-
-// The resolved dev binaries are real files that can be spawned (an explicit override wins).
-assert.ok(!ffmpegBin().includes(`${sep}app.asar${sep}`));
-assert.ok(!ffprobeBin().includes(`${sep}app.asar${sep}`));
-process.env.OPENCHATCUT_FFPROBE = '/custom/ffprobe';
-assert.equal(ffprobeBin(), '/custom/ffprobe');
-delete process.env.OPENCHATCUT_FFPROBE;
 
 console.log('media-binaries checks passed (asar twin rewrite, overrides)');
