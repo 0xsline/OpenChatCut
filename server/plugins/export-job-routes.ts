@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rename, stat, unlink } from 'node:fs/promises';
+import { rename, stat, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ViteDevServer } from 'vite';
@@ -17,6 +17,7 @@ import {
   acquireExportPermit,
   assertNonEmptyExportBytes,
   cancelActiveExportJob,
+  cleanupRetainedExportOutputs,
   exportJobFilename,
   exportOutputSize,
   forgetExportJobController,
@@ -32,13 +33,13 @@ import {
 } from './generation-jobs.ts';
 import {
   bindRequestAbort,
-  contentDisposition,
   exportOperationId,
   readJsonBody,
   sendError,
   sendExportFailure,
   sendJson,
   sendSequenceGraphFailure,
+  streamExportFile,
 } from './export-http.ts';
 import {
   cleanupExportOutputs,
@@ -225,6 +226,11 @@ export function registerExportJobRoute(server: ViteDevServer): void {
 }
 
 export function registerExportRoute(server: ViteDevServer): void {
+  // Outputs retained from a failed download (see the catch below) are addressed
+  // by nobody, so bound how long they can sit in tmpdir.
+  void cleanupRetainedExportOutputs().then((removed) => {
+    if (removed > 0) server.config.logger.warn(`[export] removed ${removed} retained export output(s) from a previous run`);
+  }).catch(() => undefined);
   server.middlewares.use('/export', async (req, res) => {
     if (req.method === 'GET' && isExportCapabilitiesPath(req.url)) {
       try {
@@ -243,6 +249,8 @@ export function registerExportRoute(server: ViteDevServer): void {
     let outputLocation: string | null = null;
     let retimedOutput: string | null = null;
     let acceptedSubmission: AcceptedExportSubmission | undefined;
+    let rendered = false;
+    let keepRenderedOutput = false;
     try {
       const body = await readJsonBody(req) as ExportRequest | null;
       requestAbort.controller.signal.throwIfAborted();
@@ -300,22 +308,36 @@ export function registerExportRoute(server: ViteDevServer): void {
       }, requestAbort.controller.signal);
       requestAbort.controller.signal.throwIfAborted();
 
-      const buffer = await readFile(finalOutput, { signal: requestAbort.controller.signal });
-      requestAbort.controller.signal.throwIfAborted();
-      res.statusCode = 200;
-      res.setHeader('Content-Type', media.mime);
-      res.setHeader('Content-Length', String(buffer.length));
-      res.setHeader('Content-Disposition', contentDisposition(filename));
-      res.end(buffer);
+      rendered = true;
+      // Stream, never buffer: `readFile` refuses files ≥2 GiB after the render
+      // has already finished, which cost the user the whole export.
+      await streamExportFile(res, finalOutput, {
+        mime: media.mime,
+        filename,
+        signal: requestAbort.controller.signal,
+      });
     } catch (error) {
-      const cleanupStatus = await cleanupExportOutputs([outputLocation, retimedOutput]);
-      outputLocation = null;
-      retimedOutput = null;
-      if (requestAbort.controller.signal.aborted) return;
+      const aborted = requestAbort.controller.signal.aborted;
+      // A render that completed is worth keeping when only the download failed:
+      // the render is the expensive part, the transfer is repeatable. A client
+      // abort is the user's own doing, so that output is discarded as before.
+      keepRenderedOutput = rendered && !aborted;
+      const cleanupStatus = keepRenderedOutput
+        ? 'not-required' as const
+        : await cleanupExportOutputs([outputLocation, retimedOutput]);
+      if (keepRenderedOutput && outputLocation) {
+        server.config.logger.warn(
+          `[export] render completed but the download failed; kept ${outputLocation} for recovery`,
+        );
+      } else {
+        outputLocation = null;
+        retimedOutput = null;
+      }
+      if (aborted) return;
       const existing = exportFailureFrom(error);
       const failure = existing ?? createExportFailure({
-        stage: 'render',
-        code: 'export_render_failed',
+        stage: keepRenderedOutput ? 'destination' : 'render',
+        code: keepRenderedOutput ? 'export_download_failed' : 'export_render_failed',
         retryable: true,
         cleanupStatus,
         targetPath: null,
@@ -324,8 +346,10 @@ export function registerExportRoute(server: ViteDevServer): void {
       if (!res.headersSent) sendExportFailure(res, error instanceof RangeError ? 400 : 500, failure);
       else res.end();
     } finally {
-      if (outputLocation) await unlink(outputLocation).catch(() => {});
-      if (retimedOutput) await unlink(retimedOutput).catch(() => {});
+      if (!keepRenderedOutput) {
+        if (outputLocation) await unlink(outputLocation).catch(() => {});
+        if (retimedOutput) await unlink(retimedOutput).catch(() => {});
+      }
       await acceptedSubmission?.cleanup();
       requestAbort.dispose();
     }

@@ -1,6 +1,7 @@
 import { constants as fsConstants } from 'node:fs';
 import { copyFile, link, readdir, stat, unlink } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { ffmpegBin } from '../media-binaries.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { isSafeUploadName } from '../media-dir.ts';
@@ -124,8 +125,7 @@ export async function unlinkWithRetry(path: string, attempts = 3, delayMs = 100)
   }
 }
 
-/** Remove only expired async-export artifacts; ordinary user media is never matched. */
-export async function cleanupStaleExportFiles(
+/** Remove only expired async-export artifacts; ordinary user media is never matched. */export async function cleanupStaleExportFiles(
   directory: string,
   options: CleanupStaleExportOptions = {},
 ): Promise<number> {
@@ -148,6 +148,52 @@ export async function cleanupStaleExportFiles(
       const info = await stat(path);
       if (now - info.mtimeMs < retentionMs) continue;
       if (await options.shouldRetain?.(match[1])) continue;
+      await unlinkWithRetry(path);
+      removed += 1;
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') continue;
+      options.onError?.(path, error);
+    }
+  }
+  return removed;
+}
+
+const RETAINED_EXPORT_FILENAME = /^openchatcut-export-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:mp4|webm|mov|mp3|wav)$/i;
+export const RETAINED_EXPORT_TTL_MS = 24 * 60 * 60_000;
+
+interface CleanupRetainedExportOptions {
+  directory?: string;
+  now?: number;
+  ttlMs?: number;
+  onError?: (path: string, error: unknown) => void;
+}
+
+/**
+ * Remove sync-export renders that were kept because the render succeeded but the
+ * download to the client failed (see the `/export` route). They live in `tmpdir()`
+ * under a fresh UUID that no route addresses, so nothing else ever collects them;
+ * without this bound a failed multi-GB download would leak disk permanently.
+ */
+export async function cleanupRetainedExportOutputs(
+  options: CleanupRetainedExportOptions = {},
+): Promise<number> {
+  const directory = options.directory ?? tmpdir();
+  const now = options.now ?? Date.now();
+  const ttlMs = Math.max(0, options.ttlMs ?? RETAINED_EXPORT_TTL_MS);
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return 0;
+    throw error;
+  }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !RETAINED_EXPORT_FILENAME.test(entry.name)) continue;
+    const path = join(directory, entry.name);
+    try {
+      const info = await stat(path);
+      if (now - info.mtimeMs < ttlMs) continue;
       await unlinkWithRetry(path);
       removed += 1;
     } catch (error) {

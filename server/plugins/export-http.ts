@@ -1,4 +1,7 @@
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { pipeline } from 'node:stream/promises';
 import { isSequenceGraphError } from '../../src/editor/sequenceGraph.ts';
 import {
   type ExportFailure,
@@ -97,4 +100,53 @@ export function sendSequenceGraphFailure(res: ServerResponse, error: unknown): b
 
 export function sendExportFailure(res: ServerResponse, status: number, failure: ExportFailure): void {
   sendJson(res, status, { error: failure.message, failure });
+}
+
+export interface ExportDownload {
+  mime: string;
+  filename: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Deliver a finished render by streaming it to the client.
+ *
+ * The route used to pull the whole output into one Buffer with `readFile`.
+ * Node rejects that for files ≥2 GiB (`ERR_FS_FILE_TOO_LARGE`) *after* the
+ * render has finished, so a ~3.4 GiB hour-long 1080p export failed and — via
+ * the route's cleanup — deleted itself. Streaming removes the ceiling and keeps
+ * a multi-GB allocation out of the dev-server process.
+ *
+ * `Content-Length` comes from `stat`, so the client still sees the size up front
+ * (progress UIs and truncation detection keep working) instead of a chunked,
+ * length-less body. The read handle is closed on every path: completion, abort,
+ * or a socket error mid-copy.
+ */
+export async function streamExportFile(
+  res: ServerResponse,
+  file: string,
+  download: ExportDownload,
+): Promise<void> {
+  const { size } = await stat(file);
+  download.signal?.throwIfAborted();
+  res.statusCode = 200;
+  res.setHeader('Content-Type', download.mime);
+  res.setHeader('Content-Length', String(size));
+  res.setHeader('Content-Disposition', contentDisposition(download.filename));
+  if (size === 0) {
+    res.end();
+    return;
+  }
+  const stream = createReadStream(file);
+  try {
+    await pipeline(stream, res, download.signal ? { signal: download.signal } : {});
+  } catch (error) {
+    // The headers are already on the wire, so this can no longer become a JSON
+    // error body. Destroying the response makes the truncated transfer visible
+    // to the client (Content-Length was announced) instead of a hung socket.
+    res.destroy();
+    throw error;
+  } finally {
+    stream.destroy();
+  }
 }
