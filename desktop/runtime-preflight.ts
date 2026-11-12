@@ -13,7 +13,11 @@
 // bundled FFmpeg (the app is already reported as a false positive, issue #144),
 // or a 650 MB NSIS extraction is interrupted. So name the missing files instead
 // of dying silently, and keep the checks pure so they can be verified in Node.
-import { existsSync } from 'node:fs';
+//
+// Presence is not enough for a binary: a directory satisfies existsSync, and a
+// directory-valued FFMPEG_PATH passed this preflight and then crashed the Windows
+// mirror (`EPERM ... copyfile`, issue #262). Binary checks therefore require a file.
+import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface RuntimeAssetCheck {
@@ -22,6 +26,12 @@ export interface RuntimeAssetCheck {
   readonly path: string;
   /** Required assets stop the launch; optional ones only degrade a feature. */
   readonly required: boolean;
+  /**
+   * A spawnable binary must be a file. `existsSync` also accepts a directory, which is
+   * how a directory-valued FFMPEG_PATH once passed preflight and then crashed the
+   * Windows mirror with `EPERM ... copyfile` (issue #262).
+   */
+  readonly mustBeFile?: boolean;
 }
 
 export interface PackagedAssetInput {
@@ -48,16 +58,30 @@ export function packagedRuntimeAssetChecks(input: PackagedAssetInput): RuntimeAs
   // Only Windows swaps the compositor's ffmpeg for the static build at first
   // launch, so only there does a quarantined ffmpeg.exe block startup.
   if (input.platform === 'win32') {
-    checks.push({ label: '内置 FFmpeg / bundled FFmpeg', path: input.ffmpegPath, required: true });
+    checks.push({
+      label: '内置 FFmpeg / bundled FFmpeg',
+      path: input.ffmpegPath,
+      required: true,
+      mustBeFile: true,
+    });
   }
   return checks;
+}
+
+function statIsFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export function missingRuntimeAssets(
   checks: readonly RuntimeAssetCheck[],
   exists: (path: string) => boolean = existsSync,
+  isFile: (path: string) => boolean = statIsFile,
 ): RuntimeAssetCheck[] {
-  return checks.filter((check) => !exists(check.path));
+  return checks.filter((check) => !exists(check.path) || (check.mustBeFile === true && !isFile(check.path)));
 }
 
 /** Shared by the asset preflight and the entry bundle's load failure. */
@@ -71,7 +95,12 @@ export const RUNTIME_ASSET_ADVICE = [
 ].join('\n');
 
 export function describeMissingRuntimeAssets(missing: readonly RuntimeAssetCheck[]): string {
-  const lines = missing.map((check) => `- ${check.label}${check.required ? '' : '（可选 / optional）'}\n  ${check.path}`);
+  const lines = missing.map((check) => {
+    const hint = check.mustBeFile
+      ? '\n  必须是一个可执行文件，而不是目录 / must be an executable file, not a directory'
+      : '';
+    return `- ${check.label}${check.required ? '' : '（可选 / optional）'}\n  ${check.path}${hint}`;
+  });
   return [
     `安装包缺少 ${missing.length} 个运行时文件 / this install is missing ${missing.length} bundled file(s):`,
     '',

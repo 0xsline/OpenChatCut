@@ -37,13 +37,19 @@ assert.deepEqual(
   [join(resourcesPath, 'chrome-headless-shell')],
   'a missing render browser degrades exports; it does not block the editor',
 );
+assert.deepEqual(
+  windows.filter((check) => check.mustBeFile).map((check) => check.path),
+  [ffmpegPath],
+  'the ffmpeg binary is the one asset that must be a file, not just an existing path',
+);
+assert.deepEqual(mac.filter((check) => check.mustBeFile), [], 'only the Windows ffmpeg check is file-typed');
 
 // A complete install launches: nothing is reported and nothing blocks.
-assert.deepEqual(missingRuntimeAssets(windows, () => true), []);
-assert.equal(runtimeAssetFailure(missingRuntimeAssets(windows, () => true)), null);
+assert.deepEqual(missingRuntimeAssets(windows, () => true, () => true), []);
+assert.equal(runtimeAssetFailure(missingRuntimeAssets(windows, () => true, () => true)), null);
 
 // Only the optional asset is gone: still launch.
-const withoutBrowser = missingRuntimeAssets(windows, (path) => !path.endsWith('chrome-headless-shell'));
+const withoutBrowser = missingRuntimeAssets(windows, (path) => !path.endsWith('chrome-headless-shell'), () => true);
 assert.equal(withoutBrowser.length, 1);
 assert.equal(runtimeAssetFailure(withoutBrowser), null, 'an optional asset never blocks the launch');
 assert.match(
@@ -53,7 +59,7 @@ assert.match(
 );
 
 // The reported scenario: quarantined ffmpeg plus a truncated extraction.
-const broken = missingRuntimeAssets(windows, (path) => path.endsWith('chrome-headless-shell'));
+const broken = missingRuntimeAssets(windows, (path) => path.endsWith('chrome-headless-shell'), () => true);
 const failure = runtimeAssetFailure(broken);
 assert.ok(failure, 'a missing required asset blocks the launch with a message');
 assert.match(failure, /missing 3 bundled file\(s\)/);
@@ -63,5 +69,19 @@ for (const path of [join(resourcesPath, 'dist', 'index.html'), join(resourcesPat
 assert.match(failure, /杀毒软件/, 'the message names the usual cause in Chinese');
 assert.match(failure, /antivirus/, 'and in English');
 assert.match(failure, /Reinstall OpenChatCut/, 'and tells the user what to do');
+
+// Issue #262: a directory satisfies existsSync, so the old check passed it through to
+// the Windows mirror, which copied it as ffmpeg.exe and died with EPERM. A directory
+// at the ffmpeg path must now fail the preflight instead.
+const directoryAtFfmpegPath = missingRuntimeAssets(windows, () => true, (path) => path !== ffmpegPath);
+assert.deepEqual(directoryAtFfmpegPath.map((check) => check.path), [ffmpegPath],
+  'only the ffmpeg entry fails when the path exists but is a directory');
+const directoryFailure = runtimeAssetFailure(directoryAtFfmpegPath);
+assert.ok(directoryFailure, 'a directory-valued ffmpeg blocks the launch before the mirror runs');
+assert.match(directoryFailure, /must be an executable file, not a directory/);
+assert.ok(directoryFailure.includes(ffmpegPath), 'the dialog names the offending path');
+// A real file passes, and the optional render browser is not file-typed.
+assert.deepEqual(missingRuntimeAssets(windows, () => true, () => true), [],
+  'a file-valued ffmpeg passes the preflight');
 
 console.log('runtime-preflight.verify: a packaged install that lost bundled files names them instead of exiting silently');
