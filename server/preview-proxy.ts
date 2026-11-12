@@ -193,8 +193,12 @@ async function createProxyPayload(
   if (!reason) return { source, proxy: { status: 'not-needed', reason: 'source-compatible' } };
   const previewSrc = `/api/preview-proxy-file?src=${encodeURIComponent(src)}`;
   if (existsSync(proxyPath)) return { source, proxy: { status: 'ready', reason, previewSrc } };
-  const failed = await previousFailure(statusPath);
+  // `force=1` is the explicit "try again" path: it must discard a memoized
+  // failure, otherwise one transient build error pins the clip to the master
+  // file for the life of the media with no way back.
+  const failed = force ? null : await previousFailure(statusPath);
   if (failed) return { source, proxy: { status: 'failed', ...failed } };
+  if (force) await unlink(statusPath).catch(() => undefined);
   try {
     await deps.atomicBuild(proxyPath, (tmp) => buildPreviewProxy(hit.file, tmp, signal));
     await unlink(statusPath).catch(() => {});
