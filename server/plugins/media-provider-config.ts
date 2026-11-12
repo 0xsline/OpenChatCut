@@ -14,7 +14,7 @@ export function aiVoiceOptions(): AiVoiceOptions {
     get openaiModel() { return getKey('OPENAI_TTS_MODEL') || 'gpt-4o-mini-tts'; },
     get geminiBaseUrl() { return getKey('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com'; },
     get geminiApiKey() { return getKey('GEMINI_API_KEY'); },
-    get geminiModel() { return getKey('GEMINI_TTS_MODEL') || 'gemini-2.5-flash-preview-tts'; },
+    get geminiModel() { return getKey('GEMINI_TTS_MODEL') || 'gemini-3.8-flash-tts'; },
     get mistralBaseUrl() { return getKey('LLM_MISTRAL_BASE_URL') || 'https://api.mistral.ai/v1'; },
     get mistralApiKey() { return getKey('LLM_MISTRAL_API_KEY'); },
     get mistralModel() { return getKey('MISTRAL_TTS_MODEL') || 'voxtral-mini-tts-2603'; },

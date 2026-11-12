@@ -36,7 +36,7 @@ TTS provider keys:
 - OpenAI: existing `OPENAI_API_KEY` / optional `IMAGE_BASE_URL`;
   `OPENAI_TTS_MODEL` defaults to `gpt-4o-mini-tts`
 - Gemini: existing `GEMINI_API_KEY` / optional `GEMINI_BASE_URL`;
-  `GEMINI_TTS_MODEL` defaults to `gemini-2.5-flash-preview-tts`
+  `GEMINI_TTS_MODEL` defaults to `gemini-3.8-flash-tts`
 - Mistral: existing `LLM_MISTRAL_API_KEY` / optional
   `LLM_MISTRAL_BASE_URL`; `MISTRAL_TTS_MODEL` defaults to
   `voxtral-mini-tts-2603`

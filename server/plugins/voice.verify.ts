@@ -149,7 +149,7 @@ const aiOptions: VoiceOptions = {
     openaiModel: 'gpt-4o-mini-tts',
     geminiBaseUrl: 'https://generativelanguage.googleapis.test',
     geminiApiKey: 'gemini-test-key',
-    geminiModel: 'gemini-2.5-flash-preview-tts',
+    geminiModel: 'gemini-3.8-flash-tts',
     mistralBaseUrl: 'https://api.mistral.test/v1',
     mistralApiKey: 'mistral-test-key',
     mistralModel: 'voxtral-mini-tts-2603',

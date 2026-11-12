@@ -173,7 +173,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       key: 'voice/gemini', vendor: 'gemini', title: 'Google Gemini', fields: [
         secret('GEMINI_API_KEY', 'API Key'),
         text('GEMINI_BASE_URL', 'Base URL', '默认 https://generativelanguage.googleapis.com'),
-        modelText('GEMINI_TTS_MODEL', '配音模型', 'gemini-2.5-flash-preview-tts'),
+        modelText('GEMINI_TTS_MODEL', '配音模型', 'gemini-3.8-flash-tts'),
       ],
     },
     {
