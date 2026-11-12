@@ -28,4 +28,18 @@ process.env.OPENCHATCUT_FFPROBE = '/custom/ffprobe';
 assert.equal(ffprobeBin(), '/custom/ffprobe');
 delete process.env.OPENCHATCUT_FFPROBE;
 
-console.log('media-binaries checks passed (asar twin rewrite, overrides)');
+// Issue #262: FFMPEG_PATH is a cross-tool convention that is often set to the bin
+// directory. A directory override must resolve to the executable inside it; passing the
+// directory through reached copyFile() in the Remotion mirror and failed with EPERM.
+const binDirectory = join(root, 'ffmpeg-bin');
+mkdirSync(binDirectory, { recursive: true });
+const platformName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+writeFileSync(join(binDirectory, platformName), 'binary');
+process.env.FFMPEG_PATH = binDirectory;
+assert.equal(ffmpegBin(), join(binDirectory, platformName),
+  'a directory FFMPEG_PATH resolves to the ffmpeg binary inside it');
+process.env.FFMPEG_PATH = join(binDirectory, platformName);
+assert.equal(ffmpegBin(), join(binDirectory, platformName), 'a file FFMPEG_PATH is passed through');
+delete process.env.FFMPEG_PATH;
+
+console.log('media-binaries checks passed (asar twin rewrite, overrides, directory FFMPEG_PATH)');
