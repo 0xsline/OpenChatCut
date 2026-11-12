@@ -91,7 +91,7 @@ async function probeVideo(file: string): Promise<{ durationSeconds: number; widt
     const child = spawn(ffprobeBin(), [
       '-v', 'error', '-select_streams', 'v:0',
       '-show_entries', 'stream=width,height:format=duration', '-of', 'json', file,
-    ]);
+    ], { windowsHide: true });
     let output = '';
     child.stdout.on('data', (data) => { output += String(data); });
     child.on('error', reject);

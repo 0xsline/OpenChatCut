@@ -65,6 +65,7 @@ export function detectLabelBackend(): LabelBackend {
     const r = spawnSync(ffmpegBin(), ['-hide_banner', '-filters'], {
       encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,
+      windowsHide: true,
     });
     const out = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
     if (/\bdrawtext\b/.test(out)) {
@@ -76,6 +77,7 @@ export function detectLabelBackend(): LabelBackend {
   try {
     const r = spawnSync('python3', ['-c', 'from PIL import Image, ImageDraw, ImageFont; print("ok")'], {
       encoding: 'utf8',
+      windowsHide: true,
     });
     if (r.status === 0 && (r.stdout ?? '').includes('ok')) {
       cachedBackend = 'pil';
@@ -198,6 +200,7 @@ im.save(path_out, "JPEG", quality=88)
   await new Promise<void>((resolve, reject) => {
     const child = spawn('python3', ['-c', script, scaled, output, label || ''], {
       stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
     });
     let err = '';
     child.stderr?.on('data', (c: Buffer) => { err += String(c); });

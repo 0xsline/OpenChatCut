@@ -84,6 +84,7 @@ async function availableHwAccels(ffmpeg: string): Promise<Set<string>> {
   const { promise, resolve } = promiseConstructor.withResolvers<Set<string>>();
   const child = spawn(ffmpeg, ['-hide_banner', '-hwaccels'], {
     cwd: dirname(ffmpeg),
+    windowsHide: true,
     stdio: ['ignore', 'pipe', 'ignore'],
   });
   let output = '';
@@ -118,6 +119,7 @@ export async function probeEncoderQualityMode(
   const { promise, resolve } = promiseConstructor.withResolvers<H264QualityMode | false>();
   const child = spawn(ffmpeg, ['-hide_banner', '-h', `encoder=${encoder}`], {
     cwd: dirname(ffmpeg),
+    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -241,6 +243,7 @@ function probeEncoder(
   const { promise, resolve } = promiseConstructor.withResolvers<boolean>();
   const child = spawn(ffmpeg, h264ProbeArgs(encoder, vaapiDevice), {
     cwd: dirname(ffmpeg),
+    windowsHide: true,
     stdio: ['pipe', 'ignore', 'ignore'],
   });
   const timer = setTimeout(() => child.kill('SIGKILL'), 12_000);
@@ -263,6 +266,7 @@ function probeCompiledEncoder(ffmpeg: string, encoder: H264Encoder): Promise<boo
   const { promise, resolve } = promiseConstructor.withResolvers<boolean>();
   const child = spawn(ffmpeg, ['-hide_banner', '-h', `encoder=${encoder}`], {
     cwd: dirname(ffmpeg),
+    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
