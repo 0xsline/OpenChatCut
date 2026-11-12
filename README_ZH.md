@@ -66,6 +66,18 @@
 ## 赞助商
 
 <p align="center">
+  <a href="https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut"><img src="assets/readme-pic/ofox-logo.svg" width="300" alt="OfoxAI" /></a>
+</p>
+
+**OfoxAI：一个平台，连接文本、图像与视频 AI**
+
+OfoxAI 是统一的 AI API 平台，汇集文本、图像和视频模型，支持 Seedance、MiniMax（海螺）、Wan 等视频模型系列。从 AI 应用与智能体开发，到创意构思、图像生成和视频素材制作，通过一个平台选择适合的模型。
+
+[探索 OfoxAI 模型与 API →](https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut)
+
+<br />
+
+<p align="center">
   <a href="https://apixo.ai/zh?utm_source=github&utm_medium=sponsorship&utm_campaign=0xsline&utm_content=openchatcut_logo"><img src="assets/readme-pic/apixo-seedream-zh.svg" width="170" alt="APIXO AI" /></a>
 </p>
 
@@ -76,18 +88,6 @@
 **[Seedream 5.5](https://apixo.ai/zh/models/seedream-5-5?utm_source=github&utm_medium=sponsorship&utm_campaign=0xsline&utm_content=openchatcut_text_model) 文生图 API 限时官价七折，$0.014/张起**。优惠自动生效，无需优惠码。
 
 [探索 APIXO AI 模型与优惠 →](https://apixo.ai/zh/deals/black-friday?utm_source=github&utm_medium=sponsorship&utm_campaign=0xsline&utm_content=openchatcut_text_deals)
-
-<br />
-
-<p align="center">
-  <a href="https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut"><img src="assets/readme-pic/ofox-logo.svg" width="300" alt="OfoxAI" /></a>
-</p>
-
-**OfoxAI：一个平台，连接文本、图像与视频 AI**
-
-OfoxAI 是统一的 AI API 平台，汇集文本、图像和视频模型，支持 Seedance、MiniMax（海螺）、Wan 等视频模型系列。从 AI 应用与智能体开发，到创意构思、图像生成和视频素材制作，通过一个平台选择适合的模型。
-
-[探索 OfoxAI 模型与 API →](https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut)
 
 <br />
 

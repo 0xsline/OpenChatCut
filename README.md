@@ -66,6 +66,18 @@
 ## Sponsors
 
 <p align="center">
+  <a href="https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut"><img src="assets/readme-pic/ofox-logo.svg" width="300" alt="OfoxAI" /></a>
+</p>
+
+**OfoxAI: Text, image, and video AI in one platform**
+
+OfoxAI is a unified API platform for text, image, and video AI, with video models from the Seedance, MiniMax (Hailuo), and Wan families. Choose models for AI applications, agents, creative ideation, image generation, and video assets through one platform.
+
+[Explore OfoxAI models and APIs →](https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut)
+
+<br />
+
+<p align="center">
   <a href="https://apixo.ai/?utm_source=github&utm_medium=sponsorship&utm_campaign=0xsline&utm_content=openchatcut_logo"><img src="assets/readme-pic/apixo-seedream-en.svg" width="170" alt="APIXO AI" /></a>
 </p>
 
@@ -76,18 +88,6 @@ Create cover images and video assets with **APIXO AI**. Work directly in your br
 **[Seedream 5.5](https://apixo.ai/models/seedream-5-5?utm_source=github&utm_medium=sponsorship&utm_campaign=0xsline&utm_content=openchatcut_text_model) text-to-image API: from $0.014/image, 30% off the official starting price for a limited time.** The discount applies automatically; no promo code needed.
 
 [Explore APIXO AI Models & Deals →](https://apixo.ai/deals/black-friday?utm_source=github&utm_medium=sponsorship&utm_campaign=0xsline&utm_content=openchatcut_text_deals)
-
-<br />
-
-<p align="center">
-  <a href="https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut"><img src="assets/readme-pic/ofox-logo.svg" width="300" alt="OfoxAI" /></a>
-</p>
-
-**OfoxAI: Text, image, and video AI in one platform**
-
-OfoxAI is a unified API platform for text, image, and video AI, with video models from the Seedance, MiniMax (Hailuo), and Wan families. Choose models for AI applications, agents, creative ideation, image generation, and video assets through one platform.
-
-[Explore OfoxAI models and APIs →](https://ofox.ai/?utm_source=github&utm_medium=sponsorship&utm_content=openchatcut)
 
 <br />
 
