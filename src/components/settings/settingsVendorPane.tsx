@@ -112,7 +112,7 @@ export function VendorPane({ page, hint, ctx }: {
             onChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)} />
         )}
       </section>
-      {page.vendor !== 'fal' && <TestConnectionRow page={page} ctx={ctx} />}
+      <TestConnectionRow page={page} ctx={ctx} />
     </div>
   );
 }
