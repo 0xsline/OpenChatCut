@@ -48,6 +48,9 @@ const PERSISTENT_LOCAL_TOOLS = new Set([
   'finalize_uploaded_asset', 'install_skill', 'run_skill_script',
   'manage_skill', 'manage_template', 'manage_versions', 'manage_project',
   'create_project', 'duplicate_project', 'delete_project', 'restore_project',
+  // Server-rendered export writes a managed upload file; it never mutates
+  // project state, so it is local-persistent rather than an external side effect.
+  'export_video',
 ]);
 const IRREVERSIBLE_EXTERNAL_TOOLS = new Set([
   // paid / long-running / non-idempotent retry surface: generation, export,

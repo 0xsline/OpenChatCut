@@ -121,7 +121,11 @@ export function externalDraftSchemas(tools: readonly AgentToolSchema[]): Externa
     const multiplexesPersistentActions = tool.name === 'manage_design_style';
     const scopeDescription = multiplexesPersistentActions
       ? 'Read and ProjectDoc actions use the edit-session draft; owned-library writes act on live local data and require one-shot OpenChatCut confirmation. Pass editSessionId.'
-      : `${readOnly ? 'Reads' : 'Edits'} the edit-session draft; pass editSessionId.`;
+      : tool.name === 'export_video'
+        // Server-side render: it reads the draft and writes a file, it never
+        // edits the draft this session will later review.
+        ? 'Renders the edit-session draft timeline; pass editSessionId.'
+        : `${readOnly ? 'Reads' : 'Edits'} the edit-session draft; pass editSessionId.`;
     return {
       ...withSession(
         tool,

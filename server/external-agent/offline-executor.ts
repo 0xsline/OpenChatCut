@@ -1,4 +1,5 @@
 import type { AgentContext } from '../../src/agent/context.js';
+import { EXPORT_VIDEO_TOOL_NAME } from '../../src/agent/tools/schemas/external-export-tools.js';
 import { execAgentRuntimeTool } from '../../src/agent/tools/agent-runtime-tools.js';
 import { execCaptionsTool } from '../../src/agent/tools/captions-tools.js';
 import { CORE_DATA_TOOL_NAMES, execCoreDataTool } from '../../src/agent/tools/core-data-tools.js';
@@ -93,6 +94,13 @@ export async function executeOfflineTool(
   if (name === 'export_jianying_draft') {
     const { executeOfflineJianyingExport } = await import('./offline-jianying-export.js');
     return executeOfflineJianyingExport(name, args, ctx);
+  }
+  if (name === EXPORT_VIDEO_TOOL_NAME) {
+    // Loaded lazily for the same reason as the others: the export pipeline pulls
+    // Remotion, which the desktop server bundle has no reason to carry until a
+    // headless external agent actually renders a video.
+    const { executeOfflineExportVideo } = await import('./offline-export.js');
+    return executeOfflineExportVideo(name, args, ctx);
   }
   if (name === 'read_agent_artifact') return execAgentRuntimeTool(name, args, ctx);
   if (CORE_DATA_TOOL_NAMES.has(name)) return execCoreDataTool(name, args, ctx);

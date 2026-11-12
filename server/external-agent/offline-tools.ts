@@ -19,6 +19,7 @@ import { TRACK_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/track-tools.js
 import { TRANSCRIPT_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/transcript-tools.js';
 import { WATERMARK_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/watermark-tools.js';
 import { TIMELINE_IMPORT_TOOL_SCHEMAS } from '../../src/agent/tools/schemas/timeline-import-tools.js';
+import { EXPORT_VIDEO_TOOL_SCHEMA } from '../../src/agent/tools/schemas/external-export-tools.js';
 
 const OFFLINE_TOOL_DESCRIPTIONS: Record<string, string> = {
   begin_edit_session: 'Start an offline server draft. approvalMode must be auto; open the editor URL for manual approval.',
@@ -49,6 +50,9 @@ const OFFLINE_SCHEMA_GROUPS = [
   READ_PROJECT_TOOL_SCHEMAS,
   TRANSCRIPT_TOOL_SCHEMAS,
   TIMELINE_IMPORT_TOOL_SCHEMAS,
+  // Server-rendered export: headless sessions have no editor tab to run the
+  // browser submit_render_job/track_export pair, so the export runs here.
+  [EXPORT_VIDEO_TOOL_SCHEMA],
 ] as const;
 
 function serverDirectSchemas(): ExternalRegisteredTool[] {
