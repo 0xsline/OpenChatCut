@@ -103,8 +103,24 @@ function atempoFilters(rate: number): string {
   return filters.map((value) => `atempo=${value.toFixed(6)}`).join(',');
 }
 
-async function timelineSlicePath(reference: ServerGenerationReference): Promise<string> {
-  const source = localMedia(reference.path);
+/**
+ * Cache gate for a timeline slice. Existence alone is not enough: builds before
+ * the temp+rename publish wrote straight to this name, so an encode killed at
+ * the 5-minute timeout could leave a truncated mp4 that would then be reused as
+ * a reference for a paid provider until the file was deleted by hand. A cached
+ * slice must be non-empty and decodable (ffprobe reads the moov atom) to count.
+ */
+async function cachedSliceUsable(file: string): Promise<boolean> {
+  try {
+    if ((await stat(file)).size === 0) return false;
+    await probeVideo(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function timelineSlicePath(reference: ServerGenerationReference): Promise<string> {  const source = localMedia(reference.path);
   const sourceStat = await stat(source.file);
   const fps = Number(reference.fps);
   const srcInFrame = Number(reference.srcInFrame);
@@ -135,13 +151,24 @@ async function timelineSlicePath(reference: ServerGenerationReference): Promise<
     mediaKind,
   });
   const filename = `generation-slice-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}.${extension}`;
-  if (resolveUploadFile(filename)) return `/media/uploads/${filename}`;
+  const cached = resolveUploadFile(filename);
+  if (cached) {
+    if (await cachedSliceUsable(cached)) return `/media/uploads/${filename}`;
+    // A truncated slice left by an interrupted encode must not be handed to a
+    // paid provider forever: drop it and rebuild.
+    await rm(cached, { force: true }).catch(() => undefined);
+  }
   const pending = derivativeJobs.get(filename);
   if (pending) return pending;
   const derive = (async () => {
     const directory = uploadDir();
     await mkdir(directory, { recursive: true });
     const output = join(directory, filename);
+    // ffmpeg writes to a dot-prefixed sibling that `isSafeUploadName` can never
+    // serve, and the real extension is kept so the muxer still follows the
+    // suffix. Only a fully encoded slice is renamed onto the cache name, so an
+    // encode that dies (e.g. the 5-minute SIGKILL) publishes nothing.
+    const partial = join(directory, `.${filename}.part.${extension}`);
     const sourceStartSeconds = srcInFrame / fps;
     const sourceDurationSeconds = (srcOutFrame - srcInFrame) / fps;
     const common = [
@@ -151,23 +178,29 @@ async function timelineSlicePath(reference: ServerGenerationReference): Promise<
       ...(await resolveHwDecodeArgs(ffmpegBin(), undefined)),
       '-i', source.file,
     ];
-    if (mediaKind === 'audio') {
-      await runSliceFfmpeg([
-        ...common,
-        '-vn', '-af', atempoFilters(playbackRate),
-        '-c:a', 'aac', '-b:a', '192k',
-        output,
-      ]);
-    } else {
-      await runSliceFfmpeg([
-        ...common,
-        '-an', '-vf', `setpts=PTS/${playbackRate}`,
-        '-c:v', 'libx264', ...ffmpegThreadArgs(), '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
-        output,
-      ]);
+    try {
+      if (mediaKind === 'audio') {
+        await runSliceFfmpeg([
+          ...common,
+          '-vn', '-af', atempoFilters(playbackRate),
+          '-c:a', 'aac', '-b:a', '192k',
+          partial,
+        ]);
+      } else {
+        await runSliceFfmpeg([
+          ...common,
+          '-an', '-vf', `setpts=PTS/${playbackRate}`,
+          '-c:v', 'libx264', ...ffmpegThreadArgs(), '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart',
+          partial,
+        ]);
+      }
+      await rename(partial, output);
+      return `/media/uploads/${filename}`;
+    } catch (error) {
+      await rm(partial, { force: true }).catch(() => undefined);
+      throw error;
     }
-    return `/media/uploads/${filename}`;
   })();
   derivativeJobs.set(filename, derive);
   try {

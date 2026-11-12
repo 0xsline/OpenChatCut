@@ -7,7 +7,7 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { existsSync } from 'node:fs';
-import { rename, stat, unlink } from 'node:fs/promises';
+import { readdir, rename, stat, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
@@ -46,6 +46,37 @@ function readJson(req: IncomingMessage, max = MAX_JSON): Promise<unknown> {
     });
     req.on('error', reject);
   });
+}
+
+const ASR_TEMP = /\.asr\.tmp\.(?:ogg|mp3)$/i;
+// Long enough that a live encode from a second process on a shared media dir
+// can never be mistaken for an orphan.
+const ASR_TEMP_TTL_MS = 60 * 60_000;
+
+/** Reclaim `*.asr.tmp.*` files left by extractions that died before the rename. */
+async function sweepStaleAsrTemps(
+  dir: string,
+  warn: (message: string) => void,
+  now = Date.now(),
+): Promise<number> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !ASR_TEMP.test(entry.name)) continue;
+    const file = join(dir, entry.name);
+    try {
+      if (now - (await stat(file)).mtimeMs < ASR_TEMP_TTL_MS) continue;
+      await unlink(file);
+      removed += 1;
+    } catch { /* already gone or locked; the next start retries */ }
+  }
+  if (removed > 0) warn(`removed ${removed} stale ASR temp file(s)`);
+  return removed;
 }
 
 /** `/media/uploads/foo.mp4` → `foo.mp4` or null if unsafe. */
@@ -130,19 +161,27 @@ async function tryEncode(
   // suffix (`*.ogg.tmp` / `*.ogg.part` would be treated as unknown).
   const partPath = finalPath.replace(/(\.(ogg|mp3))$/i, '.tmp$1');
   await unlink(partPath).catch(() => {});
-  await runFfmpeg(
-    [
-      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', inputPath,
-      '-vn',
-      '-map', '0:a:0?',
-      ...codecArgs,
-      partPath,
-    ],
-    FFMPEG_TIMEOUT_MS,
-  );
-  await rename(partPath, finalPath);
-  return (await stat(finalPath)).size;
+  try {
+    await runFfmpeg(
+      [
+        '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+        '-i', inputPath,
+        '-vn',
+        '-map', '0:a:0?',
+        ...codecArgs,
+        partPath,
+      ],
+      FFMPEG_TIMEOUT_MS,
+    );
+    await rename(partPath, finalPath);
+    return (await stat(finalPath)).size;
+  } catch (error) {
+    // Own the temp name here: callers used to guess `.ogg.part`, so every
+    // failed encode (timeout SIGKILL, decode error) leaked `<stem>.asr.tmp.ogg`
+    // into the uploads dir, where no listing or GC ever sees a dot-prefixed file.
+    await unlink(partPath).catch(() => undefined);
+    throw error;
+  }
 }
 
 /** Returns absolute path of written ASR audio. */
@@ -155,7 +194,6 @@ async function extractAsrAudio(inputPath: string, dir: string, stem: string): Pr
     return { file: oggPath, bytes };
   } catch (opusErr) {
     await unlink(oggPath).catch(() => {});
-    await unlink(`${oggPath}.part`).catch(() => {});
     const mp3Path = join(dir, `${stem}.asr.mp3`);
     try {
       const bytes = await tryEncode(inputPath, mp3Path, [
@@ -164,7 +202,6 @@ async function extractAsrAudio(inputPath: string, dir: string, stem: string): Pr
       return { file: mp3Path, bytes };
     } catch {
       await unlink(mp3Path).catch(() => {});
-      await unlink(`${mp3Path}.part`).catch(() => {});
       throw opusErr;
     }
   }
@@ -174,6 +211,10 @@ export function extractAudioPlugin(): Plugin {
   return {
     name: 'openchatcut-extract-audio',
     configureServer(server) {
+      // Temps leaked by older builds are dot-prefixed, so no listing or GC ever
+      // saw them. Nothing is encoding yet at this point, so a sweep is safe.
+      void sweepStaleAsrTemps(uploadDir(), (message) => server.config.logger.warn(`[extract-audio] ${message}`))
+        .catch(() => undefined);
       server.middlewares.use('/api/extract-audio', async (req, res) => {
         if (req.method !== 'POST') {
           sendJson(res, 405, { error: 'method not allowed — use POST' });
