@@ -94,11 +94,20 @@ export function relinkTiming(
 
 export function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
   if (!hasOperationalTranscript(it)) return it.durationInFrames;
-  // Duration after word operation = Full length of word stream after editing − There is left clipping (only audio: the starting point of the window for word-driven rendering).
-  // The left trim is retained after word deletion/silencing; the right trim is reset to "all remaining". video+transcript go
-  // Continuous rendering, srcInFrame is media frame semantics and does not participate in the word flow window.
-  const trim = it.kind === 'audio' ? (it.srcInFrame ?? 0) : 0;
-  return Math.max(1, editedFrames(it.transcript!, deleted, fps, itemEditOpts(it)) - trim);
+  // ONLY a word-driven audio clip renders its EDITED WORD STREAM (AudioClip segments,
+  // keptSegments). For it, duration = remaining edited stream after the left trim.
+  // The left trim is retained after word deletion/silencing; the right trim is reset to "all remaining".
+  //
+  // Everything else (video above all) renders the source CONTINUOUSLY:
+  // TimelineMediaLayer unmounts the segmented AudioClip and plays one RuntimeVideo with
+  // trimBefore = sourceFrameAt(item, frame). Its word stream is NOT its render, so re-deriving
+  // durationInFrames from the words trims the TAIL OF THE PICTURE (and its embedded audio)
+  // instead of the edited word's span, and nothing ripples. Word ops there only rewrite the
+  // transcript/caption bookkeeping (srcInFrame is media-frame semantics and never enters the
+  // word-flow window). No legit video edit shrinks footage from a word op: silence compression
+  // and deletions are audio-domain only, and video audio is never segmented.
+  if (it.kind !== 'audio') return it.durationInFrames;
+  return Math.max(1, editedFrames(it.transcript!, deleted, fps, itemEditOpts(it)) - (it.srcInFrame ?? 0));
 }
 
 /**

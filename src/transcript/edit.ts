@@ -292,10 +292,26 @@ export interface ClipTranscriptState {
   silenceFrames?: number;
 }
 
-/** Source-word boundary index k for an edited-timeline cut (frames into the clip): words
- *  [0,k) → left half, [k,n) → right. Uses chronological kept segments so the cut maps to
- *  the correct source frame even when words were deleted or pauses compressed. */
-function sourceSplitIndex(words: TranscriptWord[], deleted: Set<number>, fps: number, cutFrames: number, opts: EditOpts): number {
+/** Which coordinate space `cutFrames` is expressed in: `edited` = frames of the EDITED
+ *  (kept-segment) word stream, i.e. a word-driven audio clip; `source` = absolute MEDIA
+ *  frames, i.e. a video clip, which renders continuously (trimBefore = sourceFrameAt). */
+export type SplitCutSpace = 'edited' | 'source';
+
+/** Source-word boundary index k for a cut (frames into the clip): words [0,k) → left half,
+ *  [k,n) → right. `edited` cuts map through chronological kept segments so the cut lands on
+ *  the correct source frame even when words were lost. `source` cuts are already absolute
+ *  media frames — mapping those through the edited stream shifts them by every deletion/gap
+ *  cap and drops the words after the cut. */
+function sourceSplitIndex(
+  words: TranscriptWord[], deleted: Set<number>, fps: number, cutFrames: number,
+  opts: EditOpts, cutSpace: SplitCutSpace,
+): number {
+  if (cutSpace === 'source') {
+    for (let i = 0; i < words.length; i++) {
+      if (msToFrame(words[i]!.start, fps) >= cutFrames) return i;
+    }
+    return words.length;
+  }
   const segs = keptSegments(words, deleted, fps, 0, opts);
   if (!segs.length) return 0;
   const seg = segs.find((s) => cutFrames >= s.fromFrame && cutFrames < s.fromFrame + s.durFrames);
@@ -309,16 +325,26 @@ function sourceSplitIndex(words: TranscriptWord[], deleted: Set<number>, fps: nu
 }
 
 /** Partition a clip's transcript-edit state at a cut into left/right halves so each half's
- *  words match its own source window. Returns null when there's no transcript to split. */
+ *  words match its own source window. Returns null when there's no transcript to split.
+ *  `cutSpace` must match how the clip renders: 'edited' for word-driven audio (the default,
+ *  what every caller did before), 'source' for continuous (video) clips — see SplitCutSpace. */
 export function splitClipTranscript(
   clip: ClipTranscriptState,
   fps: number,
   cutFrames: number,
+  cutSpace: SplitCutSpace = 'edited',
 ): { k: number; left: ClipTranscriptState; right: ClipTranscriptState } | null {
   const words = clip.transcript;
   if (!words?.length) return null;
   const deleted = new Set(clip.deletedWordIdx ?? []);
-  const k = sourceSplitIndex(words, deleted, fps, cutFrames, { maxGapFrames: clip.silenceFrames, gapCapsMs: clip.gapCapsMs });
+  const k = sourceSplitIndex(
+    words,
+    deleted,
+    fps,
+    cutFrames,
+    { maxGapFrames: clip.silenceFrames, gapCapsMs: clip.gapCapsMs },
+    cutSpace,
+  );
 
   const del = clip.deletedWordIdx ?? [];
   const leftCaps: Record<string, number> = {};

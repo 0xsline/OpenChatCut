@@ -198,6 +198,14 @@ export interface TimelineItem extends TranscriptCarrier {
   /** Playback speed: 1 = normal, 2 = 2× faster. Retiming keeps the source span,
    * so durationInFrames scales by 1/rate. Applies to video/audio/sequence items. */
   playbackRate?: number;
+  /** Authoritative SOURCE-frame span that `playbackRate` changes must preserve.
+   * `durationInFrames` alone cannot carry it (a 90-frame span at 4× is 22.5 timeline
+   * frames), so re-deriving the span from the rounded duration on every speed step
+   * accumulated drift: one slider sweep up-and-back left the clip +3 frames.
+   * Only trusted while `round(speedSpan / playbackRate) === durationInFrames`, so a
+   * trim, split, slip or rate-stretch invalidates it and setSpeed falls back to one
+   * rounding of duration×rate. Absent on clips that never changed speed. */
+  speedSpan?: number;
   deletedWordIdx?: number[];
   /** text-only translation / correction variants of `transcript`. Each keys words
    * by their SOURCE index and carries only text — timing always comes from the

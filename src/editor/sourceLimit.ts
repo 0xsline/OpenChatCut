@@ -29,6 +29,26 @@ export function sourceFrameAt(item: SourceTimingItem, localFrame: number): numbe
   return Math.max(0, (item.srcInFrame ?? 0) + timelineFramesToSourceFrames(item, localFrame));
 }
 
+/**
+ * The source span a playbackRate change must preserve.
+ *
+ * `durationInFrames` is integral while span/rate usually is not (90 frames at 4× =
+ * 22.5), so the span cannot be recovered from the rounded duration alone: deriving it
+ * per step (`span = duration × rate_old`, then `duration = round(span / rate_new)`)
+ * lets each step's rounding error feed the next, and a speed-slider sweep up-and-back
+ * does not return to the original cut (+3 frames over 1→4→1, pushing the neighbour).
+ * An item that has been sped up before carries the exact span in `speedSpan`; that
+ * value is only trusted while it still describes the current clip, so any trim/split/
+ * slip/rate-stretch invalidates it and we fall back to one rounding of duration×rate.
+ */
+export function sourceSpanForSpeed(item: SourceTimingItem & Pick<TimelineItem, 'durationInFrames' | 'speedSpan'>): number {
+  const rate = Math.max(0.01, item.playbackRate ?? 1);
+  if (item.speedSpan !== undefined
+    && Number.isFinite(item.speedSpan)
+    && Math.max(1, Math.round(item.speedSpan / rate)) === item.durationInFrames) return item.speedSpan;
+  return Math.round(timelineFramesToSourceFrames(item, item.durationInFrames));
+}
+
 /** Clamped source-media window corresponding to an item-local timeline range. */
 export function sourceWindowForTimelineRange(
   item: SourceTimingItem,
