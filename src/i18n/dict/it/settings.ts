@@ -452,6 +452,9 @@ const overrides: Record<string, string> = {
   '默认工程位置': 'Posizione predefinita dei progetti',
   '新建工程、历史版本和应用生成的素材保存在这里。桌面端从外部拖入的文件和文件夹保留在原位置，工程只建立引用；浏览器运行时会上传托管副本。修改后重启应用生效。': 'Qui vengono salvati i nuovi progetti, la cronologia delle versioni e i media generati dall’app. Sul desktop i file e le cartelle trascinati dall’esterno restano nella posizione originale e il progetto crea solo un riferimento; nel browser viene caricata una copia gestita. La modifica si applica dopo il riavvio.',
   '未配置时素材只存本机。配置后：每次上传同步写入 R2（桶保持私有，读取经本地服务回源，src 路径不变）；本机缺文件时自动从云端取回。改动即时生效。R2 控制台建桶 → R2 API Token（Object Read & Write）即可拿到下面四个值。': 'Senza configurazione i media restano solo sul computer. Dopo la configurazione ogni caricamento viene scritto anche su R2; il bucket resta privato, la lettura passa dal servizio locale e il percorso src non cambia. Se manca un file locale, viene recuperato automaticamente dal cloud. Le modifiche hanno effetto immediato. Crea un bucket nella console R2 e un token API R2 con Object Read & Write per ottenere i quattro valori seguenti.',
+  '该模型已于 {date} 停用': 'Questo modello è stato disattivato il {date}',
+  '该模型将于 {date} 停用': 'Questo modello verrà disattivato il {date}',
+  '建议改用 {model}': 'Usa {model} invece',
 };
 
 export default overrides;

@@ -1,5 +1,6 @@
 import modelsDevCatalog from '../assets/model-capabilities/models-dev.json' with { type: 'json' };
 import { LLM_PROVIDER_PRESETS, type LlmProvider } from './llm-providers.js';
+import { filterSelectableModels } from './model-retirements.js';
 
 export const MODEL_CAPABILITY_OVERRIDES_KEY = 'AGENT_MODEL_CAPABILITY_OVERRIDES';
 export type ModelBackend = 'api' | 'codex' | 'copilot' | 'claude-code';
@@ -254,7 +255,12 @@ export function listVisionModels(
       ? [configuredModel] : [];
   }
   const catalog = catalogProviders[catalogProviderId(provider)] ?? {};
-  const ids = Object.keys(catalog).filter((id) => (catalog[id]?.input ?? []).includes('image'));
+  // The catalog still lists models the provider has shut down (models.dev has no
+  // deprecation field), so the picker list drops them; a configured retired
+  // model is appended below and therefore stays visible rather than vanishing.
+  const ids = filterSelectableModels(
+    Object.keys(catalog).filter((id) => (catalog[id]?.input ?? []).includes('image')),
+  );
   if (ids.length === 0 && provider !== 'ollama' && provider !== 'lmstudio') return [];
   if (configuredModel && !ids.includes(configuredModel)) return [...ids, configuredModel];
   return ids;

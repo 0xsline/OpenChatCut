@@ -1,12 +1,31 @@
 import { useT } from '../../i18n/locale';
 import { theme } from '../../theme';
 import { selectAgentModel } from '../../agent/model-selection';
+import { isRetiredModel, retirementFor } from '../../../shared/model-retirements';
 import { Icon } from '../icons';
 import { ComposerPopover } from './ComposerPopover';
 import type { ComposerModelView } from './useComposerModelView';
 import codexPng from '../../../assets/vendor-icons/codex-color.png';
 import copilotSvg from '../../../assets/vendor-icons/copilot.svg?raw';
 import claudeSvg from '../../../assets/vendor-icons/claude-color.svg';
+
+/**
+ * Retirement warning for a saved model: a model whose shutdown date has passed
+ * is kept selectable (the user's configuration is never silently rewritten),
+ * but it must not look like a healthy choice.
+ */
+function ChoiceRetirement({ model }: { readonly model: string }) {
+  const t = useT();
+  const retirement = retirementFor(model);
+  if (!retirement) return null;
+  return (
+    <small style={{ display: 'block', color: theme.danger, fontSize: 10, lineHeight: 1.4 }}>
+      {isRetiredModel(model)
+        ? t('该模型已于 {date} 停用', { date: retirement.retiredAt })
+        : t('该模型将于 {date} 停用', { date: retirement.retiredAt })}
+    </small>
+  );
+}
 
 function ChoiceLogo({ backend }: { backend: 'api' | 'codex' | 'copilot' | 'claude-code' }) {
   if (backend === 'copilot') {
@@ -36,6 +55,11 @@ export function ComposerModelPicker({ anchor, onClose, view }: {
   readonly view: ComposerModelView;
 }) {
   const t = useT();
+  // Retired models leave the picker; the active one stays so a saved selection
+  // is never blanked — it is annotated instead.
+  const choices = view.modelState.choices.filter((choice) => (
+    choice.id === view.modelState.activeId || !isRetiredModel(choice.model)
+  ));
   return (
     <ComposerPopover width={278} anchor={anchor} onClose={onClose}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px' }}>
@@ -47,7 +71,7 @@ export function ComposerModelPicker({ anchor, onClose, view }: {
           {view.modelState.loaded ? t('请先在设置中配置一个模型厂商。') : t('正在读取模型配置…')}
         </div>
       )}
-      {view.modelState.choices.map((choice) => {
+      {choices.map((choice) => {
         const active = choice.id === view.modelState.activeId;
         return (
           <button type="button" key={choice.id}
@@ -57,6 +81,7 @@ export function ComposerModelPicker({ anchor, onClose, view }: {
             <span style={{ flex: 1, minWidth: 0 }}>
               <strong style={{ display: 'block', fontSize: 11.5, fontWeight: 600 }}>{choice.providerLabel}</strong>
               <small style={{ display: 'block', color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{choice.model}</small>
+              <ChoiceRetirement model={choice.model} />
             </span>
             {active && <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="check" size={13} /></span>}
           </button>
