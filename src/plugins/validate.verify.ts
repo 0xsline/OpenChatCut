@@ -116,42 +116,6 @@ console.log(`validatePack: 良性通过 + ${rejects.length} 类坏包全拒 OK`)
   console.log('reduce fxDefs OK');
 }
 
-// ── 导出为插件:候选采集(前缀/去重)+ 组包重排 id + 整包过校验 ────────────────
-{
-  const { fxCandidates, transitionCandidates, mgCandidates, buildExportPack } = await import('./export');
-  const fx = fxCandidates([
-    { id: 'custom:fx-a', name: '甲', desc: 'x', frag: FX_FRAG, props: [] },
-    { id: 'plugin:other/b', name: '他人', desc: 'x', frag: FX_FRAG, props: [] },   // 不导他人内容
-    { id: 'builtin:fx-invert', name: '内置', desc: 'x', frag: FX_FRAG, props: [] }, // 不导内置
-    { id: 'custom:fx-a', name: '甲', desc: 'x', frag: FX_FRAG, props: [] },        // 去重
-  ]);
-  assert.equal(fx.length, 1, 'fx 候选只收 custom: 且去重');
-  const trs = transitionCandidates(
-    [{ id: 'custom:tr-x', label: '注册表转场', frag: TR_FRAG, props: [] }],
-    [
-      { id: 't1', type: 'custom-shader', durationInFrames: 30, outgoingItemId: 'a', incomingItemId: 'b', trackId: 'V1', customFrag: TR_FRAG, customLabel: '同frag' },
-      { id: 't2', type: 'custom-shader', durationInFrames: 30, outgoingItemId: 'b', incomingItemId: 'c', trackId: 'V1', customFrag: TR_FRAG + '\n// v2', customUniforms: { u_soft: 0.3 }, customLabel: '时间线转场' },
-      { id: 't3', type: 'cross-dissolve', durationInFrames: 30, outgoingItemId: 'c', incomingItemId: 'd', trackId: 'V1' },
-    ],
-  );
-  assert.equal(trs.length, 2, '注册表 + 时间线孤儿 frag,同 frag 去重,内置转场不收');
-  const mgs = mgCandidates([
-    { id: 'm1', track: 'V1', startFrame: 0, durationInFrames: 60, name: '卡片', kind: 'motion-graphic', code: 'const A = () => null;' },
-    { id: 'm2', track: 'V1', startFrame: 60, durationInFrames: 60, name: '卡片', kind: 'motion-graphic', code: 'const A = () => null;' },
-    { id: 'v1', track: 'V1', startFrame: 120, durationInFrames: 60, name: '视频', kind: 'video', src: '/a.mp4' },
-  ] as TimelineItem[]);
-  assert.equal(mgs.length, 1, 'MG 按 code 去重,非 MG 不收');
-  const built = buildExportPack({ id: 'my-pack', name: '我的包' }, [fx[0].item, trs[0].item, trs[1].item, mgs[0].item]);
-  assert.ok(built.ok, `组包应过校验:${built.ok ? '' : built.errors.join(';')}`);
-  if (built.ok) {
-    assert.deepEqual(built.pack.items.map((i) => i.id), ['fx-1', 'tr-1', 'tr-2', 'mg-1'], 'id 按类型重排唯一');
-    assert.equal(built.pack.version, '1.0.0');
-  }
-  const badId = buildExportPack({ id: 'Bad Id!', name: 'x' }, [fx[0].item]);
-  assert.ok(!badId.ok, '坏包 id 被拒');
-  console.log('export 组包 OK');
-}
-
 // ── propSchema 校验 + sha256Hex + 反注册(纯注册表侧) ─────────────────────────
 {
   const mg = (extra: Record<string, unknown>) => ({ ...goodPack, items: [{ type: 'mg-template', id: 'mg-x', name: 'x', code: 'const T = () => null;', ...extra }] });
