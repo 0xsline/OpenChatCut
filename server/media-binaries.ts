@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 
 const require = createRequire(import.meta.url);
@@ -30,16 +30,31 @@ export function unpackedPath(path: string): string {
  * Packaged desktop builds fall back to the platform binaries shipped through
  * production dependencies, so media import does not depend on the user's PATH.
  */
+/**
+ * Resolve an explicit override to a spawnable file.
+ *
+ * Cross-tool conventions set `FFMPEG_PATH` to the bin directory rather than the
+ * executable (issue #262), and copying a directory later fails with EPERM on Windows.
+ * A directory therefore resolves to the binary inside it, so the preflight and the
+ * Remotion mirrors both get a real file.
+ */
+function overrideBinary(raw: string | undefined, name: string): string | undefined {
+  if (!raw) return undefined;
+  if (!existsSync(raw)) return raw;
+  if (statSync(raw).isDirectory()) return join(raw, process.platform === 'win32' ? `${name}.exe` : name);
+  return raw;
+}
+
 export function ffmpegBin(): string {
-  return process.env.OPENCHATCUT_FFMPEG
-    ?? process.env.FFMPEG_PATH
+  return overrideBinary(process.env.OPENCHATCUT_FFMPEG, 'ffmpeg')
+    ?? overrideBinary(process.env.FFMPEG_PATH, 'ffmpeg')
     ?? (ffmpegStatic ? unpackedPath(ffmpegStatic) : null)
     ?? 'ffmpeg';
 }
 
 export function ffprobeBin(): string {
-  return process.env.OPENCHATCUT_FFPROBE
-    ?? process.env.FFPROBE_PATH
+  return overrideBinary(process.env.OPENCHATCUT_FFPROBE, 'ffprobe')
+    ?? overrideBinary(process.env.FFPROBE_PATH, 'ffprobe')
     ?? (ffprobeInstaller.path ? unpackedPath(ffprobeInstaller.path) : null)
     ?? 'ffprobe';
 }
