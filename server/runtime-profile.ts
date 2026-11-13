@@ -4,6 +4,7 @@ import { readDataDirPointer } from './data-dir.ts';
 
 export const DEV_PROFILE_ID_ENV = 'OPENCHATCUT_DEV_PROFILE_ID';
 export const DATA_DIR_ENV = 'OPENCHATCUT_DATA_DIR';
+export const SETTINGS_FILE_ENV = 'OPENCHATCUT_SETTINGS_FILE';
 const DEV_PROFILE_ENV_PREFIX = 'OPENCHATCUT_DEV_PROFILE_';
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -120,6 +121,24 @@ function configuredDataDir(
   return resolve(expanded);
 }
 
+/** Optional settings-file location for the ordinary (non-isolated) profile.
+ *
+ *  The checkout's `.env.local` is the default because source users edit it by
+ *  hand. A container image, however, keeps the checkout in a read-mostly image
+ *  layer, and the keystore replaces its file with an atomic rename, which cannot
+ *  target a bind-mounted single file. Pointing the settings file into a mounted
+ *  data volume keeps keys saved from the settings UI across container restarts.
+ *  Isolated dev profiles always use their own `settings.env` and ignore this. */
+function configuredSettingsFile(env: RuntimeProfileEnv, home: string): string | null {
+  const raw = env[SETTINGS_FILE_ENV]?.trim();
+  if (!raw) return null;
+  const expanded = raw.replace(/^~(?=\/)/, home);
+  if (!isAbsolute(expanded)) {
+    throw new Error(`${SETTINGS_FILE_ENV} must be an absolute path (got: ${raw})`);
+  }
+  return resolve(expanded);
+}
+
 export function resolveRuntimeProfile(
   env: RuntimeProfileEnv = process.env,
   locations: RuntimeProfileLocations = {},
@@ -150,7 +169,7 @@ export function resolveRuntimeProfile(
     // backs; the checkout-relative default only applies to the hidden root.
     dataDir ? join(dataDir, 'media', 'uploads') : join(cwd, 'public', 'media', 'uploads'),
     generationOverride ?? join(rootDir, 'generation-operations-v1.json'),
-    resolve(cwd, '.env.local'),
+    configuredSettingsFile(env, home) ?? resolve(cwd, '.env.local'),
   );
   return Object.freeze({
     mode: 'default',

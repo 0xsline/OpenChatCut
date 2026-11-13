@@ -303,6 +303,45 @@ http://localhost:5199
 `~/.openchatcut/dev-profiles/` 下的独立配置；只有明确需要旧版共享开发存储时，
 才使用 `npm run dev:shared`。
 
+### 使用 Docker 运行
+
+需要 Docker 与 Compose v2.24 或更新版本（macOS/Windows 使用 Docker Desktop，Linux 使用 Docker Engine）。镜像基于 Node.js 24 构建源码，运行与 `npm run dev` 相同的 Web 编辑器。
+
+```bash
+git clone https://github.com/0xsline/OpenChatCut.git
+cd OpenChatCut
+docker compose up -d --build
+```
+
+然后在同一台机器上打开 `http://localhost:5199`。首次构建需要下载依赖和运行时资源（MediaPipe 模型、whisper.cpp、Remotion 无头 Chromium），会花几分钟；之后的构建会复用缓存层。
+
+常用命令：
+
+```bash
+docker compose logs -f          # 查看服务日志
+docker compose down             # 停止；数据保留在卷中
+docker compose up -d --build    # `git pull` 后重新构建并启动
+```
+
+**API Key 与设置。** 在编辑器的 **设置** 中填写 Key，它们会保存在数据卷中，重启或重新构建后依然有效。也可以 `cp .env.example .env.local` 后填写需要的 Key；该文件存在时 Compose 会把它传给容器（在设置中保存的值优先）。不要在其中设置 `MEDIA_DIR`、`OPENCHATCUT_DATA_DIR` 等宿主机路径：容器内并不存在这些路径。
+
+**数据。** 项目、版本、导入的素材、生成任务、已保存的设置、MCP token 和自定义技能都保存在 `openchatcut-data` 卷中，挂载于 `/home/node/.openchatcut`。`docker compose down` 会保留它，`docker compose down -v` 会删除它。备份方式：
+
+```bash
+docker run --rm -v openchatcut_openchatcut-data:/data -v "$PWD":/backup busybox tar czf /backup/openchatcut-data.tgz -C /data .
+```
+
+**端口与网络访问。** 容器只在 `127.0.0.1:5199` 上发布编辑器。编辑器接口把到达的请求当作本机请求信任，并且编辑器需要浏览器[安全上下文](https://developer.mozilla.org/zh-CN/docs/Web/Security/Defenses/Secure_Contexts)，因此请在运行 Docker 的机器上打开。需要其他宿主机端口时，用 `OPENCHATCUT_HOST_PORT=8080 docker compose up -d` 启动并打开 `http://localhost:8080`。不要把端口映射改为 `0.0.0.0` 或局域网地址。
+
+**Agent 本地素材导入。** 浏览器版编辑器中，Agent 的本地路径工具需要白名单。要让 Agent 访问宿主机目录，在 [`docker-compose.yml`](docker-compose.yml) 中取消 `./media-import:/import:ro` 卷和 `AGENT_IMPORT_ROOTS: /import` 的注释，然后执行 `docker compose up -d`。通过编辑器上传素材不需要这一步。
+
+**外部 Agent（通过 MCP 使用 Claude Code / Codex）。** MCP 端点同样是 `http://localhost:5199/api/external-mcp/mcp`。需要固定 token 时，在 `docker-compose.yml` 或 `.env.local` 中设置 `OPENCHATCUT_MCP_TOKEN`；否则自动生成的 token 会保存在数据卷中。依赖本机 CLI 的内置 Agent 后端（OpenAI · Codex、Claude Code、GitHub Copilot）未安装在镜像中；容器内请使用 API Key 方式的模型服务商，或改用桌面版 / 源码运行来使用这些后端。
+
+**说明。**
+
+- 容器使用 CPU 渲染和编码（没有 VideoToolbox/NVENC）；如果导出与其他任务争抢资源，可调整 `OPENCHATCUT_RENDER_CONCURRENCY`。
+- 中国大陆可使用 npm 镜像构建：`docker compose build --build-arg NPM_REGISTRY=https://registry.npmmirror.com/`。
+
 ### 内置 Agent 登录方式
 
 - **API Key**：打开**设置 → Agent 模型**，选择厂商并保存 API Key 与模型；密钥始终留在服务端。

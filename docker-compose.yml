@@ -1,0 +1,41 @@
+# OpenChatCut web editor. Usage:
+#
+#   docker compose up -d --build     # build and start
+#   docker compose logs -f           # follow logs
+#   docker compose down              # stop (data stays in the volume)
+#
+# Then open http://localhost:5199 on this machine. See "Run with Docker" in README.md.
+name: openchatcut
+services:
+  openchatcut:
+    build: .
+    image: openchatcut:local
+    container_name: openchatcut
+    restart: unless-stopped
+    # Loopback only: the editor trusts requests that reach it as local requests,
+    # so do not publish it on 0.0.0.0 / a LAN address. Change the left side to
+    # use another host port, e.g. "127.0.0.1:8080:5199".
+    ports:
+      - "127.0.0.1:${OPENCHATCUT_HOST_PORT:-5199}:5199"
+    # Optional: API keys and other settings from .env.local (copy .env.example).
+    # Keys saved in the Settings UI are stored in the data volume and take precedence.
+    env_file:
+      - path: .env.local
+        required: false
+    environment:
+      OPENCHATCUT_DATA_DIR: /home/node/.openchatcut
+      OPENCHATCUT_SETTINGS_FILE: /home/node/.openchatcut/settings.env
+      # Pin the external MCP token (Claude Code / Codex) instead of the generated one:
+      # OPENCHATCUT_MCP_TOKEN: change-me
+      # Let the Agent browse/import the host folder mounted at /import below:
+      # AGENT_IMPORT_ROOTS: /import
+    volumes:
+      # Projects, versions, media uploads, generation jobs, saved settings,
+      # the external MCP token, and custom skills
+      - openchatcut-data:/home/node/.openchatcut
+      # Optional: expose a host media folder to the Agent's local import tools
+      # - ./media-import:/import:ro
+    shm_size: "1gb"   # headless Chromium needs more than Docker's 64 MB default
+
+volumes:
+  openchatcut-data:

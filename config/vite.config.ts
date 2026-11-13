@@ -7,6 +7,7 @@ import { serverPlugins } from '../server/plugins/index.ts';
 import { seedKeystore, getKey } from '../server/keystore.ts';
 import { productAssetsPlugin } from '../server/product-assets.ts';
 import { runtimeProfile } from '../server/runtime-profile.ts';
+import { parseEnvText } from '../server/env-text.ts';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
 if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');
@@ -96,6 +97,13 @@ export default defineConfig(({ mode }) => {
   // unrelated host-shell values; isolated profiles remain wrapper-controlled.
   if (profile.mode !== 'isolated-dev' && existsSync('.env.local')) {
     applyAuthoritativeLocalProvider(env, readFileSync('.env.local', 'utf8'));
+  }
+  // OPENCHATCUT_SETTINGS_FILE (e.g. a Docker data volume) moves where the settings
+  // UI persists keys. Values saved there win, like the isolated profile's settings.env.
+  if (profile.mode !== 'isolated-dev'
+    && profile.keystorePath !== resolve(process.cwd(), '.env.local')
+    && existsSync(profile.keystorePath)) {
+    Object.assign(env, parseEnvText(readFileSync(profile.keystorePath, 'utf8')));
   }
   if (profile.mode === 'isolated-dev') {
     process.stdout.write(`[OpenChatCut] isolated profile ${profile.id} · ${profile.rootDir}\n`);
