@@ -5,7 +5,7 @@ import { isAbsolute } from 'node:path';
 import type { UtilityProcess } from 'electron';
 import { ASR_MODELS } from '../shared/asr-models.ts';
 import { inspectAsrModel } from '../server/plugins/asr-models.ts';
-import { ffmpegBin, whisperCliBin } from '../server/media-binaries.ts';
+import { ffmpegBin, sileroVadBin, whisperCliBin } from '../server/media-binaries.ts';
 import { resolveUploadFile } from '../server/media-dir.ts';
 import {
   isDesktopAsrResponse,
@@ -47,6 +47,8 @@ export interface NativeAsrServiceOptions {
   readonly platform?: NodeJS.Platform;
   readonly ffmpegPath?: string;
   readonly whisperCliPath?: string;
+  /** GGML Silero VAD handed to whisper.cpp so non-speech audio yields no cues. */
+  readonly vadModelPath?: string;
   readonly transformerRuntime?: boolean;
   readonly hardware?: DesktopHardwareCapabilities;
 }
@@ -147,6 +149,7 @@ export class NativeAsrService {
   private readonly platform: NodeJS.Platform;
   private readonly ffmpegPath: string;
   private readonly whisperCliPath: string;
+  private readonly vadModelPath: string;
   private readonly cacheDir: string;
   private readonly capabilities: DesktopInferenceCapabilities;
   private readonly inspectModel: typeof inspectAsrModel;
@@ -169,6 +172,7 @@ export class NativeAsrService {
     this.platform = options.platform ?? process.platform;
     this.ffmpegPath = options.ffmpegPath ?? ffmpegBin();
     this.whisperCliPath = options.whisperCliPath ?? whisperCliBin();
+    this.vadModelPath = options.vadModelPath ?? sileroVadBin();
     this.capabilities = resolveDesktopInferenceCapabilities({
       platform: this.platform,
       transformerRuntime: options.transformerRuntime ?? transformerRuntimeAvailable(),
@@ -305,6 +309,7 @@ export class NativeAsrService {
           platform: this.platform,
           ffmpegPath: this.ffmpegPath,
           whisperCliPath: this.whisperCliPath,
+          vadModelPath: this.vadModelPath,
         },
       });
     } catch (error) {

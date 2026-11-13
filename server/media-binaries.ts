@@ -66,3 +66,23 @@ export function whisperCliBin(): string {
   }
   return join(candidates[0]!);
 }
+
+/**
+ * Silero VAD in the GGML format whisper.cpp loads (`--vad -vm`). It ships in
+ * public/models/silero-vad/ beside the browser ONNX export — the same
+ * `ggml-silero-v6.2.0.bin` whisper.cpp v1.9.2 converts and tests with (MIT) —
+ * so the whisper-server and whisper-cli invocations can drop non-speech audio
+ * before decoding instead of captioning it.
+ */
+export function sileroVadBin(): string {
+  const relative = join('models', 'silero-vad', 'ggml-silero-v6.2.0.bin');
+  const candidates = [
+    join(import.meta.dirname, '..', 'public', relative),
+    join(process.resourcesPath ?? '', 'dist', relative),
+    join(process.resourcesPath ?? '', relative),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return join(candidates[0]!);
+}
