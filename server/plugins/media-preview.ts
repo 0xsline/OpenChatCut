@@ -183,13 +183,27 @@ async function runDerivative<T>(
   }
 }
 
-function handleDerivativeError(
+/** A build the requester stopped waiting for (page reload, effect cleanup,
+ *  remount) is not a server fault: the derivative simply is not cached yet. */
+export function isDerivativeCancellation(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+export function handleDerivativeError(
   res: ServerResponse,
   logError: (message: string) => void,
   label: string,
   error: unknown,
 ): void {
   if (res.destroyed || res.writableEnded) return;
+  if (isDerivativeCancellation(error)) {
+    // Answer retryably instead of 500 so a cold first load can recover and the
+    // log does not read like a server failure. A live client usually never sees
+    // this: the queue gives it a fresh build (see DerivativeQueue.release).
+    res.setHeader('Retry-After', '1');
+    sendJson(res, 503, { error: 'derivative not ready', retryable: true });
+    return;
+  }
   const message = error instanceof Error ? error.message : String(error);
   logError(`[${label}] ${message}`);
   sendJson(res, /spawn|ENOENT/i.test(message) ? 503 : 500, { error: message });
