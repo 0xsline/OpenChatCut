@@ -8,6 +8,8 @@ import { reconcileTimelineCaptionReferences, remapSplitTimelineCaptionReferences
 import { reconcileTransitions } from './transitionReconcile';
 import { hasOperationalTranscript } from '../transcript/types';
 import { splitClipTranscript } from '../transcript/edit';
+import { splitPlayOrderClip } from '../transcript/playOrderSplit';
+import type { TranscriptVariant, TranscriptWord } from '../transcript/types';
 import type { Action } from './reducerActions';
 import { retimePatchForItem, type OverwriteLaneAction } from './reducerTimelineHelpers';
 
@@ -21,10 +23,17 @@ export function splitTimelineItem(
   const sourceWindow = sourceWindowForTimelineRange(item, 0, cut);
   // Word-driven audio partitions its already-edited word stream in visible timeline time.
   const wordDriven = item.kind === 'audio' && hasOperationalTranscript(item);
+  // A reordered speech-block audio clip plays a NON-chronological kept stream, so the
+  // generic cut (mapped through chronological kept segments, playOrder dropped on both
+  // halves) would repartition the source chronologically — silently different audio.
+  // Partition in the played stream instead, re-encoding each half's play order slice.
+  const playOrderParts = wordDriven && item.transcriptPlayOrder?.length
+    ? splitPlayOrderClip(item, s.fps, cut)
+    : null;
   const transcriptCut = wordDriven
     ? sourceWindowForTimelineRange({ ...item, playbackRate: 1 }, 0, cut).endFrame
     : sourceWindow.endFrame;
-  const transcriptParts = hasOperationalTranscript(item)
+  const transcriptParts = !playOrderParts && hasOperationalTranscript(item)
     ? splitClipTranscript(item, s.fps, transcriptCut, wordDriven ? 'edited' : 'source')
     : null;
   const keyframeParts = item.keyframes ? splitItemKeyframes(item.keyframes, cut) : null;
@@ -35,17 +44,25 @@ export function splitTimelineItem(
   const design = motionGraphic
     ? { designDurationInFrames: item.designDurationInFrames ?? designStart + item.durationInFrames }
     : {};
+  const transcriptFields = (
+    part: { transcript?: TranscriptWord[]; deletedWordIdx?: number[]; variants?: TranscriptVariant[]; gapCapsMs?: Record<string, number>; transcriptPlayOrder?: number[] },
+  ) => ({
+    transcript: part.transcript,
+    deletedWordIdx: part.deletedWordIdx,
+    variants: part.variants,
+    gapCapsMs: part.gapCapsMs,
+    transcriptPlayOrder: part.transcriptPlayOrder,
+  });
   const left: TimelineItem = {
     ...item,
     durationInFrames: cut,
     fadeOutFrames: undefined,
-    ...(transcriptParts ? {
-      transcript: transcriptParts.left.transcript,
-      deletedWordIdx: transcriptParts.left.deletedWordIdx,
-      variants: transcriptParts.left.variants,
-      gapCapsMs: transcriptParts.left.gapCapsMs,
-      transcriptPlayOrder: undefined,
-    } : {}),
+    ...(playOrderParts ? { srcInFrame: playOrderParts.leftSrcInFrame } : {}),
+    ...(transcriptParts
+      ? { ...transcriptFields(transcriptParts.left), transcriptPlayOrder: undefined }
+      : playOrderParts
+        ? transcriptFields(playOrderParts.left)
+        : {}),
     ...(keyframeParts ? { keyframes: keyframeParts[0] } : {}),
     ...design,
   };
@@ -54,16 +71,16 @@ export function splitTimelineItem(
     id: newId,
     startFrame: atFrame,
     durationInFrames: item.durationInFrames - cut,
-    srcInFrame: motionGraphic ? designStart + cut : wordDriven && transcriptParts ? 0 : sourceWindow.endFrame,
+    srcInFrame: playOrderParts
+      ? playOrderParts.rightSrcInFrame
+      : motionGraphic ? designStart + cut : wordDriven && transcriptParts ? 0 : sourceWindow.endFrame,
     ...design,
     fadeInFrames: undefined,
-    ...(transcriptParts ? {
-      transcript: transcriptParts.right.transcript,
-      deletedWordIdx: transcriptParts.right.deletedWordIdx,
-      variants: transcriptParts.right.variants,
-      gapCapsMs: transcriptParts.right.gapCapsMs,
-      transcriptPlayOrder: undefined,
-    } : {}),
+    ...(transcriptParts
+      ? { ...transcriptFields(transcriptParts.right), transcriptPlayOrder: undefined }
+      : playOrderParts
+        ? transcriptFields(playOrderParts.right)
+        : {}),
     ...(keyframeParts ? { keyframes: keyframeParts[1] } : {}),
   };
   return [fitItemToDuration(left), fitItemToDuration(right)];
