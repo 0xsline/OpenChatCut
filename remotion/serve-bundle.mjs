@@ -3,8 +3,9 @@
 // at the live upload directory. render.mjs consumes getServeUrl(); the two
 // exported setters are re-exported from there so import sites are unchanged.
 import { bundle } from '@remotion/bundler';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { cp, mkdir, rm, symlink } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,7 +34,17 @@ let linkedDir = null; // <serveUrl>/media/uploads symlink currently points to; r
 export function setUploadsDirProvider(fn) { uploadsDirProvider = fn; }
 
 async function buildServeUrl() {
-  const serveUrl = await buildBundle(undefined);
+  // Create the temp bundle dir up front, mirroring @remotion/bundler's own
+  // mkdtemp pattern, so a failed build (e.g. ENOSPC while copying assets/)
+  // can remove its partial output instead of leaking it into the OS temp dir.
+  const outDir = await mkdtemp(path.join(tmpdir(), 'remotion-webpack-bundle-'));
+  let serveUrl;
+  try {
+    serveUrl = await buildBundle(outDir);
+  } catch (error) {
+    await rm(outDir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
   // Live-link runtime uploads: push_asset / upload / paste / image-gen write files
   // AFTER this one-time snapshot, and a stale snapshot makes the headless renderer
   // 404 them (stills come out blank; <video> decodes the 404 page as
@@ -128,9 +139,19 @@ let uploadsLive = false;
 export async function getServeUrl() {
   if (!bundlePromise) {
     const prebuilt = process.env.CC_REMOTION_BUNDLE;
-    bundlePromise = prebuilt
+    const pending = prebuilt
       ? relinkUploads(prebuilt).then(() => prebuilt)  // Pre-bundle: skip webpack and only take over uploads
       : buildServeUrl();
+    // A failed build (ENOSPC, killed webpack, corrupted cache) must not be
+    // replayed for the rest of the process life: clear the cache so the next
+    // render retries into a fresh temp bundle.
+    const guarded = pending.catch((error) => {
+      if (bundlePromise === guarded) bundlePromise = undefined;
+      uploadsLive = false;
+      linkedDir = null;
+      throw error;
+    });
+    bundlePromise = guarded;
   }
   const serveUrl = await bundlePromise;
   const dir = uploadsDirProvider();
