@@ -3,7 +3,7 @@ import { trackEnd } from './types';
 import { hasOperationalTranscript } from '../transcript/types';
 import { capFade } from './clipFit';
 import { scaleItemKeyframes, upsertKeyframe } from './keyframes';
-import { timelineFramesToSourceFrames } from './sourceLimit';
+import { sourceSpanForSpeed } from './sourceLimit';
 import { coerceKeyframeValue, supportsKeyframeProperty } from './keyframeRegistry';
 import { planSlip } from './slip';
 import { createMediaSourceRevision } from './mediaSourceRevision';
@@ -222,8 +222,11 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
       // vs rendered audio and captions (audio overruns the clip end).
       if (target.kind === 'audio' && hasOperationalTranscript(target)) return s;
       const rate = Math.max(0.1, Math.min(8, a.rate));
-      // preserve the source span: newDuration = sourceSpan / rate
-      const sourceSpan = timelineFramesToSourceFrames(target, target.durationInFrames);
+      // preserve the source span: newDuration = sourceSpan / rate.
+      // The span comes from the clip's authoritative source range (speedSpan), not from
+      // the already-rounded duration × old rate: that derivation fed each step's rounding
+      // error into the next and a slider sweep did not come back to the original cut.
+      const sourceSpan = sourceSpanForSpeed(target);
       const durationInFrames = Math.max(1, Math.round(sourceSpan / rate));
       const oldEnd = target.startFrame + target.durationInFrames;
       const deltaEnd = (target.startFrame + durationInFrames) - oldEnd;
@@ -237,6 +240,7 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
             return {
               ...it,
               playbackRate: rate,
+              speedSpan: sourceSpan,
               durationInFrames,
               ...(it.keyframes ? { keyframes: scaleItemKeyframes(it.keyframes, durationInFrames / it.durationInFrames) } : {}),
             };

@@ -14,7 +14,10 @@ import { generateAgentText } from '../client';
 // · The highlight judgment standard reuses the rules of talking-head-guide (see SELECT_SYSTEM);
 // · Long to short reuse existing infrastructure duplicateTimeline({retarget}) + ASPECT_PRESETS(with
 // timeline-tools.ts long to short is exactly the same path), no additional relocation is required;
-// · When cutting to the highlight frame interval, rewrite the clip as "delete text = delete video" (deleteWords) to keep the word frame consistent.
+// · When cutting to the highlight frame interval, word-driven AUDIO clips are shrunk via
+// "delete text = delete video" (deleteWords). VIDEO clips render their source continuously
+// (word ops no longer re-time them), so the window is cut explicitly with setItemTiming
+// (srcInFrame = first kept word's source frame, duration = the span).
 // Non-transcribed clip goes to frame level setItemTiming/removeItem.
 
 type Args = Record<string, unknown>;
@@ -286,7 +289,28 @@ function trimCopyToHighlight(
   const outside: number[] = [];
   for (let i = 0; i < wordCount; i++) if (i < hl.startWordIndex || i > hl.endWordIndex) outside.push(i);
   if (outside.length) ctx.commands.deleteWords(transcribedId, outside);
-  ctx.commands.moveItem(transcribedId, { startFrame: 0 });
+  const transcribed = ctx.getState().items.find((it) => it.id === transcribedId);
+  if (transcribed && transcribed.kind === 'video' && hasOperationalTranscript(transcribed)) {
+    // A video clip renders its SOURCE continuously — its word stream is transcript
+    // bookkeeping, not its render (editor word ops stop re-timing such clips), so cut
+    // the highlight window explicitly here: srcInFrame = first kept word's source
+    // frame, duration = the highlight span. Word-driven audio keeps the deleteWords
+    // shrink (edited stream) and only needs the pan to 0 below.
+    const localStart = Math.max(0, spanStart - transcribed.startFrame);
+    const spanLen = Math.max(1, spanEnd - spanStart);
+    const srcStart = sourceWindowForTimelineRange(
+      { ...transcribed, playbackRate: 1 },
+      localStart,
+      spanLen,
+    ).startFrame;
+    ctx.commands.setItemTiming(transcribedId, {
+      startFrame: 0,
+      durationInFrames: spanLen,
+      srcInFrame: srcStart,
+    });
+  } else {
+    ctx.commands.moveItem(transcribedId, { startFrame: 0 });
+  }
 
   // 2) The rest of the clips: intersect with [spanStart,spanEnd) - delete without overlap, crop and translate with -spanStart.
   for (const it of snapshot) {
