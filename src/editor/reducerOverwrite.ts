@@ -25,7 +25,7 @@ export function splitTimelineItem(
     ? sourceWindowForTimelineRange({ ...item, playbackRate: 1 }, 0, cut).endFrame
     : sourceWindow.endFrame;
   const transcriptParts = hasOperationalTranscript(item)
-    ? splitClipTranscript(item, s.fps, transcriptCut)
+    ? splitClipTranscript(item, s.fps, transcriptCut, wordDriven ? 'edited' : 'source')
     : null;
   const keyframeParts = item.keyframes ? splitItemKeyframes(item.keyframes, cut) : null;
   // A motion graphic is one animation: both pieces keep playing the SAME design, each its own window
