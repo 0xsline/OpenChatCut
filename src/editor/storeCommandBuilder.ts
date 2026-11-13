@@ -239,6 +239,10 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       addTextClip: (at) => {
         const id = uid('item');
         const align = at?.align === 'left' || at?.align === 'right' ? at.align : 'center';
+        // Text carries no intrinsic raster size, so its layout box must match
+        // the canvas it lands on: a hardcoded 16:9 box cover-scales 1.78x (or
+        // contain-scales to 56%) on a 9:16 canvas and mis-renders the title.
+        const canvas = activeTimeline(getDoc());
         dispatchWithTracks({
           type: 'add',
           startFrame: at?.startFrame,
@@ -249,8 +253,8 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
             durationInFrames: at?.durationInFrames ?? 90,
             kind: 'text',
             name: at?.name?.trim() || '文字',
-            width: 1920,
-            height: 1080,
+            width: canvas?.width ?? 1920,
+            height: canvas?.height ?? 1080,
             props: {
               text: at?.text?.trim() || '双击编辑文字',
               fontSize: typeof at?.fontSize === 'number' && Number.isFinite(at.fontSize) ? at.fontSize : 96,

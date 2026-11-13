@@ -45,8 +45,11 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
   canvasH: number;
   fit: AspectFit;
 }) {
-  const dw = item.width ?? 1920;
-  const dh = item.height ?? 1080;
+  // Text clips carry no intrinsic raster size; defaulting the layout box to the
+  // canvas keeps scale at 1. A 1920x1080 default cover-scales 1.78x on a 9:16
+  // canvas and clips long lines at both edges.
+  const dw = item.width ?? canvasW;
+  const dh = item.height ?? canvasH;
   const scale = fit === 'cover' ? Math.max(canvasW / dw, canvasH / dh) : Math.min(canvasW / dw, canvasH / dh);
   const props = item.props ?? {};
   const align = (props.align === 'left' || props.align === 'right' ? props.align : 'center') as 'left' | 'center' | 'right';
