@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { theme } from '../../theme';
-import { t, useT } from '../../i18n/locale';
+import { getLocale, t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import { VendorIcon } from './vendorIcons';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/capabilities';
@@ -81,7 +81,11 @@ function useKeyStatus(): {
 /** Keep runtime transcription preferences in sync with server-saved settings. */
 function syncTranscriptionPreferences(models: Record<string, string>): void {
   try {
-    localStorage.setItem(TRANSCRIPTION_LANGUAGE_KEY, models.TRANSCRIPTION_LANGUAGE?.trim() || 'zh');
+    // Unset server setting → keep the app locale as the default, not Chinese.
+    localStorage.setItem(
+      TRANSCRIPTION_LANGUAGE_KEY,
+      models.TRANSCRIPTION_LANGUAGE?.trim() || getLocale(),
+    );
     localStorage.setItem(
       TRANSCRIPTION_DIARIZATION_KEY,
       models.TRANSCRIPTION_DIARIZATION === '0' ? '0' : '1',

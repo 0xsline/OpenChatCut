@@ -3,6 +3,8 @@
 // memory) — the shipped build is identical everywhere, the choice is made at runtime.
 // P0 note: thresholds are initial estimates; calibrate with real devices before release.
 import { asrModelEntry, isAsrModelTier } from '../../shared/asr-models';
+import { autoAsrTier, memoryPreferredAsrTier } from './local-asr-tier';
+import type { LocalAsrModelStatus } from './local-asr-readiness';
 import type { AsrConfig, AsrDevice, AsrModelTier, DeviceProfile } from './local-asr-types';
 
 const DEFAULT_MEMORY_GB = 8;
@@ -50,23 +52,31 @@ export async function detectDeviceProfile(): Promise<DeviceProfile> {
 
 /**
  * Backend + model tier. User's explicit setting (settings → 本地模型 → 默认模型,
- *  synced to localStorage 'cc.asrModel') wins; otherwise base. Measured:
- *  wasm small runs at RTF ~0.9 (a 10-min clip takes ~9 min) while base is
- *  ~2.5x faster with comparable quality for typical speech, so the auto
- *  default stays on base and small/medium are explicit choices.
+ *  synced to localStorage 'cc.asrModel') wins; `''` is auto, which resolves to
+ *  the best tier that is actually installed (see autoAsrTier) — a user whose
+ *  only download was `small` must not be sent to `base`.
+ *  Measured: wasm small runs at RTF ~0.9 (a 10-min clip takes ~9 min) while
+ *  base is ~2.5x faster with comparable quality for typical speech, so auto's
+ *  first choice stays on the memory tier and small/medium are explicit choices.
  *  NOTE: onnxruntime-web's webgpu EP produces hallucinated output for these
  *  quantized whisper models on both software renderers and real Metal (verified
  *  M5/Chrome); wasm is the reliable default. */
-export function chooseAsrConfig(profile: DeviceProfile): AsrConfig {
+export function chooseAsrConfig(
+  profile: DeviceProfile,
+  models?: readonly LocalAsrModelStatus[] | null,
+): AsrConfig {
   let preferred: string = '';
   try {
     preferred = globalThis.localStorage?.getItem('cc.asrModel') ?? '';
   } catch {
     preferred = '';
   }
-  const tier: AsrModelTier = isAsrModelTier(preferred) && preferred !== ''
-    ? preferred
-    : 'base';
+  const explicit = isAsrModelTier(preferred) && preferred !== '' ? preferred : null;
+  // Nothing installed: keep the memory tier so the run can say which engine
+  // files are missing; the caller reports "download a model" first.
+  const tier: AsrModelTier = (explicit
+    ?? autoAsrTier(profile.deviceMemoryGB, models)
+    ?? memoryPreferredAsrTier(profile.deviceMemoryGB)) as AsrModelTier;
   const model = asrModelEntry(tier);
   if (!model) throw new Error(`Unsupported local ASR model tier: ${tier}`);
   // WebGPU is an explicit opt-in (settings → 本地模型 → WebGPU 加速) and only

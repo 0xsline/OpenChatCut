@@ -99,6 +99,7 @@ export default {
   '模板 ID（可选）': 'Template ID (optional)',
   '转写模型': 'Transcription model',
   '转写语言': 'Transcription language',
+  '跟随界面语言': 'Follow the UI language',
   '说话人分离': 'Speaker diarization',
 
   // ── routing options ──

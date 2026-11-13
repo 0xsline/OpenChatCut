@@ -16,7 +16,9 @@ const COMMON_TRANSCRIPTION_FIELDS: readonly SettingsField[] = [
     name: 'TRANSCRIPTION_LANGUAGE',
     label: '转写语言',
     kind: 'select',
-    defaultLabel: '中文（zh）',
+    // The runtime default is the app locale (see preferredTranscriptionLanguage),
+    // so the option that clears the setting must say so, not name zh.
+    defaultLabel: '跟随界面语言',
     options: [
       { value: 'zh', label: '中文（zh）' },
       { value: 'en', label: '英语（en）' },

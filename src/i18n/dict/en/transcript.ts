@@ -14,6 +14,8 @@ export default {
     'The local transcription model {model} is not downloaded: neither the whisper.cpp model file (GGML) the desktop engine needs nor the ONNX model files the browser engine needs are ready. Download the model in Settings → Local models → Local transcription, then try again.',
   '本地转写模型 {model} 的浏览器引擎文件（ONNX）未下载完整或校验失败。请到 设置 → 本地模型 → 本地转写 下载该模型后再试。':
     'The browser-engine files (ONNX) of the local transcription model {model} are incomplete or failed verification. Download the model in Settings → Local models → Local transcription, then try again.',
+  '本地转写尚未安装任何模型：请到 设置 → 本地模型 → 本地转写 下载一个模型后再试。':
+    'No local transcription model is installed yet. Download one in Settings → Local models → Local transcription, then try again.',
   // local-asr — failures while the browser engine runs
   '{stage}失败：{detail}': '{stage} failed: {detail}',
   '音轨准备': 'Audio track preparation',

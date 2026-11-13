@@ -129,14 +129,27 @@ try {
   assert.match(nativeFailed, /ONNX/);
   assert.match(nativeFailed, SETTINGS_PAGE);
 
-  // Nothing installed on desktop: no desktop request, both files named.
+  // Nothing installed on desktop, and the catalog says so for every tier: the
+  // run stops at one actionable download instruction instead of asking the
+  // user to compare two engine file names for a model they never downloaded.
   nativeFailure = null;
   installed(false, false);
   const neither = detailOf(await transcribe());
   assert.equal(nativeRequests, 2);
-  assert.match(neither, /GGML/);
-  assert.match(neither, /ONNX/);
+  assert.match(neither, /尚未安装任何模型/);
+  assert.match(neither, SETTINGS_PAGE);
   assert.equal(decodedSources, 2);
+
+  // One tier without files is not "nothing installed": when the catalog lists a
+  // loadable tier, the selected tier's own engine files are what the error names.
+  installed(false, false);
+  catalogRows = [
+    ...catalogRows,
+    { modelId: small.modelId, onnxDownloaded: false, ggmlDownloaded: false },
+    { modelId: 'Xenova/whisper-tiny', label: 'Whisper Tiny', onnxDownloaded: true, ggmlDownloaded: false },
+  ];
+  const otherTierInstalled = detailOf(await transcribe());
+  assert.match(otherTierInstalled, /ONNX/, 'the selected tier still reports its own missing files');
 
   // Unknown readiness (tier not listed) blocks nothing up front.
   catalogRows = [];
