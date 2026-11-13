@@ -9,8 +9,8 @@ export const WEB_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'web_browser',
     description: [
-      'Read a web page through Firecrawl (requires its key), or as Parallel excerpts when the user enabled WEB_SEARCH_PROVIDER=parallel.',
-      'Parallel supports markdown excerpts and an optional query; advanced formats/actions require provider=firecrawl.',
+      'Read a web page through Firecrawl (requires its key), or as markdown when the user enabled a keyless provider (WEB_SEARCH_PROVIDER=parallel or keenable).',
+      'Keenable and Parallel return page markdown/excerpts and an optional query; advanced formats/actions require provider=firecrawl.',
       'formats: markdown (default), html, rawHtml, images, links, branding, summary, screenshot, videos.',
       'branding = native brand kit (colors/fonts/logo); summary = native page summary.',
       'screenshot is auto-saved to media pool as screenshotAssetId when possible.',
@@ -19,7 +19,7 @@ export const WEB_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['parallel', 'firecrawl'], description: 'Optional. "parallel" works only when the user enabled WEB_SEARCH_PROVIDER=parallel; "firecrawl" requires a configured key.' },
+        provider: { type: 'string', enum: ['parallel', 'keenable', 'firecrawl'], description: 'Optional. "parallel"/"keenable" work only when the user enabled that WEB_SEARCH_PROVIDER; "firecrawl" requires a configured key.' },
         url: { type: 'string', description: 'Page URL (http/https).' },
         formats: {
           type: 'array',
@@ -53,8 +53,8 @@ export const WEB_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'web_search',
     description: [
-      'Search the web through Firecrawl (requires its key), or anonymous Parallel Search MCP when the user enabled WEB_SEARCH_PROVIDER=parallel.',
-      'Returns titles, URLs and descriptions; Firecrawl can also scrape markdown per hit, Parallel returns source excerpts.',
+      'Search the web through Firecrawl (requires its key), or a keyless provider when the user enabled it (WEB_SEARCH_PROVIDER=parallel or keenable).',
+      'Returns titles, URLs and descriptions; Firecrawl can also scrape markdown per hit, the keyless providers return source excerpts.',
       'Use provider to override; country/lang/tbs filters require Firecrawl.',
       'Use site: / filetype: operators in query when helpful. Prefer this to inventing URLs.',
       'Then web_browser a specific URL for deep scrape/screenshot.',
@@ -62,7 +62,7 @@ export const WEB_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['parallel', 'firecrawl'], description: 'Optional. "parallel" works only when the user enabled WEB_SEARCH_PROVIDER=parallel; "firecrawl" requires a configured key.' },
+        provider: { type: 'string', enum: ['parallel', 'keenable', 'firecrawl'], description: 'Optional. "parallel"/"keenable" work only when the user enabled that WEB_SEARCH_PROVIDER; "firecrawl" requires a configured key.' },
         query: { type: 'string', description: 'Search query (supports operators like site:example.com).' },
         limit: { type: 'number', description: 'Max results 1–20 (default 5).' },
         country: { type: 'string', description: "ISO country e.g. 'US' (default US on Firecrawl)." },

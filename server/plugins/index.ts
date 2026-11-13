@@ -391,6 +391,9 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get apiKey() {
         return getKey("FIRECRAWL_API_KEY");
       },
+      get keenableApiKey() {
+        return getKey("KEENABLE_API_KEY");
+      },
     }),
     e2bPlugin({
       get apiKey() {

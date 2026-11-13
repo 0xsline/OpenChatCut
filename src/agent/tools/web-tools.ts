@@ -4,8 +4,9 @@ import type { HarnessToolExecutionContext } from '../harness-context';
 import { webSearchSessionId } from './web-search-session';
 import type { MediaAsset } from '../../editor/types';
 
-// Web tools: Parallel search/page excerpts when unconfigured; saved Firecrawl keys
-// retain Firecrawl behavior. Advanced scraping remains Firecrawl-only.
+// Web tools: keyless Keenable or Parallel search/page reads when the user opts in;
+// otherwise saved Firecrawl keys retain Firecrawl behavior. Advanced scraping
+// stays Firecrawl-only.
 // Routes for the editor agent:
 // - web_browser       → POST /api/web-browser       (Firecrawl scrape)
 // - web_search        → POST /api/firecrawl/search  (official /v1/search)

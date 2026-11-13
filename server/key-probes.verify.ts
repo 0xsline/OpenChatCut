@@ -35,6 +35,7 @@ const EXPECTED_PAGES = [
   'transcription/deepgram', 'transcription/groq', 'transcription/elevenlabs', 'transcription/cartesia',
   'sandbox/e2b',
   'web/firecrawl',
+  'web/keenable',
   'publish/upload-post',
   'storage/r2', 'storage/local',
 ];
@@ -220,9 +221,38 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   }
 }
 
+// 7e. Keenable tests without a key: the public path plus the app-identifier header;
+// an optional saved key switches to the authenticated path, which only lifts limits.
+{
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; title: string | null; key: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    calls.push({ url: String(input), title: headers.get('X-Keenable-Title'), key: headers.get('X-API-Key') });
+    return Response.json({ query: 'OpenChatCut connection test', results: [] });
+  };
+  try {
+    const keyless = await runProbe('web/keenable', {});
+    assert.equal(keyless.ok, true, 'keyless Keenable passes the connection test');
+    assert.deepEqual(calls, [{
+      url: 'https://api.keenable.ai/v1/search/public',
+      title: 'OpenChatCut',
+      key: null,
+    }]);
+    calls.length = 0;
+    const keyed = await runProbe('web/keenable', { KEENABLE_API_KEY: 'keen-test' });
+    assert.equal(keyed.ok, true);
+    assert.deepEqual(calls, [{
+      url: 'https://api.keenable.ai/v1/search',
+      title: 'OpenChatCut',
+      key: 'keen-test',
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
 
-// 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
-// Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.
+// 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured// Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.
 {
   const unset = await runProbe('storage/local', {});
   assert.equal(unset.ok, true);

@@ -62,6 +62,11 @@ export default {
   '素材的本地保存目录，与可选的 R2 云备份。': 'Local save directory for media, plus optional R2 cloud backup.',
   'run_code · 云端沙箱运行 ffmpeg / node / python。': 'run_code · Run ffmpeg / node / python in a cloud sandbox.',
   'web_browser · 抓取网页内容供 Agent 参考。': 'web_browser · Fetch web pages for the Agent to reference.',
+  'web_browser · web_search · 网页检索与抓取（Keenable 免 Key）。': 'web_browser · web_search · Web search and page reads (Keenable needs no key).',
+  'Firecrawl（默认）': 'Firecrawl (default)',
+  'API Key（可选，仅提升限流）': 'API key (optional, only raises rate limits)',
+  '免账号、免 API Key 的网页检索与阅读：web_search 返回标题、URL 和摘要，web_browser 返回页面 Markdown。在「搜索 / 网页阅读」中选择 Keenable 后，无需填 Key 即可用；匿名接口按 IP 限流（每秒 10 次、每小时 1000 次）。可选填 Keenable API Key 仅用于提升限流，不填也能用。截图、页面动作、结构化提取、其它格式与站点映射/爬取/批量抓取始终走 Firecrawl。':
+    'Web search and page reading with no account and no API key: web_search returns titles, URLs and snippets, web_browser returns the page as Markdown. Pick Keenable under "Search / page reading" and it works with no key; the anonymous endpoints are rate-limited per IP (10 per second, 1,000 per hour). A Keenable API key is optional and only raises those limits. Screenshots, page actions, structured extraction, other formats and mapping / crawling / batch scraping always go through Firecrawl.',
 
   // ── Field label ──
   '默认厂商': 'Default vendor',

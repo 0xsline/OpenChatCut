@@ -8,6 +8,7 @@ import { proxyDispatcher } from './outbound-proxy.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
+import { keenableProbe } from './key-probes-keenable.ts';
 import {
   AI_SDK_BASE_URL_FORMAT,
   resolveLlmBaseUrl,
@@ -419,6 +420,9 @@ export const PROBES: Record<string, ProbeDef> = {
       signal: t(), headers: bearer(get('FIRECRAWL_API_KEY')),
     }),
   },
+  // Keenable asks for no account: the public path answers with only the app
+  // identifier header, so "Test connection" succeeds with no key.
+  'web/keenable': keenableProbe,
   // Read-only account endpoint; a fake key is a stable 401. Upload-Post keys
   // use the `Apikey` scheme, not `Bearer`.
   'publish/upload-post': {

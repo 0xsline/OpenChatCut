@@ -220,7 +220,9 @@ export function capabilitiesPrompt(
         ? '\nBasic web_search and web_browser explicitly use Firecrawl and require FIRECRAWL_API_KEY. Do not switch providers after an error.'
         : liveModels?.WEB_SEARCH_PROVIDER === 'parallel'
           ? '\nBasic web_search and web_browser page excerpts explicitly use anonymous Parallel Search MCP without a search key. Advanced page formats still require Firecrawl.'
-          : '\nBasic web_search and web_browser use Firecrawl and require FIRECRAWL_API_KEY. Anonymous Parallel Search MCP is used only when the user sets WEB_SEARCH_PROVIDER=parallel; do not pass provider="parallel" otherwise.')
+          : liveModels?.WEB_SEARCH_PROVIDER === 'keenable'
+            ? '\nBasic web_search and web_browser page reads explicitly use Keenable without a search key. Advanced page formats still require Firecrawl.'
+            : '\nBasic web_search and web_browser use Firecrawl and require FIRECRAWL_API_KEY. The anonymous Parallel Search MCP and keyless Keenable are used only when the user sets WEB_SEARCH_PROVIDER=parallel or keenable; do not pass provider="parallel" or "keenable" otherwise.')
     + '\nProvider choice: skill files only document per-provider usage details; the actual provider is decided by THIS list'
     + ' and its routing suffix (user default → single provider → ask once in manual mode → pick freely in auto mode).'
     + ' Never use a provider that is not in the list above; basic web search/page providers follow the server setting described above.';

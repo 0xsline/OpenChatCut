@@ -44,7 +44,7 @@ export type VendorId =
   | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
-  | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth' | 'copilot' | 'ofox' | 'fal' | 'uploadpost' | 'agnes';
+  | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth' | 'copilot' | 'ofox' | 'fal' | 'uploadpost' | 'agnes' | 'keenable';
 
 interface SvgIcon {
   readonly svg: string;
@@ -113,6 +113,7 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   cheaperinference: { bg: '#0B1F17', mono: 'CI', fg: '#34D399' }, // Cheaper Inference gateway, no official SVG vendored yet
   runcrate: { bg: '#111111', mono: 'RC', fg: '#f7f7f8' }, // Runcrate, no official SVG vendored yet
   agnes: { bg: '#6366F1', mono: 'Ag', fg: '#ffffff' },
+  keenable: { bg: '#3B82F6', mono: 'Kn', fg: '#ffffff' },
 };
 
 interface VendorIconProps {
