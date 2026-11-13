@@ -36,6 +36,13 @@ export default {
   '增强工具': 'Power Tools',
   '沙箱执行': 'Sandbox Execution',
   '网页抓取': 'Web Scraping',
+  '网页搜索提供商': 'Web search provider',
+  'Parallel 免 Key 即可搜索网页；Firecrawl 需要 API Key。停用后 web_search / web_browser 直接报错。留空等同 Firecrawl。':
+    'Parallel searches the web with no key; Firecrawl needs its API key. When disabled, web_search / web_browser fail fast. Leaving it empty behaves like Firecrawl.',
+  '默认（Firecrawl，需 Key）': 'Default (Firecrawl, key required)',
+  'Firecrawl（需 Key）': 'Firecrawl (key required)',
+  'Parallel（免 Key）': 'Parallel (no key needed)',
+  '停用网页搜索': 'Disable web search',
   '发布到社交平台': 'Social Publishing',
   'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。': 'publish_to_social · Publish finished exports to TikTok, Instagram, YouTube and more.',
   '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。':

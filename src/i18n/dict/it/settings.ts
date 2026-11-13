@@ -35,6 +35,13 @@ const overrides: Record<string, string> = {
   '增强工具': 'Strumenti avanzati',
   '沙箱执行': 'Esecuzione sandbox',
   '网页抓取': 'Acquisizione web',
+  '网页搜索提供商': 'Provider di ricerca web',
+  'Parallel 免 Key 即可搜索网页；Firecrawl 需要 API Key。停用后 web_search / web_browser 直接报错。留空等同 Firecrawl。':
+    'Parallel cerca sul web senza chiave; Firecrawl richiede la sua API key. Se disattivato, web_search / web_browser falliscono subito. Lasciato vuoto equivale a Firecrawl.',
+  '默认（Firecrawl，需 Key）': 'Predefinito (Firecrawl, richiede chiave)',
+  'Firecrawl（需 Key）': 'Firecrawl (richiede chiave)',
+  'Parallel（免 Key）': 'Parallel (nessuna chiave)',
+  '停用网页搜索': 'Disattiva ricerca web',
   '发布到社交平台': 'Pubblicazione social',
   'publish_to_social · 把导出的成片发布到 TikTok、Instagram、YouTube 等平台。': 'publish_to_social · pubblica i video esportati su TikTok, Instagram, YouTube e altre piattaforme.',
   '一个 Key 发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky。先在 Upload-Post 创建一个 Profile 并连接各平台账号，再把 Profile 名称填在下面。Agent 发布前总会先预览平台、标题与视频，等你确认后才上传；YouTube 默认私密。':

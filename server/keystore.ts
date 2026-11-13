@@ -187,7 +187,11 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "elevenlabs" && has("ELEVENLABS_API_KEY")) ||
       (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "cartesia" && has("CARTESIA_API_KEY")),
     sandbox: has("E2B_API_KEY"),
-    web: has("FIRECRAWL_API_KEY"),
+    // Basic web research needs a provider, not only a Firecrawl key: Parallel is
+    // compiled in and keyless, and "disabled" turns the tools off even with a key.
+    web:
+      getKey("WEB_SEARCH_PROVIDER") !== "disabled" &&
+      (has("FIRECRAWL_API_KEY") || getKey("WEB_SEARCH_PROVIDER") === "parallel"),
     storage:
       !isIsolatedDevProfile() &&
       has("R2_ACCOUNT_ID") &&

@@ -86,6 +86,23 @@ const falPage = (cap: 'image' | 'video'): SettingsVendorPage => ({
   ],
 });
 
+// Basic web research provider (web_search / web_browser). Parallel is the keyless
+// Search MCP compiled into the server; Firecrawl needs its API key. One select keeps
+// the value in the WEB_SEARCH_PROVIDER keystore slot, so a future provider (e.g.
+// Keenable) is one more option here and no wiring changes.
+export const WEB_SEARCH_PROVIDER_FIELD: SettingsField = {
+  name: 'WEB_SEARCH_PROVIDER',
+  label: '网页搜索提供商',
+  kind: 'select',
+  note: 'Parallel 免 Key 即可搜索网页；Firecrawl 需要 API Key。停用后 web_search / web_browser 直接报错。留空等同 Firecrawl。',
+  options: [
+    { value: '', label: '默认（Firecrawl，需 Key）' },
+    { value: 'firecrawl', label: 'Firecrawl（需 Key）' },
+    { value: 'parallel', label: 'Parallel（免 Key）' },
+    { value: 'disabled', label: '停用网页搜索' },
+  ],
+};
+
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     key: 'agent', title: 'Agent 模型', icon: 'sparkles',
@@ -292,6 +309,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             ] },
         ] },
       { key: 'web', title: '网页抓取', hint: 'web_browser · 抓取网页内容供 Agent 参考。',
+        route: WEB_SEARCH_PROVIDER_FIELD,
         vendors: [
           { key: 'web/firecrawl', vendor: 'firecrawl', title: 'Firecrawl',
             fields: [secret('FIRECRAWL_API_KEY', 'API Key')] },
