@@ -28,6 +28,14 @@ export function asrEngineReady(model: LocalAsrModelStatus, engine: LocalAsrEngin
   return ready ?? model.downloaded === true;
 }
 
+/** Whether any tier is loadable here — whisper.cpp's file or the browser's ONNX export. */
+export function anyLocalAsrReady(models: readonly LocalAsrModelStatus[]): boolean {
+  return models.some((model) => asrEngineReady(model, 'native') || asrEngineReady(model, 'browser'));
+}
+
+/** Fired after a Settings download/delete so readers re-check readiness. */
+export const LOCAL_ASR_MODELS_CHANGE_EVENT = 'openchatcut:local-asr-models-change';
+
 function optionalBoolean(record: Record<string, unknown>, key: string): boolean | undefined {
   const value = record[key];
   return typeof value === 'boolean' ? value : undefined;

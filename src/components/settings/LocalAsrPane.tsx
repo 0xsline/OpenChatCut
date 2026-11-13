@@ -7,6 +7,8 @@ import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { warmUpLocalAsr } from '../../transcript/local-asr';
 import { asrBackendPreference } from '../../transcript/deviceProfile';
+import { anyLocalAsrReady, LOCAL_ASR_MODELS_CHANGE_EVENT } from '../../transcript/local-asr-readiness';
+import { applyLocalTranscriptionReady } from '../../agent/capabilities';
 import { VendorIcon } from './vendorIcons';
 import type { AsrDownloadStatus } from '../../../shared/asr-models';
 import { ASR_INFERENCE_CONTRACT } from '../../../shared/asr-inference-contract';
@@ -120,10 +122,16 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
       const models = Array.isArray(body.models) ? body.models : [];
       setModels(models);
       setLoadError(null);
+      // The free local engine is a real transcription path: keep the capability
+      // banner honest as tiers are downloaded or deleted.
+      applyLocalTranscriptionReady(anyLocalAsrReady(models));
       const current = new Set(models.filter((m) => m.task?.status === 'downloading').map((m) => m.id));
       // A download just finished: warm the configured model with this catalog
       // snapshot, avoiding a duplicate API request.
-      if (downloadingRef.current.size > 0 && current.size === 0) void warmUpLocalAsr(models);
+      if (downloadingRef.current.size > 0 && current.size === 0) {
+        void warmUpLocalAsr(models);
+        window.dispatchEvent(new Event(LOCAL_ASR_MODELS_CHANGE_EVENT));
+      }
       downloadingRef.current = current;
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
@@ -156,6 +164,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
     try {
       await mutateLocalAsrModel('delete', id);
       await refresh();
+      window.dispatchEvent(new Event(LOCAL_ASR_MODELS_CHANGE_EVENT));
     } finally {
       setBusyId(null);
     }
