@@ -1,7 +1,7 @@
 // Runnable check: `npx tsx src/agent/tools/frames-tool.verify.ts`.
 import assert from 'node:assert/strict';
 import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
-import { constrainSourceFrameArgs, explicitSourceTimesMs } from './frames-tool';
+import { constrainSourceFrameArgs, explicitSourceTimesMs, renderStillBudgetMs } from './frames-tool';
 import { FRAMES_TOOL_SCHEMAS } from './schemas/frames-tool';
 
 const window = sourceWindowForTimelineRange(
@@ -36,5 +36,10 @@ assert.match(assetSchema.description ?? '', /SOURCE-MEDIA/);
 assert.ok('itemId' in (assetSchema.input_schema.properties ?? {}));
 const sourceTimesSchema = assetSchema.input_schema.properties?.sourceTimesMs as { maxItems?: number };
 assert.equal(sourceTimesSchema.maxItems, 8);
+
+// Still renders are bounded so a composition that never settles returns an error.
+assert.equal(renderStillBudgetMs(1), 75_000);
+assert.ok(renderStillBudgetMs(8) > renderStillBudgetMs(1), 'more frames get more time');
+assert.equal(renderStillBudgetMs(100), 240_000, 'the budget is capped');
 
 console.log('frames-tool.verify: explicit coordinate spaces and visible source-window clamping ok');

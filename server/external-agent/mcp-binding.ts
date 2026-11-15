@@ -56,13 +56,46 @@ export function markMcpSessionStale(session: McpBindingSession, message: string)
   if (session.id) cancelEditorCallsForOwner(session.id, 'stale', message);
 }
 
+/**
+ * Re-bind to the editor that currently serves the session's project — exactly
+ * what an explicit target_project would do. Used when the editor reloaded or
+ * was replaced, so an agent is not stranded on a stale binding that only a
+ * manual reconnect could clear.
+ */
+function rebindToCurrentEditor(session: McpBindingSession): EditorBinding | null {
+  const projectId = session.binding?.projectId;
+  if (!projectId) return null;
+  const current = editorBinding(projectId);
+  if (!current || !editorBindingMatches(current)) return null;
+  if (session.id) orphanStaleEditorSessions(session.id, current);
+  session.binding = current;
+  session.staleReason = null;
+  return current;
+}
+
+function editorReplacedMessage(projectId: string): string {
+  return `The OpenChatCut editor for project ${projectId} reloaded or changed, so this MCP session was re-bound to it automatically. `
+    + 'Edit sessions started before that are now orphaned: call list_edit_sessions, then recover_edit_session '
+    + 'with action "resume" (or "discard"), and retry this call.';
+}
+
 export function validateBrowserBinding(
   session: McpBindingSession,
   allowRevisionDrift = false,
   adoptSameIdentity = true,
   requireSameRevisionForAdopt = false,
 ): EditorBinding | null {
-  if (session.staleReason) throw new ExternalEditorCallError('stale', session.staleReason);
+  if (session.staleReason) {
+    // A stale binding is no longer terminal: once an editor serves the project
+    // again, ordinary calls re-bind themselves instead of failing forever.
+    if (!adoptSameIdentity || !rebindToCurrentEditor(session)) {
+      throw new ExternalEditorCallError('stale', session.staleReason);
+    }
+    if (requireSameRevisionForAdopt) {
+      throw new ExternalEditorCallError('stale', editorReplacedMessage(session.binding!.projectId));
+    }
+    return session.binding;
+  }
   if (!session.binding) return null;
   const matches = allowRevisionDrift
     ? editorBindingIdentityMatches(session.binding)
@@ -82,7 +115,14 @@ export function validateBrowserBinding(
     session.binding = current;
     return current;
   }
-  const message = `MCP session binding for project ${session.binding.projectId} is stale. Call target_project with the same project id to reconnect; old edit sessions still require explicit recovery.`;
+  const projectId = session.binding.projectId;
+  if (adoptSameIdentity && rebindToCurrentEditor(session)) {
+    if (requireSameRevisionForAdopt) {
+      throw new ExternalEditorCallError('stale', editorReplacedMessage(projectId));
+    }
+    return session.binding;
+  }
+  const message = `MCP session binding for project ${projectId} is stale. Call target_project with the same project id to reconnect; old edit sessions still require explicit recovery.`;
   markMcpSessionStale(session, message);
   throw new ExternalEditorCallError('stale', message);
 }

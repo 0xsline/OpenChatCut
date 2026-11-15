@@ -35,10 +35,41 @@ function requestedSessionId(call: EditSessionOwnershipCall): string {
   return typeof sessionId === 'string' ? sessionId.trim() : '';
 }
 
+/**
+ * Whether the transport that owns a draft still counts as present when another
+ * transport (`claimantId`) contends for it. Returning false lets the claimant
+ * recover the draft without waiting for the owner's MCP session to expire.
+ */
+export type EditSessionOwnerLiveness = (ownerId: string, claimantId: string) => boolean;
+
 export class EditSessionOwnershipRegistry {
   private readonly owners = new Map<string, EditSessionOwner>();
   private readonly orphans = new Map<string, EditorBinding>();
   private readonly recoveryClaims = new Map<string, RecoveryClaim>();
+
+  private ownerLive: EditSessionOwnerLiveness;
+
+  constructor(ownerLive: EditSessionOwnerLiveness = () => true) {
+    this.ownerLive = ownerLive;
+  }
+
+  setOwnerLiveness(ownerLive: EditSessionOwnerLiveness): void {
+    this.ownerLive = ownerLive;
+  }
+
+  /**
+   * An agent that reconnects on a new MCP transport (crash, client restart,
+   * dropped session id) used to be locked out of its own draft until the old
+   * transport expired an hour later. When another transport contends for the
+   * draft and the owner is no longer live, the draft becomes orphaned and the
+   * normal recover/reuse paths apply.
+   */
+  private orphanIfOwnerGone(sessionId: string, claimantId: string): void {
+    const owner = this.owners.get(sessionId);
+    if (!owner || owner.ownerId === claimantId || this.ownerLive(owner.ownerId, claimantId)) return;
+    this.owners.delete(sessionId);
+    this.orphans.set(sessionId, { ...owner.binding });
+  }
 
   owns(ownerId: string, binding: EditorBinding, editSessionId: unknown): boolean {
     if (typeof editSessionId !== 'string') return false;
@@ -74,6 +105,7 @@ export class EditSessionOwnershipRegistry {
   reserveRecovery(call: EditSessionOwnershipCall): void {
     if (call.name !== 'recover_edit_session') return;
     const sessionId = requestedSessionId(call);
+    if (sessionId) this.orphanIfOwnerGone(sessionId, call.ownerId);
     if (!sessionId || !this.orphans.has(sessionId)) {
       throw new ExternalEditorCallError('rejected', 'Only an orphaned edit session can be recovered.');
     }
@@ -97,6 +129,7 @@ export class EditSessionOwnershipRegistry {
     if (call.name === 'begin_edit_session') {
       const sessionId = sessionIdFrom(value);
       if (sessionId) {
+        this.orphanIfOwnerGone(sessionId, call.ownerId);
         if (this.owners.has(sessionId)) this.requireOwned(call.ownerId, call.binding, sessionId);
         if (this.recoveryClaims.has(sessionId)) {
           throw new ExternalEditorCallError(
@@ -171,6 +204,7 @@ export class EditSessionOwnershipRegistry {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
       const record = entry as Record<string, unknown>;
       const sessionId = typeof record.editSessionId === 'string' ? record.editSessionId : '';
+      if (sessionId) this.orphanIfOwnerGone(sessionId, ownerId);
       const owner = this.owners.get(sessionId);
       const active = record.status === 'drafting' || record.status === 'awaiting_review';
       const orphaned = active && (this.orphans.has(sessionId) || !owner);
@@ -184,8 +218,10 @@ export class EditSessionOwnershipRegistry {
         recoveryActions: orphaned && !recoveryPending
           ? (record.stale === true ? ['discard'] : ['resume', 'discard'])
           : [],
+        // Identity, not epoch: a lease renewal alone must not make an agent
+        // believe it lost a draft it still owns.
         ownedByCurrentTransport: owner?.ownerId === ownerId
-          && sameEditorBinding(owner.binding, binding),
+          && sameEditorIdentity(owner.binding, binding),
       };
     });
   }

@@ -82,11 +82,12 @@ export async function validateExternalBridgeBinding(input: {
     );
   }
   if (input.binding.baseRevision === revisionOf(input.currentDoc)) return;
-  const active = findActiveExternalSession(input.sessions);
-  if (active) await input.markStale(active);
+  // Only this call is out of date. The active draft is kept: draft tools rebase
+  // it onto the live project themselves, so one lagging call must not destroy
+  // an agent's work.
   throw new ExternalEditSessionOutcomeError(
     'stale',
-    `Project ${input.projectId} changed; re-initialize the MCP session.`,
+    `Project ${input.projectId} changed after this call was issued; retry the call.`,
   );
 }
 

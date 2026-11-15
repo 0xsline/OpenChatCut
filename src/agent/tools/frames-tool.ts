@@ -235,8 +235,12 @@ async function renderStills(
   let prepared: Awaited<ReturnType<typeof prepareBrowserRenderSnapshots>> | undefined;
   try {
     prepared = await prepareBrowserRenderSnapshots({ state, project, timelineId });
+    // Bound the render so a composition that never settles (very large source
+    // images, a stuck decoder) returns an error instead of pinning the agent
+    // call; the server's request-abort binding stops the render too.
     const res = await fetch('/render-still', {
       method: 'POST',
+      signal: AbortSignal.timeout(renderStillBudgetMs(frames.length)),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         state: prepared.state,
@@ -257,10 +261,21 @@ async function renderStills(
     };
     return packImages(data.frames, data.gridBase64, note, { renderedBy: data.renderedBy ?? 'remotion' });
   } catch (e) {
+    if (e instanceof DOMException && e.name === 'TimeoutError') {
+      return {
+        error: `render-still timed out after ${Math.round(renderStillBudgetMs(frames.length) / 1000)}s for ${frames.length} frame(s). `
+          + 'Request fewer frames per call; very large source images (e.g. >4K photos) render slowly, so downscale them before placing them.',
+      };
+    }
     return { error: `render-still 请求失败: ${e instanceof Error ? e.message : String(e)}` };
   } finally {
     await prepared?.cleanup();
   }
+}
+
+/** Time budget for one /render-still request: 60s plus 15s per frame, capped at 4 minutes. */
+export function renderStillBudgetMs(frameCount: number): number {
+  return Math.min(240_000, 60_000 + Math.max(1, frameCount) * 15_000);
 }
 
 /** Fast path: ffmpeg contact sheet for uploaded video masters. */

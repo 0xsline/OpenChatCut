@@ -2,6 +2,7 @@ import type { AgentContext } from './context';
 import type { ProjectDoc } from '../editor/types';
 import {
   createExternalEditSession, ExternalEditSessionOutcomeError, finishExternalEditSession,
+  rebaseExternalEditSession,
   revisionOf, reviewExternalEditSession, type ExternalEditSession,
   type ExternalEditSessionTerminalStatus,
 } from './external-edit-session';
@@ -110,6 +111,7 @@ export class ExternalBridgeRuntime {
         requireSession: (sessionId) => this.requireSession(sessionId),
         discard: (session) => this.discard(session),
         markStale: (session) => this.markTerminal(session, 'stale'),
+        rebase: (session) => this.rebaseDraft(session),
       });
     }
     if (name === 'begin_edit_session') {
@@ -362,6 +364,17 @@ export class ExternalBridgeRuntime {
     return this.info(reviewed);
   }
 
+  /** Rebase a drafting session onto the live project and persist its checkpoint. */
+  private async rebaseDraft(session: ExternalEditSession): Promise<ExternalEditSession | null> {
+    const rebased = rebaseExternalEditSession(session, this.getContext().getDoc());
+    const run = this.runs.get(session.id);
+    if (!rebased || !run || this.sessions.get(session.id) !== session) return null;
+    await this.persistence.saveExternalProposal(this.projectId,
+      storedExternalSession(rebased, 'drafting', undefined, run.runId));
+    this.sessions.set(session.id, rebased);
+    return rebased;
+  }
+
   private async discard(session: ExternalEditSession): Promise<unknown> {
     if (!EXTERNAL_ACTIVE_STATUSES.has(session.status)) return this.info(session);
     await this.markTerminal(session, 'cancelled');
@@ -383,6 +396,16 @@ export class ExternalBridgeRuntime {
       signal,
       markStale: () => this.markTerminal(session, 'stale'),
     });
+    // Session-management calls run concurrently with draft tools, so the draft
+    // may have been discarded, recovered or reviewed while this tool ran. Never
+    // write a late result back over a session that is no longer drafting.
+    const current = this.sessions.get(session.id);
+    if (current !== session || current.status !== 'drafting') {
+      throw new ExternalEditSessionOutcomeError(
+        'cancelled',
+        `Edit session ${session.id} changed while ${name} was running; its result was discarded.`,
+      );
+    }
     await this.persistence.saveExternalProposal(this.projectId,
       storedExternalSession(executed.session, 'drafting', undefined, run.runId));
     this.sessions.set(session.id, executed.session);

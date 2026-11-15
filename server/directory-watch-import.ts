@@ -1,6 +1,7 @@
 import { mkdir, realpath, stat, unlink } from 'node:fs/promises';
-import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Stats } from 'node:fs';
+import { createRequire } from 'node:module';
 import type { DirectoryImportedFile, DirectoryImportMediaKind } from '../shared/directory-import.ts';
 import { normalizeSha256Hash } from '../shared/content-hash.ts';
 import { ffprobeBin } from './media-binaries.ts';
@@ -66,6 +67,68 @@ export interface DirectoryImportDependencies {
     signal?: AbortSignal,
   ) => Promise<DirectoryMediaProbe>;
   readonly unlink: (path: string) => Promise<void>;
+  /**
+   * Writes a downscaled preview next to an oversized still image and returns
+   * its path, or null when the image is already small enough.
+   */
+  readonly downscaleImage?: (storedPath: string, signal: AbortSignal) => Promise<string | null>;
+}
+
+/**
+ * Long-side cap for imported still images. Phone photos (24–50 MP) are decoded
+ * in full by the preview player and the still renderer; a few of them on one
+ * timeline exhausted renderer memory, timed out frame renders and crashed the
+ * editor. 4096 px still covers 4K output with headroom. The original file is
+ * kept on disk under its stored name.
+ */
+export const IMPORT_IMAGE_MAX_LONG_SIDE = 4096;
+
+export function imagePreviewName(storedName: string, hasAlpha: boolean): string {
+  return `${basename(storedName, extname(storedName))}.preview.${hasAlpha ? 'png' : 'jpg'}`;
+}
+
+/** The slice of sharp's API used for previews; sharp's own typings do not
+ *  resolve under this project's module settings. */
+interface SharpPipeline {
+  metadata(): Promise<{ width?: number; height?: number; hasAlpha?: boolean }>;
+  rotate(): SharpPipeline;
+  resize(options: {
+    width: number;
+    height: number;
+    fit: 'inside';
+    kernel: 'lanczos3';
+    withoutEnlargement: boolean;
+  }): SharpPipeline;
+  png(): SharpPipeline;
+  jpeg(options: { quality: number; mozjpeg: boolean }): SharpPipeline;
+  toFile(path: string): Promise<unknown>;
+}
+type SharpFactory = (input: string, options: { failOn: 'none' }) => SharpPipeline;
+
+function loadSharp(): SharpFactory {
+  return createRequire(import.meta.url)('sharp') as SharpFactory;
+}
+
+export async function downscaleDirectoryImage(storedPath: string, signal: AbortSignal): Promise<string | null> {
+  if (signal.aborted) throw new DirectoryImportCancelledError();
+  const sharp = loadSharp();
+  const metadata = await sharp(storedPath, { failOn: 'none' }).metadata();
+  const longSide = Math.max(metadata.width ?? 0, metadata.height ?? 0);
+  if (!longSide || longSide <= IMPORT_IMAGE_MAX_LONG_SIDE) return null;
+  const hasAlpha = metadata.hasAlpha === true;
+  const outputPath = join(dirname(storedPath), imagePreviewName(basename(storedPath), hasAlpha));
+  const pipeline = sharp(storedPath, { failOn: 'none' })
+    .rotate()
+    .resize({
+      width: IMPORT_IMAGE_MAX_LONG_SIDE,
+      height: IMPORT_IMAGE_MAX_LONG_SIDE,
+      fit: 'inside',
+      kernel: 'lanczos3',
+      withoutEnlargement: true,
+    });
+  await (hasAlpha ? pipeline.png() : pipeline.jpeg({ quality: 90, mozjpeg: true })).toFile(outputPath);
+  if (signal.aborted) throw new DirectoryImportCancelledError();
+  return outputPath;
 }
 
 export interface DirectoryCandidateRequest {
@@ -137,6 +200,7 @@ const DEFAULT_DEPENDENCIES: DirectoryImportDependencies = {
   normalizeVideo: normalizeDirectoryVideo,
   probeMedia: probeDirectoryMedia,
   unlink,
+  downscaleImage: downscaleDirectoryImage,
 };
 
 function fingerprintOf(info: Stats): DirectoryFileFingerprint {
@@ -202,6 +266,10 @@ function cleanupCandidates(
   const directories = new Set([pinnedDirectory, resolve(dependencies.uploadDirectory())]);
   const names = new Set([storedName]);
   if (kind === 'video') names.add(`${basename(storedName, extname(storedName))}.mp4`);
+  if (kind === 'image') {
+    names.add(imagePreviewName(storedName, false));
+    names.add(imagePreviewName(storedName, true));
+  }
   if (extname(storedName).toLowerCase() === '.mov') {
     names.add(`${basename(storedName, '.mov')}.alpha.webm`);
   }
@@ -333,6 +401,25 @@ async function resolveDirectoryPublication(
   const storedPath = dependencies.resolveUpload(imported.storedName);
   if (!storedPath) throw new Error('referenced directory media is offline');
   if (kind !== 'video') {
+    if (kind === 'image' && dependencies.downscaleImage) {
+      // A preview failure (an unsupported codec such as some HEIC files) falls
+      // back to the original, exactly as before this preview existed.
+      const previewPath = await checked(
+        dependencies.downscaleImage(storedPath, request.signal).catch((error: unknown) => {
+          if (error instanceof DirectoryImportCancelledError) throw error;
+          return null;
+        }),
+        request.cancelled,
+      );
+      if (previewPath) {
+        await assertPinnedDestination(request.pinnedUploadDirectory, dependencies, request.cancelled);
+        const probe = await checked(
+          dependencies.probeMedia(previewPath, kind, request.signal), request.cancelled,
+        );
+        const srcDirectory = imported.src.slice(0, imported.src.lastIndexOf('/') + 1);
+        return { src: `${srcDirectory}${basename(previewPath)}`, storedName: imported.storedName, probe };
+      }
+    }
     const probe = await checked(
       dependencies.probeMedia(storedPath, kind, request.signal), request.cancelled,
     );

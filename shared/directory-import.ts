@@ -28,7 +28,8 @@ export interface AgentPathImportRequest {
 
 export type AgentPathImportErrorCode =
   | 'IMPORT_ROOTS_NOT_CONFIGURED'
-  | 'PATH_OUTSIDE_IMPORT_ROOTS';
+  | 'PATH_OUTSIDE_IMPORT_ROOTS'
+  | 'IMPORT_FAILED_RETRYABLE';
 
 export interface AgentPathImportError {
   readonly path: string;

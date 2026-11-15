@@ -208,6 +208,38 @@ const malformed = await loadExternalProposal(malformedProjectId);
 assert.equal(malformed?.status, 'stale', 'malformed drafting data fails closed as terminal stale');
 assert.equal(malformed?.draftCheckpoint, undefined);
 
+// A reload that meets a project which moved on in an unrelated way rebases the
+// draft instead of discarding the agent's work.
+{
+  const rebaseProjectId = `${projectId}-rebase`;
+  const rebaseLive = makeDraft(base);
+  const rebaseContext = (draft: DraftEngine): AgentContext => ({
+    ...context(draft), getProjectId: () => rebaseProjectId,
+  });
+  const before = new ExternalBridgeRuntime(
+    rebaseProjectId, 'rebase-before', () => rebaseContext(rebaseLive), () => undefined, persistence,
+  );
+  const beforeBinding = { projectId: rebaseProjectId, editorInstanceId: 'rebase-before', baseRevision: revisionOf(rebaseLive.getDoc()) };
+  const rebaseSessionId = sessionId(await before.execute('begin_edit_session', {}, beforeBinding));
+  await before.execute('set_aspect_ratio', { editSessionId: rebaseSessionId, ratio: '1:1' }, beforeBinding);
+  const stored = await loadExternalProposal(rebaseProjectId);
+  assert(stored);
+  await before.disconnect();
+  await loadRecoveredAgentSession(rebaseProjectId, () => true);
+  rebaseLive.commands.setAspect(1280, 720, 'contain');
+  const after = new ExternalBridgeRuntime(
+    rebaseProjectId, 'rebase-after', () => rebaseContext(rebaseLive), () => undefined, persistence,
+  );
+  await after.hydrate(stored);
+  const afterBinding = { projectId: rebaseProjectId, editorInstanceId: 'rebase-after', baseRevision: revisionOf(rebaseLive.getDoc()) };
+  const resumed = await after.execute('recover_edit_session', { editSessionId: rebaseSessionId, action: 'resume' }, afterBinding);
+  assert(resumed && typeof resumed === 'object' && 'status' in resumed);
+  assert.equal(resumed.status, 'drafting', 'a reloaded draft rebases onto a changed project');
+  assert.equal((await loadExternalProposal(rebaseProjectId))?.draftCheckpoint?.baseRevision,
+    revisionOf(rebaseLive.getDoc()), 'the rebased checkpoint is persisted');
+  await after.disconnect();
+}
+
 await reloaded.disconnect();
 await staleRuntime.disconnect();
 resetAgentRuntimeStoreMemory();

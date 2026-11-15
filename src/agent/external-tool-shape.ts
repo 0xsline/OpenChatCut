@@ -43,7 +43,7 @@ export const EXTERNAL_SESSION_TOOLS: readonly ExternalRegisteredTool[] = [
   },
   {
     name: 'begin_edit_session',
-    description: 'Start an isolated OpenChatCut edit draft. Manual mode waits for proposal review; auto mode applies only the staged proposal at review_edit_session. Real-project tools always require separate confirmation.',
+    description: 'Start an isolated OpenChatCut edit draft. Manual mode waits for the user to approve the proposal in OpenChatCut and returns needs_confirmation for real-project tools; auto mode applies the staged proposal at review_edit_session and runs real-project tools (render, export, generation, transcription) without a confirmation round-trip. Use auto when the user asked you to work unattended.',
     input_schema: {
       type: 'object',
       properties: {
@@ -51,7 +51,7 @@ export const EXTERNAL_SESSION_TOOLS: readonly ExternalRegisteredTool[] = [
         approvalMode: {
           type: 'string',
           enum: ['manual', 'auto'],
-          description: 'manual (default) requires proposal approval in OpenChatCut; auto applies the reviewed draft only and never bypasses real-tool confirmation.',
+          description: 'manual (default) requires proposal approval in OpenChatCut and a one-shot confirmation for each real-project tool call; auto applies the reviewed draft and executes real-project tools directly.',
         },
         reuseExisting: {
           type: 'boolean',
@@ -141,7 +141,7 @@ export function externalRealSchemas(tools: readonly AgentToolSchema[]): External
   return tools.filter((tool) => isExternalRealTool(tool.name)).map((tool) => ({
     ...withSession(
       tool,
-      `${tool.description ?? tool.name} Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.`,
+      `${tool.description ?? tool.name} Acts on the live project. In a manual edit session every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest (the call returns needs_confirmation; retry the identical call after the user approves); auto sessions run it directly. Pass editSessionId.`,
     ),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   }));

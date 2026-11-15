@@ -9,6 +9,7 @@ import {
   ExternalEditSessionOutcomeError, type ExternalEditSessionTerminalStatus,
 } from './external-edit-session';
 import { ExternalCallCancellationRegistry } from './external-call-cancellation';
+import { ExternalCallLanes, externalCallLane, raceAbort } from './external-call-lanes';
 import type { Proposal } from './proposal';
 import { loadExternalProposal } from '../persist/externalProposalStore';
 import {
@@ -113,16 +114,30 @@ export async function executeExternalCall(
   let value: unknown;
   try {
     try {
-      value = projectExternalReply(
-        await runtime.execute(call.name, call.arguments, call.binding, controller.signal),
-      );
+      // Race the abort so a tool that ignores its signal can no longer pin the
+      // bridge: the cancelled call settles now and its late result is dropped
+      // by the runtime's own cancellation checks.
+      value = projectExternalReply(await raceAbort(
+        runtime.execute(call.name, call.arguments, call.binding, controller.signal),
+        controller.signal,
+        () => new ExternalEditSessionOutcomeError(
+          'cancelled',
+          typeof controller.signal.reason === 'string' && controller.signal.reason
+            ? controller.signal.reason
+            : `OpenChatCut tool ${call.name} was cancelled.`,
+        ),
+      ));
       // Flush pending project saves before reporting the result: the settle
       // syncs the registry to the committed store revision, and a follow-up MCP
       // session binding against a pre-autosave revision would be rejected as
       // stale by the ownership renew check.
       try {
         const { flushProjectSaves } = await import('../persist/projectStore');
-        await flushProjectSaves(call.binding.projectId);
+        // Best-effort and bounded: a stuck save must not hold back the result.
+        await Promise.race([
+          flushProjectSaves(call.binding.projectId),
+          new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+        ]);
       } catch {
         // Save flushing is best-effort; the poll loop still converges afterwards.
       }
@@ -145,34 +160,56 @@ async function pollEditor(
   ownership: BrowserProjectOwnership,
   signal: AbortSignal,
 ): Promise<void> {
-  while (!signal.aborted) {
-    const binding = runtime.binding();
-    const query = new URLSearchParams({
-      projectId,
-      editorId: binding.editorInstanceId,
-      baseRevision: browserProjectOwnership(projectId)?.baseRevision ?? binding.baseRevision,
-    });
-    const response = await fetch(`/api/external-agent/poll?${query}`, {
-      headers: editorBridgeHeaders(false, ownership.registrationCapability),
-      signal,
-    });
-    if (response.status === 204) continue;
-    if (!response.ok) throw new EditorBridgeRequestError('poll', response.status);
-    await executeExternalCall(
-      parseExternalCall(await response.json()),
-      runtime,
-      signal,
-      cancellations,
-      (id, outcome, value, resultSignal, baseRevision) => sendEditorBridgeResult(
-        id,
-        outcome,
-        value,
-        resultSignal,
-        ownership.registrationCapability,
-        baseRevision,
-      ),
-    );
+  // Calls are dispatched into lanes instead of awaited one by one, so a busy or
+  // hung call never blocks session-management tools or the next poll.
+  const lanes = new ExternalCallLanes();
+  const loop = new AbortController();
+  const stop = () => loop.abort(signal.reason);
+  if (signal.aborted) loop.abort(signal.reason);
+  else signal.addEventListener('abort', stop, { once: true });
+  let failure: { error: unknown } | undefined;
+  try {
+    while (!loop.signal.aborted) {
+      const binding = runtime.binding();
+      const query = new URLSearchParams({
+        projectId,
+        editorId: binding.editorInstanceId,
+        baseRevision: browserProjectOwnership(projectId)?.baseRevision ?? binding.baseRevision,
+      });
+      const response = await fetch(`/api/external-agent/poll?${query}`, {
+        headers: editorBridgeHeaders(false, ownership.registrationCapability),
+        signal: loop.signal,
+      });
+      if (response.status === 204) continue;
+      if (!response.ok) throw new EditorBridgeRequestError('poll', response.status);
+      const call = parseExternalCall(await response.json());
+      void lanes.run(externalCallLane(call), () => executeExternalCall(
+        call,
+        runtime,
+        signal,
+        cancellations,
+        (id, outcome, value, resultSignal, baseRevision) => sendEditorBridgeResult(
+          id,
+          outcome,
+          value,
+          resultSignal,
+          ownership.registrationCapability,
+          baseRevision,
+        ),
+      )).catch((error: unknown) => {
+        // Result delivery failed: restart the bridge attempt like the serial
+        // loop did, instead of silently dropping the failure.
+        if (signal.aborted || failure) return;
+        failure = { error };
+        loop.abort(error);
+      });
+    }
+  } catch (error) {
+    if (!failure) throw error;
+  } finally {
+    signal.removeEventListener('abort', stop);
   }
+  if (failure) throw failure.error;
 }
 
 async function pollCancellations(
