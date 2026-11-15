@@ -4,6 +4,7 @@ import type { StoredExternalProposal } from '../persist/externalProposalStore';
 import type { ExternalBridgePersistence } from './external-proposal-apply';
 import {
   isExternalEditSessionStale,
+  rebaseExternalEditSession,
   restoreDraftingExternalEditSession,
   restoreExternalEditSession,
   type ExternalEditSession,
@@ -69,23 +70,44 @@ async function hydrateDrafting(input: ExternalBridgeHydrationInput): Promise<voi
       || !pending.draftCheckpoint || !pending.agentRunId) {
     throw new Error('Stored drafting checkpoint is incomplete.');
   }
-  const session = restoreDraftingExternalEditSession(pending.draftCheckpoint, input.currentDoc);
+  let session = restoreDraftingExternalEditSession(pending.draftCheckpoint, input.currentDoc);
+  let rebased = false;
   if (isExternalEditSessionStale(session, input.currentDoc)) {
-    await markDraftStale(input);
-    return;
-  }
-  const replayed = replayCheckpoint(input, pending);
-  if (!replayed || JSON.stringify(replayed) !== JSON.stringify(pending.draftCheckpoint.draftDoc)) {
-    await markDraftStale(input);
-    return;
+    // The project moved on while the editor was away (autosave, a tab switch,
+    // a background job). Replay the draft onto it instead of discarding the
+    // agent's work; only an unreplayable draft is stale.
+    const next = rebaseExternalEditSession(session, input.currentDoc);
+    if (!next) {
+      await markDraftStale(input);
+      return;
+    }
+    session = next;
+    rebased = true;
+  } else {
+    const replayed = replayCheckpoint(input, pending);
+    if (!replayed || JSON.stringify(replayed) !== JSON.stringify(pending.draftCheckpoint.draftDoc)) {
+      await markDraftStale(input);
+      return;
+    }
   }
   const run = await ExternalSessionRunLedger.resume(
     input.projectId,
     pending.agentRunId,
     input.executeTool,
   );
-  if (!run) throw new Error('Drafting Agent run is unavailable or active in another editor.');
+  if (!run) {
+    // A rebase is only an offer to keep the draft; without its run ledger the
+    // draft fails closed exactly as an unrebased stale draft would.
+    if (rebased) {
+      await markDraftStale(input);
+      return;
+    }
+    throw new Error('Drafting Agent run is unavailable or active in another editor.');
+  }
   await prepareHydratedRun(run);
+  if (rebased) {
+    await input.save(input.projectId, storedExternalSession(session, 'drafting', undefined, run.runId));
+  }
   input.install({ session, run });
   input.publish({ proposal: null, stale: false });
 }

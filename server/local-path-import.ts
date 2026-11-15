@@ -13,6 +13,7 @@ import type {
   DirectoryImportedFile,
 } from '../shared/directory-import.ts';
 import { scanImportDirectory } from './directory-watch.ts';
+import { clientErrorMessage } from './error-scrub.ts';
 import {
   canonicalCurrentUploadDirectory,
   importDirectoryCandidate,
@@ -140,6 +141,10 @@ export async function importAgentPaths(
   const knownHashes = new Set(request.knownHashes);
   const pinnedUploadDirectory = await canonicalCurrentUploadDirectory();
   for (const candidate of candidates) {
+    // The candidate pipeline turns every probe/normalize/publish failure into a
+    // bare "retry". Capture the underlying error so an unattended agent can see
+    // why (codec, timeout, admission limit) instead of retrying blindly.
+    let lastError: unknown;
     const candidateRequest: DirectoryCandidateRequest = {
       sourcePath: candidate.path,
       root: candidate.root,
@@ -148,14 +153,24 @@ export async function importAgentPaths(
       knownHashes,
       cancelled: () => false,
       signal: new AbortController().signal,
+      reportError: (error) => { lastError = error; },
     };
     try {
-      const result = await importDirectoryCandidate(candidateRequest);
+      let result = await importDirectoryCandidate(candidateRequest);
+      // Retryable failures are often transient (a busy normalizer queue, a file
+      // still being flushed); one sequential retry resolves most of them.
+      if (result.status === 'retry') result = await importDirectoryCandidate(candidateRequest);
       if (result.status === 'imported') {
         imported.push(result.prepared.file);
         knownHashes.add(result.prepared.file.contentHash);
       } else if (result.status === 'retry') {
-        errors.push({ path: candidate.path, error: 'import failed and can be retried' });
+        errors.push({
+          path: candidate.path,
+          code: 'IMPORT_FAILED_RETRYABLE',
+          error: lastError === undefined
+            ? 'import failed and can be retried (the source changed or became unreadable during import)'
+            : `import failed and can be retried: ${clientErrorMessage(lastError).slice(0, 600)}`,
+        });
       } else if (result.status === 'unsupported') {
         unsupportedFiles.push(candidate.name);
       } else {

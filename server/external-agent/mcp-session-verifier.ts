@@ -257,11 +257,13 @@ async function verifyOldRevisionMutation(session: AppliedSession): Promise<void>
     name: 'mcp_mutating_check',
     arguments: { editSessionId: session.editSessionId },
   });
-  assert.equal(callOutcome(result), 'stale');
-  assert.notEqual(
+  assert.equal(callOutcome(result), 'stale', 'a mutation against an old revision is still refused');
+  assert.match(String((result.structuredContent as { error?: unknown } | undefined)?.error ?? JSON.stringify(result.content)),
+    /recover_edit_session/, 'the refusal tells the agent how to recover its draft');
+  assert.equal(
     mcpSessionsForTest().find((candidate) => candidate.id === session.client.sessionId)?.staleReason,
     null,
-    'mutating calls retain permanent stale transport behavior',
+    'the transport re-binds instead of staying permanently stale',
   );
 }
 
@@ -383,12 +385,11 @@ async function rejectAndSwitchEditor(
     name: 'get_edit_session',
     arguments: { editSessionId: session.editSessionId },
   });
-  assert.equal(callOutcome(switchedRead), 'stale');
-  assert.notEqual(
-    mcpSessionsForTest().find((candidate) => candidate.id === session.client.sessionId)?.staleReason,
-    null,
-    'a real editor/project switch still permanently stales the MCP transport',
-  );
+  assert.equal(callOutcome(switchedRead), 'stale', 'a draft from the replaced editor is not silently continued');
+  const switchedSession = mcpSessionsForTest().find((candidate) => candidate.id === session.client.sessionId);
+  assert.equal(switchedSession?.staleReason, null,
+    'an editor switch re-binds the MCP transport instead of stranding it');
+  assert.equal(switchedSession?.binding?.editorInstanceId, switchedEditor);
   return switchedEditor;
 }
 

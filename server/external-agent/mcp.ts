@@ -16,6 +16,7 @@ import {
   ExternalEditorCallError,
   invokeEditorTool,
   onRegisteredToolsChanged,
+  setEditSessionOwnerLiveness,
   type EditorBinding,
 } from './broker.ts';
 import {
@@ -69,6 +70,31 @@ export interface McpSession extends McpBindingSession {
 
 const sessions = new Map<string, McpSession>();
 
+/**
+ * How long a transport may sit idle before another transport of the same MCP
+ * client may take over its edit draft. The transport itself stays alive for
+ * MCP_SESSION_IDLE_LIMIT_MS; this only decides contention for a draft.
+ */
+export const MCP_EDIT_OWNER_IDLE_MS = Math.max(
+  5_000,
+  Number(process.env.OPENCHATCUT_MCP_OWNER_IDLE_MS) || 120_000,
+);
+
+function mcpClientName(session: McpSession | undefined): string {
+  return session?.server?.getClientVersion()?.name?.trim() ?? '';
+}
+
+setEditSessionOwnerLiveness((ownerId, claimantId) => {
+  const owner = sessions.get(ownerId);
+  // Unknown owners were already orphaned on close/eviction; keep them as-is.
+  if (!owner) return true;
+  // Only the same MCP client may take over an idle draft, so two different
+  // agents editing one project never steal each other's work.
+  const claimant = sessions.get(claimantId);
+  if (!claimant || mcpClientName(owner) !== mcpClientName(claimant)) return true;
+  return Date.now() - owner.lastUsed < MCP_EDIT_OWNER_IDLE_MS;
+});
+
 function editorUrl(args: Record<string, unknown>, projectId: string, fallbackBase: string): string {
   const base = String(args.editorBaseUrl ?? '').trim() || fallbackBase;
   return `${base.replace(/\/+$/, '')}/#/editor/${encodeURIComponent(projectId)}`;
@@ -118,6 +144,7 @@ async function callTool(
   name: string,
   rawArgs: unknown,
   baseUrl: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const args: Record<string, unknown> = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)
     ? { ...rawArgs as Record<string, unknown> }
@@ -162,7 +189,7 @@ async function callTool(
     const requested = Number(args.timeoutSeconds);
     args.timeoutSeconds = Math.min(45, requested > 0 ? requested : 45);
   }
-  return invokeEditorTool(session.id, binding, name, args);
+  return invokeEditorTool(session.id, binding, name, args, undefined, signal);
 }
 function ensureMcpToolExposed(session: McpSession, name: string): void {
   if (mcpTools(session).some((tool) => tool.name === name)) return;
@@ -204,7 +231,7 @@ function makeServer(baseUrl: string, session: McpSession): Server {
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentToolList(session) }));
   registerMcpPrompts(server);
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     try {
       ensureMcpToolExposed(session, request.params.name);
       const rawResult = await callTool(
@@ -212,6 +239,7 @@ function makeServer(baseUrl: string, session: McpSession): Server {
         request.params.name,
         request.params.arguments,
         baseUrl,
+        extra.signal,
       );
       const activatedResult = await activateMcpResult(
         session,

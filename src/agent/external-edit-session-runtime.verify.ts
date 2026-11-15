@@ -3,7 +3,11 @@ import { makeDraft } from '../editor/store';
 import { loadAgentRuntimeSidecar } from '../persist/agentRuntimeStore';
 import { ExternalBridgeRuntime } from './external-bridge-runtime';
 import {
+  captureExternalToolActions,
+  createExternalEditSession,
   ExternalEditSessionOutcomeError,
+  forkExternalEditSession,
+  rebaseExternalEditSession,
   revisionOf,
 } from './external-edit-session';
 import {
@@ -422,5 +426,36 @@ await assert.rejects(
 );
 const staleRecordedRun = (await loadAgentRuntimeSidecar('stale-record-project')).runs
   .find((run) => run.runId === agentRunId(staleRecordSession));
-assert.equal(staleRecordedRun?.status, 'aborted');
-assert.equal(staleRecordedRun?.events.at(-1)?.type, 'final', 'stale sessions have a durable terminal record');
+assert.equal(staleRecordedRun?.status, 'running', 'one lagging call no longer destroys the draft');
+// With a current binding the draft rebases onto the changed project and keeps working.
+const staleRecordCurrent = { ...staleRecordBinding, baseRevision: revisionOf(staleRecordLive.getDoc()) };
+await staleRecordRuntime.execute('set_aspect_ratio', {
+  editSessionId: staleRecordSession.editSessionId,
+  ratio: '9:16',
+}, staleRecordCurrent);
+const staleRecordInfo = await staleRecordRuntime.execute('get_edit_session', {
+  editSessionId: staleRecordSession.editSessionId,
+}, staleRecordCurrent) as Record<string, unknown>;
+assert.equal(staleRecordInfo.status, 'drafting', 'the draft survives an unrelated live change');
+assert.equal(staleRecordInfo.operationCount, 1);
+assert.equal(staleRecordInfo.baseRevision, staleRecordCurrent.baseRevision, 'the draft was rebased onto the live project');
+
+// rebaseExternalEditSession replays captured operations onto the live document
+// and refuses sessions that are no longer drafting.
+{
+  const session = createExternalEditSession(base, 'Rebase Client', 'auto');
+  const fork = forkExternalEditSession(session);
+  fork.draft!.commands.setAspect(1080, 1080, 'contain');
+  const drafted = captureExternalToolActions(fork, 'set_aspect_ratio', { ratio: '1:1' });
+  const live = makeDraft(base);
+  live.commands.setAspect(1920, 1080, 'contain');
+  live.commands.setAspect(1280, 720, 'contain');
+  const rebased = rebaseExternalEditSession(drafted, live.getDoc());
+  assert.ok(rebased, 'a draft with replayable operations rebases');
+  assert.equal(rebased.baseRevision, revisionOf(live.getDoc()));
+  assert.equal(rebased.operations.length, 1, 'captured operations are kept');
+  const draftTimeline = rebased.draft!.getDoc();
+  assert.notEqual(revisionOf(draftTimeline), revisionOf(live.getDoc()), 'the draft still carries its own edit');
+  assert.equal(rebaseExternalEditSession({ ...drafted, status: 'cancelled' }, live.getDoc()), null,
+    'terminal sessions are never revived by a rebase');
+}

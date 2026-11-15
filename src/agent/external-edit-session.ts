@@ -1,6 +1,6 @@
 import type { AgentContext } from './context';
 import { buildOperation, buildProposal, type Operation, type Proposal } from './proposal';
-import { makeDraft, type DraftEngine } from '../editor/store';
+import { makeDraft, replayActions, type DraftEngine } from '../editor/store';
 import type { ProjectDoc } from '../editor/types';
 
 export type ExternalEditSessionTerminalStatus =
@@ -90,6 +90,34 @@ function normalizedApprovalMode(value: unknown): ExternalApprovalMode {
 
 export function isExternalEditSessionStale(session: ExternalEditSession, liveDoc: ProjectDoc): boolean {
   return session.baseRevision !== revisionOf(liveDoc);
+}
+
+/**
+ * Move a drafting session onto the current live project instead of declaring it
+ * stale. The revision is a hash of the whole project, so unrelated live changes
+ * (switching the active timeline tab, a transcript landing, an autosave) used to
+ * destroy an agent's draft. The captured operations are replayed on the live
+ * document — the same replay an apply performs — and the session is kept only
+ * when that replay succeeds. Returns null when the draft cannot be rebased.
+ */
+export function rebaseExternalEditSession(
+  session: ExternalEditSession,
+  liveDoc: ProjectDoc,
+): ExternalEditSession | null {
+  if (session.status !== 'drafting' || !session.draft) return null;
+  let draftDoc: ProjectDoc;
+  try {
+    draftDoc = replayActions(liveDoc, session.operations.flatMap((operation) => operation.actions));
+  } catch {
+    return null;
+  }
+  return {
+    ...session,
+    baseDoc: liveDoc,
+    baseRevision: revisionOf(liveDoc),
+    draft: makeDraft(draftDoc),
+    updatedAt: Date.now(),
+  };
 }
 
 export function createExternalEditSession(

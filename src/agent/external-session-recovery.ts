@@ -13,6 +13,8 @@ interface RecoveryDependencies {
   requireSession: (sessionId: string) => ExternalEditSession;
   discard: (session: ExternalEditSession) => Promise<unknown>;
   markStale: (session: ExternalEditSession) => Promise<void>;
+  /** Moves a drafting session onto the live project; null when it cannot. */
+  rebase?: (session: ExternalEditSession) => Promise<ExternalEditSession | null>;
 }
 
 export async function executeExternalSessionRecovery(
@@ -38,6 +40,10 @@ export async function executeExternalSessionRecovery(
     throw new ExternalEditSessionOutcomeError('rejected', 'action must be "resume" or "discard".');
   }
   if (session.baseRevision !== dependencies.currentRevision()) {
+    // Resuming after a reload or reconnect usually meets a project that moved
+    // on in unrelated ways; rebase the draft rather than lose it.
+    const rebased = session.status === 'drafting' ? await dependencies.rebase?.(session) : null;
+    if (rebased) return dependencies.info(rebased);
     await dependencies.markStale(session);
     throw new ExternalEditSessionOutcomeError(
       'stale',

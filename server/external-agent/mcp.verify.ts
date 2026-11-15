@@ -297,9 +297,15 @@ try {
   assert.notEqual((await healthyRead).isError, true, 'repeated targeting preserves healthy draft ownership');
 
   registerEditor(projectA, 'refreshed-editor-a', 'v2-mcp-project-a', editorTools);
-  const staleSession = await boundA.client.callTool({ name: dynamicTool.name, arguments: {} });
-  assert.equal(staleSession.isError, true);
-  assert.equal(callOutcome(staleSession), 'stale', 'replacement editors require an explicit rebind');
+  // A reloaded editor no longer strands the agent on a stale binding: an
+  // ordinary call re-binds to the editor now serving the same project.
+  const reboundPending = boundA.client.callTool({ name: dynamicTool.name, arguments: {} });
+  const rebound = await nextEditorCall(projectA, 'refreshed-editor-a', 'v2-mcp-project-a', AbortSignal.timeout(1_000));
+  assert.equal(rebound?.name, dynamicTool.name, 'replacement editors are re-bound automatically');
+  settleEditorCall(rebound!.id, 'applied', { ok: true });
+  assert.notEqual((await reboundPending).isError, true);
+  assert.equal(mcpSessionsForTest().find((session) => session.id === boundA.sessionId)?.binding?.editorInstanceId,
+    'refreshed-editor-a');
   assert.notEqual((await boundA.client.callTool({ name: 'openchatcut_status', arguments: {} })).isError, true);
   assert.equal((await rawSessionRequest(mcpUrl, boundA.sessionId, 'POST')).status, 200);
   assert.equal(mcpSessionsForTest().some((session) => session.id === boundA.sessionId), true,

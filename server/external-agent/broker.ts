@@ -12,7 +12,7 @@ import {
   type ExternalToolSchema,
 } from './broker-types.ts';
 import { waitForBrokerWake, wakeBrokerWaiters } from './broker-waiters.ts';
-import { EditSessionOwnershipRegistry } from './edit-session-ownership.ts';
+import { EditSessionOwnershipRegistry, type EditSessionOwnerLiveness } from './edit-session-ownership.ts';
 
 export { ExternalEditorCallError } from './broker-types.ts';
 export type {
@@ -30,6 +30,8 @@ interface QueuedCall {
   state: 'queued' | 'in_flight';
   allowRevisionDrift: boolean;
   deadline: number;
+  /** When the editor took the call off the queue. */
+  dispatchedAt?: number;
   resolve: (value: unknown) => void;
   reject: (error: ExternalEditorCallError) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -60,6 +62,19 @@ const queues = new Map<string, QueuedCall[]>();
 const pending = new Map<string, QueuedCall>();
 const waiters = new Map<string, Set<() => void>>();
 const sessionOwnership = new EditSessionOwnershipRegistry();
+let ownerTransportLive: EditSessionOwnerLiveness = () => true;
+sessionOwnership.setOwnerLiveness((ownerId, claimantId) =>
+  // An owner with a call still queued or running is present by definition.
+  [...pending.values()].some((call) => call.ownerId === ownerId)
+  || ownerTransportLive(ownerId, claimantId));
+
+/**
+ * Installed by the MCP transport layer, which knows when each transport was
+ * last used and which client opened it.
+ */
+export function setEditSessionOwnerLiveness(liveness: EditSessionOwnerLiveness): void {
+  ownerTransportLive = liveness;
+}
 const cancellationQueues = new Map<string, ExternalEditorCancellation[]>();
 const cancellationWaiters = new Map<string, Set<() => void>>();
 
@@ -291,13 +306,47 @@ function requireCurrentBinding(
   );
 }
 
+/**
+ * Per-tool budget for one editor call. Session-management calls are cheap, so
+ * they fail fast instead of making an agent wait minutes to learn the editor is
+ * busy; imports and renders get room to finish on large media.
+ */
+export function externalToolTimeoutMs(name: string): number {
+  if (/^(begin|get|list|discard|recover)_edit_sessions?$/.test(name)) return 30_000;
+  if (/^import_|^download_media$|^push_asset$/.test(name)) return 300_000;
+  // Above the editor's own render-still budget (max 240s) so the editor reports
+  // its specific timeout instead of the broker cutting the call first.
+  if (/^view_.*_frames$/.test(name)) return 270_000;
+  return DEFAULT_TIMEOUT_MS;
+}
+
+function timeoutMessage(call: QueuedCall): string {
+  if (call.state === 'in_flight') {
+    const ran = Math.round((Date.now() - (call.dispatchedAt ?? Date.now())) / 1000);
+    return `OpenChatCut tool ${call.name} timed out after running ${ran}s in the editor. `
+      + 'The call was cancelled and the editor released it; retry it or check get_edit_session.';
+  }
+  const busy = [...pending.values()]
+    .filter((other) => other !== call
+      && other.state === 'in_flight'
+      && other.binding.projectId === call.binding.projectId)
+    .map((other) => `${other.name} (${Math.round((Date.now() - (other.dispatchedAt ?? Date.now())) / 1000)}s)`);
+  return `OpenChatCut tool ${call.name} timed out before the editor picked it up`
+    + (busy.length ? `; the editor was busy with ${busy.join(', ')}.` : '; no editor polled for it — is the project open in the editor?')
+    + ' Retry the call.';
+}
+
 export function invokeEditorTool(
   ownerId: string,
   binding: EditorBinding,
   name: string,
   args: Record<string, unknown>,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs = externalToolTimeoutMs(name),
+  signal?: AbortSignal,
 ): Promise<unknown> {
+  if (signal?.aborted) {
+    return Promise.reject(new ExternalEditorCallError('cancelled', `OpenChatCut tool ${name} was cancelled by the MCP client.`));
+  }
   const allowRevisionDrift = name === 'get_edit_session';
   const recoveryTool = name === 'list_edit_sessions' || name === 'recover_edit_session';
   const ownsSession = name !== 'begin_edit_session' && !recoveryTool && 'editSessionId' in args;
@@ -325,14 +374,15 @@ export function invokeEditorTool(
       resolve,
       reject,
       timer: setTimeout(() => {
-        finishCall(
-          call,
-          'cancelled',
-          `OpenChatCut tool ${name} timed out before a terminal result was received.`,
-          true,
-        );
+        finishCall(call, 'cancelled', timeoutMessage(call), true);
       }, deadline - Date.now()),
     };
+    // A client that gives up (request timeout or notifications/cancelled) must
+    // release the call too; otherwise it keeps running in the editor and every
+    // retry piles up behind it.
+    signal?.addEventListener('abort', () => {
+      finishCall(call, 'cancelled', `OpenChatCut tool ${name} was cancelled by the MCP client.`, true);
+    }, { once: true });
     const queue = queues.get(binding.projectId) ?? [];
     queue.push(call);
     queues.set(binding.projectId, queue);
@@ -363,6 +413,7 @@ function takeNextCall(projectId: string, binding: EditorBinding): QueuedCall | u
       continue;
     }
     call.state = 'in_flight';
+    call.dispatchedAt = Date.now();
     if (!queue.length) queues.delete(projectId);
     return call;
   }
