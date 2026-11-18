@@ -4,6 +4,8 @@ import { clipMediaGeometry } from './clipMediaGeometry';
 import {
   MAX_RULER_TICKS,
   buildTimelineIndexes,
+  fmt,
+  fmtRuler,
   intersectFrameRange,
   rulerTickWindow,
   timelineFrameWindow,
@@ -84,4 +86,25 @@ const state: TimelineState = {
   assert.equal(geometry.widthPx, 1_200, 'media work is bounded to visible pixels');
   assert.equal(geometry.durationInFrames, 600);
   assert.equal(geometry.srcInFrame, 162_240, 'visible offset maps through playback rate');
+}
+
+{
+  // 138 / 30 * 100 is 459.99999999999994 in floating point; the label must still read 4.60 s.
+  assert.equal(fmt(138, 30), '00:04.60');
+  assert.equal(fmt(69, 30), '00:02.30');
+  assert.equal(fmt(29, 25), '00:01.16');
+  assert.equal(fmt(1799, 30), '00:59.96');
+  assert.equal(fmt(1800, 30), '01:00.00');
+  assert.equal(fmtRuler(138, 30), '04.60');
+  assert.equal(fmtRuler(246, 30), '08.20');
+  assert.equal(fmtRuler(1799, 30), '59.96');
+  assert.equal(fmtRuler(1800, 30), '1:00');
+  for (const fps of [24, 25, 30, 50, 60]) {
+    for (let frame = 0; frame < fps * 120; frame++) {
+      if ((frame * 100) % fps !== 0) continue;
+      const exact = (frame * 100) / fps;
+      const want = `${String(Math.floor(exact / 6000)).padStart(2, '0')}:${String(Math.floor(exact / 100) % 60).padStart(2, '0')}.${String(exact % 100).padStart(2, '0')}`;
+      assert.equal(fmt(frame, fps), want, `frame ${frame} at ${fps} fps lands on a whole centisecond`);
+    }
+  }
 }

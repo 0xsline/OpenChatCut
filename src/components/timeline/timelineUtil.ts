@@ -194,11 +194,16 @@ export function rulerTickWindow(
   return { firstMajor, majorCount, majorStride, minorStride };
 }
 
+/** Whole centiseconds at a frame. Multiply before dividing: 138 / 30 * 100 is 459.99999999999994, 13800 / 30 is 460. */
+function centiseconds(frames: number, fps: number): number {
+  return Math.floor((frames * 100) / fps);
+}
+
 export function fmt(frames: number, fps: number): string {
-  const s = frames / fps;
-  const mm = Math.floor(s / 60);
-  const ss = Math.floor(s % 60);
-  const cs = Math.floor((s * 100) % 100);
+  const total = centiseconds(frames, fps);
+  const mm = Math.floor(total / 6000);
+  const ss = Math.floor(total / 100) % 60;
+  const cs = total % 100;
   return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
@@ -230,14 +235,14 @@ export function rulerMinorCount(majorSec: number): number {
 }
 
 export function fmtRuler(frames: number, fps: number): string {
-  const s = frames / fps;
-  if (s < 60) {
-    const ss = Math.floor(s);
-    const cs = Math.floor((s * 100) % 100);
+  const total = centiseconds(frames, fps);
+  if (total < 6000) {
+    const ss = Math.floor(total / 100);
+    const cs = total % 100;
     return `${String(ss).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
   }
-  const mm = Math.floor(s / 60);
-  const ss = Math.floor(s % 60);
+  const mm = Math.floor(total / 6000);
+  const ss = Math.floor(total / 100) % 60;
   return `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
