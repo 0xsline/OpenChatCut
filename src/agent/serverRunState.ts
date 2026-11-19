@@ -47,6 +47,8 @@ export interface ServerRunRefs {
   readonly assistantText: MutableServerRunRef<string>;
   readonly assistantThinking: MutableServerRunRef<string>;
   readonly subscribe: MutableServerRunRef<((runId: string) => void) | null>;
+  readonly recover: MutableServerRunRef<((runId: string) => Promise<void>) | null>;
+  readonly frozenRun: MutableServerRunRef<string | null>;
   readonly abandonRecovery: MutableServerRunRef<(runId: string, error: unknown) => void>;
   readonly runExecutor: MutableServerRunRef<ServerRunToolExecutor | null>;
 }
@@ -95,6 +97,8 @@ function useServerRunRefs(ctx: AgentContext, options: ServerRunOptions): ServerR
   const assistantText = useRef('');
   const assistantThinking = useRef('');
   const subscribe = useRef<((runId: string) => void) | null>(null);
+  const recover = useRef<((runId: string) => Promise<void>) | null>(null);
+  const frozenRun = useRef<string | null>(null);
   const abandonRecovery = useRef<(runId: string, error: unknown) => void>(() => undefined);
   const runExecutor = useRef<ServerRunToolExecutor | null>(null);
   enabled.current = options.enabled;
@@ -106,7 +110,7 @@ function useServerRunRefs(ctx: AgentContext, options: ServerRunOptions): ServerR
   bundle.current ??= {
     enabled, ready, running, context, settings, options: optionRef, activeOptions,
     abort, runId, capability, runProject, cursor, terminalRun,
-    finalizingRun, staleRecoveryRun, assistantText, assistantThinking, subscribe, abandonRecovery,
+    finalizingRun, staleRecoveryRun, assistantText, assistantThinking, subscribe, recover, frozenRun, abandonRecovery,
     runExecutor,
   };
   return bundle.current;

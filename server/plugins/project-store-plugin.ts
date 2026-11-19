@@ -32,6 +32,7 @@ import {
 import { searchContent } from '../storage/fulltext-search.ts';
 import { hybridSearch } from '../storage/hybrid-search.ts';
 import { AgentSessionClearBlockedError } from './project-store-agent-session.ts';
+import { purgeRunRecoveryForProject, purgeRunRecoveryOtherGenerations } from '../agent-runs/run-recovery-runtime.ts';
 import { scrubInternalPaths } from '../error-scrub.ts';
 import {
   writeAgentRuntime,
@@ -40,7 +41,7 @@ import {
   getStoredEntry,
   mergeStoredEntries,
   readStore,
-  rotateAgentSession,
+  rotateAgentSession as rotateAgentSessionStore,
   setStoredEntry,
   updateStoredAgentRunLease,
   updateExportRecoveryLease,
@@ -51,10 +52,18 @@ const HTTP_OPERATIONS = {
   writeProjectDocument,
   deleteEntry: deleteStoredEntry,
   getEntry: getStoredEntry,
-  purgeProject: (projectId: string) => deleteStoredEntry(`project:${projectId}`),
+  purgeProject: (projectId: string) => {
+    purgeRunRecoveryForProject(projectId);
+    return deleteStoredEntry(`project:${projectId}`);
+  },
   mergeEntries: mergeStoredEntries,
   readSnapshot: readStore,
-  rotateAgentSession,
+  rotateAgentSession: async (projectId: string) => {
+    const result = await rotateAgentSessionStore(projectId);
+    const generation = (result.value as { generation?: unknown } | undefined)?.generation;
+    if (typeof generation === 'string') purgeRunRecoveryOtherGenerations(projectId, generation);
+    return result;
+  },
   setEntry: setStoredEntry,
   updateAgentRunLease: updateStoredAgentRunLease,
   updateExportRecoveryLease,

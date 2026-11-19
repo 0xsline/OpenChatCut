@@ -46,6 +46,11 @@ export async function executeBrowserTool(
   args: Record<string, unknown>,
   toolCallId: string,
   activation: ActivationState,
+  hooks?: {
+    readonly beforeExecute?: () => void;
+    readonly onBrowserDispatch?: () => void;
+    readonly beforeResult?: () => void;
+  },
 ): Promise<unknown> {
   const parallel = toolExecutionMode(schema.name) === 'parallel';
   let release: (() => void) | undefined;
@@ -57,6 +62,7 @@ export async function executeBrowserTool(
     await previous;
   }
   try {
+    hooks?.beforeExecute?.();
     activation.current = activation.current.admit(schema.name);
     assertCanonicalToolInvocation(schema, args, activation.current.schemas());
     const argsDigest = digestToolArgs(args);
@@ -76,6 +82,7 @@ export async function executeBrowserTool(
     // and a claim for a request that was never registered abandons the run.
     const delivery = registerToolRequest(run, toolCallId, schema.name, argsDigest);
     try {
+      hooks?.onBrowserDispatch?.();
       pushRunEvent(run, 'tool-request', { toolCallId, name: schema.name, args, argsDigest });
     } catch (error) {
       // A failed announcement fails the run, which cancels this request.
@@ -83,6 +90,7 @@ export async function executeBrowserTool(
       throw error;
     }
     const delivered = await delivery;
+    hooks?.beforeResult?.();
     const followup = delivered && typeof delivered === 'object'
       && '__followup' in delivered && typeof delivered.__followup === 'string'
       ? delivered.__followup
@@ -106,9 +114,8 @@ export async function executeBrowserTool(
 }
 
 export function createServerTools(
-  run: ServerRun,
   schemas: readonly AgentToolSchema[],
-  activation: ActivationState,
+  execute: (name: string, args: Record<string, unknown>, toolCallId: string) => Promise<unknown>,
 ) {
   return Object.fromEntries(schemas.map((schema) => [schema.name, tool({
     description: schema.description,
@@ -116,7 +123,7 @@ export function createServerTools(
       schema.input_schema as Parameters<typeof jsonSchema<Record<string, unknown>>>[0],
     ),
     execute: (args: Record<string, unknown>, options: { toolCallId: string }) => (
-      executeBrowserTool(run, schema, args, options.toolCallId, activation)
+      execute(schema.name, args, options.toolCallId)
     ),
     toModelOutput: ({ output }) => toolResultModelOutput(output, schema.name === 'load_skill'),
   })]));

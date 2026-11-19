@@ -1,5 +1,6 @@
 import {
   appendAgentRunEvent,
+  mutate,
   loadAgentRuntimeSidecar,
   patchAgentRun,
   upsertAgentApproval,
@@ -11,6 +12,7 @@ import {
   adoptAgentSessionWriteGeneration,
   currentAgentSessionGeneration,
 } from '../../src/persist/agentSessionGeneration';
+import { runRecoveryStore, supportsDurableRunRecovery, type RunRecoveryRun } from './run-recovery-store';
 import type { ServerRun, ServerRunEvent, ServerRunStatus } from './store-types';
 import { eventBytes, isServerRunCapabilityVerifier, runtimeEvent } from './store-values';
 
@@ -24,7 +26,7 @@ export interface StoreRecoveryDependencies {
 }
 
 interface TerminalTransportEvidence {
-  status: Extract<ServerRunStatus, 'completed' | 'failed' | 'cancelled'>;
+  status: Extract<ServerRunStatus, 'completed' | 'failed' | 'cancelled' | 'awaiting-user'>;
   error: string | null;
 }
 
@@ -100,6 +102,7 @@ function closeInterruptedToolRequests(events: ServerRunEvent[]): ServerRunEvent[
 function terminalTransportEvidence(
   events: readonly ServerRunEvent[],
   doneOnly: boolean,
+  includeAwaitingUser = false,
 ): TerminalTransportEvidence | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]!;
@@ -111,7 +114,8 @@ function terminalTransportEvidence(
       continue;
     }
     const status = Reflect.get(event.data, 'status');
-    if (status !== 'completed' && status !== 'failed' && status !== 'cancelled') continue;
+    if (status === 'awaiting-user' && !includeAwaitingUser) continue;
+    if (status !== 'completed' && status !== 'failed' && status !== 'cancelled' && status !== 'awaiting-user') continue;
     const error = Reflect.get(event.data, 'error');
     return {
       status,
@@ -126,9 +130,13 @@ function restoredRun(
   sessionGeneration: string,
   record: AgentRunRecord,
   capabilityVerifier: string,
+  recovery?: RunRecoveryRun | null,
+  durableProtocol = false,
 ): ServerRun {
-  const events = closeInterruptedToolRequests(serverEvents(record));
-  const status = terminalTransportEvidence(events, true)?.status ?? 'failed';
+  const events = recovery ? serverEvents(record) : closeInterruptedToolRequests(serverEvents(record));
+  const status = recovery ? recovery.phase === 'admitted' ? 'queued'
+    : recovery.phase === 'paused' || recovery.attempts.at(-1)?.status === 'paused' ? 'paused' : 'running'
+    : terminalTransportEvidence(events, true, durableProtocol)?.status ?? 'failed';
   const runtimeContext: AgentRunContext = record.context ?? {
     requestShapeHash: record.userInputDigest,
     ...(record.modelId ? { modelId: record.modelId } : {}),
@@ -154,12 +162,12 @@ function restoredRun(
     provider: record.provider ?? (hasNewBackend ? 'unknown' : (storedBackend ?? 'unknown')),
     model: record.modelId ?? 'unknown',
     askOnly: record.askOnly,
-    references: [],
+    references: recovery?.executionInput?.references ?? [],
     ...(record.externalSessionId ? { externalSessionId: record.externalSessionId } : {}),
     status,
     createdAt: record.createdAt,
     events,
-    error: status === 'completed'
+    error: recovery ? (status === 'paused' ? recovery.lastError : null) : status === 'completed'
       ? null
       : transportError ?? (status === 'failed' ? RECOVERY_ERROR : null),
     retainedEventBytes: events.reduce((total, event) => total + eventBytes(event), 0),
@@ -177,8 +185,14 @@ function restoredRun(
 function terminalTransportRepair(
   record: AgentRunRecord,
   events: readonly ServerRunEvent[],
+  durableProtocol = false,
 ): TerminalTransportRepair {
-  const inferred = terminalTransportEvidence(events, false);
+  const businessStatus = !durableProtocol ? undefined : record.status === 'completed' || record.status === 'waiting_approval' ? 'completed'
+    : record.status === 'awaiting_user' ? 'awaiting-user'
+      : record.status === 'aborted' ? 'cancelled'
+        : record.status === 'failed' || record.status === 'interrupted' ? 'failed' : undefined;
+  const inferred = terminalTransportEvidence(events, false, durableProtocol)
+    ?? (businessStatus ? { status: businessStatus, error: null } as TerminalTransportEvidence : undefined);
   const status = inferred?.status ?? 'failed';
   const previousError = typeof record.context?.transportError === 'string'
     ? record.context.transportError
@@ -245,6 +259,44 @@ async function persistTerminalTransportRepair(
     at: repair.at,
   });
 }
+
+/** Bring browser approval mirrors up to date before a recovered model can issue new calls. */
+export async function reconcileRestartedToolApprovals(run: ServerRun, epoch: number): Promise<void> {
+  const key = { projectId: run.projectId, sessionGeneration: run.sessionGeneration, runId: run.id };
+  const store = runRecoveryStore();
+  store.assertOwnership(key, epoch);
+  adoptAgentSessionWriteGeneration(run.projectId, run.sessionGeneration);
+  const intents = await mutate(run.projectId, (current) => {
+    store.assertOwnership(key, epoch);
+    if (current.sessionGeneration !== run.sessionGeneration) throw new Error('Agent session generation changed.');
+    const tools = new Map(store.load(key)!.tools.map((tool) => [tool.toolCallId, tool]));
+    const decidedAt = Date.now();
+    const approvals = current.approvals.map((approval): AgentApprovalRecord => {
+      if (approval.status !== 'pending' || approval.runId !== run.id
+        || approval.approvalId !== `${run.id}-${approval.toolCallId}`) return approval;
+      const tool = tools.get(approval.toolCallId);
+      if (!tool || tool.name !== approval.toolName || tool.argsDigest !== approval.argsDigest
+        || tool.state === 'claimed') return approval;
+      if (tool.state === 'intent' && run.toolRequests.get(tool.toolCallId)?.claimId) return approval;
+      // An intent granted no execution authority. An outcome may have been
+      // committed just before the previous server could settle its UI mirror.
+      const status = tool.state === 'intent' ? 'cancelled' : tool.error === undefined ? 'allowed' : 'denied';
+      return { ...approval, status, decidedAt };
+    });
+    return [{ ...current, approvals }, [...tools.values()].filter((tool) => tool.state === 'intent')];
+  });
+  store.assertOwnership(key, epoch);
+  for (const tool of intents) {
+    const request = run.toolRequests.get(tool.toolCallId);
+    if (!request || request.claimId || request.status === 'settled'
+      || request.argsDigest !== tool.argsDigest || request.toolName !== tool.name) continue;
+    clearTimeout(request.timeout);
+    request.status = 'cancelled';
+    request.reject(new Error('Unclaimed tool request superseded during recovery.'));
+    run.toolRequests.delete(tool.toolCallId);
+  }
+}
+
 async function cancelRecoveredApprovals(
   projectId: string,
   sessionGeneration: string,
@@ -270,11 +322,12 @@ async function ensureTerminalTransport(
   sessionGeneration: string,
   record: AgentRunRecord,
   approvals: readonly AgentApprovalRecord[],
+  durableProtocol = false,
 ): Promise<AgentRunRecord> {
-  await cancelRecoveredApprovals(projectId, sessionGeneration, record.runId, approvals);
+  if (!durableProtocol) await cancelRecoveredApprovals(projectId, sessionGeneration, record.runId, approvals);
   const events = serverEvents(record);
-  if (terminalTransportEvidence(events, true)) return record;
-  const repair = terminalTransportRepair(record, events);
+  if (terminalTransportEvidence(events, true, durableProtocol)) return record;
+  const repair = terminalTransportRepair(record, events, durableProtocol);
   await persistTerminalTransportRepair(projectId, sessionGeneration, record, repair);
   const sidecar = await loadAgentRuntimeSidecar(projectId);
   return sidecar.runs.find((item) => item.runId === record.runId) ?? {
@@ -306,14 +359,21 @@ async function recoverServerRunOnce(
   if (!record || !record.userInputPreview.startsWith('server:')) return undefined;
   const verifier = record.context?.serverRunCapabilityVerifier;
   if (!isServerRunCapabilityVerifier(verifier)) return undefined;
-  record = await ensureTerminalTransport(
-    projectId,
-    sessionGeneration,
-    record,
-    sidecar.approvals,
-  );
+  const recovery = supportsDurableRunRecovery(record.backend)
+    ? runRecoveryStore().load({ projectId, sessionGeneration, runId }) : null;
+  const durableProtocol = recovery !== null;
+  const resumable = recovery && recovery.phase !== 'finalized'
+    && record.status === 'running'
+    && !terminalTransportEvidence(serverEvents(record), false, true) ? recovery : null;
+  if (!resumable) {
+    record = await ensureTerminalTransport(projectId, sessionGeneration, record, sidecar.approvals, durableProtocol);
+    if (recovery && recovery.phase !== 'finalized') {
+      // A terminal sidecar write may have committed just before recovery cleanup.
+      runRecoveryStore().finalize({ projectId, sessionGeneration, runId });
+    }
+  }
   if (await currentAgentSessionGeneration(projectId) !== sessionGeneration) return undefined;
-  const run = restoredRun(projectId, sessionGeneration, record, verifier);
+  const run = restoredRun(projectId, sessionGeneration, record, verifier, resumable, durableProtocol);
   dependencies.runs.set(run.id, run);
   dependencies.pruneRuns();
   return dependencies.runs.get(run.id);

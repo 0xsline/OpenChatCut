@@ -4,6 +4,7 @@ import type {
   ServerRunOptions,
 } from './serverRunProtocol';
 import { useServerRunControllerActions } from './serverRunControllerActions';
+import { useServerRunFreezeActions } from './useServerRunFreezeActions';
 import {
   useServerRunProjectSwitch,
   useServerRunUnmount,
@@ -31,6 +32,7 @@ export function useServerRun(
     actions,
   );
   useServerRunUnmount(state);
+  const freeze = useServerRunFreezeActions(projectId, state);
   return {
     send: actions.send,
     messages: state.messages,
@@ -38,5 +40,7 @@ export function useServerRun(
     liveTool: state.liveTool,
     contextUsage: options.session?.contextUsage ?? state.contextUsage,
     stop: actions.stop,
+    recheckFrozenRun: freeze.recheckFrozenRun,
+    endFrozenRun: freeze.endFrozenRun,
   };
 }

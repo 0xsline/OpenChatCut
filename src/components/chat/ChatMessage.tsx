@@ -61,6 +61,9 @@ interface ChatMessageProps {
   onContinue?: (() => void) | null;
   /** Open settings, optionally on a specific vendor page (used by the missing-model-pack action button). */
   onOpenSettings?: ((route?: string) => void) | null;
+  /** A run frozen because its browser-side write cannot be verified. */
+  onRecheck?: (() => void) | null;
+  onEndTask?: (() => void) | null;
 }
 
 function isMissingModelPacksResult(result: unknown): boolean {
@@ -73,7 +76,7 @@ function missingPacksSettingsRoute(result: unknown): string | undefined {
   return typeof route === 'string' ? route : undefined;
 }
 
-export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, widgetSubmitted, onContinue, onOpenSettings }: ChatMessageProps) {
+export function ChatMessage({ msg, streaming, running = false, retry, onRetry, onWidgetSubmit, widgetSubmitted, onContinue, onOpenSettings, onRecheck, onEndTask }: ChatMessageProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -122,6 +125,34 @@ overflowWrap:anywhere breaks long tokens - long errors/summaries are wrapped in 
     );
   }
   if (msg.role === 'error') {
+    // A frozen run is not a failure banner: it is a paused task with two
+    // explicit ways forward, and the text already names the operation.
+    if (msg.reconcile || msg.paused) {
+      return (
+        <div style={{
+          margin: '10px 0', padding: '10px 12px', border: `0.5px solid ${theme.danger}`,
+          borderRadius: 4, background: theme.panelAlt, fontSize: 12.5, color: theme.text,
+        }}>
+          <div style={{ color: theme.danger, marginBottom: 8, overflowWrap: 'anywhere' }}>
+            ⚠ {msg.text}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {onRecheck && !msg.paused && (
+              <button type="button" onClick={onRecheck}
+                style={{ border: `0.5px solid ${theme.accent}`, background: 'transparent', color: theme.accent, borderRadius: 6, padding: '4px 14px', fontSize: 12.5, cursor: 'pointer' }}>
+                {t('重新核对')}
+              </button>
+            )}
+            {onEndTask && (
+              <button type="button" onClick={onEndTask}
+                style={{ border: `0.5px solid ${theme.border}`, background: 'transparent', color: theme.textDim, borderRadius: 6, padding: '4px 14px', fontSize: 12.5, cursor: 'pointer' }}>
+                {t('结束任务')}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
     return (
       <div style={{ color: theme.danger, fontSize: 12.5, margin: '8px 0', overflowWrap: 'anywhere' }}>
         ⚠ {msg.text}

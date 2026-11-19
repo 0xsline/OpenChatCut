@@ -125,6 +125,8 @@ function MessageEntries({ controller }: { controller: ChatPanelController }) {
   // second try. Only the latest turn offers it — rewinding an earlier one would discard
   // every turn after it as well.
   const lastUser = lastUserTurn(agent.messages);
+  // A frozen run is the last message that matters: only then do its two actions
+  // appear, so an older paused run cannot be acted on by mistake.
   const onRetry = (index: number, retry: NonNullable<DisplayMessage['retry']>) => {
     if (agent.running) return;
     agent.rewindTurn(index);
@@ -145,6 +147,10 @@ function MessageEntries({ controller }: { controller: ChatPanelController }) {
         onRetry={(retry) => onRetry(item.index, retry)}
         onContinue={item.msg.role === 'continue' && item.index === agent.messages.length - 1 && !agent.running
           ? () => { void agent.send('继续'); } : null}
+        onRecheck={item.msg.reconcile && item.index === agent.messages.length - 1
+          ? () => { void agent.recheckFrozenRun(); } : null}
+        onEndTask={(item.msg.reconcile || item.msg.paused) && item.index === agent.messages.length - 1
+          ? () => { void agent.endFrozenRun(); } : null}
         onWidgetSubmit={(answer) => {
           if (!agent.running) void agent.send(answer, { askOnly: composer.mode === 'ask' });
         }} />

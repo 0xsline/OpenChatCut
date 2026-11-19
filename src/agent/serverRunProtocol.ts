@@ -1,3 +1,15 @@
+import { SERVER_RUN_CAPABILITY_HEADER, type ServerRunMetadata } from './serverRunRecoveryProtocol';
+export {
+  SERVER_RUN_CAPABILITY_HEADER,
+  serverRunNeedsResume,
+  serverRunResumeCursor,
+  serverRunRecoveryBlocked,
+  serverRunUnreconciledTools,
+  requestServerRunResume,
+  type ServerRunMetadata,
+  type ServerRunRecoveryMetadata,
+} from './serverRunRecoveryProtocol';
+
 import type { ModelMessage } from 'ai';
 import type { AgentReference } from './context';
 import { TOOL_SCHEMAS } from './tools';
@@ -26,6 +38,19 @@ export interface ServerRunStart {
   readonly references: readonly AgentReference[];
   readonly baseDoc: ProjectDoc;
   readonly resumed: boolean;
+  /**
+   * Server-side durable tool records for this run, when it has a recovery row.
+   * They are what the browser reconciles its draft against: a draft action
+   * proves intent, only an outcome proves the edit is settled.
+   */
+  readonly durableTools?: readonly {
+    readonly toolCallId: string;
+    readonly name: string;
+    readonly argsDigest: string;
+    readonly state?: 'intent' | 'claimed' | 'outcome';
+    readonly result?: unknown;
+    readonly error?: string;
+  }[];
 }
 export type ServerRunPreparation = Omit<ServerRunStart, 'recorder' | 'resumed'>;
 
@@ -51,6 +76,7 @@ export interface ServerRunToolAction {
 export type ServerRunProjectWrite = 'none' | 'saved' | 'queued';
 
 export interface ServerRunRecovery {
+  readonly blocked?: boolean;
   readonly tools: readonly Pick<
     ServerRunToolAction,
     'toolCallId' | 'argsDigest' | 'name' | 'result' | 'error'
@@ -114,6 +140,8 @@ export interface ServerRunController {
   readonly liveTool: LiveTool | null;
   readonly contextUsage: AgentContextUsage | null;
   readonly stop: () => void;
+  readonly recheckFrozenRun: () => Promise<void>;
+  readonly endFrozenRun: () => Promise<void>;
 }
 
 export type ServerRunBackend = 'api' | 'codex' | 'copilot' | 'claude-code';
@@ -385,19 +413,11 @@ export function serverRunShouldResume(
   return enabled && storedProjectId === currentProjectId;
 }
 
-export const SERVER_RUN_CAPABILITY_HEADER = 'X-OpenChatCut-Run-Capability';
-
 export interface CreatedServerRunResponse {
   readonly id: string;
   readonly capability: string;
 }
 
-export interface ServerRunMetadata {
-  readonly status?: 'created' | 'running' | 'awaiting-confirmation'
-    | 'awaiting-user' | 'completed' | 'failed' | 'cancelled';
-  readonly firstEventId?: number;
-  readonly lastEventId?: number;
-}
 export function recoveredServerRunTerminal(
   metadata: ServerRunMetadata,
   cursor: number,

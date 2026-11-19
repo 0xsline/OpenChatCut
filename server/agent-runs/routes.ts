@@ -1,22 +1,25 @@
+import { continueServerRun } from './run-continuation';
+import { withRecoveryBaseline } from './run-recovery-metadata';
+import { executeRun } from './executor';
+import { createToolRouteHandlers } from './tool-routes';
+import { supportsDurableRunRecovery } from './run-recovery-store';
+import { cancelRunRecovery, runRecoveryKeyOf, readRunRecoveryProjection, sweepRunRecovery } from './run-recovery-runtime';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { activateOfflineAgentRuntimeBackend } from '../external-agent/agent-runtime-persistence';
 import { resolveRunExecution, runRequestDigests } from './execution-input';
 import {
   cancelRun,
-  claimToolRequest,
   createRunWithPresentedCapability,
   flushRunPersistence,
   getRun,
+  isRunTerminal,
   prepareRunAdmission,
   recoverServerRun,
   verifyServerRunCapability,
   replayWindow,
-  settleToolResult,
   RunStoreLimitError,
   type ServerRun,
-  type ToolClaimOutcome,
-  type ToolResultOutcome,
 } from './store';
 import {
   settleServerRun,
@@ -39,9 +42,11 @@ import {
   discardDeferredRun,
   ensureDeferredRunExecution,
   startDeferredRun,
+  startResumedRun,
+  resumeStartRequest,
+  hasDeferredRun,
 } from './run-admission';
 import { projectStoreHttpAuthorized, projectStoreReadAuthorized } from '../project-store-http-auth';
-const MAX_TOOL_RESULT_BODY_BYTES = 1024 * 1024;
 /**
  * Draft artifacts are contracted at MAX_ARTIFACT_BYTES (8 MiB) by the producer,
  * the snapshot validation, and the durable store. The request envelope embeds
@@ -65,15 +70,11 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-function outcomeStatus(outcome: ToolClaimOutcome | ToolResultOutcome): number {
-  if (outcome === 'unknown-call') return 404;
-  return outcome === 'mismatch' || outcome === 'unclaimed'
-    || outcome === 'already-claimed' || outcome === 'run-settled'
-    ? 409
-    : 200;
+function rejectCapability(res: ServerResponse, run: ServerRun): void {
+  sendJson(res, 403, isRunTerminal(run)
+    ? { error: 'run already finished' }
+    : { error: 'invalid run capability' });
 }
-
-
 
 async function boundRun(
   req: IncomingMessage,
@@ -89,7 +90,7 @@ async function boundRun(
       requestHeader(req, SERVER_RUN_CAPABILITY_HEADER),
     )
   ) {
-    sendJson(res, 403, { error: 'invalid run capability' });
+    rejectCapability(res, current);
     return null;
   }
   if (current && current.projectId !== projectId) {
@@ -105,7 +106,7 @@ async function boundRun(
     run.capabilityVerifier,
     requestHeader(req, SERVER_RUN_CAPABILITY_HEADER),
   )) {
-    sendJson(res, 403, { error: 'invalid run capability' });
+    rejectCapability(res, run);
     return null;
   }
   return run;
@@ -171,12 +172,39 @@ async function handleCreate(req: IncomingMessage, res: ServerResponse): Promise<
   sendCreatedRun(res, run, capability, 201);
 }
 
-async function handleStart(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
+async function handleStart(req: IncomingMessage, res: ServerResponse, runId: string, execute = executeRun): Promise<void> {
   const body = await readJson(req);
   const projectId = requireProjectId(body.projectId);
   const run = await boundRun(req, res, projectId, runId);
   if (!run) return;
-  const outcome = startDeferredRun(run);
+  if (body.mode === 'continue') {
+    return continueServerRun(run, body, requestOrigin(req) ?? 'http://127.0.0.1', res, sendJson, execute);
+  }
+  const resume = resumeStartRequest(body);
+  if (resume.mode === 'resume') {
+    const resumed = startResumedRun(run, resume, requestOrigin(req) ?? 'http://127.0.0.1', execute);
+    if (!resumed.ok) {
+      sendJson(res, resumed.status, {
+        error: resumed.reason,
+        recovery: { state: readRunRecoveryProjection(runRecoveryKeyOf(run), 0)?.state },
+      });
+      return;
+    }
+    const status = resumed.outcome === 'started' ? 202 : 200;
+    sendJson(res, status, { ok: true, outcome: resumed.outcome, mode: 'resume' });
+    return;
+  }
+  const projection = supportsDurableRunRecovery(run.backend) ? readRunRecoveryProjection(runRecoveryKeyOf(run), 0) : null;
+  if (projection?.state === 'admitted' && !hasDeferredRun(run.id)) {
+    const resumed = startResumedRun(run, { mode: 'resume', expectedRevision: projection.revision },
+      requestOrigin(req) ?? 'http://127.0.0.1', execute);
+    if (!resumed.ok) return sendJson(res, resumed.status, { error: resumed.reason });
+    return sendJson(res, resumed.outcome === 'started' ? 202 : 200, { ok: true, outcome: resumed.outcome });
+  }
+  if (projection && projection.state !== 'admitted' && projection.state !== 'active') {
+    return sendJson(res, 409, { error: 'use the recovery handshake to resume this task' });
+  }
+  const outcome = startDeferredRun(run, execute);
   if (outcome === 'unavailable') {
     return sendJson(res, 409, { error: 'agent run admission is no longer available' });
   }
@@ -196,49 +224,7 @@ async function handleEvents(
   sseForRun(req, res, run, resolveCursor(req, url, run));
 }
 
-function toolBinding(body: Record<string, unknown>) {
-  const toolCallId = typeof body.toolCallId === 'string' ? body.toolCallId.trim() : '';
-  const argsDigest = typeof body.argsDigest === 'string' ? body.argsDigest.trim() : '';
-  const claimId = typeof body.claimId === 'string' ? body.claimId.trim() : '';
-  if (!toolCallId || !argsDigest || !claimId) {
-    throw new Error('toolCallId, argsDigest, and claimId are required');
-  }
-  return { toolCallId, argsDigest, claimId };
-}
-
-async function handleToolClaim(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
-  const body = await readJson(req);
-  const projectId = requireProjectId(body.projectId);
-  const run = await boundRun(req, res, projectId, runId);
-  if (!run) return;
-  const outcome = claimToolRequest(run, toolBinding(body));
-  sendJson(res, outcomeStatus(outcome), {
-    claimed: outcome === 'claimed' || outcome === 'duplicate',
-    outcome,
-  });
-}
-
-async function handleToolResult(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
-  const body = await readJson(req, MAX_TOOL_RESULT_BODY_BYTES);
-  const projectId = requireProjectId(body.projectId);
-  const run = await boundRun(req, res, projectId, runId);
-  if (!run) return;
-  const binding = toolBinding(body);
-  const hasResult = Object.hasOwn(body, 'result');
-  const error = typeof body.error === 'string' ? body.error : undefined;
-  const hasError = Object.hasOwn(body, 'error');
-  if (hasResult === hasError || (hasError && error === undefined)) {
-    throw new Error('provide exactly one of result or string error');
-  }
-  const outcome = settleToolResult(run, {
-    ...binding,
-    ...(error === undefined ? { result: body.result } : { error }),
-  });
-  sendJson(res, outcomeStatus(outcome), {
-    ok: outcome === 'accepted' || outcome === 'duplicate',
-    outcome,
-  });
-}
+const { handleToolClaim, handleToolResult } = createToolRouteHandlers({ boundRun, sendJson });
 
 async function handleCancel(req: IncomingMessage, res: ServerResponse, runId: string): Promise<void> {
   const body = await readJson(req);
@@ -247,6 +233,9 @@ async function handleCancel(req: IncomingMessage, res: ServerResponse, runId: st
   if (!run) return;
   await cancelRun(run);
   discardDeferredRun(run.id);
+  if (supportsDurableRunRecovery(run.backend)) {
+    cancelRunRecovery(run);
+  }
   sendJson(res, 200, { ok: true, status: run.status });
 }
 
@@ -295,6 +284,7 @@ async function handleSettle(req: IncomingMessage, res: ServerResponse, runId: st
       && live.projectId === projectId
       && !naturallyFinished) {
       await cancelRun(live).catch(() => undefined);
+      if (supportsDurableRunRecovery(live.backend)) cancelRunRecovery(live);
     }
   }
   const outcome = await settleServerRun(projectId, runId, {
@@ -364,6 +354,12 @@ async function handleMetadata(
   const run = await boundRun(req, res, projectId, runId);
   if (!run) return;
   const window = replayWindow(run);
+  // The recovery block is additive: runs without a recovery row (Copilot
+  // and historical API/subprocess runs) keep their existing metadata shape, and reading
+  // this endpoint never acquires execution authority or starts a model.
+  const recovery = supportsDurableRunRecovery(run.backend)
+    ? withRecoveryBaseline(run, window, readRunRecoveryProjection(runRecoveryKeyOf(run), window.lastEventId))
+    : null;
   sendJson(res, 200, {
     id: run.id,
     sessionGeneration: run.sessionGeneration,
@@ -380,6 +376,7 @@ async function handleMetadata(
     eventCount: run.events.length,
     firstEventId: window.firstEventId,
     lastEventId: window.lastEventId,
+    ...(recovery ? { recovery } : {}),
   });
 }
 
@@ -387,6 +384,7 @@ async function routeAgentRunRequest(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
+  execute = executeRun,
 ): Promise<void> {
   const pathname = url.pathname;
   if (req.method === 'POST' && pathname === '/') return handleCreate(req, res);
@@ -395,7 +393,7 @@ async function routeAgentRunRequest(
   const runId = match[1]!;
   const action = match[2];
   if (req.method === 'GET' && action === 'events') return handleEvents(req, res, url, runId);
-  if (req.method === 'POST' && action === 'start') return handleStart(req, res, runId);
+  if (req.method === 'POST' && action === 'start') return handleStart(req, res, runId, execute);
   if (req.method === 'POST' && action === 'tool-claim') return handleToolClaim(req, res, runId);
   if (req.method === 'POST' && action === 'tool-result') return handleToolResult(req, res, runId);
   if (req.method === 'POST' && action === 'cancel') return handleCancel(req, res, runId);
@@ -432,6 +430,7 @@ function mountedUrl(req: IncomingMessage): URL {
 
 export interface AgentRunsPluginOptions {
   readonly activatePersistence?: () => void;
+  readonly executeRun?: typeof executeRun;
 }
 
 export function agentRunsPlugin(options: AgentRunsPluginOptions = {}): Plugin {
@@ -439,6 +438,15 @@ export function agentRunsPlugin(options: AgentRunsPluginOptions = {}): Plugin {
     name: 'openchatcut-agent-runs',
     configureServer(server) {
       (options.activatePersistence ?? activateOfflineAgentRuntimeBackend)();
+      // Startup retention sweep: finalized recovery rows expire, runs that still
+      // wait for reconciliation are kept until the user decides.
+      try {
+        sweepRunRecovery();
+      } catch (error) {
+        server.config.logger.warn(
+          `[agent-runs] Agent recovery retention sweep skipped: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       server.middlewares.use('/api/agent-runs', async (req, res) => {
         const readOnly = req.method === 'GET';
         const authorized = readOnly
@@ -449,7 +457,7 @@ export function agentRunsPlugin(options: AgentRunsPluginOptions = {}): Plugin {
           return;
         }
         try {
-          await routeAgentRunRequest(req, res, mountedUrl(req));
+          await routeAgentRunRequest(req, res, mountedUrl(req), options.executeRun);
         } catch (error) {
           sendRouteError(res, error);
         }

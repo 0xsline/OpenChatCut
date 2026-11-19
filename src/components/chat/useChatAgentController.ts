@@ -42,6 +42,8 @@ function serverRunAdapter(
     rollbackChangeSession: bridge.rollbackChangeSession,
     canRollbackChangeSession: bridge.canRollbackChangeSession,
     rewindTurn: bridge.rewindTurn,
+    recheckFrozenRun: run.recheckFrozenRun,
+    endFrozenRun: run.endFrozenRun,
   };
 }
 

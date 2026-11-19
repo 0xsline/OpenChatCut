@@ -11,6 +11,7 @@ export const SERVER_TOOL_RESULT_TIMEOUT_MS = 24 * 60 * 60_000;
 export type ServerRunStatus =
   | 'queued'
   | 'running'
+  | 'paused'
   | 'awaiting-confirmation'
   | 'awaiting-user'
   | 'completed'

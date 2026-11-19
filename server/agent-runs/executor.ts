@@ -1,8 +1,6 @@
-import {
-  streamText,
-  type LanguageModelUsage,
-  type ModelMessage,
-} from 'ai';
+import type { ModelMessage } from 'ai';
+import { executeServerApiTurn as executeServerTurn } from './api-turn';
+import { pauseInterruptedRun, safeRunError as safeError, settleRunFailure } from './run-continuation-pause';
 import {
   normalizeLlmProvider,
   resolveModelRequestPolicy,
@@ -22,43 +20,41 @@ import {
   canonicalServerRunToolCatalog,
   resolveServerRunToolCatalog,
 } from './tool-policy';
-import { createServerLanguageModel, serverProviderOptions } from './model';
+import { createServerLanguageModel } from './model';
 import {
   estimateContextTokens,
   estimateTextTokens,
-  type AgentContextUsage,
-  type ContextPreparation,
 } from '../../src/agent/context-compaction';
-import { redactTextForAgentRuntime } from '../../src/agent/runtime-artifact';
 import type { AgentToolSchema } from '../../src/agent/tool-schema';
 import { ToolActivation } from '../../src/agent/tool-activation';
 import {
   buildServerRunPrompt,
-  SERVER_RUN_AI_TIMEOUT,
-  prepareServerContext,
-  type ServerContextInput,
 } from './context';
 import {
   pushRunEvent,
-  recordServerContextUsage,
   setRunStatus,
   type ServerRun,
 } from './store';
-import { classifyLlmFailure, runServerTurnWithRetry } from './llm-retry';
+import { runServerTurnWithRetry } from './llm-retry';
+import { policyForTool } from '../../src/agent/execution-policy';
 import { ToolFailureTracker } from '../../src/agent/toolFailure';
 import {
-  collectServerText,
   resolveServerRunMaxOutputTokens,
   serverRunTextMetadata,
 } from './executor-events';
 import {
   acceptanceInstructions,
+  recordAcceptedTool,
   createAcceptanceLoop,
   decideAcceptanceAfterTurn,
   turnDisposition,
 } from './acceptance-loop';
-import { createServerTools, type ActivationState } from './browser-tool';
-import { answerUnexecutedToolCalls } from './unexecuted-tool-calls';
+import { type ActivationState } from './browser-tool';
+import { RunRecoveryFault, isRunRecoveryFault } from './run-recovery-fault';
+import { beginRunRecoveryRuntime, finalizeRunRecovery, assertRunRecoveryAuthority, runRecoveryKeyOf, stopRunRecoveryRuntime } from './run-recovery-runtime';
+import { reconcileRestartedToolApprovals } from './store-recovery';
+import { settleRunRecoveryFault } from './run-recovery-freeze';
+import { runRecoveryStore, supportsDurableRunRecovery, type RunRecoveryRun } from './run-recovery-store';
 export { executeBrowserTool, type ActivationState } from './browser-tool';
 export { turnDisposition, type TurnDisposition } from './acceptance-loop';
 export {
@@ -68,11 +64,6 @@ export {
   resolveServerRunMaxOutputTokens,
   serverRunTextMetadata,
 } from './executor-events';
-function safeError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  return redactTextForAgentRuntime(raw).trim().slice(0, 1_200)
-    || 'Agent provider request failed.';
-}
 export interface ServerRunInput {
   readonly messages: ModelMessage[];
   readonly backend?: string;
@@ -96,126 +87,6 @@ export function serverRunBackend(value: unknown): ModelBackend {
   return value === 'codex' || value === 'copilot' || value === 'claude-code' ? value : 'api';
 }
 
-type ServerTurnInput = Omit<ServerContextInput, 'schemas'> & {
-  readonly activation: ActivationState;
-  readonly requestIndex: number;
-  /** Silent overflow-recovery stage: shrinks the request after a provider rejection. */
-  readonly overflowStage?: 'reduced-output';
-};
-
-function measuredContextUsage(
-  prepared: ContextPreparation,
-  total: LanguageModelUsage,
-  text: string,
-  requestIndex: number,
-): AgentContextUsage {
-  return {
-    ...prepared.usage,
-    inputTokens: total.inputTokens ?? prepared.usage.inputTokens,
-    outputTokens: total.outputTokens ?? estimateTextTokens(text),
-    reasoningTokens: total.outputTokenDetails.reasoningTokens,
-    noCacheInputTokens: total.inputTokenDetails.noCacheTokens,
-    cacheReadTokens: total.inputTokenDetails.cacheReadTokens,
-    cacheWriteTokens: total.inputTokenDetails.cacheWriteTokens,
-    requestIndex,
-    attemptIndex: 0,
-  };
-}
-
-async function executeServerTurn(
-  input: ServerTurnInput,
-): Promise<{
-  messages: ModelMessage[];
-  text: string;
-  continued: boolean;
-  followupText: string | null;
-  hitMaxTokens: boolean;
-}> {
-  try {
-    return await runServerTurnOnce(input);
-  } catch (error) {
-    // A context overflow means the estimate undershot the real tokenizer.
-    // Recover silently in escalating stages before surfacing anything:
-    // 1) compress history (forceCompact), 2) shrink the output reservation,
-    // 3) shrink both output and the active tool surface. Each stage only
-    // changes the request; the user never sees an intermediate failure.
-    // Deterministic retries for other failures live in llm-retry.ts.
-    if (input.signal.aborted
-      || input.forceCompact
-      || classifyLlmFailure(error).code !== 'CONTEXT_WINDOW_EXCEEDED') {
-      throw error;
-    }
-    pushRunEvent(input.run, 'context-overflow-retry', { requestIndex: input.requestIndex });
-    try {
-      return await runServerTurnOnce({ ...input, forceCompact: true });
-    } catch (retryError) {
-      if (input.signal.aborted || classifyLlmFailure(retryError).code !== 'CONTEXT_WINDOW_EXCEEDED') {
-        throw retryError;
-      }
-      pushRunEvent(input.run, 'context-overflow-retry', { requestIndex: input.requestIndex, stage: 'reduced-output' });
-      return runServerTurnOnce({ ...input, forceCompact: true, overflowStage: 'reduced-output' });
-    }
-  }
-}
-
-async function runServerTurnOnce(
-  input: ServerTurnInput,
-): Promise<{
-  messages: ModelMessage[];
-  text: string;
-  continued: boolean;
-  followupText: string | null;
-  hitMaxTokens: boolean;
-}> {
-  const schemas = input.activation.current.schemas();
-  const prepared = await prepareServerContext({ ...input, schemas });
-  const tools = createServerTools(
-    input.run,
-    schemas,
-    input.activation,
-  );
-  pushRunEvent(input.run, 'text-start', {});
-  const options = serverProviderOptions(input.provider, input.apiMode, input.cacheMode);
-  const maxOutputTokens = input.overflowStage === 'reduced-output'
-    ? Math.max(4_096, Math.floor(input.maxOutputTokens / 4))
-    : input.maxOutputTokens;
-  const result = streamText({
-    model: input.model,
-    instructions: input.instructions,
-    messages: prepared.messages,
-    tools,
-    ...(options ? { providerOptions: options } : {}),
-    maxOutputTokens,
-    maxRetries: 0,
-    abortSignal: input.signal,
-    timeout: SERVER_RUN_AI_TIMEOUT,
-  });
-  const text = await collectServerText(input.run, result.fullStream);
-  const [toolCalls, responseMessages, totalUsage, finishReason] = await Promise.all([
-    result.toolCalls,
-    result.responseMessages,
-    result.usage,
-    result.finishReason,
-  ]);
-  recordServerContextUsage(
-    input.run,
-    measuredContextUsage(prepared, totalUsage, text, input.requestIndex),
-    schemas.length,
-    JSON.stringify(schemas).length,
-  );
-  const continued = !input.activation.repeatGuardNote && (
-    toolCalls.length > 0 || responseMessages.some((message) => message.role === 'tool')
-  );
-  return {
-    messages: continued
-      ? [...prepared.messages, ...answerUnexecutedToolCalls(responseMessages, finishReason)]
-      : prepared.messages,
-    text,
-    followupText: input.activation.followupText,
-    continued,
-    hitMaxTokens: finishReason === 'length',
-  };
-}
 
 /**
  * Capability resolution for server-side runs. The keystore-backed
@@ -261,7 +132,7 @@ async function resolveCopilotRunCapabilities(
   );
 }
 
-async function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
+async function createExecutionPlan(run: ServerRun, input: ServerRunInput, deps: ExecuteRunDeps) {
   const provider = normalizeLlmProvider(input.provider);
   const apiMode = resolveModelRequestPolicy(provider, input.openAiApiMode, input.cacheMode).apiMode;
   const backend = serverRunBackend(input.backend);
@@ -318,7 +189,7 @@ async function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
     prompt,
     model: backend === 'codex' || backend === 'copilot' || backend === 'claude-code'
       ? undefined
-      : createServerLanguageModel(
+      : (deps.createApiModel ?? createServerLanguageModel)(
           provider,
           input.model,
           apiMode,
@@ -327,21 +198,87 @@ async function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   };
 }
 
+export interface ExecuteRunDeps {
+  readonly resume?: RunRecoveryRun;
+  readonly createApiModel?: typeof createServerLanguageModel;
+  readonly executeApiTurn?: typeof executeServerTurn;
+  readonly executeCodexTurn?: typeof import('./codex-turn.ts').executeServerCodexTurn;
+}
+
 async function executeRunTurns(
   run: ServerRun,
   input: ServerRunInput,
   signal: AbortSignal,
+  deps: ExecuteRunDeps = {},
 ): Promise<void> {
-  const plan = await createExecutionPlan(run, input);
-  let messages = plan.prompt.messages;
+  const plan = await createExecutionPlan(run, input, deps);
+  // Every recovered request and tool write shares one owned epoch. Only older
+  // runs without a recovery admission keep the legacy in-memory execution.
+  const recoveryRuntime = supportsDurableRunRecovery(plan.backend) ? beginRunRecoveryRuntime(run) : null;
+  const storedRecovery = supportsDurableRunRecovery(plan.backend) ? runRecoveryStore().load(runRecoveryKeyOf(run)) : null;
+  if (storedRecovery && !recoveryRuntime) throw new RunRecoveryFault('ownership-lost', 'Another executor owns this run.');
+  const resumed = deps.resume;
+  if (resumed?.executionState) {
+    plan.activation.current = new ToolActivation(plan.activation.current.allSchemas(),
+      resumed.messages ?? input.messages, resumed.executionState.activeToolNames);
+    plan.activation.acceptance = resumed.executionState.acceptance as typeof plan.activation.acceptance;
+    if (plan.backend === 'api') {
+      plan.activation.toolFailures.restore(resumed.executionState.toolFailures);
+      plan.activation.lastSuccessfulPureTool = resumed.executionState.lastSuccessfulPureTool;
+    }
+    for (const tool of resumed.tools.filter((entry) => resumed.requestState !== 'pending'
+      && entry.requestIndex === resumed.requestIndex && entry.opSeq > resumed.requestOpBoundary && entry.state === 'outcome')) {
+      plan.activation.toolFailures.record(tool.name, { success: tool.success ?? false, result: tool.result });
+      if (!tool.success) continue;
+      const shaped = plan.activation.current.withToolResult(tool.name, tool.result);
+      plan.activation.current = shaped.activation;
+      plan.activation.acceptance = recordAcceptedTool(plan.activation.acceptance, policyForTool(tool.name, tool.args ?? {}).effect);
+      const followup = tool.result && typeof tool.result === 'object' && '__followup' in tool.result ? tool.result.__followup : null;
+      if (typeof followup === 'string') plan.activation.followupText = followup;
+    }
+  }
+  let messages = resumed?.messages ? [...resumed.messages] : plan.prompt.messages;
+  const runInstructions = plan.backend === 'api' ? resumed?.instructions ?? plan.prompt.instructions : plan.prompt.instructions;
+  const initialRequestIndex = resumed?.requestIndex || 1;
+  const checkpointApiRound = (nextRequestIndex: number, nextMessages: readonly ModelMessage[],
+    completion?: { status: 'completed' | 'awaiting-user'; text: string }): void => {
+    if (plan.backend !== 'api' || !recoveryRuntime) return;
+    try {
+      runRecoveryStore().completeRequest(runRecoveryKeyOf(run), {
+        epoch: recoveryRuntime.epoch,
+        nextRequestIndex,
+        messages: nextMessages,
+        instructions: runInstructions,
+        executionState: {
+          activeToolNames: plan.activation.current.schemas().map((schema) => schema.name),
+          acceptance: plan.activation.acceptance,
+          toolFailures: plan.activation.toolFailures.snapshot(),
+          lastSuccessfulPureTool: plan.activation.lastSuccessfulPureTool,
+        },
+        ...(completion ? { completion } : {}),
+      });
+    } catch (error) { throw new RunRecoveryFault('recovery-write-failed', safeError(error)); }
+  };
   // No turn cap: the model decides when the task is done. The only automatic
   // stop beside "no more tool calls" is an output-token cutoff, which would
   // otherwise feed truncated text back into the loop.
   for (let turn = 0; ; turn += 1) {
+    const requestIndex = initialRequestIndex + turn;
+    // Initial execution state is not a completed model request. In particular,
+    // a continued configuration failure already owns a pending request index.
+    if (recoveryRuntime && (plan.backend !== 'api' || (turn === 0 && !storedRecovery?.executionState))) {
+      assertRunRecoveryAuthority(run);
+      try {
+        runRecoveryStore().saveExecutionState(runRecoveryKeyOf(run), recoveryRuntime.epoch, {
+          activeToolNames: plan.activation.current.schemas().map((schema) => schema.name),
+          acceptance: plan.activation.acceptance,
+        });
+      } catch (error) { throw new RunRecoveryFault('recovery-write-failed', safeError(error)); }
+    }
     const subprocessTurnInput = {
       run,
       messages,
-      instructions: plan.prompt.instructions,
+      instructions: runInstructions,
       schemas: plan.activation.current.schemas(),
       model: input.model,
       askOnly: run.askOnly,
@@ -352,39 +289,62 @@ async function executeRunTurns(
       contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
       signal,
       activation: plan.activation,
-      requestIndex: turn + 1,
+      requestIndex,
       approvalMode: input.approvalMode,
     };
-    const outcome = await runServerTurnWithRetry(run, turn + 1, signal, () =>
-      plan.backend === 'codex'
-        ? (async () => (await import('./codex-turn'))
-          .executeServerCodexTurn(subprocessTurnInput))()
-        : plan.backend === 'claude-code'
-          ? (async () => (await import('./claude-code-turn'))
-            .executeServerClaudeCodeTurn(subprocessTurnInput))()
-          : plan.backend === 'copilot'
-            ? (async () => (await import('./copilot-turn')).executeServerCopilotTurn({
-              ...subprocessTurnInput,
-              reasoningEffort: input.reasoningEffort ?? null,
-            }))()
-            : executeServerTurn({
-              run,
-              messages,
-              instructions: plan.prompt.instructions,
-              model: plan.model!,
-              provider: plan.provider,
-              apiMode: plan.apiMode,
-              cacheMode: input.cacheMode,
-              contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-              contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-              maxInputTokens: plan.maxInputTokens,
-              maxOutputTokens: plan.maxOutputTokens,
-              signal,
-              activation: plan.activation,
-              requestIndex: turn + 1,
-            }),
-    );
+    let attempt = 0;
+    const outcome = await runServerTurnWithRetry(run, requestIndex, signal, async () => {
+      if (supportsDurableRunRecovery(plan.backend)) {
+        const record = recoveryRuntime ? runRecoveryStore().load(runRecoveryKeyOf(run)) : null;
+        const retry = attempt++ > 0;
+        if (retry && record?.tools.some((tool) => tool.state === 'claimed')) {
+          throw new RunRecoveryFault('outcome-unknown', 'A claimed tool must be reconciled before retrying the subprocess.');
+        }
+        const replay = record?.requestState === 'inflight'
+          && (plan.backend === 'api' ? record.messages !== null : !!record.prompt) && record.requestIndex === requestIndex
+          && (retry || (turn === 0 && resumed)) ? record : null;
+        const recoverableInput = {
+          ...subprocessTurnInput,
+          reasoningEffort: input.reasoningEffort ?? null,
+          ...(recoveryRuntime ? { recovery: recoveryRuntime.sink } : {}),
+          ...(replay ? { resumeFrom: {
+            requestIndex: replay.requestIndex,
+            throughOpSeq: replay.nextOpSeq - 1,
+            requestOptions: replay.requestOptions ?? undefined,
+            prompt: replay.prompt ?? '',
+            messages: replay.messages ?? undefined,
+            instructions: replay.instructions ?? undefined,
+            toolNames: replay.toolNames ?? undefined,
+            completedTools: replay.tools.filter((tool) => tool.state === 'outcome' && tool.requestIndex === replay.requestIndex && tool.opSeq > replay.requestOpBoundary)
+              .map((tool) => ({ ...tool, success: tool.success ?? false, result: tool.result })),
+          } } : {}),
+        };
+        if (plan.backend === 'codex') {
+          const executeCodexTurn = deps.executeCodexTurn ?? (await import('./codex-turn')).executeServerCodexTurn;
+          return executeCodexTurn(recoverableInput);
+        }
+        if (plan.backend === 'api') {
+          return (deps.executeApiTurn ?? executeServerTurn)({
+            ...recoverableInput,
+            model: plan.model!,
+            provider: plan.provider,
+            apiMode: plan.apiMode,
+            cacheMode: input.cacheMode,
+          });
+        }
+
+      }
+      if (plan.backend === 'claude-code') {
+        return (await import('./claude-code-turn')).executeServerClaudeCodeTurn(subprocessTurnInput);
+      }
+      return (await import('./copilot-turn')).executeServerCopilotTurn({
+        ...subprocessTurnInput,
+        reasoningEffort: input.reasoningEffort ?? null,
+      });
+    });
+    if (recoveryRuntime) assertRunRecoveryAuthority(run);
     if (outcome.followupText) {
+      checkpointApiRound(requestIndex + 1, outcome.messages, { status: 'awaiting-user', text: outcome.followupText });
       if (plan.activation.acceptance.phase === 'checking') {
         pushRunEvent(run, 'acceptance', {
           status: 'paused',
@@ -400,9 +360,16 @@ async function executeRunTurns(
     }
     messages = outcome.messages;
     const disposition = turnDisposition(outcome.hitMaxTokens, outcome.continued);
-    if (disposition === 'continue') continue;
+    if (disposition === 'continue') {
+      checkpointApiRound(requestIndex + 1, messages);
+      continue;
+    }
     if (disposition === 'max-tokens') {
       pushRunEvent(run, 'max-tokens', { turn: turn + 1 });
+      if (recoveryRuntime) {
+        checkpointApiRound(requestIndex + 1, messages);
+        throw new Error('The model reached its output limit. Send another message to continue this task.');
+      }
     }
     if (disposition === 'completed') {
       const acceptance = decideAcceptanceAfterTurn(plan.activation.acceptance);
@@ -414,6 +381,7 @@ async function executeRunTurns(
           maxIterations: acceptance.state.maxIterations,
         });
         messages = [...messages, acceptance.message];
+        checkpointApiRound(requestIndex + 1, messages);
         continue;
       }
       if (acceptance.action === 'fail') {
@@ -438,6 +406,7 @@ async function executeRunTurns(
       // this tells the user and the inspector which calls failed, without a failure banner.
       pushRunEvent(run, 'tool-failures', { failures: plan.activation.toolFailures.snapshot() });
     }
+    checkpointApiRound(requestIndex + 1, messages, { status: 'completed', text: outcome.text });
     pushRunEvent(run, 'finish', {
       ...serverRunTextMetadata(outcome.text),
       ...(plan.activation.repeatGuardNote
@@ -449,39 +418,63 @@ async function executeRunTurns(
   }
 }
 
-async function settleRunFailure(
-  run: ServerRun,
-  abort: AbortController,
-  error: unknown,
-): Promise<void> {
-  const cancelled = run.status === 'cancelled'
-    || (abort.signal.aborted
-      && run.status !== 'failed'
-      && run.error === 'Agent run cancelled.');
-  const message = cancelled ? 'Agent run cancelled.' : safeError(error);
-  run.error = message;
-  if (!run.persistenceError) {
-    try {
-      pushRunEvent(run, 'error', { message });
-    } catch {
-      // The event-cap path already scheduled a failed transport settlement.
-    }
-  }
-  await setRunStatus(run, cancelled ? 'cancelled' : 'failed').catch(() => undefined);
-}
-
 export async function executeRun(
   run: ServerRun,
   input: ServerRunInput,
+  deps: ExecuteRunDeps = {},
 ): Promise<void> {
   const abort = new AbortController();
   run.abort = abort;
+  const recoverable = supportsDurableRunRecovery(serverRunBackend(input.backend));
   try {
+    if (recoverable && runRecoveryStore().load(runRecoveryKeyOf(run)) && !beginRunRecoveryRuntime(run)) {
+      throw new RunRecoveryFault('ownership-lost', 'Another executor owns this run.');
+    }
+    run.error = null;
     await setRunStatus(run, 'running');
-    await executeRunTurns(run, input, abort.signal);
+    const completion = deps.resume?.backend === 'api' ? deps.resume.completion : null;
+    if (deps.resume) {
+      const runtime = beginRunRecoveryRuntime(run);
+      if (!runtime) throw new RunRecoveryFault('ownership-lost', 'Another executor owns this run.');
+      if (deps.resume.tools.length) {
+        try { await reconcileRestartedToolApprovals(run, runtime.epoch); }
+        catch (error) { throw new RunRecoveryFault('recovery-write-failed', safeError(error)); }
+      }
+    }
+    if (completion) {
+      assertRunRecoveryAuthority(run);
+      if (!run.events.some((event) => event.type === 'finish')) {
+        const lastStart = run.events.findLastIndex((event) => event.type === 'text-start');
+        const segment = run.events.slice(Math.max(0, lastStart));
+        const visible = segment.filter((event) => event.type === 'text-delta')
+          .map((event) => String((event.data as { text?: unknown }).text ?? '')).join('');
+        const remaining = completion.text.startsWith(visible) ? completion.text.slice(visible.length)
+          : visible.endsWith(completion.text) ? '' : completion.text;
+        if (remaining) pushRunEvent(run, 'text-delta', { text: remaining });
+        if (remaining || !segment.some((event) => event.type === 'text-end')) {
+          pushRunEvent(run, 'text-end', serverRunTextMetadata(completion.text));
+        }
+        pushRunEvent(run, 'finish', serverRunTextMetadata(completion.text));
+      }
+      await setRunStatus(run, completion.status);
+    } else {
+      await executeRunTurns(run, input, abort.signal, deps);
+    }
+    // The terminal write precedes the purge: the run reached a business
+    // outcome, so its replay body is no longer needed. Finalizing first would
+    // drop the evidence a late crash could still have needed.
+    if (recoverable) finalizeRunRecovery(run);
   } catch (error) {
+    const failure = isRunRecoveryFault(abort.signal.reason) ? abort.signal.reason : error;
+    if (isRunRecoveryFault(failure)) {
+      await settleRunRecoveryFault(run, failure);
+      return;
+    }
+    if (recoverable && await pauseInterruptedRun(run, abort, error)) return;
     await settleRunFailure(run, abort, error);
+    if (recoverable && !run.persistenceError) finalizeRunRecovery(run);
   } finally {
+    if (recoverable) stopRunRecoveryRuntime(run);
     if (run.abort === abort) run.abort = undefined;
   }
 }

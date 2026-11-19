@@ -1,3 +1,4 @@
+import { continuePausedServerRun } from './serverRunContinue';
 import type { AgentContext } from './context';
 import { TOOL_SCHEMAS } from './tools';
 import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
@@ -25,6 +26,7 @@ import {
   clearStoredServerRun,
   patchStoredServerRun,
   saveStoredServerRun,
+  storedClaimIdentity,
   type StoredServerRun,
 } from './serverRunSessionStorage';
 import {
@@ -148,6 +150,9 @@ function storedServerRunFor(
     cursor: 0,
     assistantText: '',
     attempts: [],
+    // Diagnostic identity of this tab as the run's recorder. It never grants
+    // authority; the server decides that from its durable record.
+    recorderId: storedClaimIdentity(environment.projectId),
   };
 }
 
@@ -437,6 +442,7 @@ export async function sendServerRun(
   text: string,
   sendOptions: AgentSendOptions = {},
 ): Promise<void> {
+  if (await continuePausedServerRun(environment, text, sendOptions)) return;
   const prepared = await prepareServerRunPayload(environment, text, sendOptions);
   if (!prepared) return;
   if (!await acquireServerRunOwnership(environment.projectId, prepared.payload.runId)) {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { RunRecoveryStore, resetRunRecoveryStoreForTest } from './run-recovery-store';
 import {
   cancelRun,
   claimToolRequest,
@@ -52,6 +53,7 @@ function run(projectId = 'server-run-contract') {
   });
 }
 
+resetRunRecoveryStoreForTest(new RunRecoveryStore(':memory:'));
 resetServerRunStoreForTest();
 resetAgentRuntimeStoreMemory();
 resetSharedKvMemory();
@@ -482,5 +484,60 @@ assert.equal(
   'sequential terminal runs prune the oldest in-memory transport',
 );
 assert(getRun(sequential.at(-1)!), 'the newest terminal transport remains replayable');
+
+// Durable Codex admissions survive a restart. Historical Codex and Copilot
+// records keep the existing terminal repair and pending approval cleanup.
+const sharedRecovery = new RunRecoveryStore(':memory:');
+resetRunRecoveryStoreForTest(sharedRecovery);
+try {
+  for (const { backend, durable } of [
+    { backend: 'codex', durable: false },
+    { backend: 'copilot', durable: false },
+    { backend: 'codex', durable: true },
+    { backend: 'api', durable: false },
+    { backend: 'api', durable: true },
+  ]) {
+    const projectId = `store-${backend}-${durable ? 'durable' : 'legacy'}`;
+    const generation = await prepareRunAdmission(projectId);
+    const restoredReferences = [{ id: 'restore-codex-reference' }];
+    const interruptedRun = createRun({ projectId, sessionGeneration: generation, backend,
+      provider: 'openai', model: 'codex-mini-latest', references: restoredReferences });
+    await setRunStatus(interruptedRun, 'running');
+    const pending = waitForToolResult(interruptedRun, 'cold-call', 'edit_item', 'c'.repeat(64), 60_000);
+    void pending.catch(() => undefined);
+    if (durable) {
+      const key = { projectId, sessionGeneration: generation, runId: interruptedRun.id };
+      sharedRecovery.prepareAdmission({ ...key, backend, model: interruptedRun.model, askOnly: false,
+        admissionExpiresAt: Date.now() + 60_000, executionInput: {
+          backend, provider: 'openai', model: interruptedRun.model, messages: [{ role: 'user', content: 'resume Codex' }],
+          openAiApiMode: 'chat', cacheMode: 'short', maxOutputTokens: 4096,
+          autonomousAcceptance: false, maxAcceptanceIterations: 3, toolNames: ['edit_item'], references: restoredReferences,
+        } });
+      const authority = sharedRecovery.acquireOwnership(key, { instanceId: 'codex-cold-test' });
+      sharedRecovery.beginRequest(key, { epoch: authority.epoch!, requestIndex: 4, prompt: 'resume Codex',
+        messages: [{ role: 'user', content: 'resume Codex' }], instructions: 'durable Codex instructions', toolNames: ['edit_item'] });
+      sharedRecovery.releaseOwnership(key, { instanceId: 'codex-cold-test', epoch: authority.epoch! });
+    }
+    await flushRunPersistence(interruptedRun);
+    resetServerRunStoreForTest();
+    await assert.rejects(pending, /reset/);
+    const restored = await recoverServerRun(projectId, interruptedRun.id);
+    assert.equal(restored?.status, durable ? 'running' : 'failed');
+    assert.equal(restored?.events.some((event) => event.type === 'done'), !durable);
+    const approvals = (await loadAgentRuntimeSidecar(projectId)).approvals;
+    assert.equal(approvals.find((entry) => entry.runId === interruptedRun.id)?.status, durable ? 'pending' : 'cancelled');
+    if (durable) {
+      assert.deepEqual(restored?.references, restoredReferences);
+      await setRunStatus(restored!, 'awaiting-user');
+      await flushRunPersistence(restored!);
+      resetServerRunStoreForTest();
+      assert.equal((await recoverServerRun(projectId, interruptedRun.id))?.status, 'awaiting-user',
+        'durable Codex waiting for user input is terminal transport evidence');
+    }
+  }
+} finally {
+  resetServerRunStoreForTest();
+  resetRunRecoveryStoreForTest(null);
+}
 
 console.log('server agent run store verification passed');

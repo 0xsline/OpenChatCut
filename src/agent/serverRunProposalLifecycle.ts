@@ -1,13 +1,15 @@
-import { useCallback, useRef } from 'react';
-import { makeDraft, replayActions } from '../editor/store';
-import type { ProjectDoc } from '../editor/types';
-import { saveAutomaticVersion } from '../persist/versionStore';
-import type { AgentContext } from './context';
 import {
-  buildOperation,
-  partitionProposalActions,
-  projectDocsDiffer,
-} from './proposal';
+  turnContext,
+  applyToolActions,
+  rebaseTurn,
+  restoreToolActions,
+  durableToolMap,
+} from './serverRunProposalRecovery';
+export { restoreToolActions, serverRunDraftBaseChanged } from './serverRunProposalRecovery';
+import { useCallback, useRef } from 'react';
+import { replayActions } from '../editor/store';
+import type { ProjectDoc } from '../editor/types';
+import type { AgentContext } from './context';
 import {
   commitPersistentOperations,
   createPendingProposal,
@@ -26,10 +28,10 @@ import {
   loadServerRunDraft,
   saveServerRunDraftBase,
   saveServerRunDraftTool,
-  type ServerRunDraftToolBody,
 } from './serverRunDraftStore';
 import { ServerRunTerminalHandoffs } from './serverRunTerminalHandoff';
 import { landableOperations, projectWriteOutcome } from './serverRunProjectWrite';
+import { revisionOf } from './external-edit-session';
 import { permanentServerRunRecoveryError } from './serverRunRecovery';
 import type {
   ServerRunPreparation,
@@ -48,36 +50,6 @@ interface ProposalRunState {
 }
 
 type ProposalRunRef = MutableValue<ProposalRunState>;
-export function serverRunDraftBaseChanged(
-  baseDoc: ProjectDoc,
-  currentDoc: ProjectDoc,
-): boolean {
-  return projectDocsDiffer(baseDoc, currentDoc);
-}
-
-function turnContext(ctx: AgentContext, doc: ProjectDoc) {
-  const draft = makeDraft(doc);
-  return {
-    draft,
-    draftCtx: {
-      commands: draft.commands,
-      getState: draft.getState,
-      getDoc: draft.getDoc,
-      getCreativeMode: ctx.getCreativeMode,
-      setCreativeMode: ctx.setCreativeMode,
-      templates: ctx.templates,
-      audio: ctx.audio,
-      getProjectId: ctx.getProjectId,
-      openProject: ctx.openProject,
-      onProjectRenamed: ctx.onProjectRenamed,
-      getUndoTarget: ctx.getUndoTarget,
-      getRedoTarget: ctx.getRedoTarget,
-      getApprovalMode: ctx.getApprovalMode,
-      getOfflineMediaSrcs: ctx.getOfflineMediaSrcs,
-    },
-  };
-}
-
 function createTurn(
   state: AgentHookState,
   ctx: AgentContext,
@@ -124,41 +96,6 @@ function createTurn(
   };
 }
 
-function applyToolActions(
-  turn: AgentTurn,
-  input: ServerRunToolAction,
-  projectId: string,
-): void {
-  if (input.error !== undefined || isFailedToolResult(input.result) || !input.actions.length) return;
-  const { persistent, proposed } = partitionProposalActions(input.actions);
-  if (persistent.length) {
-    const observed = turn.state.ctxRef.current.getDoc();
-    if (!turn.persistentBeforeDoc) {
-      turn.persistentBeforeDoc = turn.baseDoc;
-      turn.persistentSnapshot = saveAutomaticVersion(projectId, 'Agent 修改前', turn.baseDoc).then(
-        () => undefined,
-        (error) => { turn.persistentSaveError = error; },
-      );
-    }
-    // The proposal base already carries every import that has landed, so the live project
-    // matching it means nobody else edited; comparing against the run's original base would
-    // read the run's own landings as a foreign change and refuse its timeline edits.
-    if (serverRunDraftBaseChanged(turn.proposalBaseDoc, observed)) turn.draftInvalidated = true;
-    turn.proposalBaseDoc = replayActions(turn.proposalBaseDoc, persistent);
-    turn.persistentOps.push(buildOperation(input.name, input.args, persistent));
-  }
-  if (proposed.length) {
-    // Count tools that contributed proposal operations so the terminal path
-    // can detect a run whose recorded edits failed to survive to settle time.
-    turn.toolCallCount += 1;
-    turn.ops.push(buildOperation(input.name, input.args, proposed));
-  }
-  const nextDoc = replayActions(turn.draft.getDoc(), input.actions);
-  const next = turnContext(turn.state.ctxRef.current, nextDoc);
-  turn.draft = next.draft;
-  turn.draftCtx = next.draftCtx;
-}
-
 function draftBase(
   input: ServerRunPreparation | ServerRunStart,
   baseDoc: ProjectDoc,
@@ -198,33 +135,6 @@ async function loadStartDraft(projectId: string, input: ServerRunStart) {
   return { recovered, baseDoc };
 }
 
-function restoreToolActions(
-  turn: AgentTurn,
-  input: ServerRunStart,
-  tools: readonly ServerRunDraftToolBody[],
-  baseDoc: ProjectDoc,
-  ref: ProposalRunRef,
-  projectId: string,
-): void {
-  // Calls whose edits already landed are in the live project; the ones after them are
-  // replayed on top of it rather than on the run's original base.
-  if (tools.some((tool) => tool.landed)) rebaseTurn(turn, turn.state.ctxRef.current.getDoc());
-  for (const tool of tools) {
-    ref.current.seenToolCalls.add(tool.toolCallId);
-    if (tool.landed) continue;
-    applyToolActions(turn, {
-      runId: input.runId,
-      toolCallId: tool.toolCallId,
-      argsDigest: tool.argsDigest,
-      name: tool.name,
-      args: tool.args,
-      ...(tool.error === undefined ? { result: tool.result } : { error: tool.error }),
-      actions: [...tool.actions],
-      baseDoc,
-    }, projectId);
-  }
-}
-
 async function startServerRun(
   state: AgentHookState,
   ctx: AgentContext,
@@ -237,8 +147,17 @@ async function startServerRun(
   const tools = recovered?.tools ?? [];
   ref.current.turn = turn;
   ref.current.seenToolCalls = new Set();
-  restoreToolActions(turn, input, tools, baseDoc, ref, projectId);
+  const restored = restoreToolActions(
+    turn,
+    input,
+    tools,
+    baseDoc,
+    ref,
+    projectId,
+    durableToolMap(input.durableTools),
+  );
   return {
+    blocked: !restored,
     tools: tools.map((tool) => ({
       name: tool.name,
       toolCallId: tool.toolCallId,
@@ -303,14 +222,10 @@ async function landLiveEdits(
     ...(input.error === undefined ? { result: input.result } : { error: input.error }),
     actions: input.actions,
     landed: true,
+    // The revision makes the landing claim checkable: a restart can compare it
+    // with the live project instead of trusting the marker.
+    landedRevision: revisionOf(landed),
   }).catch(() => undefined);
-}
-
-function rebaseTurn(turn: AgentTurn, doc: ProjectDoc): void {
-  const next = turnContext(turn.state.ctxRef.current, doc);
-  turn.draft = next.draft;
-  turn.draftCtx = next.draftCtx;
-  turn.proposalBaseDoc = doc;
 }
 
 function beginTerminal(turn: AgentTurn, input: ServerRunTerminal): void {

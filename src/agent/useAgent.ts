@@ -29,5 +29,7 @@ export interface AgentController {
   readonly rollbackChangeSession: (id: string, force?: boolean) => boolean;
   readonly canRollbackChangeSession: (id: string) => boolean;
   /** Drop the user turn at `index` and everything after it from both histories; false = untouched. */
+  readonly recheckFrozenRun: () => Promise<void>;
+  readonly endFrozenRun: () => Promise<void>;
   readonly rewindTurn: (index: number) => boolean;
 }

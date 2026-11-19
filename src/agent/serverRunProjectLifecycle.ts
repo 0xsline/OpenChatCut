@@ -35,6 +35,7 @@ function detachSwitchedRun(state: ServerRunState): void {
   state.eventSession.close();
   state.refs.runExecutor.current?.stop();
   state.refs.abort.current = null;
+  state.refs.frozenRun.current = null;
   state.refs.runId.current = null;
   state.refs.capability.current = null;
   state.refs.runProject.current = null;
