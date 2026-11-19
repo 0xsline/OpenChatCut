@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import { RunRecoveryStore, resetRunRecoveryStoreForTest } from './run-recovery-store';
+import { readRunRecoveryProjection, resetRunRecoveryRuntimeForTest } from './run-recovery-runtime';
+import type { RunRecoveryExecutionInput } from './run-recovery-store';
+const store = new RunRecoveryStore(':memory:');
+resetRunRecoveryStoreForTest(store);
+const key = { projectId: 'p', sessionGeneration: 'g', runId: 'projection' };
+try {
+  const executionInput = { messages: [{ role: 'user', content: 'original' }], references: [], toolNames: ['edit'] } as unknown as RunRecoveryExecutionInput;
+  store.prepareAdmission({ ...key, backend: 'api', model: 'm', askOnly: false, admissionExpiresAt: Date.now() + 60_000, executionInput });
+  const epoch = store.acquireOwnership(key, { instanceId: 'owner' }).epoch!;
+  store.pauseAttempt(key, 'provider timeout', epoch);
+  let view = readRunRecoveryProjection(key, 12)!;
+  assert.equal(view.state, 'paused');
+  assert.equal(view.attemptNumber, 1);
+  assert.equal(view.lastError, 'provider timeout');
+  assert.equal(view.lastContinuationId, null);
+  assert.equal(view.lastEventId, 12);
+  const revision = view.revision;
+  assert.equal(readRunRecoveryProjection(key, 12)!.revision, revision, 'read projection never mutates the checkpoint');
+  store.setPhase(key, { epoch, phase: 'executing' });
+  assert.equal(readRunRecoveryProjection(key, 12)!.state, 'paused', 'a paused attempt survives incidental phase changes');
+  store.continueAttempt(key, { epoch, continuationId: 'continuation', message: 'next' });
+  store.beginRequest(key, { epoch, requestIndex: 1, prompt: '', messages: store.load(key)!.messages!, toolNames: ['edit'] });
+  store.beginTool(key, { epoch, intent: { toolCallId: 'edit', name: 'edit', argsDigest: 'd' } });
+  store.claimTool(key, { epoch, toolCallId: 'edit', argsDigest: 'd', claimId: 'c' });
+  store.pauseAttempt(key, 'lost browser', epoch);
+  view = readRunRecoveryProjection(key, 13)!;
+  assert.equal(view.state, 'waiting_reconcile');
+  assert.equal(view.attemptNumber, 2);
+  assert.equal(view.lastError, 'lost browser');
+  assert.equal(view.lastContinuationId, 'continuation');
+  store.recordBrowserOutcome(key, { toolCallId: 'edit', argsDigest: 'd', claimId: 'c', result: { applied: true } });
+  assert.equal(readRunRecoveryProjection(key, 14)!.state, 'paused', 'tool settlement cannot authorize automatic resume');
+  store.finalize(key, Date.now(), epoch);
+  assert.equal(readRunRecoveryProjection(key, 15)!.state, 'finalized');
+  console.log('run-recovery-store-projection.verify: paused attempt barrier, claims, settlement, fields and read-only metadata passed');
+} finally {
+  resetRunRecoveryRuntimeForTest();
+  resetRunRecoveryStoreForTest(null);
+}
