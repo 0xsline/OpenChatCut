@@ -9,7 +9,17 @@ export interface StoredToolAttempt {
   readonly error?: string;
 }
 
+export interface StoredContinuation {
+  readonly id: string;
+  readonly text: string;
+  readonly message: string;
+  readonly previousAssistantText: string;
+}
+
 export interface StoredServerRun {
+  readonly paused?: boolean;
+  readonly pendingContinuation?: StoredContinuation;
+  readonly continuationTurns?: readonly StoredContinuation[];
   readonly projectId: string;
   readonly runId: string;
   readonly capability?: string;
@@ -26,6 +36,12 @@ export interface StoredServerRun {
   readonly assistantText?: string;
   readonly assistantThinking?: string;
   readonly attempts?: readonly StoredToolAttempt[];
+  /**
+   * Stable id for this browser as the run's recorder. Diagnostic only: the
+   * server re-derives authority from the durable record, so a forged value
+   * cannot grant execution.
+   */
+  readonly recorderId?: string;
 }
 
 const runKey = (projectId: string): string => `cc.serverRun.${projectId}`;
@@ -51,6 +67,12 @@ function toolNames(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((name) => typeof name === 'string');
 }
 
+function continuation(value: unknown): value is StoredContinuation {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Record<string, unknown>;
+  return ['id', 'text', 'message', 'previousAssistantText'].every((key) => typeof item[key] === 'string');
+}
+
 export function readStoredServerRun(projectId: string): StoredServerRun | null {
   try {
     const stored = localStorage.getItem(runKey(projectId));
@@ -61,6 +83,10 @@ export function readStoredServerRun(projectId: string): StoredServerRun | null {
     return {
       projectId,
       runId: parsed.runId,
+      ...(typeof parsed.paused === 'boolean' ? { paused: parsed.paused } : {}),
+      ...(continuation(parsed.pendingContinuation) ? { pendingContinuation: parsed.pendingContinuation } : {}),
+      ...(Array.isArray(parsed.continuationTurns) && parsed.continuationTurns.every(continuation)
+        ? { continuationTurns: parsed.continuationTurns } : {}),
       ...(typeof parsed.capability === 'string' && parsed.capability.length > 0
         ? { capability: parsed.capability }
         : {}),
@@ -97,6 +123,9 @@ export function readStoredServerRun(projectId: string): StoredServerRun | null {
         : {}),
       ...(Array.isArray(parsed.attempts) && parsed.attempts.every(attempt)
         ? { attempts: parsed.attempts }
+        : {}),
+      ...(typeof parsed.recorderId === 'string' && parsed.recorderId.length > 0
+        ? { recorderId: parsed.recorderId }
         : {}),
     };
   } catch {

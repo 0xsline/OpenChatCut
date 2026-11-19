@@ -312,6 +312,12 @@ the legacy shared development store.
 
 The built-in Agent always runs the model loop on the local server. Chat, drafts, and proposals survive page refreshes and local service restarts. Timeline changes still go through the active editor's validated, undoable commands.
 
+If an API or Codex task stops with an error, send another message to continue the **same run**. The next attempt keeps the original task, draft, structured model history and confirmed tool results, and adds your new instruction—for example, “Continue, and use English subtitles.” A paused task waits for your message after a page refresh or service restart; it does not automatically repeat the failed attempt. Each attempt records its error and continuation identity, so retrying a message after a lost response cannot start the same attempt twice.
+
+Confirmed operations remain in the task history. When a tool's effects are uncertain, the task waits for reconciliation before any continuation can run. The chat offers **Recheck** and **End task**; end the unfinished task before starting a different one. Completed or explicitly ended tasks close normally, and subsequent messages create new runs. Runs interrupted by a service restart while still executing can also recover from their durable checkpoints.
+
+Keep both the server data and the browser's local run records. Recovery and attempt records live in the profile's `run-recovery-v1.sqlite3`, outside project exports. Completing or ending a task clears its replay input; deleting the project or clearing the chat session removes its recovery records. Earlier runs whose checkpoints were already cleared cannot be resumed.
+
 ### Agent local-path access (advanced)
 
 Desktop agents can browse any local directory allowed by the operating system by default, including mounted media drives. `browse_local_media` lists folders and supported media, searches by filename or relative path and media type, and returns paginated results without importing. The agent can then use `import_assets` for up to 100 selected paths, `import_asset` for one path, or `import_folder` for a whole folder. Imports reuse media probing and reference registration, preserve source files, and skip duplicate content, including duplicates within one batch. Document files such as TXT, Markdown, DOCX, and PDF should be attached to chat instead. In the desktop app these tools are enabled by default; in a browser session they also work, but only for directories listed in `AGENT_IMPORT_ROOTS` and while the editor is served from the same machine that runs OpenChatCut.

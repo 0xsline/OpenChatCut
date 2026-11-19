@@ -20,6 +20,7 @@ export async function settleServerRun(
   projectId: string,
   runId: string,
   input: ServerRunSettleClientInput,
+  requireAcknowledgement = false,
 ): Promise<void> {
   // The settle endpoint requires the run-capability handshake; send it when
   // the browser still holds the stored run record. Without it the server
@@ -37,10 +38,12 @@ export async function settleServerRun(
     });
     if (response.ok) return;
     const payload = await response.json().catch(() => null) as { error?: string } | null;
+    if (requireAcknowledgement) throw new Error(`server run settle rejected: HTTP ${response.status}`);
     if (payload?.error === 'invalid settle status') {
       throw new Error(`server run settle rejected: ${payload.error}`);
     }
   } catch (error) {
+    if (requireAcknowledgement) throw error;
     if (error instanceof Error && error.message.startsWith('server run settle rejected')) throw error;
     // Transport or admission failure: the run record stays for hydration
     // recovery, which settles it on the next open.

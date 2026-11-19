@@ -144,6 +144,7 @@ lines.on('line', (line) => {
     return;
   }
   if (message.id === 'dynamic-1') {
+    if (message.result?.success === false) return; // late call was rejected
     if (message.result?.success !== true) process.exit(74);
     send({
       method: 'thread/tokenUsage/updated',
@@ -170,6 +171,12 @@ lines.on('line', (line) => {
       method: 'turn/completed',
       params: { threadId: activeThread, turn: { id: activeTurn, status: 'completed' } },
     });
+    // Simulate notifications already on the wire while the terminal thread
+    // is still registered for cleanup. Neither may reach the editor.
+    send({ method: 'item/agentMessage/delta', params: {
+      threadId: activeThread, turnId: activeTurn, delta: 'stale response',
+    } });
+    toolRequest();
     return;
   }
   if (message.method === 'thread/delete' || message.method === 'turn/interrupt') {

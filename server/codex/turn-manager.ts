@@ -307,7 +307,7 @@ export class CodexTurnManager {
 
   private notification(session: TurnSession, notification: CodexNotification): void {
     const params = notification.params;
-    if (!this.matchesThread(session, params)) return;
+    if (session.terminal || !this.matchesThread(session, params)) return;
     const turn = object(params.turn);
     const turnId = identifier(params.turnId) ?? identifier(turn?.id);
     if (turnId && !session.turnId) session.turnId = turnId;
@@ -348,6 +348,13 @@ export class CodexTurnManager {
     if (request.method !== 'item/tool/call') return false;
     const threadId = identifier(request.params.threadId);
     if (!session.threadId || threadId !== session.threadId) return false;
+    if (session.terminal) {
+      request.respond({
+        contentItems: [{ type: 'inputText', text: 'This Codex turn has already ended.' }],
+        success: false,
+      });
+      return true;
+    }
     const turnId = identifier(request.params.turnId);
     if (turnId && !session.turnId) session.turnId = turnId;
     if (!turnId || session.turnId !== turnId) return false;
@@ -377,8 +384,10 @@ export class CodexTurnManager {
   }
 
   private async cleanup(session: TurnSession, aborted: boolean): Promise<void> {
-    this.abortPendingTools(session);
-    if (!session.clientAlive) return;
+    if (!session.clientAlive) {
+      session.pendingTools.clear();
+      return;
+    }
     if (!session.threadId) {
       session.client.restart('Codex turn ended before thread cleanup was possible.');
       return;
@@ -390,6 +399,9 @@ export class CodexTurnManager {
         { timeoutMs: CLEANUP_TIMEOUT_MS },
       ).catch(() => {});
     }
+    // Interrupt the old turn before releasing pending callbacks so it cannot
+    // interpret a cancelled write as permission to try another tool.
+    this.abortPendingTools(session);
     await session.client.request(
       'thread/delete',
       { threadId: session.threadId },

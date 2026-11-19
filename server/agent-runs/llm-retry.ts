@@ -1,5 +1,6 @@
 import { APICallError, NoOutputGeneratedError } from 'ai';
 import { pushRunEvent, type ServerRun } from './store';
+import { isRunRecoveryFault } from './run-recovery-fault';
 
 /**
  * Provider-neutral failure classification for server-run LLM turns.
@@ -151,6 +152,9 @@ export async function runServerTurnWithRetry<T>(
       return await attempt();
     } catch (error) {
       if (signal.aborted) throw error;
+      // A recovery fault is not a transport problem: retrying the same turn
+      // would re-dispatch tools whose effects are exactly what is in doubt.
+      if (isRunRecoveryFault(error)) throw error;
       const failure = classifyLlmFailure(error);
       if (!isRetryableLlmFailure(failure.code) || call === MAX_LLM_ATTEMPTS - 1) {
         throw error;

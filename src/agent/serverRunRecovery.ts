@@ -82,9 +82,14 @@ export function restoredRunMessages(
     text: assistantText,
     ...(assistantThinking ? { thinking: assistantThinking } : {}),
   };
-  if (last?.role === 'assistant' && last.text === ''
+  if (last?.role === 'assistant'
     && previous?.role === 'user' && previous.text === text) {
     return [...current.slice(0, -1), restored];
+  }
+  const lastUser = current.findLastIndex((message) => message.role === 'user');
+  if (lastUser >= 0 && current[lastUser]?.text === text) {
+    const lastAssistant = current.findLastIndex((message, index) => index > lastUser && message.role === 'assistant');
+    if (lastAssistant >= 0) return current.map((message, index) => index === lastAssistant ? restored : message);
   }
   if (last?.role === 'user' && last.text === text) {
     return [...current, restored];

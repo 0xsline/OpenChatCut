@@ -17,8 +17,23 @@ export interface DisplayMessage {
   role: 'user' | 'assistant' | 'tool' | 'error' | 'continue' | 'note';
   text: string;
   thinking?: string;
+  paused?: boolean;
+  continuationId?: string;
   retry?: AgentRetry;
   tool?: { name: string; args: unknown; result: unknown };
+  /**
+   * A run whose browser-side write could not be proven. The card names the
+   * operation and offers exactly two actions: re-check the evidence, or end the
+   * task. Neither issues a new write.
+   *
+   * `evidenceVersion` changes whenever a re-check produced a different result,
+   * so the UI can show the latest answer instead of a stale one.
+   */
+  reconcile?: {
+    readonly reason: string;
+    readonly targets: readonly string[];
+    readonly evidenceVersion: number;
+  };
 }
 
 export function createAgentRetry(

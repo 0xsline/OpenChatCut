@@ -84,6 +84,8 @@ export default {
   '刷新后仍可继续检查、下载或重跑': 'Keep checking, downloading, or rerunning tasks after a refresh',
   '恢复中…': 'Resuming…',
   '继续任务': 'Resume Tasks',
+  '重新核对': 'Recheck',
+  '结束任务': 'End task',
   '正在读取任务…': 'Loading tasks…',
   '暂无生成任务': 'No generation tasks',
   'Provider 任务': 'Provider task',

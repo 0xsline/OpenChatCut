@@ -90,7 +90,7 @@ export interface AgentRunContext {
   /** SHA-256 verifier only; never a bearer credential. */
   readonly serverRunCapabilityVerifier?: string;
   /** Durable server transport lifecycle; browser proposal settlement owns AgentRunRecord.status. */
-  readonly transportStatus?: 'queued' | 'running' | 'awaiting-confirmation' | 'awaiting-user'
+  readonly transportStatus?: 'queued' | 'running' | 'paused' | 'awaiting-confirmation' | 'awaiting-user'
     | 'completed' | 'failed' | 'cancelled';
   readonly transportError?: string | null;
 }

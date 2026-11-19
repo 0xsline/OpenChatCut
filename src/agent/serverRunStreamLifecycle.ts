@@ -1,3 +1,4 @@
+import { pauseBrowserServerRun } from './serverRunPause';
 import { useCallback, useRef } from 'react';
 import {
   bindServerRunEvents,
@@ -10,6 +11,7 @@ import {
 import {
   loadServerRunMetadata,
   recoveredServerRunTerminal,
+  serverRunNeedsResume,
   type ServerRunOptions,
 } from './serverRunProtocol';
 import {
@@ -31,6 +33,7 @@ import {
 } from './serverRunStreamDeltaBuffer';
 import { settleAbandonedServerRun } from './serverRunAbandon';
 import { releaseServerRunOwnership } from './serverRunOwnership';
+import { adoptServerRunBaseline } from './serverRunRecoveryBaseline';
 import type { ServerRunState } from './serverRunState';
 
 export interface ServerRunStreamLifecycle {
@@ -55,6 +58,7 @@ function currentOptions(state: ServerRunState): ServerRunOptions {
 
 function resetAbandonedRun(state: ServerRunState): void {
   const { refs } = state;
+  refs.frozenRun.current = null;
   refs.runId.current = null;
   refs.capability.current = null;
   refs.runProject.current = null;
@@ -116,6 +120,7 @@ function resetFinishedRun(
   dropStreamDeltas(projectId);
   releaseServerRunOwnership(projectId, runId);
   refs.terminalRun.current = runId;
+  refs.frozenRun.current = null;
   refs.runId.current = null;
   refs.capability.current = null;
   refs.runProject.current = null;
@@ -189,13 +194,26 @@ function commitThinkingDelta(
   return 'committed';
 }
 
-function bindEventSource(
+export function bindEventSource(
   projectId: string,
   runId: string,
   state: ServerRunState,
   lifecycle: ServerRunStreamHandlers,
   source: ServerRunEventStream,
 ): void {
+  source.addEventListener('run-paused', (event) => {
+    if (!state.refs.enabled.current || state.refs.runId.current !== runId) return;
+    if (commitSequence(projectId, state, event) !== 'committed') return;
+    let error: string | undefined;
+    try { error = (JSON.parse((event as MessageEvent).data) as { error?: string }).error; } catch { /* Metadata supplies the durable reason on refresh. */ }
+    pauseBrowserServerRun(projectId, state, error);
+  });
+  source.addEventListener('recovery-blocked', (event) => {
+    if (!state.refs.enabled.current || state.refs.runId.current !== runId) return;
+    commitSequence(projectId, state, event);
+    state.eventSession.close();
+    void state.refs.recover.current?.(runId);
+  });
   bindServerRunEvents(source, runId, {
     enabled: () => state.refs.enabled.current,
     ready: () => state.refs.ready.current,
@@ -229,7 +247,7 @@ function bindEventSource(
   });
 }
 
-async function openSubscription(
+export async function openSubscription(
   projectId: string,
   runId: string,
   capability: string,
@@ -240,7 +258,20 @@ async function openSubscription(
   const metadata = await loadServerRunMetadata(projectId, runId, capability);
   if (!state.eventSession.isCurrent(epoch)
     || !state.refs.enabled.current || !state.refs.ready.current) return;
-  const cursor = state.refs.cursor.current;
+  const storedCursor = state.refs.cursor.current;
+  // The second entry point: a page that stayed open and is reconnecting. It
+  // must reach the same reconciliation as a fresh mount, because the run may
+  // have been frozen by another process while this tab was disconnected.
+  if (serverRunNeedsResume(metadata) || metadata.recovery?.state === 'paused' || metadata.status === 'paused') {
+    state.eventSession.close();
+    void state.refs.recover.current?.(runId);
+    return;
+  }
+  const resumeCursor = adoptServerRunBaseline(projectId, state, metadata, storedCursor);
+  const cursor = resumeCursor.cursor;
+  if (resumeCursor.adoptedBaseline) {
+    state.appendMessage({ role: 'note', text: `${resumeCursor.reason}上次输出已中断。` });
+  }
   if (typeof metadata.firstEventId === 'number' && cursor < metadata.firstEventId - 1) {
     throw permanentServerRunRecoveryError('服务端任务事件已超出可恢复窗口。');
   }
@@ -352,7 +383,7 @@ function useSubscribe(
   return useCallback((runId: string) => {
     const current = stateRef.current;
     const handlers = lifecycleRef.current;
-    if (!current.refs.enabled.current) return;
+    if (!current.refs.enabled.current || current.refs.frozenRun.current === runId) return;
     if (!current.refs.ready.current) return current.eventSession.scheduleReconnect(runId);
     const capability = current.refs.capability.current;
     if (!capability) {

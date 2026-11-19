@@ -19,16 +19,35 @@ import {
   waitForToolResult,
 } from './store.ts';
 import { MAX_SSE_SUBSCRIBERS_PER_RUN } from './sse.ts';
+import {
+  RUN_RECOVERY_DB_ENV,
+  RunRecoveryStore,
+  defaultRunRecoveryStorePath,
+  resetRunRecoveryStoreForTest,
+} from './run-recovery-store.ts';
+import { beginRunRecoveryRuntime, resetRunRecoveryRuntimeForTest, stopRunRecoveryRuntime } from './run-recovery-runtime.ts';
+import { denyRunRecoveryWrites } from './run-recovery-test-faults.ts';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { digestValue } from './store-values.ts';
+
+const executedRuns: Array<{ runId: string; resumed: boolean }> = [];
 
 function applyPlugin(): ReturnType<typeof createMiniConnect> {
   const app = createMiniConnect((error) => { throw error; });
-  const plugin = agentRunsPlugin({ activatePersistence: () => undefined });
+  const plugin = agentRunsPlugin({ activatePersistence: () => undefined, executeRun: async (run, _input, deps) => { executedRuns.push({ runId: run.id, resumed: Boolean(deps?.resume) }); } });
   const configure = plugin.configureServer;
   if (typeof configure !== 'function') throw new Error('agent run plugin has no configureServer hook');
   configure({ middlewares: { use: (route: string, handler: (req: IncomingMessage, res: ServerResponse) => unknown) => app.use(route, handler) } } as never);
   return app;
 }
+
+const recoveryDirectory = mkdtempSync(join(tmpdir(), 'run-recovery-routes-'));
+process.env[RUN_RECOVERY_DB_ENV] = join(recoveryDirectory, 'pi-run-recovery-v1.sqlite3');
+assert.equal(defaultRunRecoveryStorePath(), process.env[RUN_RECOVERY_DB_ENV]);
+const recoveryStore = new RunRecoveryStore(process.env[RUN_RECOVERY_DB_ENV]);
+resetRunRecoveryStoreForTest(recoveryStore);
 
 const server = createServer((req, res) => applyPlugin().handle(req, res));
 server.listen(0, '127.0.0.1');
@@ -401,7 +420,402 @@ try {
   const codexRun = getRun(codexRunId);
   assert.equal(codexRun?.backend, 'codex', 'run records the codex backend');
   assert.equal(codexRun?.provider, 'openai', 'codex runs are normalized to the openai provider');
+  // Codex admission: the recovery row is written before the create response, so a
+  // crash between the sidecar write and the admission can be repaired by the
+  // identical create retry instead of starting a second executor.
+  const recoveryRunId = crypto.randomUUID();
+  const recoveryCapability = 'e'.repeat(43);
+  const recoveryPayload = {
+    projectId: 'project-recovery-admission',
+    runId: recoveryRunId,
+    capability: recoveryCapability,
+    backend: 'codex',
+    model: 'gpt-5.4',
+    messages: [{ role: 'user', content: 'run' }],
+    cacheMode: 'short',
+    maxOutputTokens: 4_096,
+    askOnly: true,
+  };
+  const recoveryCreate = await fetch(`${origin}/api/agent-runs/`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify(recoveryPayload),
+  });
+  assert.equal(recoveryCreate.status, 201, 'pi backend is admitted without an LLM API key');
+  const recoveryRun = getRun(recoveryRunId);
+  assert.ok(recoveryRun);
+  const recovery = recoveryStore.load({
+    projectId: recoveryRun.projectId,
+    sessionGeneration: recoveryRun.sessionGeneration,
+    runId: recoveryRun.id,
+  });
+  assert.ok(recovery, 'a Codex run has a durable recovery admission before the response');
+  assert.equal(recovery.phase, 'admitted');
+  assert.equal(recovery.ownerInstance, null, 'admission alone grants no execution authority');
+  assert.ok(
+    recovery.admissionExpiresAt > Date.now(),
+    'the admission deadline is persisted, not just held in memory',
+  );
+  const recoveryRetry = await fetch(`${origin}/api/agent-runs/`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify(recoveryPayload),
+  });
+  assert.equal(recoveryRetry.status, 200, 'the identical create retry is idempotent');
+  const afterRetry = recoveryStore.load({
+    projectId: recoveryRun.projectId,
+    sessionGeneration: recoveryRun.sessionGeneration,
+    runId: recoveryRun.id,
+  });
+  assert.equal(
+    afterRetry?.admissionExpiresAt,
+    recovery.admissionExpiresAt,
+    'a retry never extends the persisted admission deadline',
+  );
+
+  // Claim ordering, asserted at the HTTP boundary the browser uses: the durable
+  // claim is committed before the response, so "no claim record" is genuine
+  // evidence that execution authority was never granted.
+  const claimDigest1 = digestToolArgs({ probe: 1 });
+  const claimDigest2 = digestToolArgs({ probe: 2 });
+  const recoveryRuntime = beginRunRecoveryRuntime(recoveryRun, { instanceId: 'routes-verify' });
+  assert.ok(recoveryRuntime, 'the route-level fixture owns the run');
+  const firstIntent = await recoveryRuntime.sink.beginTool({
+    toolCallId: 'call-claim-1',
+    name: 'read_timeline',
+    argsDigest: claimDigest1,
+  });
+  pushRunEvent(recoveryRun, 'tool-request', {
+    toolCallId: 'call-claim-1',
+    name: 'read_timeline',
+    args: {},
+    argsDigest: claimDigest1,
+  });
+  const pendingClaim = waitForToolResult(recoveryRun, 'call-claim-1', 'read_timeline', claimDigest1);
+  void pendingClaim.catch(() => undefined);
+  const claimResponse = await fetch(`${origin}/api/agent-runs/${recoveryRunId}/tool-claim`, {
+    method: 'POST',
+    headers: {
+      ...auth,
+      'Content-Type': 'application/json',
+      'X-OpenChatCut-Run-Capability': recoveryCapability,
+    },
+    body: JSON.stringify({
+      projectId: recoveryRun.projectId,
+      toolCallId: 'call-claim-1',
+      argsDigest: claimDigest1,
+      claimId: 'browser-claim-1',
+    }),
+  });
+  assert.equal(claimResponse.status, 200);
+  assert.equal((await claimResponse.json() as { claimed?: unknown }).claimed, true);
+  const claimedRow = recoveryStore.load({
+    projectId: recoveryRun.projectId,
+    sessionGeneration: recoveryRun.sessionGeneration,
+    runId: recoveryRun.id,
+  })!.tools.find((tool) => tool.toolCallId === 'call-claim-1');
+  assert.ok(claimedRow, 'the intent was recorded before the request became visible');
+  assert.equal(claimedRow.opSeq, firstIntent.opSeq);
+  assert.equal(
+    claimedRow.state,
+    'claimed',
+    'the claim is durable by the time the browser is told it may execute',
+  );
+  assert.equal(claimedRow.claimId, 'browser-claim-1');
+
+  // A second claimant cannot win authority for the same operation.
+  const secondClaim = await fetch(`${origin}/api/agent-runs/${recoveryRunId}/tool-claim`, {
+    method: 'POST',
+    headers: {
+      ...auth,
+      'Content-Type': 'application/json',
+      'X-OpenChatCut-Run-Capability': recoveryCapability,
+    },
+    body: JSON.stringify({
+      projectId: recoveryRun.projectId,
+      toolCallId: 'call-claim-1',
+      argsDigest: claimDigest1,
+      claimId: 'browser-claim-2',
+    }),
+  });
+  assert.equal(secondClaim.status, 409, 'a granted claim is not handed to a second claimant');
+
+  // When the durable claim cannot be written, the route must not answer
+  // `claimed`: the browser would then execute work the server cannot account for.
+  await recoveryRuntime.sink.beginTool({
+    toolCallId: 'call-claim-2',
+    name: 'read_timeline',
+    argsDigest: claimDigest2,
+  });
+  pushRunEvent(recoveryRun, 'tool-request', {
+    toolCallId: 'call-claim-2',
+    name: 'read_timeline',
+    args: {},
+    argsDigest: claimDigest2,
+  });
+  const refusedPending = waitForToolResult(recoveryRun, 'call-claim-2', 'read_timeline', claimDigest2);
+  void refusedPending.catch(() => undefined);
+  const restoreWrites = denyRunRecoveryWrites(recoveryStore);
+  const refusedClaim = await fetch(`${origin}/api/agent-runs/${recoveryRunId}/tool-claim`, {
+    method: 'POST',
+    headers: {
+      ...auth,
+      'Content-Type': 'application/json',
+      'X-OpenChatCut-Run-Capability': recoveryCapability,
+    },
+    body: JSON.stringify({
+      projectId: recoveryRun.projectId,
+      toolCallId: 'call-claim-2',
+      argsDigest: claimDigest2,
+      claimId: 'browser-claim-3',
+    }),
+  });
+  restoreWrites();
+  assert.equal(refusedClaim.status, 409, 'an unrecordable claim is refused, not granted');
+  const refusedBody = await refusedClaim.json() as { claimed?: unknown; outcome?: unknown };
+  assert.equal(refusedBody.claimed, false, 'the refused claim never tells the browser it may execute');
+  assert.equal(refusedBody.outcome, 'claim-write-failed');
+  // The in-memory request stays pending: no execution authority was handed out.
+  assert.equal(recoveryRun.toolRequests.get('call-claim-2')?.claimId, undefined);
+  void pendingClaim;
+  void refusedPending;
+
+  // GET metadata exposes the recovery view for a Codex run, and reading it must not
+  // grant execution authority or start a model.
+  const recoveryMetadata = await fetch(
+    `${origin}/api/agent-runs/${recoveryRunId}?projectId=${recoveryRun.projectId}`,
+    { headers: { ...auth, 'X-OpenChatCut-Run-Capability': recoveryCapability } },
+  );
+  assert.equal(recoveryMetadata.status, 200);
+  const recoveryMetadataBody = await recoveryMetadata.json() as {
+    recovery?: { state?: unknown; revision?: unknown; replayBase?: { resetsCursor?: unknown } };
+    status?: unknown;
+  };
+  assert.ok(recoveryMetadataBody.recovery, 'the metadata carries the recovery projection');
+  assert.equal(
+    recoveryMetadataBody.recovery!.state,
+    'admitted',
+    'the run has an admission but has not been started, so it stays on the admission path',
+  );
+  assert.equal(typeof recoveryMetadataBody.recovery!.revision, 'number');
+  assert.equal(
+    recoveryStore.load({
+      projectId: recoveryRun.projectId,
+      sessionGeneration: recoveryRun.sessionGeneration,
+      runId: recoveryRun.id,
+    })?.ownerInstance,
+    'routes-verify',
+    'reading metadata did not take ownership away from the live executor',
+  );
+
+  // Resume is refused while a tool has no durable outcome: starting would
+  // re-dispatch the very operation whose effect is unknown.
+  const resumeTooEarly = await fetch(`${origin}/api/agent-runs/${recoveryRunId}/start`, {
+    method: 'POST',
+    headers: {
+      ...auth,
+      'Content-Type': 'application/json',
+      'X-OpenChatCut-Run-Capability': recoveryCapability,
+    },
+    body: JSON.stringify({
+      projectId: recoveryRun.projectId,
+      mode: 'resume',
+      expectedRevision: recoveryMetadataBody.recovery!.revision,
+      recorderId: 'routes-recorder',
+      cursor: 0,
+    }),
+  });
+  assert.equal(resumeTooEarly.status, 200);
+  assert.equal((await resumeTooEarly.json() as { outcome?: string }).outcome, 'already_started',
+    'a live owner continues serving its original request without another executor');
+
+  // The happy path, on its own run: admission, a persisted request and no
+  // outstanding tool leaves the handshake free to grant authority.
+  const recoveryResumeRunId = crypto.randomUUID();
+  const recoveryResumeCapability = 'f'.repeat(43);
+  const recoveryResumeCreate = await fetch(`${origin}/api/agent-runs/`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectId: 'project-recovery-resume',
+      runId: recoveryResumeRunId,
+      capability: recoveryResumeCapability,
+      backend: 'codex',
+      model: 'gpt-5.4',
+      messages: [{ role: 'user', content: 'continue the run' }],
+      cacheMode: 'short',
+      maxOutputTokens: 4_096,
+      askOnly: true,
+    }),
+  });
+  assert.equal(recoveryResumeCreate.status, 201);
+  const recoveryResumeRun = getRun(recoveryResumeRunId)!;
+  const recoveryResumeKey = {
+    projectId: recoveryResumeRun.projectId,
+    sessionGeneration: recoveryResumeRun.sessionGeneration,
+    runId: recoveryResumeRun.id,
+  };
+  const resumeRuntime = beginRunRecoveryRuntime(recoveryResumeRun, { instanceId: 'routes-resume' });
+  assert.ok(resumeRuntime);
+  await resumeRuntime.sink.beginRequest({
+    requestIndex: 1,
+    prompt: 'USER:\ncontinue the run',
+    messages: [{ role: 'user', content: 'continue the run' }],
+    toolNames: ['read_timeline'],
+  });
+  stopRunRecoveryRuntime(recoveryResumeRun);
+  const readyMetadata = await (await fetch(
+    `${origin}/api/agent-runs/${recoveryResumeRunId}?projectId=${recoveryResumeRun.projectId}`,
+    { headers: { ...auth, 'X-OpenChatCut-Run-Capability': recoveryResumeCapability } },
+  )).json() as {
+    recovery: { state?: unknown; revision: number; replayBase?: { resetsCursor?: unknown } };
+  };
+  assert.equal(readyMetadata.recovery.state, 'ready');
+  assert.equal(
+    readyMetadata.recovery.replayBase?.resetsCursor,
+    true,
+    'a resumable run publishes the baseline the browser must adopt instead of a stale cursor',
+  );
+  const acceptedResume = await fetch(`${origin}/api/agent-runs/${recoveryResumeRunId}/start`, {
+    method: 'POST',
+    headers: {
+      ...auth,
+      'Content-Type': 'application/json',
+      'X-OpenChatCut-Run-Capability': recoveryResumeCapability,
+    },
+    body: JSON.stringify({
+      projectId: recoveryResumeRun.projectId,
+      mode: 'resume',
+      expectedRevision: readyMetadata.recovery.revision,
+      recorderId: 'routes-recorder',
+      cursor: 0,
+    }),
+  });
+  assert.equal(acceptedResume.status, 202, 'a reconciled run is granted execution authority');
+  assert.deepEqual(executedRuns, [{ runId: recoveryResumeRun.id, resumed: true }],
+    'the HTTP handshake dispatches the persisted recovery input exactly once');
+  assert.equal(
+    recoveryStore.load(recoveryResumeKey)?.tools.length,
+    0,
+    'starting the resume dispatch nothing by itself',
+  );
+
+  // A stale expectedRevision is refused on its own terms.
+  const staleResume = await fetch(`${origin}/api/agent-runs/${recoveryRunId}/start`, {
+    method: 'POST',
+    headers: {
+      ...auth,
+      'Content-Type': 'application/json',
+      'X-OpenChatCut-Run-Capability': recoveryCapability,
+    },
+    body: JSON.stringify({
+      projectId: recoveryRun.projectId,
+      mode: 'resume',
+      expectedRevision: -1,
+      recorderId: 'routes-recorder',
+      cursor: 0,
+    }),
+  });
+  assert.equal(staleResume.status, 409);
+  assert.match(
+    String((await staleResume.json() as { error?: unknown }).error),
+    /revision/,
+  );
+
+  // A browser can post its original result after the owner froze and the
+  // in-memory request disappeared. The durable claim remains its authority.
+  stopRunRecoveryRuntime(recoveryRun);
+  clearTimeout(recoveryRun.toolRequests.get('call-claim-1')?.timeout);
+  recoveryRun.toolRequests.delete('call-claim-1');
+  const submitLate = () => fetch(`${origin}/api/agent-runs/${recoveryRunId}/tool-result`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json', 'X-OpenChatCut-Run-Capability': recoveryCapability },
+    body: JSON.stringify({ projectId: recoveryRun.projectId, toolCallId: 'call-claim-1',
+      argsDigest: claimDigest1, claimId: 'browser-claim-1', result: { timeline: [] } }),
+  });
+  const recordOutcome = recoveryStore.recordBrowserOutcome;
+  recoveryStore.recordBrowserOutcome = () => { throw new Error('injected outcome write failure'); };
+  assert.equal((await submitLate()).status, 409, 'a failed durable write is never acknowledged');
+  recoveryStore.recordBrowserOutcome = recordOutcome;
+  const late = await submitLate();
+  assert.equal(late.status, 200, 'a durable late result succeeds even without an in-memory request');
+  assert.equal((await late.json() as { ok: boolean }).ok, true);
+  assert.equal((await submitLate()).status, 200, 'a lost HTTP acknowledgement can be retried');
+  clearTimeout(recoveryRun.toolRequests.get('call-claim-2')?.timeout);
+
+  const cancelRecovery = await fetch(`${origin}/api/agent-runs/${recoveryRunId}/cancel`, {
+    method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', 'X-OpenChatCut-Run-Capability': recoveryCapability },
+    body: JSON.stringify({ projectId: recoveryRun.projectId }),
+  });
+  assert.equal(cancelRecovery.status, 200);
+  assert.equal(recoveryStore.load({ projectId: recoveryRun.projectId,
+    sessionGeneration: recoveryRun.sessionGeneration, runId: recoveryRun.id })?.phase, 'finalized',
+  'explicit cancellation releases admission capacity even when no executor was running');
+
+  // Codex uses the same admission, metadata, claim and outcome boundary.
+  assert.ok(codexRun);
+  const codexKey = { projectId: codexRun.projectId, sessionGeneration: codexRun.sessionGeneration, runId: codexRun.id };
+  assert.equal(recoveryStore.load(codexKey)?.backend, 'codex');
+  const codexRuntime = beginRunRecoveryRuntime(codexRun, { instanceId: 'codex-routes' });
+  assert.ok(codexRuntime);
+  await codexRuntime.sink.beginRequest({ requestIndex: 1, prompt: 'codex request',
+    messages: [{ role: 'user', content: 'codex request' }], toolNames: ['read_timeline'], instructions: 'codex instructions' });
+  const codexDigest = digestToolArgs({});
+  await codexRuntime.sink.beginTool({ toolCallId: 'codex-read', name: 'read_timeline', argsDigest: codexDigest });
+  const codexPending = waitForToolResult(codexRun, 'codex-read', 'read_timeline', codexDigest);
+  const codexHeaders = { ...auth, 'Content-Type': 'application/json', 'X-OpenChatCut-Run-Capability': codexCapability };
+  const codexBinding = { projectId: codexRun.projectId, toolCallId: 'codex-read', argsDigest: codexDigest, claimId: 'codex-claim' };
+  const codexClaim = await fetch(`${origin}/api/agent-runs/${codexRunId}/tool-claim`, {
+    method: 'POST', headers: codexHeaders, body: JSON.stringify(codexBinding),
+  });
+  assert.equal(codexClaim.status, 200);
+  assert.equal(recoveryStore.load(codexKey)?.tools[0].state, 'claimed');
+  const codexResult = await fetch(`${origin}/api/agent-runs/${codexRunId}/tool-result`, {
+    method: 'POST', headers: codexHeaders, body: JSON.stringify({ ...codexBinding, result: { timeline: [] } }),
+  });
+  assert.equal(codexResult.status, 200);
+  assert.equal(recoveryStore.load(codexKey)?.tools[0].state, 'outcome', 'Codex results are durable before HTTP acknowledgement');
+  assert.deepEqual(await codexPending, { timeline: [] });
+  const codexMetadata = await (await fetch(`${origin}/api/agent-runs/${codexRunId}?projectId=${codexRun.projectId}`, {
+    headers: codexHeaders,
+  })).json() as { recovery?: { state: string } };
+  assert.equal(codexMetadata.recovery?.state, 'active');
+  await fetch(`${origin}/api/agent-runs/${codexRunId}/cancel`, {
+    method: 'POST', headers: codexHeaders, body: JSON.stringify({ projectId: codexRun.projectId }),
+  });
+  assert.equal(recoveryStore.load(codexKey)?.phase, 'finalized');
+
+  // API joins shared recovery; Copilot keeps its existing metadata contract.
+  for (const backend of ['api', 'copilot']) {
+    const runId = crypto.randomUUID();
+    const projectId = `project-${backend}-no-recovery`;
+    const capability = 'g'.repeat(43);
+    const headers = { ...auth, 'Content-Type': 'application/json', 'X-OpenChatCut-Run-Capability': capability };
+    const created = await fetch(`${origin}/api/agent-runs/`, {
+      method: 'POST', headers, body: JSON.stringify({ projectId, runId, capability, backend,
+        provider: 'openai', model: 'test-model', messages: [{ role: 'user', content: 'run' }], cacheMode: 'short', maxOutputTokens: 4096 }),
+    });
+    assert.equal(created.status, 201);
+    const metadata = await (await fetch(`${origin}/api/agent-runs/${runId}?projectId=${projectId}`, { headers })).json() as { recovery?: unknown };
+    const durable = recoveryStore.load({ projectId, sessionGeneration: getRun(runId)!.sessionGeneration, runId });
+    if (backend === 'api') {
+      assert.equal((metadata.recovery as { state?: string })?.state, 'admitted');
+      assert.equal(durable?.backend, 'api');
+      assert.equal(durable?.executionInput?.provider, 'openai');
+    } else {
+      assert.equal(metadata.recovery, undefined, 'Copilot publishes no shared recovery metadata');
+      assert.equal(durable, null);
+    }
+    await fetch(`${origin}/api/agent-runs/${runId}/cancel`, { method: 'POST', headers, body: JSON.stringify({ projectId }) });
+    if (backend === 'api') {
+      assert.equal(recoveryStore.load({ projectId, sessionGeneration: getRun(runId)!.sessionGeneration, runId })?.phase, 'finalized');
+    }
+  }
 } finally {
+  resetRunRecoveryRuntimeForTest();
+  resetRunRecoveryStoreForTest(null);
+  rmSync(recoveryDirectory, { recursive: true, force: true });
+  delete process.env[RUN_RECOVERY_DB_ENV];
   resetServerRunStoreForTest();
   server.close();
 }
@@ -412,7 +826,7 @@ try {
 // assert the exact status/error contract the client hint logic depends on.
 {
   const source = await readFile(new URL('./routes.ts', import.meta.url), 'utf8');
-  assert.match(source, /sendJson\(res, 403, \{ error: 'invalid run capability' \}\)/, 'draft without a valid capability is rejected 403');
+  assert.match(source, /error: 'invalid run capability'/, 'draft without a valid capability is rejected 403');
   assert.match(source, /sendJson\(res, 404, \{ error: 'run not found' \}\)/, 'draft for an unknown run is rejected 404');
   assert.match(source, /sendJson\(res, 409, \{ error: 'draft artifact was rejected \(invalid, duplicate, or over the limit\)' \}\)/, 'malformed draft artifacts are rejected 409');
 

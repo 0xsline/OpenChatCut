@@ -7,6 +7,11 @@ import {
 import type { StoredServerRun } from './serverRunSessionStorage';
 import type { ToolActivation } from './tool-activation';
 import {
+  serverRunNeedsResume,
+  serverRunResumeCursor,
+} from './serverRunProtocol';
+
+import {
   permanentServerRunRecoveryError,
   recoveredRunAwaitsProposal,
 } from './serverRunRecovery';
@@ -18,7 +23,7 @@ import {
 export type ServerRunRecoveryPreparation =
   | { readonly kind: 'inactive' }
   | { readonly kind: 'owned_elsewhere' }
-  | { readonly kind: 'local_terminal' }
+  | { readonly kind: 'local_terminal'; readonly metadata: ServerRunMetadata }
   | { readonly kind: 'proposal' }
   | {
     readonly kind: 'active';
@@ -26,6 +31,15 @@ export type ServerRunRecoveryPreparation =
     readonly activation: ToolActivation;
     readonly cursor: number;
     readonly metadata: ServerRunMetadata;
+    /**
+     * Present when the server can resume the interrupted run. The browser must
+     * reconcile its local evidence and post the resume handshake before the run
+     * gets execution authority again.
+     */
+    readonly baselineNotice?: string;
+    readonly resume?: {
+      readonly revision: number;
+    };
   };
 
 function validateCursor(metadata: ServerRunMetadata, cursor: number): void {
@@ -55,8 +69,13 @@ export async function prepareServerRunRecovery(
   }
   const metadata = await loadServerRunMetadata(projectId, stored.runId, capability);
   if (!active()) return { kind: 'inactive' };
-  const cursor = stored.cursor ?? 0;
-  validateCursor(metadata, cursor);
+  const storedCursor = stored.cursor ?? 0;
+  // A cursor outside the replay window is not fatal for a resumable run: the
+  // server publishes a baseline, and the browser continues from that watermark
+  // instead of asking for events that no longer exist.
+  const resumeCursor = serverRunResumeCursor(metadata, storedCursor);
+  const cursor = resumeCursor.cursor;
+  if (!resumeCursor.adoptedBaseline) validateCursor(metadata, cursor);
   const sidecar = await loadAgentRuntimeSidecar(projectId);
   const run = sidecar.runs.find((candidate) => candidate.runId === stored.runId);
   if (!run) {
@@ -65,12 +84,27 @@ export async function prepareServerRunRecovery(
     );
   }
   if (['completed', 'failed', 'aborted', 'interrupted'].includes(run.status)) {
-    return { kind: 'local_terminal' };
+    return { kind: 'local_terminal', metadata };
   }
   if (!await claimRecorder(projectId, stored.runId)) return { kind: 'owned_elsewhere' };
   if (recoveredRunAwaitsProposal(run)) {
     releaseServerRunOwnership(projectId, stored.runId);
     return { kind: 'proposal' };
   }
-  return { kind: 'active', activation, capability, cursor, metadata };
+  const resume = serverRunNeedsResume(metadata)
+    ? {
+      revision: metadata.recovery!.revision,
+    }
+    : undefined;
+  return {
+    kind: 'active',
+    activation,
+    capability,
+    cursor,
+    metadata,
+    ...(resume ? { resume } : {}),
+    ...(resumeCursor.adoptedBaseline && resumeCursor.reason
+      ? { baselineNotice: resumeCursor.reason }
+      : {}),
+  };
 }

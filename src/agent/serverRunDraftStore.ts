@@ -44,6 +44,13 @@ export interface ServerRunDraftToolBody {
   readonly actions: readonly AnyAction[];
   /** Auto-apply: this call's timeline edits already landed in the live project. */
   readonly landed?: boolean;
+  /**
+   * Project revision observed when this call landed. `landed` alone only says
+   * the browser *tried* to commit; pairing it with a revision makes the claim
+   * checkable after a restart, and the absence of one is reported as
+   * unverifiable rather than assumed good.
+   */
+  readonly landedRevision?: string;
 }
 
 export interface ServerRunDraft {
@@ -106,6 +113,7 @@ function parseTool(value: unknown): ServerRunDraftToolBody | null {
     ...(item.error === undefined ? { result: item.result } : { error: item.error }),
     actions: item.actions,
     ...(item.landed === true ? { landed: true } : {}),
+    ...(typeof item.landedRevision === 'string' ? { landedRevision: item.landedRevision } : {}),
   };
 }
 
