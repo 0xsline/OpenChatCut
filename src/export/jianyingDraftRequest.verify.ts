@@ -71,7 +71,7 @@ const project = (timelines: Timeline[], activeTimelineId = timelines[0]!.id): Pr
   ]);
   const payload = jianyingDraftPayload(project([flat]));
   assert.equal(payload.fps, 30);
-  assert.deepEqual(payload.items, [
+  assert.deepEqual(payload.items.map(({ trackName, layer, ...item }) => item), [
     { kind: 'video', src: '/media/uploads/trimmed.bin', startFrame: 0, durationInFrames: 60, srcInFrame: 900, playbackRate: 1, volume: 0.5, name: 'trimmed' },
     { kind: 'audio', src: '/media/uploads/music.bin', startFrame: 0, durationInFrames: 90, srcInFrame: 12, playbackRate: 1, volume: undefined, name: 'music' },
     { kind: 'video', src: '/media/uploads/fast.bin', startFrame: 60, durationInFrames: 30, srcInFrame: 300, playbackRate: 2, volume: undefined, name: 'fast' },
@@ -86,6 +86,43 @@ const project = (timelines: Timeline[], activeTimelineId = timelines[0]!.id): Pr
 }
 
 const sourceWindows = (clips: JianyingDraftClip[]) => clips.map((item) => [item.name, item.startFrame, item.durationInFrames, item.srcInFrame, item.playbackRate]);
+
+{
+  const layered = timeline('layers', [
+    clip('main', 'video', 0, 120),
+    clip('overlay', 'image', 30, 60, { track: 'v-overlay' }),
+    clip('title-card', 'solid', 90, 30, { track: 'v-overlay', src: undefined }),
+    clip('animated-captions', 'motion-graphic', 30, 90, {
+      track: 'v-captions',
+      src: undefined,
+      props: { pages: JSON.stringify([{ start: 250, end: 1400, text: '可编辑字幕' }]) },
+    }),
+    clip('hidden', 'video', 0, 120, { track: 'v-hidden' }),
+    clip('music', 'audio', 0, 120, { volume: 0.07 }),
+  ], {
+    width: 1080,
+    height: 1920,
+    captionsHidden: false,
+    trackOrder: ['v-hidden', 'v-captions', 'v-overlay', 'V1', 'A1'],
+    tracks: {
+      'v-hidden': { kind: 'video', hidden: true },
+      'v-captions': { kind: 'video' },
+      'v-overlay': { kind: 'video', name: '配图' },
+      V1: { kind: 'video' },
+      A1: { kind: 'audio', name: '音乐' },
+    },
+  });
+  const { width, height, items, captions } = jianyingDraftPayload(project([layered]));
+  assert.deepEqual([width, height], [1080, 1920]);
+  assert.deepEqual(items.map(({ name, kind, trackName, volume }) => [name, kind, trackName, volume]), [
+    ['main', 'video', 'V1', undefined],
+    ['music', 'audio', 'A1 音乐', 0.07],
+    ['overlay', 'image', 'V2 配图', undefined],
+    ['title-card', 'graphic', 'V2 配图', undefined],
+  ]);
+  assert.ok(items[2]!.layer! > items[0]!.layer!);
+  assert.deepEqual(captions, [{ text: '可编辑字幕', startMs: 1250, endMs: 2400, trackName: 'V3' }]);
+}
 
 // ── #160: a rough cut made of sequences that window one long source timeline ──
 {
@@ -120,7 +157,7 @@ const sourceWindows = (clips: JianyingDraftClip[]) => clips.map((item) => [item.
     ['master', 210, 30, 600, 2],
     ['original-audio', 210, 30, 600, 2],
   ], 'every sequence becomes its own editable clips, in timeline order, reading its own source range');
-  assert.deepEqual(payload.captions, [
+  assert.deepEqual(payload.captions.map(({ trackName, ...cue }) => cue), [
     { startMs: 0, endMs: 500, text: 'alpha' },
     // beta runs past range A's end (104 s) and is cut there.
     { startMs: 3500, endMs: 4000, text: 'beta' },
@@ -189,7 +226,7 @@ const sourceWindows = (clips: JianyingDraftClip[]) => clips.map((item) => [item.
     captions: { enabled, template: 'plain', pacing: 'phrase', sourceItemId: 'talk' },
   });
   const payload = jianyingDraftPayload(project([captioned(true)]));
-  assert.deepEqual(payload.captions, [{ startMs: 1000, endMs: 1900, text: 'hello world' }],
+  assert.deepEqual(payload.captions.map(({ trackName, ...cue }) => cue), [{ startMs: 1000, endMs: 1900, text: 'hello world' }],
     'cues sit where the trimmed clip plays the words (clip at 1 s, in-point 2 s); "early" is never heard');
   assert.deepEqual(payload.items.map((item) => [item.startFrame, item.srcInFrame]), [[30, 60]]);
   assert.deepEqual(jianyingDraftPayload(project([captioned(false)])).captions, []);

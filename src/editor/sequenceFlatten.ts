@@ -5,7 +5,7 @@
 // child from srcInFrame onward at playbackRate (sourceFrameAt), and only for the
 // item's own window. Its freeze on the child's last frame when the item outlasts
 // the child has no leaf to map, so a flattened timeline leaves a gap there.
-import type { ProjectDoc, Timeline } from './types.js';
+import type { ProjectDoc, Timeline, TrackId } from './types.js';
 import { isSequenceItem, resolveTimelineRenderPlan, type SequenceGraphLimits } from './sequenceGraph.js';
 import { sourceWindowForTimelineRange, timelineFramesToSourceFrames } from './sourceLimit.js';
 
@@ -19,6 +19,8 @@ export interface TimelinePlacement {
   rootFrame: number;
   /** This timeline's frames per root frame: the product of the nesting playback rates. */
   rate: number;
+  /** The parent lanes that stack this instance within the root composition. */
+  ancestorTracks?: ReadonlyArray<{ timeline: Timeline; track: TrackId }>;
 }
 
 /** A range clipped to a placement's window and mapped onto the root timeline. */
@@ -77,6 +79,7 @@ export function timelinePlacements(
         toFrame: window.endFrame,
         rootFrame: shown.rootStart,
         rate: placement.rate * timelineFramesToSourceFrames(item, 1),
+        ancestorTracks: [...(placement.ancestorTracks ?? []), { timeline: placement.timeline, track: item.track }],
       });
     }
   };
