@@ -15,7 +15,7 @@ import {
 import { ComposerPopover } from './ComposerPopover';
 import { ComposerModelPicker } from './ComposerModelPicker';
 import { useComposerModelView } from './useComposerModelView';
-import { hasPendingComposerAttachment, shouldSubmitComposerOnKeyDown } from './composerSubmitGate';
+import { hasPendingComposerAttachment, isComposerCompositionKey, isComposerSendShortcut } from './composerSubmitGate';
 import { WorkflowPickerContent } from './WorkflowPickerContent';
 import { hasEditorDrag, parseEditorDrag } from '../../editor/editorDrag';
 import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
@@ -47,6 +47,7 @@ export function ChatComposer(props: ChatComposerProps) {
   } = props;
   const [editorDragOver, setEditorDragOver] = useState(false);
   const editorDragDepth = useRef(0);
+  const composing = useRef(false);
   // Hydration custom skill (manage_skill): read IDB → memory registry when mounting, bump triggers re-rendering
   // Make allCreativeSkills()/findSkill reflect custom skills. The real source is IDB, and the manage_skill tool is also the same.
   const [, bumpCustom] = useState(0);
@@ -345,8 +346,13 @@ export function ChatComposer(props: ChatComposerProps) {
         data-cc-chat-composer
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onCompositionStart={() => { composing.current = true; }}
+        onCompositionEnd={() => { composing.current = false; }}
+        onBlur={() => { composing.current = false; }}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
+          // The input method owns this event, including its native default action.
+          if (isComposerCompositionKey(event.nativeEvent, composing.current)) return;
+          const sendShortcut = isComposerSendShortcut(event);
           if (slashOpen && slashMatchQuery !== null) {
             if (event.key === 'ArrowDown' && slashMatches.length) {
               event.preventDefault();
@@ -358,10 +364,8 @@ export function ChatComposer(props: ChatComposerProps) {
               setSlashIndex((i) => (i <= 0 ? slashMatches.length - 1 : i - 1));
               return;
             }
-            if ((event.key === 'Enter' || event.key === 'Tab') && slashOpen) {
-              // With the slash menu open, Enter/Tab must never fall through to
-              // submitting the raw command text, even when there are zero
-              // matches (e.g. a typo'ed skill name).
+            if (sendShortcut || event.key === 'Tab') {
+              // Keep the raw skill command out of the chat, even if there are no matches.
               event.preventDefault();
               if (slashMatches.length) activateSlash(slashMatches[Math.max(0, slashIndex)]);
               return;
@@ -393,13 +397,16 @@ export function ChatComposer(props: ChatComposerProps) {
               setRefIndex((i) => (i <= 0 ? entries.length - 1 : i - 1));
               return;
             }
-            if (event.key === 'Enter' && entries.length) {
+            if (sendShortcut && entries.length) {
               event.preventDefault();
               entries[Math.max(0, refIndex)]?.action();
               return;
             }
           }
-          if (shouldSubmitComposerOnKeyDown(event.key, event.shiftKey, canSend)) onSubmit();
+          if (sendShortcut) {
+            event.preventDefault();
+            if (canSend && !event.repeat) onSubmit();
+          }
         }}
         onPaste={(e) => {
           const files = Array.from(e.clipboardData?.files ?? []);

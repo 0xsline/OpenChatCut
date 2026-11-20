@@ -40,7 +40,8 @@ try {
   } = await vite.ssrLoadModule('/src/components/chat/ChatComposer.tsx');
   const {
     hasPendingComposerAttachment,
-    shouldSubmitComposerOnKeyDown,
+    isComposerCompositionKey,
+    isComposerSendShortcut,
   } = await vite.ssrLoadModule('/src/components/chat/composerSubmitGate.ts');
   pickerMarkup = renderToStaticMarkup(createElement(WorkflowPickerContent, {
     creativeMode: '11111111-1240-4000-8000-000000000004',
@@ -50,7 +51,13 @@ try {
   }));
   assert.equal(WORKFLOW_POPOVER_WIDTH, 400, 'workflow picker should request the wide composer popover geometry');
   assert.equal(hasPendingComposerAttachment(false, 1), true, 'one pending attachment must close the submit gate');
-  assert.equal(shouldSubmitComposerOnKeyDown('Enter', false, false), false, 'Enter must not submit while the gate is closed');
+  const enter = { key: 'Enter', shiftKey: false, altKey: false };
+  assert.equal(isComposerSendShortcut(enter), true, 'plain Enter sends after composition');
+  assert.equal(isComposerSendShortcut({ ...enter, shiftKey: true }), false, 'Shift+Enter inserts a newline');
+  assert.equal(isComposerCompositionKey({ isComposing: false, keyCode: 13 }, true), true);
+  assert.equal(isComposerCompositionKey({ isComposing: true, keyCode: 13 }, false), true);
+  assert.equal(isComposerCompositionKey({ isComposing: false, keyCode: 229 }, false), true);
+  assert.equal(isComposerCompositionKey({ isComposing: false, keyCode: 13 }, false), false);
   pendingComposerMarkup = renderToStaticMarkup(createElement(ChatComposer, {
     value: '请处理这个附件',
     onChange: () => undefined,
