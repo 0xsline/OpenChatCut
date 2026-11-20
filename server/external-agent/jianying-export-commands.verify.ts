@@ -124,6 +124,44 @@ try {
     assert.deepEqual(probed, ['master.mp4', 'voice.wav'], 'each file probed once; stills never');
   }
 
+  {
+    const { calls, seams, srt } = recorder();
+    const result = await exportJianyingDraft({
+      draftName: 'occ-verify',
+      draftsDir: DRAFTS,
+      fps: 30,
+      width: 1080,
+      height: 1920,
+      items: [
+        { kind: 'image', src: still, startFrame: 30, durationInFrames: 60, layer: 1, trackName: 'V2 配图' },
+        video(0, 120, { layer: 0, trackName: 'V1', srcInFrame: 15, volume: 0 }),
+        { kind: 'audio', src: voice, startFrame: 15, durationInFrames: 120, trackName: 'A1 背景音乐', volume: 0.07 },
+      ],
+      captions: [
+        { startMs: 1000, endMs: 2000, text: '测试字幕', trackName: '字幕' },
+        { startMs: 1250, endMs: 3000, text: '一二三四五六七八九十一二三四五六七八九十长句', trackName: '标题' },
+      ],
+    }, seams);
+    assert.deepEqual([result.addedVideos, result.addedAudios, result.captions, result.warnings], [2, 1, 2, []]);
+    const captionStyle = ['--font-size', '7.5', '--y', '-0.72', '--bg-color', '#000000',
+      '--bg-alpha', '0.8', '--bg-style', '1', '--bg-round-radius', '0.1',
+      '--bg-width', '0.14', '--bg-height', '0.14'];
+    assert.deepEqual(calls, [
+      ['init', 'occ-verify', '--width', '1080', '--height', '1920', ...STORE_FLAGS],
+      ['add-video', DRAFT, master, '0', '4.5', '--track-name', 'V1', ...STORE_FLAGS],
+      ['trim', DRAFT, 'seg-1', '0.5', '4', ...STORE_FLAGS],
+      ['volume', DRAFT, 'seg-1', '0', ...STORE_FLAGS],
+      ['add-video', DRAFT, still, '1', '2', '--track-name', 'V2 配图', ...STORE_FLAGS],
+      ['add-audio', DRAFT, voice, '0.5', '4', '--track-name', 'A1 背景音乐', '--volume', '0.07', ...STORE_FLAGS],
+      ['import-srt', DRAFT, calls.at(-2)![2]!, '--track-name', '字幕', ...captionStyle, ...STORE_FLAGS],
+      ['import-srt', DRAFT, calls.at(-1)![2]!, '--track-name', '标题', ...captionStyle, ...STORE_FLAGS],
+    ]);
+    assert.deepEqual(srt, [
+      '1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n',
+      '1\n00:00:01,250 --> 00:00:03,000\n一二三四五六七八九十一二三四五六七八九十\n长句\n',
+    ]);
+  }
+
   // ── a window never reads past the end of its file ─────────────────────────────
   {
     // Frame counts are rounded, so a clip "to the end" can overshoot its file by

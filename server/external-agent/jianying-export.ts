@@ -11,6 +11,8 @@ import { sanitizeFileName } from '../file-name.ts';
 import { ffprobeBin } from '../media-binaries.ts';
 import { uploadReadDirs } from '../media-dir.ts';
 import { resolveMediaReference } from '../media-references.ts';
+import { resolveProductAsset } from '../product-assets.ts';
+import type { AspectFit, TimelineItem, TimelineState } from '../../src/editor/types.ts';
 import { capcutLaunch } from './capcut-command.ts';
 
 /** dev / worktree upload root; isolated profiles read only their own store but
@@ -28,12 +30,16 @@ export interface JianyingExportClip {
   playbackRate?: number;
   volume?: number;
   name?: string;
+  trackName?: string;
+  layer?: number;
+  graphic?: { item: TimelineItem; width: number; height: number; fit?: AspectFit };
 }
 
 export interface JianyingExportCaption {
   startMs: number;
   endMs: number;
   text: string;
+  trackName?: string;
 }
 
 /** An app whose default draft store the server knows on its own platform. */
@@ -42,6 +48,8 @@ export type JianyingDraftStoreName = 'capcut' | 'jianying';
 export interface JianyingExportRequest {
   draftName?: string;
   fps: number;
+  width?: number;
+  height?: number;
   items: JianyingExportClip[];
   captions?: JianyingExportCaption[];
   /** Whose default store to write to when no draftsDir is given (CapCut's by default). */
@@ -62,6 +70,8 @@ export interface JianyingExportOptions {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   home?: string;
+  /** Verification seam for the packaged Remotion alpha renderer. */
+  renderGraphic?: (state: TimelineState, dest: string) => Promise<void>;
 }
 
 export interface JianyingExportResult {
@@ -137,6 +147,10 @@ export function resolveMediaPath(
     }
     return undefined;
   }
+  if (clean.startsWith('/')) {
+    const productAsset = resolveProductAsset(clean);
+    if (productAsset) return productAsset;
+  }
   if (existsSync(clean)) return clean;
   return undefined;
 }
@@ -144,7 +158,10 @@ export function resolveMediaPath(
 /** Runs one capcut-cli command, never through a shell of ours (capcut-command.ts). */
 function runCapcut(args: string[], timeoutMs = 120_000): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const launch = capcutLaunch(args);
+    // Use one probe for source-window validation and the CLI's duration/dimensions.
+    // Different FFmpeg versions can disagree on the padding of short MP3s.
+    const mediaCommand = args[0] === 'add-video' || args[0] === 'add-audio';
+    const launch = capcutLaunch(mediaCommand ? [...args, '--ffprobe-cmd', ffprobeBin()] : args);
     const child = spawn(launch.executable, launch.args, {
       env: { ...process.env, FORCE_COLOR: '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -170,16 +187,19 @@ function runCapcut(args: string[], timeoutMs = 120_000): Promise<unknown> {
     child.on('close', (code) => {
       clearTimeout(timer);
       const combined = `${stdout}\n${stderr}`.trim();
-      if (code === 0) {
-        try {
-          const firstJson = combined.split('\n').find((line) => line.trim().startsWith('{'));
-          if (firstJson) {
-            resolve(JSON.parse(firstJson));
+      try {
+        const firstJson = combined.split('\n').find((line) => line.trim().startsWith('{'));
+        if (firstJson) {
+          const result = JSON.parse(firstJson);
+          if (code === 0 || typeof result?.error === 'string') {
+            resolve(code === 0 ? result : { ...result, ok: false });
             return;
           }
-        } catch {
-          /* fall through to raw output */
         }
+      } catch {
+        /* fall through to raw output */
+      }
+      if (code === 0) {
         resolve({ raw: combined.slice(0, 400) });
         return;
       }
@@ -265,7 +285,7 @@ function isAudioKind(kind: string): boolean {
   return kind === 'audio';
 }
 
-async function writeSrtFile(captions: JianyingExportCaption[]): Promise<{ file: string; dir: string }> {
+async function writeSrtFile(captions: JianyingExportCaption[], portrait: boolean): Promise<{ file: string; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'occ-jianying-'));
   const file = join(dir, 'captions.srt');
   const lines: string[] = [];
@@ -280,7 +300,17 @@ async function writeSrtFile(captions: JianyingExportCaption[]): Promise<{ file: 
     };
     lines.push(`${index + 1}`);
     lines.push(`${format(caption.startMs)} --> ${format(caption.endMs)}`);
-    lines.push(caption.text.replace(/\r?\n/g, ' ').trim());
+    const content = caption.text.replace(/\r?\n/g, ' ').trim();
+    // The draft builder does not wrap text to the canvas width. Give long
+    // portrait cues explicit lines so the editor can still treat each as one cue.
+    if (portrait) {
+      const characters = Array.from(content);
+      for (let offset = 0; offset < characters.length; offset += 20) {
+        lines.push(characters.slice(offset, offset + 20).join(''));
+      }
+    } else {
+      lines.push(content);
+    }
     lines.push('');
   });
   await writeFile(file, lines.join('\n'), 'utf8');
@@ -312,26 +342,59 @@ async function addClip(
   file: string,
   timing: ClipTiming,
   storeFlags: string[],
+  clip: JianyingExportClip,
 ): Promise<{ added: boolean; warning?: string }> {
   const label = `${command} ${basename(file)}`;
   const retimed = timing.sourceStart > 0 || timing.rate !== 1;
   const materialLength = retimed ? timing.sourceStart + timing.sourceDuration : timing.duration;
-  const added = await run([command, draftPath, file, secondsArg(timing.start), secondsArg(materialLength), ...storeFlags]) as CapcutOutput;
+  const volume = typeof clip.volume === 'number' && Number.isFinite(clip.volume)
+    ? Math.max(0, Math.min(1, clip.volume)) : undefined;
+  const trackFlags = clip.trackName ? ['--track-name', clip.trackName] : [];
+  const audioFlags = command === 'add-audio' && volume !== undefined ? ['--volume', String(volume)] : [];
+  const added = await run([
+    command, draftPath, file, secondsArg(timing.start), secondsArg(materialLength),
+    ...trackFlags, ...audioFlags, ...storeFlags,
+  ]) as CapcutOutput;
   if (!added?.ok) return { added: false, warning: `${label}: ${added?.error || 'failed'}` };
-  if (!retimed) return { added: true };
+  const adjustVideoVolume = command === 'add-video' && volume !== undefined && volume !== 1;
+  if (!retimed && !adjustVideoVolume) return { added: true };
   const segmentId = typeof added.segment_id === 'string' ? added.segment_id : '';
   if (!segmentId) {
-    return { added: true, warning: `${label}: capcut-cli returned no segment id; the clip plays its source from 0` };
+    const consequence = retimed ? 'the clip plays its source from 0' : 'volume was not applied';
+    return { added: true, warning: `${label}: capcut-cli returned no segment id; ${consequence}` };
   }
   if (timing.rate !== 1) {
     const sped = await run(['speed', draftPath, segmentId, String(timing.rate), ...storeFlags]) as CapcutOutput;
     if (!sped?.ok) return { added: true, warning: `speed ${basename(file)}: ${sped?.error || 'failed'}` };
   }
-  const trimmed = await run([
-    'trim', draftPath, segmentId, secondsArg(timing.sourceStart), secondsArg(timing.sourceDuration), ...storeFlags,
-  ]) as CapcutOutput;
-  if (!trimmed?.ok) return { added: true, warning: `trim ${basename(file)}: ${trimmed?.error || 'failed'}` };
+  if (retimed) {
+    const trimmed = await run([
+      'trim', draftPath, segmentId, secondsArg(timing.sourceStart), secondsArg(timing.sourceDuration), ...storeFlags,
+    ]) as CapcutOutput;
+    if (!trimmed?.ok) return { added: true, warning: `trim ${basename(file)}: ${trimmed?.error || 'failed'}` };
+  }
+  if (adjustVideoVolume) {
+    const adjusted = await run(['volume', draftPath, segmentId, String(volume), ...storeFlags]) as CapcutOutput;
+    if (!adjusted?.ok) return { added: true, warning: `volume ${basename(file)}: ${adjusted?.error || 'failed'}` };
+  }
   return { added: true };
+}
+
+async function renderGraphic(state: TimelineState, outputLocation: string): Promise<void> {
+  const { renderClip } = await import('../plugins/export-rendering.ts');
+  const { withExportPermit } = await import('../plugins/export-runtime.ts');
+  const { acceptExportSubmission } = await import('../plugins/export-submission.ts');
+  const accepted = await acceptExportSubmission({ state });
+  try {
+    await withExportPermit(() => renderClip({ state: accepted.plan.state, outputLocation, codec: 'prores', transparent: true }));
+  } finally {
+    await accepted.cleanup();
+  }
+}
+
+/** Named video tracks are created bottom-up by capcut-cli in insertion order. */
+function layerOrder(a: JianyingExportClip, b: JianyingExportClip): number {
+  return (a.layer ?? 0) - (b.layer ?? 0);
 }
 
 /**
@@ -346,11 +409,27 @@ export async function exportJianyingDraft(
   raw: Partial<JianyingExportRequest>,
   options: JianyingExportOptions = {},
 ): Promise<JianyingExportResult> {
+  const hasGraphics = Array.isArray(raw.items) && raw.items.some((item) => item?.kind === 'graphic');
+  const temporary = hasGraphics ? await mkdtemp(join(tmpdir(), 'occ-jianying-graphics-')) : undefined;
+  try {
+    return await writeDraft(raw, options, temporary);
+  } finally {
+    if (temporary) await rm(temporary, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function writeDraft(
+  raw: Partial<JianyingExportRequest>,
+  options: JianyingExportOptions,
+  temporary: string | undefined,
+): Promise<JianyingExportResult> {
   const run = options.run ?? runCapcut;
   const probe = options.probeDuration ?? probeMediaMicros;
   const { platform = process.platform, env = process.env, home = homedir() } = options;
   const request: JianyingExportRequest = {
     fps: Number(raw.fps) || 30,
+    width: raw.width,
+    height: raw.height,
     items: Array.isArray(raw.items) ? raw.items.filter((item) => item && typeof item === 'object') : [],
     captions: Array.isArray(raw.captions) ? raw.captions.filter((caption) => caption && typeof caption === 'object') : [],
     draftName: typeof raw.draftName === 'string' ? raw.draftName : undefined,
@@ -360,8 +439,9 @@ export async function exportJianyingDraft(
   const warnings: string[] = [];
   const fps = finiteAtLeast(request.fps, 1, 30);
   const videos = request.items.filter((item) => isVideoKind(item.kind));
+  const graphics = request.items.filter((item) => item.kind === 'graphic');
   const audios = request.items.filter((item) => isAudioKind(item.kind));
-  if (videos.length === 0) {
+  if (videos.length === 0 && graphics.length === 0) {
     return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: 'timeline has no video clips to export' };
   }
   const resolved = videos.map((clip) => ({ clip, file: resolveMediaPath(clip.src) }));
@@ -369,6 +449,33 @@ export async function exportJianyingDraft(
   if (missing.length > 0) {
     return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: `media files not found locally: ${missing.slice(0, 3).join(', ')}` };
   }
+  for (const [index, clip] of graphics.entries()) {
+    const graphic = clip.graphic;
+    if (!temporary || !graphic || !graphic.item ||
+        !['motion-graphic', 'solid'].includes(graphic.item.kind) ||
+        !Number.isSafeInteger(graphic.width) || !Number.isSafeInteger(graphic.height) ||
+        graphic.width <= 0 || graphic.height <= 0 || graphic.width > 8192 || graphic.height > 8192 ||
+        !Number.isSafeInteger(graphic.item.durationInFrames) || graphic.item.durationInFrames <= 0) {
+      warnings.push(`${clip.name ?? 'Graphic'}: invalid graphic render request`);
+      continue;
+    }
+    const name = sanitizeFileName(clip.name ?? '', 'graphic').slice(0, 64);
+    const file = join(temporary, `${index + 1}-${name}.mov`);
+    try {
+      await (options.renderGraphic ?? renderGraphic)({
+        width: graphic.width, height: graphic.height, fps, fit: graphic.fit, selectedId: null,
+        items: [{ ...graphic.item, startFrame: 0 }],
+      }, file);
+      resolved.push({ clip: { ...clip, kind: 'video', volume: 0 }, file });
+    } catch (error) {
+      warnings.push(`${clip.name ?? 'Graphic'}: ${error instanceof Error ? error.message : 'graphic render failed'}`);
+    }
+  }
+  if (resolved.length === 0) {
+    return { ok: false, draftName: '', draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: warnings.join('; ') || 'No graphics could be rendered' };
+  }
+  resolved.sort((a, b) => layerOrder(a.clip, b.clip));
+  audios.sort(layerOrder);
   const named = String(request.draftName || `OpenChatCut-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`)
     .replace(/[\\/]/g, '')
     .replaceAll('\0', '');
@@ -382,7 +489,16 @@ export async function exportJianyingDraft(
   const draftsDir = expandHomeDir(String(request.draftsDir || '').trim(), platform, home)
     || defaultDraftStore(request.store ?? 'capcut', platform, env, home);
   const storeFlags = ['--jianying', '--force-write', '--drafts', draftsDir];
-  const created = await run(['init', draftName, ...storeFlags]) as { ok?: boolean; draft_path?: string; error?: string };
+  const { width, height } = request;
+  const canvas = width && height && Number.isSafeInteger(width) && Number.isSafeInteger(height)
+    && width > 0 && height > 0 ? ['--width', String(width), '--height', String(height)] : [];
+  const portrait = Boolean(width && height && width < height);
+  const captionStyle = canvas.length ? [
+    '--font-size', portrait ? '7.5' : '10', '--y', '-0.72',
+    '--bg-color', '#000000', '--bg-alpha', '0.8', '--bg-style', '1',
+    '--bg-round-radius', '0.1', '--bg-width', '0.14', '--bg-height', '0.14',
+  ] : [];
+  const created = await run(['init', draftName, ...canvas, ...storeFlags]) as { ok?: boolean; draft_path?: string; error?: string };
   if (!created?.ok || !created.draft_path) {
     return { ok: false, draftName, draftPath: '', addedVideos: 0, addedAudios: 0, captions: 0, warnings, error: created?.error || 'capcut-cli init failed' };
   }
@@ -409,7 +525,7 @@ export async function exportJianyingDraft(
     if (timing.overrun >= MICROS_PER_SECOND / fps) {
       warnings.push(`${label}: runs ${secondsArg(timing.overrun)} s past the end of the file; cut at its end`);
     }
-    const outcome = await addClip(run, command, draftPath, file, timing, storeFlags);
+    const outcome = await addClip(run, command, draftPath, file, timing, storeFlags, clip);
     if (outcome.warning) warnings.push(outcome.warning);
     return outcome.added;
   };
@@ -427,12 +543,20 @@ export async function exportJianyingDraft(
     if (await place('add-audio', file, clip)) addedAudios += 1;
   }
   let captions = 0;
-  const captionList = (request.captions ?? []).filter((caption) => caption.text.trim() && caption.endMs > caption.startMs);
-  if (captionList.length > 0) {
-    const { file, dir } = await writeSrtFile(captionList);
+  const captionTracks = new Map<string, JianyingExportCaption[]>();
+  for (const caption of request.captions ?? []) {
+    if (typeof caption.text !== 'string' || !caption.text.trim() || !(caption.endMs > caption.startMs)) continue;
+    const trackName = caption.trackName || '';
+    const track = captionTracks.get(trackName) ?? [];
+    track.push(caption);
+    captionTracks.set(trackName, track);
+  }
+  for (const [trackName, captionList] of captionTracks) {
+    const { file, dir } = await writeSrtFile(captionList, portrait);
     try {
-      const result = await run(['import-srt', draftPath, file, ...storeFlags]) as { ok?: boolean; error?: string };
-      if (result?.ok) captions = captionList.length;
+      const trackFlags = trackName ? ['--track-name', trackName] : [];
+      const result = await run(['import-srt', draftPath, file, ...trackFlags, ...captionStyle, ...storeFlags]) as { ok?: boolean; error?: string };
+      if (result?.ok) captions += captionList.length;
       else warnings.push(`import-srt: ${result?.error || 'failed'}`);
     } finally {
       void rm(dir, { recursive: true, force: true }).catch(() => undefined);
