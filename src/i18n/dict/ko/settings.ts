@@ -98,6 +98,7 @@ export default {
   '选中未配置的厂商时，Agent 会回退为先询问。': '선택한 공급자가 설정되지 않은 경우 에이전트는 먼저 묻는 방식으로 대체합니다.',
   'AssemblyAI（云端）': 'AssemblyAI(클라우드)',
   'AssemblyAI（默认）': 'AssemblyAI(기본값)',
+  '本地模型（默认）': '로컬 모델(기본값)',
   '本地模型（免费 · 离线）': '로컬 모델(무료 · 오프라인)',
   'OpenAI（云端）': 'OpenAI(클라우드)',
   'Mistral Voxtral（云端）': 'Mistral Voxtral(클라우드)',
