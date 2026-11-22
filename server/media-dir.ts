@@ -277,6 +277,22 @@ export function mimeFor(name: string): string {
   return MIME[ext] ?? 'application/octet-stream';
 }
 
+/**
+ * True when a streamed-media failure means the requester walked away
+ * (seek, preview scrub, cancelled ASR read, page reload) rather than a
+ * server fault. `stream.pipeline` surfaces a client teardown as
+ * `ERR_STREAM_PREMATURE_CLOSE` ("Premature close"); socket drops surface as
+ * `ECONNRESET`. These are expected during scrubbing/ASR and should be
+ * normalized to a quiet log instead of an error line.
+ */
+export function isClientStreamAbort(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError') return true;
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === 'ERR_STREAM_PREMATURE_CLOSE' || code === 'ECONNRESET') return true;
+  return /premature close|socket hang up|client aborted/i.test(error.message);
+}
+
 /** GET/HEAD A disk file, supports single segment Range (206/416, video seek dependent). */
 export async function serveDiskFile(req: IncomingMessage, res: ServerResponse, file: string): Promise<void> {
   const info = await stat(file);

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMiniConnect } from '../desktop/mini-connect.ts';
 import { distStaticMiddleware } from '../desktop/static-files.ts';
-import { serveDiskFile } from './media-dir.ts';
+import { isClientStreamAbort, serveDiskFile } from './media-dir.ts';
 
 const root = await mkdtemp(join(tmpdir(), 'occ-media-stream-check-'));
 const errors: NodeJS.ErrnoException[] = [];
@@ -94,6 +94,13 @@ try {
   assert.ok(cancelDone);
   const cancelled = await cancelDone as NodeJS.ErrnoException;
   assert.equal(cancelled.code, 'ERR_STREAM_PREMATURE_CLOSE', 'client disconnect stops the source and settles the handler');
+  assert.equal(isClientStreamAbort(cancelled), true, 'premature close is a recognized client abort');
+  // Predicate coverage: the teardown signatures we normalize in plugin handlers.
+  assert.equal(isClientStreamAbort(Object.assign(new Error('x'), { code: 'ERR_STREAM_PREMATURE_CLOSE' })), true);
+  assert.equal(isClientStreamAbort(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' })), true);
+  assert.equal(isClientStreamAbort(Object.assign(new Error('aborted'), { name: 'AbortError' })), true);
+  assert.equal(isClientStreamAbort(new Error('boom')), false);
+  assert.equal(isClientStreamAbort('boom'), false);
   console.log('media-stream.verify: ok (GET/HEAD/Range/empty/SVG/SPA, read failures, client cancellation)');
 } finally {
   server.closeAllConnections();
