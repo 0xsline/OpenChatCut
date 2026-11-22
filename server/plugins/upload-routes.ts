@@ -7,7 +7,7 @@ import {
   presignGetUpload, presignPutUpload, r2Config, r2PresignEnabled, UploadTooLargeError,
 } from '../r2.ts';
 import {
-  isSafeUploadName, resolveOrHydrateUploadFile, serveDiskFile, syncLegacyUploads,
+  isSafeUploadName, isClientStreamAbort, resolveOrHydrateUploadFile, serveDiskFile, syncLegacyUploads,
   uploadReadDirs,
 } from '../media-dir.ts';
 import { isIsolatedDevProfile } from '../runtime-profile.ts';
@@ -54,6 +54,12 @@ async function serveR2Media(
     res.setHeader(MEDIA_AUTHORITY_HEADER, 'server');
     await serveDiskFile(req, res, resolved.file);
   } catch (error) {
+    if (isClientStreamAbort(error)) {
+      // The requester tore the connection down mid-stream (seek, preview
+      // scrub, cancelled read) — expected during ASR/preview, not a fault.
+      logger.info(`[R2 回源] ${name}: client aborted mid-download`);
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`[R2 回源] ${name}: ${message}`);
     if (!res.headersSent) {
@@ -81,7 +87,14 @@ function handleMediaRead(
   if (!local) { void serveR2Media(name, req, res, logger, dependencies); return; }
   res.setHeader(MEDIA_AUTHORITY_HEADER, 'server');
   void serveDiskFile(req, res, local).catch((error: unknown) => {
-    logger.error(`[media-dir] ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    if (isClientStreamAbort(error)) {
+      // The requester tore the connection down mid-stream (seek, preview
+      // scrub, cancelled ASR read) — expected, not a server fault.
+      logger.info(`[media-dir] ${name}: client aborted mid-download`);
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`[media-dir] ${name}: ${message}`);
     if (!res.headersSent) sendError(res, 500, 'media read failed');
     else res.end();
   });
