@@ -143,7 +143,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
         return getKey("WAVESPEED_API_KEY");
       },
       get waveSpeedModel() {
-        return getKey("WAVESPEED_IMAGE_MODEL") || "wavespeed-ai/flux-dev";
+        return getKey("WAVESPEED_IMAGE_MODEL") || "bytedance/seedream-v5.5";
       },
       get byteplusBaseUrl() {
         return getKey("BYTEPLUS_BASE_URL") || "https://ark.ap-southeast.bytepluses.com/api/v3";

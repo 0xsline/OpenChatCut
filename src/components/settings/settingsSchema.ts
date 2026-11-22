@@ -130,7 +130,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'image/wavespeed', vendor: 'wavespeed', title: 'WaveSpeed', fields: [
             secret('WAVESPEED_API_KEY', 'API Key'),
             text('WAVESPEED_BASE_URL', 'Base URL', '默认 https://api.wavespeed.ai'),
-            modelText('WAVESPEED_IMAGE_MODEL', '生图模型', 'wavespeed-ai/flux-dev'),
+            modelText('WAVESPEED_IMAGE_MODEL', '生图模型', 'bytedance/seedream-v5.5'),
           ] },
           byteplusPage('image', modelText('BYTEPLUS_IMAGE_MODEL', '生图模型', 'seedream-4-5-251128',
             '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedream'),
