@@ -18,6 +18,30 @@ import {
   throwIfNormalizationAborted,
 } from './media-normalization-admission.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from './media-process.ts';
+import { GOP_SAMPLE_SECONDS } from './preview-proxy.ts';
+import {
+  displayDimensions,
+  isMatroskaFamily,
+  isTimebaseLikeFrameRate,
+  isVariableFrameRate,
+  parseFrameRate,
+  rotationOf,
+  summarizeKeyframes,
+  type KeyframeSample,
+  type VideoSize,
+} from './media-stream-shape.ts';
+export {
+  displayDimensions,
+  isTimebaseLikeFrameRate,
+  isVariableFrameRate,
+  parseFrameRate,
+  playableDurationSeconds,
+  resolveTargetFps,
+  rotationOf,
+  sourceFrameRate,
+  summarizeKeyframes,
+} from './media-stream-shape.ts';
+export type { KeyframeSample, KeyframeSummary, VideoSize } from './media-stream-shape.ts';
 export {
   createNormalizeAdmission,
   normalizationAbortError,
@@ -140,75 +164,45 @@ export interface ProbeMeta {
   nominalFrameRate?: number;
   frameCount?: number;
   variableFrameRate: boolean;
+  /** Distinct displayed sizes in stream order, when keyframes show more than one. */
+  resolutionChanges?: readonly VideoSize[];
+  /** Keyframe gaps exceed the seekable limit (see parseLongGop). */
+  longGop?: boolean;
 }
 
-export function parseFrameRate(value: unknown): number | undefined {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) && value > 0 ? value : undefined;
+// Interval between forced keyframes when the source GOP is too long to seek.
+const FORCED_KEYFRAME_INTERVAL_SECONDS = 1;
+// Whole-file keyframe scans decode one frame per GOP; long masters need more
+// than the plain probe budget.
+const KEYFRAME_SCAN_TIMEOUT_MS = 10 * 60_000;
+
+async function probeKeyframes(
+  path: string,
+  wholeFile: boolean,
+  signal?: AbortSignal,
+): Promise<KeyframeSample[] | undefined> {
+  try {
+    const { stdout } = await run(
+      ffprobeBin(),
+      [
+        '-v', 'error', '-select_streams', 'v:0', '-skip_frame', 'nokey',
+        ...(wholeFile ? [] : ['-read_intervals', `%+${GOP_SAMPLE_SECONDS}`]),
+        '-show_frames', '-show_entries', 'frame=best_effort_timestamp_time,width,height',
+        '-of', 'json', path,
+      ],
+      wholeFile ? KEYFRAME_SCAN_TIMEOUT_MS : 30_000,
+      signal,
+    );
+    const parsed = JSON.parse(stdout || '{}') as { frames?: KeyframeSample[] };
+    return Array.isArray(parsed.frames) ? parsed.frames : [];
+  } catch (error) {
+    throwIfNormalizationAborted(signal);
+    // The keyframe scan only refines the plan; a failure keeps the
+    // stream-header view rather than rejecting an otherwise readable file.
+    console.warn(`[normalize-media] keyframe scan failed for ${basename(path)}: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
   }
-  const raw = String(value ?? '').trim();
-  if (!raw || raw === 'N/A') return undefined;
-  const [numeratorRaw, denominatorRaw] = raw.split('/');
-  const numerator = Number(numeratorRaw);
-  const denominator = denominatorRaw === undefined ? 1 : Number(denominatorRaw);
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return undefined;
-  const rate = numerator / denominator;
-  return Number.isFinite(rate) && rate > 0 ? rate : undefined;
 }
-
-export function isVariableFrameRate(avgFrameRate?: number, nominalFrameRate?: number): boolean {
-  if (!avgFrameRate || !nominalFrameRate) return false;
-  const reference = Math.max(avgFrameRate, nominalFrameRate);
-  // A 0.05% relative tolerance ignores rational rounding noise while still
-  // catching the common 30-tbr / drifting-average pattern from phone and
-  // screen recordings.
-  return Math.abs(avgFrameRate - nominalFrameRate) > Math.max(0.005, reference * 0.0005);
-}
-
-export function resolveTargetFps(
-  requested: unknown,
-  avgFrameRate?: number,
-  nominalFrameRate?: number,
-  allowRequested = false,
-): number {
-  const explicit = Number(requested);
-  if (allowRequested && Number.isFinite(explicit) && explicit >= 1 && explicit <= 120) return explicit;
-  const detected = avgFrameRate ?? nominalFrameRate;
-  if (detected && Number.isFinite(detected)) return Math.max(1, Math.min(120, detected));
-  return 30;
-}
-
-export function playableDurationSeconds(meta: Pick<ProbeMeta, 'duration' | 'frameCount' | 'avgFrameRate' | 'nominalFrameRate'>): number {
-  const fps = meta.avgFrameRate ?? meta.nominalFrameRate;
-  if (meta.frameCount && fps && Number.isFinite(fps) && fps > 0) {
-    return meta.frameCount / fps;
-  }
-  return meta.duration;
-}
-/** Displayed dimensions for a rotation-coded stream. ±90/270 swap the
- * coded width/height; 0/180 keep them. */
-export function displayDimensions(codedWidth: number, codedHeight: number, rotation: number): { width: number; height: number } {
-  const swapped = rotation === 90 || rotation === 270;
-  return swapped
-    ? { width: codedHeight, height: codedWidth }
-    : { width: codedWidth, height: codedHeight };
-}
-
-
-export function rotationOf(video: Record<string, unknown>): number {
-  const raw = Number(video.rotation);
-  if (Number.isFinite(raw) && raw !== 0) return ((raw % 360) + 360) % 360;
-  const tags = video.tags as Record<string, unknown> | undefined;
-  const tag = Number(tags?.rotate);
-  if (Number.isFinite(tag) && tag !== 0) return ((tag % 360) + 360) % 360;
-  const sideData = video.side_data_list as Array<Record<string, unknown>> | undefined;
-  for (const entry of sideData ?? []) {
-    const rotation = Number(entry.rotation);
-    if (Number.isFinite(rotation) && rotation !== 0) return ((rotation % 360) + 360) % 360;
-  }
-  return 0;
-}
-
 
 export async function probeVideo(path: string, signal?: AbortSignal): Promise<ProbeMeta> {
   const { stdout } = await run(
@@ -223,7 +217,7 @@ export async function probeVideo(path: string, signal?: AbortSignal): Promise<Pr
   );
   const data = JSON.parse(stdout || '{}') as {
     streams?: Array<Record<string, unknown>>;
-    format?: { duration?: string; bit_rate?: string; size?: string };
+    format?: { duration?: string; bit_rate?: string; size?: string; format_name?: string };
   };
   const streams = Array.isArray(data.streams) ? data.streams : [];
   const video = streams.find((s) => s.codec_type === 'video');
@@ -234,9 +228,8 @@ export async function probeVideo(path: string, signal?: AbortSignal): Promise<Pr
   if (codedWidth <= 0 || codedHeight <= 0) throw new Error('video stream has invalid dimensions');
   // Portrait footage is usually stored landscape-coded with a rotation
   // side-data/tag; swap so the asset aspect reflects the displayed frame.
-  const dimensions = displayDimensions(codedWidth, codedHeight, rotationOf(video));
-  const width = dimensions.width;
-  const height = dimensions.height;
+  const rotation = rotationOf(video);
+  const dimensions = displayDimensions(codedWidth, codedHeight, rotation);
   const duration = Number(data.format?.duration) || 0;
   const size = Number(data.format?.size) || (await stat(path)).size;
   throwIfNormalizationAborted(signal);
@@ -246,9 +239,21 @@ export async function probeVideo(path: string, signal?: AbortSignal): Promise<Pr
   const nominalFrameRate = parseFrameRate(video.r_frame_rate);
   const parsedFrameCount = Number(video.nb_frames);
   const frameCount = Number.isInteger(parsedFrameCount) && parsedFrameCount > 0 ? parsedFrameCount : undefined;
+  // Stream headers only describe the first frame. Browser recordings start
+  // small and switch resolution as bandwidth allows, so WebM/Matroska and
+  // timebase-only sources get a whole-file keyframe scan; everything else
+  // samples the leading window for GOP length, like the preview probe.
+  const wholeFile = isMatroskaFamily(String(data.format?.format_name ?? ''))
+    || isTimebaseLikeFrameRate(avgFrameRate, nominalFrameRate);
+  const keyframes = await probeKeyframes(path, wholeFile, signal);
+  const summary = keyframes ? summarizeKeyframes(keyframes, rotation, duration, wholeFile) : undefined;
+  const largest = summary?.largest
+    && summary.largest.width * summary.largest.height > dimensions.width * dimensions.height
+    ? summary.largest
+    : dimensions;
   return {
-    width,
-    height,
+    width: largest.width,
+    height: largest.height,
     duration,
     videoCodec: String(video.codec_name || ''),
     audioCodec: String(audio?.codec_name || ''),
@@ -259,6 +264,8 @@ export async function probeVideo(path: string, signal?: AbortSignal): Promise<Pr
     nominalFrameRate,
     frameCount,
     variableFrameRate: isVariableFrameRate(avgFrameRate, nominalFrameRate),
+    ...(summary && summary.sizes.length > 1 ? { resolutionChanges: summary.sizes } : {}),
+    ...(summary ? { longGop: summary.longGop } : {}),
   };
 }
 
@@ -277,12 +284,14 @@ export interface NormalizeStreamPlan {
 }
 
 export function resolveStreamPlan(
-  meta: Pick<ProbeMeta, 'videoCodec' | 'audioCodec' | 'hasAudio'>,
+  meta: Pick<ProbeMeta, 'videoCodec' | 'audioCodec' | 'hasAudio'> & Pick<Partial<ProbeMeta>, 'resolutionChanges'>,
   optimizeOutput: boolean,
   convertToCfr: boolean,
 ): NormalizeStreamPlan {
   return {
-    transcodeVideo: optimizeOutput || convertToCfr || !compatibleVideoCodec(meta.videoCodec),
+    // A stream copy would keep the mid-stream size switches.
+    transcodeVideo: optimizeOutput || convertToCfr || Boolean(meta.resolutionChanges)
+      || !compatibleVideoCodec(meta.videoCodec),
     transcodeAudio: meta.hasAudio && (optimizeOutput || !compatibleAudioCodec(meta.audioCodec)),
   };
 }
@@ -313,17 +322,23 @@ export function normalizeReason(
   forceCfr: boolean,
   optimize: boolean,
 ): string | null {
+  const compatibility: string[] = [];
   if (forceCfr || meta.variableFrameRate) {
     const avg = meta.avgFrameRate?.toFixed(3) ?? 'unknown';
     const nominal = meta.nominalFrameRate?.toFixed(3) ?? 'unknown';
-    return `variable frame rate detected (avg ${avg}, nominal ${nominal})`;
+    compatibility.push(`variable frame rate detected (avg ${avg}, nominal ${nominal})`);
+  }
+  if (meta.resolutionChanges) {
+    const sizes = meta.resolutionChanges.map((size) => `${size.width}x${size.height}`).join(' -> ');
+    compatibility.push(`resolution changes mid-stream (${sizes})`);
   }
   if (!compatibleVideoCodec(meta.videoCodec)) {
-    return `video codec ${meta.videoCodec || 'unknown'} is not browser-aligned`;
+    compatibility.push(`video codec ${meta.videoCodec || 'unknown'} is not browser-aligned`);
   }
   if (meta.hasAudio && !compatibleAudioCodec(meta.audioCodec)) {
-    return `audio codec ${meta.audioCodec || 'unknown'} is not browser-aligned`;
+    compatibility.push(`audio codec ${meta.audioCodec || 'unknown'} is not browser-aligned`);
   }
+  if (compatibility.length) return compatibility.join('; ');
   if (!optimize) return null;
   if (meta.width > MAX_DIMENSION || meta.height > MAX_DIMENSION) {
     return `dimensions ${meta.width}x${meta.height} exceed ${MAX_DIMENSION}px`;
@@ -343,6 +358,8 @@ interface TranscodeVideoOptions {
   readonly targetBitrate: number;
   readonly targetFps: number;
   readonly convertToCfr: boolean;
+  /** Source keyframes are too sparse to seek; place one every second. */
+  readonly forceKeyframes?: boolean;
 }
 
 /** Input-side arguments shared by every normalization attempt. */
@@ -350,10 +367,12 @@ function normalizeInputArgs(
   decodeArgs: readonly string[],
   inputPath: string,
   hasAudio: boolean,
+  inputOptions: readonly string[] = [],
 ): string[] {
   return [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
     ...decodeArgs,
+    ...inputOptions,
     '-i', inputPath, '-map', '0:v:0',
     ...(hasAudio ? ['-map', '0:a:0?'] : ['-an']),
   ];
@@ -394,7 +413,10 @@ export async function encodeTranscodedVideo(
     const decodeArgs = await resolveDecodeArgs(encoder);
     throwIfNormalizationAborted(signal);
     const args = [
-      ...normalizeInputArgs(decodeArgs, input.inputPath, input.hasAudio),
+      // A mid-stream size change would otherwise rebuild the filter graph,
+      // resetting the fps filter and dropping or duplicating frames around
+      // the switch; scale adapts to new input sizes in place.
+      ...normalizeInputArgs(decodeArgs, input.inputPath, input.hasAudio, ['-reinit_filter', '0']),
       '-vf', filters.join(','),
       ...h264EncodingArgs({
         encoder,
@@ -406,6 +428,9 @@ export async function encodeTranscodedVideo(
       }),
       '-profile:v', 'high',
       ...(options.convertToCfr ? ['-fps_mode', 'cfr'] : []),
+      ...(options.forceKeyframes
+        ? ['-force_key_frames', `expr:gte(t,n_forced*${FORCED_KEYFRAME_INTERVAL_SECONDS})`]
+        : []),
       ...audioArgs, ...outputArgs,
     ];
     try {
@@ -458,7 +483,7 @@ export async function encodeNormalized(
     { inputPath, hasAudio: meta.hasAudio },
     audioArgs,
     outputArgs,
-    { targetW, targetH, targetBitrate, targetFps, convertToCfr },
+    { targetW, targetH, targetBitrate, targetFps, convertToCfr, forceKeyframes: meta.longGop === true },
     outputPath,
     { preferred },
     signal,
