@@ -167,7 +167,7 @@ function providerSuffix(cap: CapabilityKey, mode: ApprovalMode): string {
   if (on.length === 0) return '';
   const prefKey = PREFERRED_KEY[cap];
   const savedPref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
-  const pref = savedPref || (cap === 'transcription' ? 'assemblyai' : '');
+  const pref = savedPref || (cap === 'transcription' ? 'local' : '');
   const chosen = pref ? on.find((r) => r.arg === pref) : undefined;
   if (chosen) {
     const source = savedPref ? 'user default' : 'default';

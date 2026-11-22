@@ -193,12 +193,12 @@ export function effectiveTranscriptionProvider(
   args?: Readonly<Record<string, unknown>>,
 ): TranscriptionProviderId {
   if (args?.provider !== undefined) {
-    return isTranscriptionProviderId(args.provider) ? args.provider : 'assemblyai';
+    return isTranscriptionProviderId(args.provider) ? args.provider : 'local';
   }
   try {
     const saved = globalThis.localStorage?.getItem('cc.transcriptionProvider');
-    return isTranscriptionProviderId(saved) ? saved : 'assemblyai';
+    return isTranscriptionProviderId(saved) ? saved : 'local';
   } catch {
-    return 'assemblyai';
+    return 'local';
   }
 }

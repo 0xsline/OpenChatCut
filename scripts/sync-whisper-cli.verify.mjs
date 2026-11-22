@@ -14,9 +14,11 @@ import { createHash } from 'node:crypto';
 import {
   adoptable,
   archiveProblem,
+  darwinSiblingLibrariesProblem,
   findExecutable,
   flattenExecutableDir,
   helpProbeProblem,
+  isWhisperSharedLibraryName,
   MIN_WHISPER_BINARY_BYTES,
   PLATFORMS,
   provisionedProblem,
@@ -238,6 +240,28 @@ assert.match(VERSION, /^v\d+\.\d+\.\d+$/);
     true,
     'the floor is inclusive',
   );
+}
+
+// ── darwin source builds must ship libwhisper / libggml beside the CLI ───────
+{
+  assert.equal(
+    darwinSiblingLibrariesProblem(['whisper-cli', 'whisper-server', 'libwhisper.1.dylib', 'libggml.0.dylib']),
+    null,
+    'CLI + whisper + ggml dylibs are enough',
+  );
+  assert.match(
+    darwinSiblingLibrariesProblem(['whisper-cli', 'whisper-server']) ?? '',
+    /missing libwhisper/,
+    'copying only the executable is the packaged Metal failure mode',
+  );
+  assert.match(
+    darwinSiblingLibrariesProblem(['whisper-cli', 'libwhisper.1.dylib']) ?? '',
+    /missing libggml/,
+  );
+  assert.equal(isWhisperSharedLibraryName('libwhisper.1.dylib'), true);
+  assert.equal(isWhisperSharedLibraryName('libggml-metal.0.dylib'), true);
+  assert.equal(isWhisperSharedLibraryName('whisper-cli'), false);
+  assert.equal(isWhisperSharedLibraryName('whisper-cli.provenance.json'), false);
 }
 
 console.log('sync-whisper-cli.verify: layout keeps its libraries, and provisioning verifies instead of trusting existsSync');

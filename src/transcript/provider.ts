@@ -59,7 +59,9 @@ export function preferredTranscriptionProvider(): TranscriptionProviderId {
   } catch {
     // SSR / private browsing: fall through to the default.
   }
-  return 'assemblyai';
+  // Free path: local Whisper needs no cloud key. AssemblyAI remains available
+  // when the user explicitly selects it (and has configured a key).
+  return 'local';
 }
 
 export function preferredTranscriptionLanguage(): string {

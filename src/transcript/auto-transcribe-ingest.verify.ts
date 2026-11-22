@@ -19,14 +19,27 @@ class FakeStorage {
 const storage = new FakeStorage();
 (globalThis as unknown as { localStorage: FakeStorage }).localStorage = storage;
 
-const { autoTranscribeIngestSetting, shouldAutoTranscribeIngest, setAutoTranscribeIngest, AUTO_TRANSCRIBE_INGEST_KEY } =
-  await import('./provider');
+const {
+  autoTranscribeIngestSetting,
+  shouldAutoTranscribeIngest,
+  setAutoTranscribeIngest,
+  AUTO_TRANSCRIBE_INGEST_KEY,
+  preferredTranscriptionProvider,
+  TRANSCRIPTION_PROVIDER_KEY,
+} = await import('./provider');
 
 // Default: local engine auto-transcribes, cloud does not.
 storage.removeItem(AUTO_TRANSCRIBE_INGEST_KEY);
 assert.equal(autoTranscribeIngestSetting(), 'local', 'default is local');
 assert.equal(shouldAutoTranscribeIngest('local'), true, 'local engine auto by default');
 assert.equal(shouldAutoTranscribeIngest('assemblyai'), false, 'cloud never auto by default');
+
+// Unset transcription provider prefers free local Whisper (no AssemblyAI key required).
+storage.removeItem(TRANSCRIPTION_PROVIDER_KEY);
+assert.equal(preferredTranscriptionProvider(), 'local', 'default ASR provider is local');
+storage.setItem(TRANSCRIPTION_PROVIDER_KEY, 'assemblyai');
+assert.equal(preferredTranscriptionProvider(), 'assemblyai', 'explicit cloud choice is preserved');
+storage.removeItem(TRANSCRIPTION_PROVIDER_KEY);
 
 // off: nothing auto-transcribes.
 setAutoTranscribeIngest('off');

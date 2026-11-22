@@ -90,7 +90,7 @@ function syncTranscriptionPreferences(models: Record<string, string>): void {
     // Best-effort; runtime language and diarization defaults remain in effect.
   }
   const provider = models.PREFERRED_TRANSCRIPTION_PROVIDER;
-  setPreferredTranscriptionProvider(isTranscriptionProviderId(provider) ? provider : 'assemblyai');
+  setPreferredTranscriptionProvider(isTranscriptionProviderId(provider) ? provider : 'local');
   const ingest = models.AUTO_TRANSCRIBE_INGEST;
   if (ingest === 'off' || ingest === 'local' || ingest === 'all') setAutoTranscribeIngest(ingest);
 }

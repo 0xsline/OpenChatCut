@@ -177,15 +177,18 @@ export function computeCaps(): Caps {
       has("UNSPLASH_ACCESS_KEY") ||
       has("FREESOUND_API_KEY") ||
       has("FIRECRAWL_API_KEY"),
-    transcription:
-      getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "local" ||
-      has("ASSEMBLYAI_API_KEY") ||
-      (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "openai" && has("OPENAI_API_KEY")) ||
-      (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "mistral" && has("LLM_MISTRAL_API_KEY")) ||
-      (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "deepgram" && has("DEEPGRAM_API_KEY")) ||
-      (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "groq" && has("GROQ_API_KEY")) ||
-      (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "elevenlabs" && has("ELEVENLABS_API_KEY")) ||
-      (getKey("PREFERRED_TRANSCRIPTION_PROVIDER") === "cartesia" && has("CARTESIA_API_KEY")),
+    transcription: (() => {
+      // Unset preferred provider defaults to local Whisper (free / offline).
+      const pref = getKey("PREFERRED_TRANSCRIPTION_PROVIDER");
+      return !pref || pref === "local"
+        || has("ASSEMBLYAI_API_KEY")
+        || (pref === "openai" && has("OPENAI_API_KEY"))
+        || (pref === "mistral" && has("LLM_MISTRAL_API_KEY"))
+        || (pref === "deepgram" && has("DEEPGRAM_API_KEY"))
+        || (pref === "groq" && has("GROQ_API_KEY"))
+        || (pref === "elevenlabs" && has("ELEVENLABS_API_KEY"))
+        || (pref === "cartesia" && has("CARTESIA_API_KEY"));
+    })(),
     sandbox: has("E2B_API_KEY"),
     web: has("FIRECRAWL_API_KEY"),
     storage:

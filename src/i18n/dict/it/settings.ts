@@ -322,6 +322,7 @@ const overrides: Record<string, string> = {
   'ElevenLabs Scribe（云端）': 'ElevenLabs Scribe (cloud)',
   'Cartesia（云端）': 'Cartesia (cloud)',
   'AssemblyAI（默认）': 'AssemblyAI (predefinito)',
+  '本地模型（默认）': 'Modello locale (predefinito)',
   '转写模型': 'Modello trascrizione',
   '节拍与音乐分析模型': 'Modelli ritmo e analisi musica',
   '画面语义搜索模型包': 'Pacchetto modello ricerca visuale',

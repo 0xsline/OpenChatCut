@@ -17,7 +17,7 @@ If a capability is off, say so and offer alternatives (upload, library, another 
 | Music | `submit_music` | `MUREKA_API_KEY`, `MINIMAX_API_KEY`, `ATLASCLOUD_API_KEY` |
 | Sound FX gen | `submit_sound` | `ELEVENLABS_API_KEY` |
 | Stock search | `search_stock_media` | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `UNSPLASH_ACCESS_KEY`, `FREESOUND_API_KEY` |
-| Transcription | `transcribe_track` | The provider selected in Settings (or an explicit configured override): AssemblyAI (default), local, OpenAI, Mistral, Deepgram, Groq, ElevenLabs, or Cartesia |
+| Transcription | `transcribe_track` | The provider selected in Settings (or an explicit configured override): local Whisper (default), AssemblyAI, OpenAI, Mistral, Deepgram, Groq, ElevenLabs, or Cartesia |
 | Web | `web_browser` | `FIRECRAWL_API_KEY` |
 | Sandbox / ffmpeg helpers | `run_code` | `E2B_API_KEY` (if used) |
 | Social publishing | `publish_to_social`, `track_social_publish` | `UPLOAD_POST_API_KEY` + `UPLOAD_POST_PROFILE` (Upload-Post profile with the social accounts connected) |

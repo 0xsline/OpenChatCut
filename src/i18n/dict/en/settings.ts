@@ -109,6 +109,7 @@ export default {
   '选中未配置的厂商时，Agent 会回退为先询问。': 'If the chosen vendor is not configured, the Agent falls back to asking first.',
   'AssemblyAI（云端）': 'AssemblyAI (cloud)',
   'AssemblyAI（默认）': 'AssemblyAI (default)',
+  '本地模型（默认）': 'Local model (default)',
   '本地模型（免费 · 离线）': 'Local model (free · offline)',
   'OpenAI（云端）': 'OpenAI (cloud)',
   'Mistral Voxtral（云端）': 'Mistral Voxtral (cloud)',

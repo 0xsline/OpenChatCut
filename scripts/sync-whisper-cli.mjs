@@ -309,11 +309,108 @@ async function copyServerBeside(sourceBin, targetDir) {
   await copyExecutable(from, join(targetDir, name));
 }
 
+/**
+ * Darwin source builds link whisper-cli against libwhisper / libggml with an
+ * absolute LC_RPATH into the cmake build tree. Shipping only the executable
+ * (issue mirrored by Windows #120) leaves a packaged binary that looks for
+ * `/private/tmp/.../build/bin/libwhisper.1.dylib` and fails at load. Copy the
+ * shared libraries beside the CLI the same way flattenExecutableDir keeps
+ * Windows DLLs / Linux .so files with the archive layout.
+ */
+export function isWhisperSharedLibraryName(name) {
+  return /^(libwhisper|libggml)/.test(name);
+}
+
+export async function copySharedLibrariesBeside(sourceBin, targetDir) {
+  const { copyFile, lstat, readlink, readdir, symlink } = await import('node:fs/promises');
+  const sourceDir = dirname(sourceBin);
+  for (const name of await readdir(sourceDir)) {
+    if (!isWhisperSharedLibraryName(name)) continue;
+    const from = join(sourceDir, name);
+    const to = join(targetDir, name);
+    await rm(to, { recursive: true, force: true });
+    const st = await lstat(from);
+    if (st.isSymbolicLink()) {
+      await symlink(await readlink(from), to);
+    } else {
+      await copyFile(from, to);
+      await chmod(to, 0o755);
+    }
+  }
+}
+
+/** Pure: a darwin provisioned dir must keep libwhisper beside whisper-cli. */
+export function darwinSiblingLibrariesProblem(names) {
+  if (!names.some((name) => /^libwhisper(\.|$)/.test(name))) {
+    return 'darwin whisper-cli is missing libwhisper*.dylib beside the binary';
+  }
+  if (!names.some((name) => /^libggml(\.|$)/.test(name))) {
+    return 'darwin whisper-cli is missing libggml*.dylib beside the binary';
+  }
+  return null;
+}
+
+/**
+ * Replace absolute cmake build rpaths with @loader_path so the shipped
+ * dylibs resolve next to the executable on any machine.
+ */
+export async function relocateDarwinRpaths(targetDir) {
+  if (process.platform !== 'darwin') return;
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { lstat, readdir } = await import('node:fs/promises');
+  const run = promisify(execFile);
+  for (const name of await readdir(targetDir)) {
+    if (name.endsWith(PROVENANCE_SUFFIX) || name.endsWith(LEGACY_DIGEST_SUFFIX)) continue;
+    const full = join(targetDir, name);
+    let st;
+    try {
+      st = await lstat(full);
+    } catch {
+      continue;
+    }
+    // Operate on real Mach-O files only; symlinks share the target's load commands.
+    if (!st.isFile() || st.isSymbolicLink()) continue;
+    let stdout = '';
+    try {
+      ({ stdout } = await run('otool', ['-l', full], { maxBuffer: 8 << 20 }));
+    } catch {
+      continue;
+    }
+    const rpaths = [...stdout.matchAll(/\n\s+path\s+(\S+)\s+\(offset/g)].map((m) => m[1]);
+    for (const rp of rpaths) {
+      if (rp === '@loader_path' || rp === '@executable_path') continue;
+      try {
+        await run('install_name_tool', ['-delete_rpath', rp, full]);
+      } catch {
+        // Already gone or not rewriteable; keep going.
+      }
+    }
+    if (!rpaths.includes('@loader_path')) {
+      try {
+        await run('install_name_tool', ['-add_rpath', '@loader_path', full]);
+      } catch (error) {
+        throw new Error(`failed to add @loader_path rpath to ${full}: ${error.message}`);
+      }
+    }
+  }
+}
+
+async function shipSourceRuntime(sourceBin, targetDir) {
+  await copyExecutable(sourceBin, join(targetDir, specExecutableName(sourceBin)));
+  await copyServerBeside(sourceBin, targetDir);
+  await copySharedLibrariesBeside(sourceBin, targetDir);
+  await relocateDarwinRpaths(targetDir);
+}
+
+function specExecutableName(sourceBin) {
+  return sourceBin.endsWith('.exe') ? 'whisper-cli.exe' : 'whisper-cli';
+}
+
 async function provisionFromOverride(override, binPath, targetDir, spec) {
   console.log(`[whisper-cli] using override ${override}`);
   await mkdir(targetDir, { recursive: true });
-  await copyExecutable(override, binPath);
-  await copyServerBeside(override, targetDir);
+  await shipSourceRuntime(override, targetDir);
   return await installedRecord(binPath, 'override', spec, { overridePath: override });
 }
 
@@ -321,8 +418,7 @@ async function provisionFromSource(binPath, targetDir, spec, platformKey) {
   const srcDir = join(BUILD_CACHE, 'whisper.cpp');
   const cli = await buildFromSource(srcDir, BUILD_CACHE);
   await mkdir(targetDir, { recursive: true });
-  await copyExecutable(cli, binPath);
-  await copyServerBeside(cli, targetDir);
+  await shipSourceRuntime(cli, targetDir);
   console.log(`[whisper-cli] built ${platformKey} from source -> ${binPath}`);
   return await installedRecord(binPath, 'build', spec);
 }
@@ -358,7 +454,19 @@ async function inspectProvisioned(binPath, spec) {
     binary,
     probe,
   };
-  return { ...snapshot, problem: provisionedProblem(snapshot) };
+  let problem = provisionedProblem(snapshot);
+  // Darwin source builds can still pass `--help` when the cmake build cache is
+  // on this machine (absolute LC_RPATH). Require sibling dylibs so a packaged
+  // copy cannot ship a binary that only works on the build host.
+  if (!problem && process.platform === 'darwin') {
+    const { readdir } = await import('node:fs/promises');
+    try {
+      problem = darwinSiblingLibrariesProblem(await readdir(dirname(binPath)));
+    } catch {
+      problem = 'darwin whisper-cli directory is unreadable';
+    }
+  }
+  return { ...snapshot, problem };
 }
 
 async function main() {
@@ -376,8 +484,11 @@ async function main() {
       return;
     }
     // Release-asset platforms re-fetch a few megabytes; source-build platforms
-    // would pay a full compile, so a binary that still runs is adopted.
-    if (!spec.asset && !state.record && adoptable(state)) {
+    // would pay a full compile, so a binary that still runs is adopted — but
+    // only when the sole defect is a missing provenance record. A darwin tree
+    // missing sibling dylibs must re-ship, even if `--help` works via the
+    // absolute cmake build rpath on this machine.
+    if (!spec.asset && state.problem === 'no provenance record' && adoptable(state)) {
       await writeProvenance(binPath, await installedRecord(binPath, 'adopted', spec, { version: null }));
       console.log(`[whisper-cli] adopted the existing ${platformKey} binary at ${binPath} (it runs; no provenance existed)`);
       return;
