@@ -12,6 +12,7 @@ import {
   resolveNormalizeTargetKey,
   resolveStreamPlan,
   resolveTargetFps,
+  sourceFrameRate,
   targetDimension,
   throwIfNormalizationAborted,
   type NormalizeAdmission,
@@ -117,7 +118,7 @@ function acceptedResult(options: NormalizeMediaFileOptions, meta: ProbeMeta): No
     height: meta.height,
     durationSeconds: playableDurationSeconds(meta) || undefined,
     videoFrameCount: meta.frameCount,
-    sourceFps: meta.avgFrameRate ?? meta.nominalFrameRate,
+    sourceFps: sourceFrameRate(meta),
     variableFrameRate: meta.variableFrameRate,
   };
 }

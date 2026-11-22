@@ -6,7 +6,7 @@ import { ffmpegThreadArgs, spawnMediaProcess } from './media-process.ts';
 
 const PROBE_TIMEOUT_MS = 60_000;
 const PROXY_TIMEOUT_MS = 30 * 60_000;
-const GOP_SAMPLE_SECONDS = 12;
+export const GOP_SAMPLE_SECONDS = 12;
 const LONG_GOP_SECONDS = 4;
 const MAX_CAPTURE_CHARS = 128 * 1024;
 const DIRECT_CODECS = new Set(['h264', 'vp8', 'vp9', 'av1']);
@@ -66,9 +66,16 @@ export function runPreviewProcess(
   });
 }
 
-function parseLongGop(frames: Array<{ best_effort_timestamp_time?: string }> | undefined, durationMs: number): boolean {
+/** True when a keyframe gap inside the sampled window exceeds LONG_GOP_SECONDS.
+ * `sampleSeconds` defaults to the preview probe's leading window; pass
+ * Infinity when `frames` covers the whole file. */
+export function parseLongGop(
+  frames: ReadonlyArray<{ best_effort_timestamp_time?: string }> | undefined,
+  durationMs: number,
+  sampleSeconds: number = GOP_SAMPLE_SECONDS,
+): boolean {
   if (durationMs <= LONG_GOP_SECONDS * 2000) return false;
-  const sampleEnd = Math.min(GOP_SAMPLE_SECONDS, durationMs / 1000);
+  const sampleEnd = Math.min(sampleSeconds, durationMs / 1000);
   const times = (frames ?? [])
     .map((frame) => Number(frame.best_effort_timestamp_time))
     .filter((time) => Number.isFinite(time) && time >= 0 && time <= sampleEnd)
