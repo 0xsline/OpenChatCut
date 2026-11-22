@@ -145,7 +145,7 @@ async function waveSpeedError(response: Response): Promise<string> {
 const WAVESPEED_TERMINAL_FAILURES = new Set(['failed', 'cancelled', 'timeout']);
 
 async function waveSpeedPollResult(baseUrl: string, apiKey: string, taskId: string): Promise<string> {
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     await new Promise((resolvePoll) => setTimeout(resolvePoll, 2_000));
     const response = await fetchWithProxy(`${baseUrl}/api/v3/predictions/${encodeURIComponent(taskId)}/result`, {
@@ -166,6 +166,21 @@ async function waveSpeedPollResult(baseUrl: string, apiKey: string, taskId: stri
   throw new Error('WaveSpeed generation timed out');
 }
 
+// Seedream v5.5 takes aspect_ratio + resolution instead of a pixel size.
+const SEEDREAM_V55_ASPECTS = ['1:1', '1:2', '2:1', '1:3', '3:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '9:21', '21:9'];
+
+function waveSpeedSizeParams(model: string, width: number, height: number): Record<string, string> {
+  if (!model.startsWith('bytedance/seedream-v5.5')) return { size: `${width}*${height}` };
+  const ratio = Math.log(width / height);
+  const aspect = SEEDREAM_V55_ASPECTS.reduce((best, candidate) => {
+    const [w, h] = candidate.split(':').map(Number);
+    const [bw, bh] = best.split(':').map(Number);
+    return Math.abs(Math.log(w / h) - ratio) < Math.abs(Math.log(bw / bh) - ratio) ? candidate : best;
+  });
+  const longEdge = Math.max(width, height);
+  return { aspect_ratio: aspect, resolution: longEdge <= 1024 ? '1k' : longEdge <= 1536 ? '1.5k' : '2k' };
+}
+
 export async function callWaveSpeedProvider(baseUrl: string, apiKey: string, model: string, body: {
   prompt: string;
   count: number;
@@ -177,7 +192,7 @@ export async function callWaveSpeedProvider(baseUrl: string, apiKey: string, mod
     const response = await fetchWithProxy(`${root}/api/v3/${model}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ prompt: body.prompt, size: `${body.width}*${body.height}` }),
+      body: JSON.stringify({ prompt: body.prompt, ...waveSpeedSizeParams(model, body.width, body.height) }),
     });
     if (!response.ok) throw new Error(await waveSpeedError(response));
     const submitted = await response.json() as WaveSpeedResult;

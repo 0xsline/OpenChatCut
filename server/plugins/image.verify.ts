@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { agnesImagePixels, validateImageRequest } from './image.ts';
-import { callAgnesImageProvider, callGrokImageProvider } from './image-provider-clients.ts';
+import { callAgnesImageProvider, callGrokImageProvider, callWaveSpeedProvider } from './image-provider-clients.ts';
 
 const basic = validateImageRequest({ prompt: 'a cat' });
 assert.equal(basic.model, 'gpt-image-2');
@@ -161,4 +161,23 @@ assert.equal(agnesBodies[0]?.n, undefined);
 assert.equal(agnesBodies[0]?.return_base64, true);
 assert.equal(agnesBodies[0]?.ratio, '16:9');
 assert.equal((agnesBodies[0]?.extra_body as { image?: unknown } | undefined)?.image, undefined);
+const waveSpeedBodies: Record<string, unknown>[] = [];
+globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  if (init?.method === 'POST') {
+    waveSpeedBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+    return new Response(JSON.stringify({ data: { id: 'task-1' } }), { headers: { 'content-type': 'application/json' } });
+  }
+  return new Response(JSON.stringify({ data: { status: 'completed', outputs: ['https://cdn.example/out.png'] } }), {
+    headers: { 'content-type': 'application/json' },
+  });
+}) as typeof fetch;
+await callWaveSpeedProvider('https://api.wavespeed.ai', 'test-key', 'bytedance/seedream-v5.5', {
+  prompt: 'poster', count: 1, width: 1536, height: 864,
+});
+await callWaveSpeedProvider('https://api.wavespeed.ai', 'test-key', 'wavespeed-ai/flux-dev', {
+  prompt: 'poster', count: 1, width: 1024, height: 1024,
+});
+globalThis.fetch = originalFetch;
+assert.deepEqual(waveSpeedBodies[0], { prompt: 'poster', aspect_ratio: '16:9', resolution: '1.5k' });
+assert.deepEqual(waveSpeedBodies[1], { prompt: 'poster', size: '1024*1024' }, 'size-based WaveSpeed models keep size');
 console.log('image.check: ok (provider-specific official parameters)');
