@@ -310,6 +310,8 @@ the legacy shared development store.
 - **ChatGPT subscription:** install the official Codex CLI 0.146.0 or newer, then open **Settings → Agent model → OpenAI · Codex**. Sign in through the browser or device-code flow, load the account's models, choose a model-specific reasoning effort (or keep its default), and select Codex from the chat model picker. OpenChatCut uses a dedicated Codex profile; the official CLI owns credential storage, token renewal, and logout, while OAuth tokens are never exposed to the browser.
 - **Claude subscription:** OpenChatCut does not collect Claude OAuth credentials. Use Claude Code through the local MCP connection below. The built-in Agent can use Anthropic through an API key.
 
+Select **OpenDesign Go** under **Settings → Agent model** to use OpenDesign’s Go plan for the editing agent. [View the plan](https://go.open-design.ai/) and [create a workspace API key](https://open-design.ai/help/cloud-api/), then save your key and an exact model ID available to your workspace. The preset uses `https://amr-link.open-design.ai/v1` with Chat Completions and defaults to `deepseek-v4.1-flash`. Image, video, transcription, and vision services require their own compatible configuration.
+
 The built-in Agent always runs the model loop on the local server. Chat, drafts, and proposals survive page refreshes and local service restarts. Timeline changes still go through the active editor's validated, undoable commands.
 
 ### Agent local-path access (advanced)

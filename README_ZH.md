@@ -309,6 +309,8 @@ http://localhost:5199
 - **ChatGPT 订阅**：先安装官方 Codex CLI 0.146.0 或更高版本，再进入**设置 → Agent 模型 → OpenAI · Codex**。可使用浏览器或设备代码登录、读取账号可用模型，并按模型选择推理强度（或保留模型默认值），再在聊天区的模型选择器中切换到 Codex。OpenChatCut 使用独立的 Codex 配置目录；凭据存储、令牌续期与退出均由官方 CLI 负责，OAuth 令牌不会暴露给浏览器。
 - **Claude 订阅**：OpenChatCut 不接收 Claude OAuth 凭据；请通过下文的本机 MCP 连接使用 Claude Code。内置 Agent 仍可通过 Anthropic API Key 使用 Claude。
 
+在 **设置 → Agent 模型** 中选择 **OpenDesign Go**，可为编辑智能体配置 OpenDesign 的 Go 套餐。[查看套餐](https://go.open-design.ai/)并[创建工作区 API Key](https://open-design.ai/help/cloud-api/)，再保存自己的 Key 和工作区可用的准确模型 ID。预设使用 `https://amr-link.open-design.ai/v1` 的 Chat Completions，默认模型为 `deepseek-v4.1-flash`。图片、视频、转写和视觉服务需另行配置兼容服务。
+
 内置 Agent 的模型循环始终在本机服务端运行。聊天、草稿和提案可跨页面刷新和本地服务重启保留。时间线修改仍通过活动编辑器中经过校验且可撤销的命令完成。
 
 ### Agent 本地路径访问（高级）
