@@ -124,6 +124,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'openrouter/auto',
   },
   {
+    id: 'opendesign-go',
+    label: 'OpenDesign Go',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://amr-link.open-design.ai/v1',
+    defaultModel: 'deepseek-v4.1-flash',
+  },
+  {
     id: 'ofox',
     label: 'OFox',
     protocol: 'openai-compatible',

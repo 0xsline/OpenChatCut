@@ -39,7 +39,7 @@ import lmstudioSvg from '../../../assets/vendor-icons/lmstudio-color.svg?raw';
 import visionSvg from '../../../assets/vendor-icons/vision.svg?raw';
 
 export type VendorId =
-  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | 'orcarouter' | 'requesty' | 'cheaperinference' | 'runcrate'
+  | 'opendesign-go' | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | 'orcarouter' | 'requesty' | 'cheaperinference' | 'runcrate'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
@@ -108,6 +108,7 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   'xai-oauth': { bg: '#101010', mono: 'x', fg: '#f7f7f8' }, // xAI subscription login, shares the Grok monogram
   fal: { bg: '#111827', mono: 'F', fg: '#f9fafb' }, // Fal.ai shared gateway
   orcarouter: { bg: '#0F172A', mono: 'OR', fg: '#38BDF8' }, // OrcaRouter gateway, no official SVG vendored yet
+  'opendesign-go': { bg: '#16251C', mono: 'OD', fg: '#9BE9A8' },
   requesty: { bg: '#34363c', mono: 'RQ', fg: '#f7f7f8' }, // Requesty gateway, no official SVG vendored yet
   uploadpost: { bg: '#4F46E5', mono: 'UP', fg: '#f7f7f8' }, // Upload-Post social publishing, no official SVG vendored yet
   cheaperinference: { bg: '#0B1F17', mono: 'CI', fg: '#34D399' }, // Cheaper Inference gateway, no official SVG vendored yet
