@@ -91,7 +91,10 @@ export function useTimelineController({
     if (next !== current) commands.applyState(next);
   }, [commands]);
   const { zoom, setZoom, zoomBy, fitToView, pixelsPerFrame: px, trackScale } =
-    useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, projectId, timelineId });
+    useTimelineZoomController({
+      scrollRef, totalFrames: total, fps: state.fps, projectId, timelineId,
+      getPlayheadFrame: () => playheadRef.current,
+    });
   const metaOf = (id: TrackId) => {
     const kind = trackKind(state, id);
     const color = kind === 'caption' ? theme.trackCaption
