@@ -212,7 +212,7 @@ async function handleWaveform(req: IncomingMessage, res: ServerResponse, logErro
   try {
     const hit = await resolveReq(req, res);
     if (!hit) return;
-    const cache = previewCachePath(hit.name, hit.source, 'peaks', 'json');
+    const cache = previewCachePath(hit.name, hit.source, 'waveform-v2.peaks', 'json');
     if (!existsSync(cache)) {
       await runDerivative(req, res, cache, async (signal) => {
         if (existsSync(cache)) return;
@@ -220,8 +220,7 @@ async function handleWaveform(req: IncomingMessage, res: ServerResponse, logErro
         const body = !probeResult.hasAudio
           ? { peaks: [], peaksPerSecond: PEAKS_PER_SECOND, durationMs: probeResult.durationMs }
           : {
-              peaks: await computePeaks(hit.file, probeResult.durationMs, signal),
-              peaksPerSecond: PEAKS_PER_SECOND,
+              ...await computePeaks(hit.file, probeResult.durationMs, signal),
               durationMs: probeResult.durationMs,
             };
         await atomicPreviewBuild(cache, (tmp) => writeFile(tmp, JSON.stringify(body)));

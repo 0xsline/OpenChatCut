@@ -7,8 +7,8 @@ import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 import { ffmpegThreadArgs, spawnMediaProcess } from '../media-process.ts';
 import { runPreviewProcess } from '../preview-proxy.ts';
 
-export const PEAKS_PER_SECOND = 100; // source samplesPerPeak = sampleRate/100
-const MAX_PEAK_BINS = 12_000; // Reduce the density of ultra-long assets (far wider than any screen pixel width, no loss of appearance)
+export const PEAKS_PER_SECOND = 100;
+const MAX_PEAK_BINS = 120_000; // Keep 10 ms resolution up to 20 minutes, then reduce peak density.
 const PCM_RATE = 8000; // The peak envelope is sufficient and decoding is fast
 const STRIP_HEIGHT = 44;
 const MIN_STRIP_FRAMES = 8;
@@ -96,11 +96,18 @@ function appendPcmPeaks(chunk: Buffer, state: PeakState): void {
   }
 }
 
-export function computePeaks(file: string, durationMs: number, signal: AbortSignal): Promise<number[]> {
-  const seconds = Math.max(0.001, durationMs / 1000);
-  const bins = Math.max(1, Math.min(MAX_PEAK_BINS, Math.round(seconds * PEAKS_PER_SECOND)));
+export function computePeaks(
+  file: string,
+  durationMs: number,
+  signal: AbortSignal,
+): Promise<{ peaks: number[]; peaksPerSecond: number }> {
+  const seconds = Number.isFinite(durationMs) ? durationMs / 1000 : 0;
+  const samplesPerBin = Math.max(
+    PCM_RATE / PEAKS_PER_SECOND,
+    Math.ceil((PCM_RATE * seconds) / MAX_PEAK_BINS),
+  );
   const state: PeakState = {
-    peaks: [], samplesPerBin: Math.max(1, Math.floor((PCM_RATE * seconds) / bins)),
+    peaks: [], samplesPerBin,
     binMax: 0, inBin: 0, carry: null,
   };
   return new Promise((resolve, reject) => {
@@ -130,7 +137,7 @@ export function computePeaks(file: string, durationMs: number, signal: AbortSign
       else if (code !== 0) reject(new Error(`ffmpeg peaks exit ${code}: ${stderr.slice(-300)}`));
       else {
         if (state.inBin > 0) state.peaks.push(Math.round(state.binMax * 1000) / 1000);
-        resolve(state.peaks);
+        resolve({ peaks: state.peaks, peaksPerSecond: PCM_RATE / samplesPerBin });
       }
     });
   });
