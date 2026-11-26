@@ -39,6 +39,19 @@ export function anchoredTimelineScrollLeft(
   return Math.max(0, frame * newPixelsPerFrame + headerWidth - pointerViewportX);
 }
 
+export function timelinePlayheadAnchorX(
+  frame: number,
+  scrollLeft: number,
+  viewportWidth: number,
+  headerWidth: number,
+  pixelsPerFrame: number,
+): number {
+  const x = headerWidth + frame * pixelsPerFrame - scrollLeft;
+  return x >= headerWidth && x < viewportWidth
+    ? x
+    : headerWidth + Math.max(0, viewportWidth - headerWidth) / 2;
+}
+
 export function defaultTimelineZoom(
   fps: number,
   basePixelsPerFrame: number,

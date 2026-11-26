@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { anchoredTimelineScrollLeft, timelinePlayheadAnchorX } from './timelineZoom';
 import {
   clearTimelineViewStates,
   loadTimelineViewState,
@@ -73,5 +74,25 @@ assert.equal(loadTimelineViewState(storage, 'project-b', 'timeline-a'), null, 'p
 clearTimelineViewStates(storage, 'project-a');
 assert.equal(loadTimelineViewState(storage, 'project-a', 'timeline-a'), null);
 assert.equal(loadTimelineViewState(storage, 'project-a', 'timeline-b'), null);
+
+const playhead = 200;
+const header = 112;
+const viewportWidth = 500;
+const scrollLeft = 160;
+const currentPixelsPerFrame = 2;
+const anchor = timelinePlayheadAnchorX(playhead, scrollLeft, viewportWidth, header, currentPixelsPerFrame);
+assert.equal(anchor, 352);
+for (const pixelsPerFrame of [1.5, 4]) {
+  const updatedScroll = anchoredTimelineScrollLeft(
+    scrollLeft, anchor, header, currentPixelsPerFrame, pixelsPerFrame,
+  );
+  assert.equal(header + playhead * pixelsPerFrame - updatedScroll, anchor,
+    'zooming keeps a visible playhead at its existing viewport coordinate');
+}
+const visibleCenter = header + (viewportWidth - header) / 2;
+assert.equal(timelinePlayheadAnchorX(0, scrollLeft, viewportWidth, header, 2), visibleCenter);
+assert.equal(timelinePlayheadAnchorX(800, scrollLeft, viewportWidth, header, 2), visibleCenter);
+assert.equal(anchoredTimelineScrollLeft(0, header, header, 2, 4), 0,
+  'zooming at frame zero stays on the first frame');
 
 console.log('timelineViewState.verify: ok (timelineId 隔离/切换恢复/partial merge/项目清理)');

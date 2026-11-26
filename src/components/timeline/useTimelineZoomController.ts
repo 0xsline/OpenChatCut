@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { loadTimelineView, saveTimelineView } from '../../persist/sessionPrefs';
 import {
   anchoredTimelineScrollLeft,
+  clampTimelineZoom,
   defaultTimelineZoom,
   fitTimelineZoom,
   scaleTimelineZoom,
+  timelinePlayheadAnchorX,
 } from '../../editor/timelineZoom';
 import {
   HEADER_W,
@@ -21,6 +23,7 @@ type NumberSetter = Dispatch<SetStateAction<number>>;
 
 interface TimelineZoomControllerOptions {
   scrollRef: RefObject<HTMLDivElement | null>;
+  getPlayheadFrame: () => number;
   totalFrames: number;
   fps: number;
   projectId?: string;
@@ -75,7 +78,7 @@ function useTimelineWheelZoom(
 }
 
 export function useTimelineZoomController(options: TimelineZoomControllerOptions) {
-  const { scrollRef, totalFrames, fps, projectId, timelineId } = options;
+  const { scrollRef, getPlayheadFrame, totalFrames, fps, projectId, timelineId } = options;
   const key = `${projectId ?? 'default'}\u0000${timelineId ?? 'default'}`;
   const [view, setView] = useState<ZoomViewState>({ key: '', zoom: 1, trackScale: 1 });
   const totalFramesRef = useRef(totalFrames);
@@ -87,6 +90,7 @@ export function useTimelineZoomController(options: TimelineZoomControllerOptions
   const viewByKeyRef = useRef<Record<string, Pick<ZoomViewState, 'zoom' | 'trackScale'>>>({});
   if (view.key) viewByKeyRef.current[view.key] = { zoom: view.zoom, trackScale: view.trackScale };
   const pendingAutoFitRef = useRef<string | null>(null);
+  const pendingAnchorRef = useRef<{ key: string; frame: number; viewportX: number; zoom: number } | null>(null);
 
   const setZoom = useCallback<NumberSetter>((next) => {
     setView((current) => {
@@ -95,6 +99,34 @@ export function useTimelineZoomController(options: TimelineZoomControllerOptions
       return value === base.zoom ? base : { ...base, zoom: value };
     });
   }, [key]);
+  const setPlayheadZoom = useCallback<NumberSetter>((next) => {
+    const active = pendingAnchorRef.current;
+    const pending = active?.key === key ? active : null;
+    const current = pending?.zoom ?? zoom;
+    const target = clampTimelineZoom(typeof next === 'function' ? next(current) : next, TIME_LIMITS);
+    if (target === current) return;
+
+    const element = scrollRef.current;
+    const frame = getPlayheadFrame();
+    const viewportX = element && Number.isFinite(frame)
+      ? (pending?.frame === frame ? pending.viewportX
+        : timelinePlayheadAnchorX(frame, element.scrollLeft, element.clientWidth, HEADER_W, PX_PER_FRAME * zoom))
+      : null;
+    pendingAnchorRef.current = viewportX !== null && totalFrames > 0 && target !== zoom
+      ? { key, frame, viewportX, zoom: target }
+      : null;
+    setZoom(target);
+  }, [getPlayheadFrame, key, scrollRef, setZoom, totalFrames, zoom]);
+
+  useLayoutEffect(() => {
+    const anchor = pendingAnchorRef.current;
+    const element = scrollRef.current;
+    if (!anchor || !element || view.key !== key || anchor.key !== key || anchor.zoom !== zoom) return;
+    pendingAnchorRef.current = null;
+    // Apply after React commits the new content width so the browser clamps against the new bounds.
+    element.scrollLeft = HEADER_W + anchor.frame * PX_PER_FRAME * zoom - anchor.viewportX;
+  }, [key, scrollRef, view.key, zoom]);
+
   const setTrackScale = useCallback<NumberSetter>((next) => {
     setView((current) => {
       const base = current.key === key ? current : { key, zoom: 1, trackScale: 1 };
@@ -107,6 +139,7 @@ export function useTimelineZoomController(options: TimelineZoomControllerOptions
     const element = scrollRef.current;
     const views = viewByKeyRef.current;
     if (!element) return;
+    pendingAnchorRef.current = null;
     const saved = projectId && timelineId ? loadTimelineView(projectId, timelineId) : null;
     const nextZoom = saved?.zoom ?? (totalFramesRef.current > 0
       ? fittedZoom(element, totalFramesRef.current, fpsRef.current)
@@ -162,20 +195,21 @@ export function useTimelineZoomController(options: TimelineZoomControllerOptions
   useTimelineWheelZoom(scrollRef, zoom, setZoom, setTrackScale);
 
   const zoomBy = useCallback(
-    (factor: number) => setZoom((current) => scaleTimelineZoom(current, factor, TIME_LIMITS)),
-    [setZoom],
+    (factor: number) => setPlayheadZoom((current) => scaleTimelineZoom(current, factor, TIME_LIMITS)),
+    [setPlayheadZoom],
   );
   const fitToView = useCallback(() => {
     const element = scrollRef.current;
     if (!element || totalFrames <= 0) return;
     pendingAutoFitRef.current = null;
+    pendingAnchorRef.current = null;
     setZoom(fittedZoom(element, totalFrames, fps));
     element.scrollLeft = 0;
   }, [fps, scrollRef, setZoom, totalFrames]);
 
   return {
     zoom,
-    setZoom,
+    setZoom: setPlayheadZoom,
     zoomBy,
     fitToView,
     pixelsPerFrame: PX_PER_FRAME * zoom,
