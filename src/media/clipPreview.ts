@@ -79,7 +79,7 @@ async function responseError(response: Response): Promise<string> {
 
 async function fetchWaveform(query: string, signal: AbortSignal): Promise<WaveResult> {
   try {
-    const response = await fetch(`/api/waveform?${query}`, { signal });
+    const response = await fetch(`/api/waveform?${query}&waveform=2`, { signal });
     if (!response.ok) return { data: null, error: await responseError(response) };
     return { data: await response.json() as WaveResult['data'] };
   } catch (error) {
