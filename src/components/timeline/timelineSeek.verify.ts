@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { startTimelineRulerScrub } from './timelineRulerScrub';
 import {
   attachPlayheadMediaSync,
 } from './usePlayheadPaint';
@@ -51,6 +52,91 @@ assert.deepEqual(
   [17],
   'pointer seeking must still paint when the preview player is not mounted',
 );
+
+class TestRuler extends EventTarget {
+  style = { cursor: 'pointer' };
+  captured: number | null = null;
+  setPointerCapture(pointer: number) { this.captured = pointer; }
+  hasPointerCapture(pointer: number) { return this.captured === pointer; }
+  releasePointerCapture() { this.captured = null; }
+  send(type: string, clientX: number) {
+    this.dispatchEvent(Object.assign(new Event(type), { pointerId: 1, clientX }));
+  }
+}
+
+const frames = new Map<number, FrameRequestCallback>();
+let nextFrame = 0;
+let timestamp = 0;
+const stepScroll = () => {
+  const pending = [...frames.values()];
+  frames.clear();
+  timestamp = Math.max(timestamp, performance.now()) + 16;
+  for (const callback of pending) callback(timestamp);
+};
+const originalRaf = globalThis.requestAnimationFrame;
+const originalCancelRaf = globalThis.cancelAnimationFrame;
+globalThis.requestAnimationFrame = (callback) => {
+  frames.set(++nextFrame, callback);
+  return nextFrame;
+};
+globalThis.cancelAnimationFrame = (handle) => { frames.delete(handle); };
+try {
+  const ruler = new TestRuler();
+  const viewport = {
+    clientLeft: 0, clientWidth: 500, scrollWidth: 2000, scrollLeft: 250,
+    getBoundingClientRect: () => ({ left: 100 }),
+  };
+  const observed: { x: number; scroll: number }[] = [];
+  const start = () => startTimelineRulerScrub(
+    ruler as unknown as HTMLElement, viewport as unknown as HTMLElement, 1, 350,
+    () => ({
+      headerWidth: 112, pixelsPerFrame: 4, totalFrames: 300,
+      seekTo: (x) => observed.push({ x, scroll: viewport.scrollLeft }),
+    }),
+  );
+  start();
+  assert.deepEqual(observed.at(-1), { x: 350, scroll: 250 });
+  ruler.send('pointermove', 700);
+  stepScroll();
+  stepScroll();
+  assert.equal(observed.at(-1)?.x, 592, 'the cursor remains inside the right edge');
+  assert.ok(viewport.scrollLeft > 250, 'a held drag keeps scrolling without pointer movement');
+  ruler.send('pointermove', 350);
+  const insideScroll = viewport.scrollLeft;
+  stepScroll();
+  assert.equal(viewport.scrollLeft, insideScroll);
+  assert.equal(observed.at(-1)?.x, 350);
+  ruler.send('pointermove', 150);
+  stepScroll();
+  assert.equal(observed.at(-1)?.x, 220, 'the cursor stays to the right of the sticky header');
+  assert.ok(viewport.scrollLeft < insideScroll);
+  ruler.send('pointerup', 150);
+  assert.equal(frames.size, 0);
+  assert.equal(ruler.style.cursor, 'pointer');
+  assert.equal(ruler.captured, null);
+
+  viewport.scrollLeft = 2;
+  const stopLeft = start();
+  ruler.send('pointermove', 150);
+  stepScroll();
+  assert.deepEqual(observed.at(-1), { x: 212, scroll: 0 }, 'the left edge can reach frame zero');
+  assert.equal(frames.size, 0);
+  stopLeft();
+
+  viewport.scrollLeft = 804;
+  start();
+  ruler.send('pointermove', 700);
+  stepScroll();
+  assert.deepEqual(observed.at(-1), { x: 592, scroll: 816 }, 'scroll stops at the last frame');
+  assert.equal(frames.size, 0);
+  ruler.send('pointermove', 150);
+  assert.equal(frames.size, 1);
+  ruler.send('lostpointercapture', 150);
+  assert.equal(frames.size, 0);
+} finally {
+  globalThis.requestAnimationFrame = originalRaf;
+  globalThis.cancelAnimationFrame = originalCancelRaf;
+}
 
 type FrameListener = (event: { detail: { frame: number } }) => void;
 

@@ -120,7 +120,7 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             state={state} empty={empty} px={px}
             majorFrames={majorFrames} minorFrames={minorFrames} minorTicksPerMajor={minorTicksPerMajor}
             rulerEndFrame={rulerSpanFrames} visibleWindow={visibleWindow}
-            pickMode={pickMode} startPick={startPick} seekTo={seekTo}
+            pickMode={pickMode} startPick={startPick} scrollRef={scrollRef} totalFrames={total} seekTo={seekTo}
             rulerTimecodeRef={rulerTimecodeRef} playheadFrame={playheadRef.current}
             zoneIn={zoneIn} zoneOut={zoneOut} markers={markers} onEditMarker={setEditMarker}
             pinnedMarkerId={editMarker}

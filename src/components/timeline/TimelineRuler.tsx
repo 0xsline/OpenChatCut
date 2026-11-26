@@ -1,11 +1,12 @@
 // Time ruler (moved verbatim from Timeline.tsx): click/hold drag seek; point in selection mode = time point,
 // Drag = time period (startPick). The scale density changes with scaling to "good-looking" main scales; the I/O input and output flags are stacked on top.
 // Mark the pin with the project level (click the pin to open the comment editor). The timecode span is written directly by the playhead painter to frames other than the initial value.
-import { type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { MARKER_HEX, type Marker, type TimelineState } from '../../editor/types';
 import type { TimelinePickDrag } from '../../agent/selection-refs';
 import { useT } from '../../i18n/locale';
+import { startTimelineRulerScrub } from './timelineRulerScrub';
 import {
   HEADER_W, RULER_H, fmtClock, fmtRuler, framePointInWindow, intersectFrameRange,
   rulerTickWindow, type TimelineFrameWindow,
@@ -22,6 +23,8 @@ interface TimelineRulerProps {
   visibleWindow: TimelineFrameWindow;
   pickMode: boolean;
   startPick: (e: React.PointerEvent, origin: TimelinePickDrag['origin']) => void;
+  scrollRef: RefObject<HTMLDivElement | null>;
+  totalFrames: number;
   seekTo: (clientX: number) => void;
   rulerTimecodeRef: RefObject<HTMLSpanElement | null>;
   playheadFrame: number;
@@ -34,10 +37,17 @@ interface TimelineRulerProps {
 
 export function TimelineRuler({
   state, empty, px, majorFrames, minorFrames, minorTicksPerMajor, rulerEndFrame, visibleWindow,
-  pickMode, startPick, seekTo, rulerTimecodeRef, playheadFrame, zoneIn, zoneOut,
+  pickMode, startPick, scrollRef, totalFrames, seekTo, rulerTimecodeRef, playheadFrame, zoneIn, zoneOut,
   markers, onEditMarker, pinnedMarkerId,
 }: TimelineRulerProps) {
   const t = useT();
+  const scrubOptions = useRef({ headerWidth: HEADER_W, pixelsPerFrame: px, totalFrames, seekTo });
+  useLayoutEffect(() => {
+    scrubOptions.current = { headerWidth: HEADER_W, pixelsPerFrame: px, totalFrames, seekTo };
+  }, [px, totalFrames, seekTo]);
+  const stopScrub = useRef<(() => void) | null>(null);
+  const timelineId = (state as { id?: string }).id;
+  useLayoutEffect(() => () => { stopScrub.current?.(); }, [pickMode, timelineId]);
   const tickWindow = rulerTickWindow(visibleWindow, rulerEndFrame, majorFrames, minorTicksPerMajor);
   const visibleMarkers = markers.filter((marker) => marker.scope === 'project' && (
     marker.id === pinnedMarkerId
@@ -52,13 +62,13 @@ export function TimelineRuler({
       className="cc-timeline-ruler"
       onPointerDown={(e) => {
         if (pickMode) { startPick(e, 'ruler'); return; }
-        if (e.button !== 0) return;
-        e.currentTarget.setPointerCapture(e.pointerId); // Press and drag = continuous seek; raise your hand to release automatically
-        e.currentTarget.style.cursor = 'grabbing';
-        seekTo(e.clientX);
+        const viewport = scrollRef.current;
+        if (e.button !== 0 || !e.isPrimary || !viewport) return;
+        stopScrub.current?.();
+        stopScrub.current = startTimelineRulerScrub(
+          e.currentTarget, viewport, e.pointerId, e.clientX, () => scrubOptions.current,
+        );
       }}
-      onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX); }}
-      onPointerUp={(e) => { e.currentTarget.style.cursor = ''; }}
       style={{ display: 'flex', height: RULER_H, borderBottom: `0.5px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: pickMode ? 'crosshair' : 'pointer', userSelect: 'none' }}
     >
       <div className="cc-ruler-head" style={{ width: HEADER_W }}><span ref={rulerTimecodeRef}>{fmtClock(playheadFrame, state.fps)}</span></div>
